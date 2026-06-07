@@ -1,0 +1,3 @@
+# Portfolio-scoped storage
+
+Each Gorchestra Portfolio has its own storage boundary, such as its own database or file-storage namespace, and Portfolio data IDs are only required to be unique within that boundary. The Workspace/global registry owns Portfolio display metadata and storage location; Portfolio storage does not own name or description. Export creates a passphrase-encrypted Portfolio Snapshot from the Portfolio storage contents, and Import creates a new Portfolio storage boundary while preserving exported IDs. We chose this over one shared portfolio table space because isolated Portfolio storage simplifies full-fidelity import/export and reduces accidental cross-Portfolio coupling.
