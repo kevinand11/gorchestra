@@ -8,6 +8,14 @@ The Gorchestra core is the reusable Portfolio-level orchestration context. It ma
 A core orchestration boundary that groups Projects and shared reusable context or resources such as Memories and Secret Bindings.
 _Avoid_: Project Space, program, workspace
 
+**Local Actor Ref**:
+An opaque consumer-supplied reference to the actor associated with a local core operation. A Local Actor Ref contains a consumer-defined actor type and actor id. Core stores Local Actor Refs for attribution but does not interpret their identity semantics.
+_Avoid_: User, Workspace Member, account
+
+**Audit Stamp**:
+The recorded operation time and attribution metadata attached to attribution-bearing core records or outcomes. A local Audit Stamp contains a Local Actor Ref and optional correlation id; an imported Audit Stamp preserves the original operation time while marking attribution as not locally resolvable.
+_Avoid_: createdBy field, Workspace Member field
+
 **Secret**:
 A Portfolio-owned sensitive write-only value stored by Gorchestra for repository access or execution environments. Users may create or replace Secret values, but may not view plaintext values after creation.
 _Avoid_: Credential, token, key, sensitive value
