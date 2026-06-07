@@ -13,6 +13,8 @@ Gorchestra has multiple domain contexts:
 - Server Consumer context: `docs/consumers/server/CONTEXT.md`
   - Server Consumer ADRs: `docs/consumers/server/adr/`
 
+ADR filenames use sortable date+time prefixes: `YYYY-MM-DD-HHMM-slug.md`.
+
 ## Context relationships
 
 Gorchestra is a goal-oriented delivery orchestration platform for coordinating planning, execution, review, and shipping work.

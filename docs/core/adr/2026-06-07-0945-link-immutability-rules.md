@@ -1,0 +1,3 @@
+# Link immutability rules
+
+Gorchestra treats some Links as immutable historical facts and others as archivable associations or constraints. `produced`, `supersedes`, `depends-on`, and `implements` when materialized as accepted provenance are immutable; `references`, `supports`, and `contradicts` are archivable. Links connect graph nodes and are not themselves graph nodes, so Gorchestra does not use graph Links to link to other Links; Link provenance is stored as facts or metadata about the Link. We chose this split to preserve audit history and execution contracts for provenance and dependencies while still allowing humans and planning work to correct relevance and tension relationships without introducing edge-as-node graph semantics.

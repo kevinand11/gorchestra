@@ -1,0 +1,3 @@
+# Gorchestra-owned lifecycle mutations
+
+Missions perform goal-directed work and may mutate sandbox artifacts inside a Mission Sandbox, such as editing files in a worktree. Gorchestra owns authoritative lifecycle and Project Type-specific external mutations such as validating outputs, promoting Slice Artifacts and Delivery Artifacts, merging Slice Branches into Delivery Branches for Source Control Projects, updating Delivery and Slice state, pushing branches, creating initial Review Surfaces, and shipping. We chose this boundary so intelligence can perform work without directly controlling the workflow engine or Project Type integration lifecycle.
