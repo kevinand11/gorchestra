@@ -69,7 +69,7 @@ The human steering Planning toward an acceptable Plan Output.
 _Avoid_: Agent, intelligence, Plan owner
 
 **Plan Output**:
-A set of proposed new Deliveries with their initial Slices, plus Memories and Links, produced by Planning for review as a whole. Accepting a Plan Output adds those proposed artifacts to the Portfolio graph; rejecting it preserves the Plan Output in Planning history without materializing its proposed artifacts. Plan Outputs do not add Slices to existing Deliveries.
+The structured proposal shape a Planning Mission must produce for review as a whole. A Plan Output proposes new Deliveries with their initial Slices, plus Memories and Links. Accepting a Plan Output materializes those proposed artifacts into the Portfolio graph, including Instruction Sources stored on the materialized Slices. Rejecting it materializes none of them. Plan Outputs do not add Slices to existing Deliveries and are not stored Portfolio artifacts.
 _Avoid_: Accepted Plan, partial acceptance, staged output set, draft Plan
 
 **Delivery**:
@@ -89,15 +89,19 @@ A terminal Delivery removed from active execution consideration without being Sh
 _Avoid_: Archived Delivery, Deleted Delivery, canceled Delivery, soft-deleted Delivery
 
 **Slice**:
-An independently executable unit inside exactly one Delivery. A Slice's parent Delivery is immutable after acceptance. Slices participate in the Portfolio graph, and Slice-level dependencies are represented by Links between Slices in the same Delivery.
+An independently executable unit inside exactly one Delivery. A Slice's parent Delivery and initial Instruction Source are immutable after acceptance. Slices participate in the Portfolio graph, and Slice-level dependencies are represented by Links between Slices in the same Delivery.
 _Avoid_: Step, task, subtask
+
+**Instruction Source**:
+Immutable stored instructions used by Missions to perform accepted Slice or Revision work.
+_Avoid_: Plan Output, Revision Output, prompt
 
 **Execution**:
 A single execution session for a Delivery. An Execution groups the Actions and Missions that attempt to move the Delivery forward across its Slices, but does not own lifecycle state.
 _Avoid_: WorkRun
 
 **Execution Policy**:
-Project-level versioned rules controlling how Gorchestra schedules Actions and Missions, retries validation failures, and limits execution. In v1, Execution Policy includes max parallel Slices per Delivery, max validation retries, and Mission timeout. An Execution uses the Execution Policy version captured when it starts.
+Project-level versioned rules controlling how Gorchestra schedules Actions and Missions, retries validation or external operation failures, and limits execution. In v1, Execution Policy includes max parallel Slices per Delivery, max correction retries, and Mission timeout. An Execution uses the Execution Policy version captured when it starts.
 _Avoid_: Project Type, scheduler settings
 
 **Mission Sandbox**:
@@ -133,7 +137,7 @@ Goal-directed work performed by an intelligence, which may be automated, human, 
 _Avoid_: Turn, AgentAttempt
 
 **Decision**:
-A request for human judgment raised during a Mission. A Decision captures a point where goal-directed work needs human input before it can continue.
+A request for human judgment raised during Planning or Execution. A Decision captures a point where Gorchestra needs human input before work can continue, such as exhausted correction retries.
 _Avoid_: Confirmation, approval, prompt
 
 **Portfolio Memory**:
@@ -161,28 +165,36 @@ A Portfolio-level derived list of events that affect Portfolio state, computed f
 _Avoid_: Timeline Event records, log, activity feed
 
 **Ship**:
-To terminally complete a Delivery's external integration lifecycle after all of its Slices are complete and required Ship validation passes. For a Source Control Project, a Delivery is Shipped when its Review Surface is merged into the Target Branch, whether Gorchestra performs or observes the merge.
+To terminally complete a Delivery's external integration lifecycle after all of its Slices are complete and required Ship validation passes. For a Source Control Project, a Delivery is Shipped when any Delivery Review Surface merges the Delivery Branch into the Target Branch, whether Gorchestra performs or observes the merge.
 _Avoid_: Release, submit, land
 
 **Review Surface**:
-The place where Delivery or Slice work is presented for human or external review. For Source Control Projects, a Review Surface is a pull request.
+The place where Delivery or Slice work is presented for human or external review. Review Surface history is preserved when a Review Surface is replaced. For Source Control Projects, a Review Surface is a pull request.
 _Avoid_: Pull request, review target, submission
 
 **Slice Review Surface**:
-A Review Surface for a Slice Artifact. For Source Control Projects, this is a pull request from the Slice Branch into the Delivery Branch.
+A Review Surface for a Slice Artifact. For Source Control Projects, this is a pull request from the Slice Branch into the Delivery Branch. The current Slice Review Surface for ongoing review is derived from Review Surface history.
 _Avoid_: Slice PR, review target
 
 **Delivery Review Surface**:
-A Review Surface for a Delivery Artifact. For Source Control Projects, this is a pull request from the Delivery Branch into the Target Branch.
+A Review Surface for a Delivery Artifact. For Source Control Projects, this is a pull request from the Delivery Branch into the Target Branch. The current Delivery Review Surface for ongoing review is derived from Review Surface history.
 _Avoid_: Delivery PR, review target
 
 **Revision Gate**:
-Human-controlled artifact-scoped authorization that allows Gorchestra to plan revision work in response to fetched Feedback for a Slice Artifact or Delivery Artifact. Opening a Revision Gate starts a revision planning session that may produce rejected Revision Outputs until one is accepted or the gate is closed. Revision Gate does not create or reopen Slices.
+Human-controlled artifact-scoped authorization that allows Gorchestra to plan revision work in response to fetched Feedback for a Slice Artifact or Delivery Artifact. Opening a Revision Gate starts a revision planning session that may produce Revision Outputs until one is accepted or the gate is closed. Revision Gate does not create or reopen Slices.
 _Avoid_: revisionAllowed, needs-revision, changes-requested, per-comment approval
 
 **Revision Output**:
-A stored human-reviewed proposal for revision work against a Delivery Artifact or Slice Artifact in response to fetched Feedback. A Revision Output accounts for fetched Feedback with a human-readable disposition, without storing Feedback details as authoritative Portfolio data. It is accepted or rejected as a whole and authorizes revision Missions when accepted. It does not create or reopen Slices.
+The structured proposal shape a revision planning Mission must produce for review as a whole. A Revision Output proposes revision work against a Delivery Artifact or Slice Artifact and accounts for fetched Feedback with a Revision Disposition. Accepting a Revision Output creates a Revision. Rejecting it creates no Revision. Revision Outputs do not create or reopen Slices and are not stored Portfolio artifacts.
 _Avoid_: revision Slice, feedback Slice, partial acceptance, Plan Output
+
+**Revision**:
+A unit of accepted revision work against a Slice Artifact or Delivery Artifact, created by accepting a Revision Output. A Revision stores the immutable Instruction Source and immutable Revision Disposition for the Missions that perform the revision.
+_Avoid_: Slice, Delivery, Revision Output
+
+**Revision Disposition**:
+The immutable human-readable account of how a Revision responds to fetched Feedback.
+_Avoid_: Feedback, Feedback Disposition, stored comment, review response
 
 **Feedback**:
 Review input fetched from a Review Surface. Feedback does not authorize revision work unless the Revision Gate is open.
