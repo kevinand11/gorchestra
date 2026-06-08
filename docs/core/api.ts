@@ -76,6 +76,7 @@ import type {
   SourceControlDeliveryArtifactConfig,
   SourceControlSliceArtifactConfig,
   ValidationEvidence,
+  ValidationOperation,
 } from "./model";
 
 // -----------------------------------------------------------------------------
@@ -121,6 +122,10 @@ export type PreflightFailedScope =
   | { type: "delivery"; deliveryId: DeliveryId }
   | { type: "model"; modelId: ModelId };
 
+/**
+ * invariant-violation is reserved for impossible/corrupt states.
+ * Expected domain failures should use specific CoreError variants.
+ */
 export type CoreError =
   | { type: "not-found"; resource: string; id: string }
   | { type: "invariant-violation"; message: string }
@@ -579,7 +584,10 @@ export interface PushBranchInput {
 export interface ValidateBranchInput {
   repository: Repository;
   branch: string;
-  validationType: "slice-branch-validation" | "delivery-branch-validation" | "ship-validation";
+  operation: Extract<
+    ValidationOperation,
+    { type: "slice-branch-validation" | "delivery-branch-validation" | "ship-validation" }
+  >;
 }
 
 export interface CreateReviewSurfaceInput {

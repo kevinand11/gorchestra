@@ -23,7 +23,6 @@ export type SecretId = Brand<string, "SecretId">;
 export type SecretBindingId = Brand<string, "SecretBindingId">;
 export type ActionId = Brand<string, "ActionId">;
 export type AgentRunId = Brand<string, "AgentRunId">;
-export type DecisionId = Brand<string, "DecisionId">;
 export type RevisionGateId = Brand<string, "RevisionGateId">;
 export type RevisionId = Brand<string, "RevisionId">;
 export type ReviewSurfaceId = Brand<string, "ReviewSurfaceId">;
@@ -113,7 +112,6 @@ export interface Repository {
 }
 
 export type RepositoryConfig = GitHubRepositoryConfig;
-export type SourceControlProvider = RepositoryConfig["provider"];
 
 export interface GitHubRepositoryConfig {
   provider: "github";
@@ -183,6 +181,13 @@ export interface ModelUpdated extends AuditedRecord {}
 
 export interface ModelArchived extends AuditedRecord {}
 
+/**
+ * Config normalization:
+ * - createProject/createPlan store config: null when input config is null or all dimensions fold to null.
+ * - setPortfolioConfig requires model.defaultModelId.
+ * - setProjectConfig/configureDelivery retain the config record; if all dimensions fold to null, record.value is null.
+ * - Empty/all-null nested config dimensions fold to null.
+ */
 export interface PortfolioConfigRecord extends AuditedRecord {
   value: PortfolioConfig;
 }
@@ -568,12 +573,6 @@ export type AgentRunPurpose =
   | { type: "execution"; actionId: ActionId }
   | { type: "revision-execution"; revisionId: RevisionId; actionId: ActionId };
 
-export interface AgentRunSandbox {
-  agentRunId: AgentRunId;
-  type: "worktree" | "temporary-files" | "other";
-  locationRef: string | null;
-}
-
 // -----------------------------------------------------------------------------
 // Evidence / validation / external operation failures
 // -----------------------------------------------------------------------------
@@ -586,28 +585,31 @@ export type CorrectionEvidence = ValidationEvidence | ExternalOperationEvidence;
  */
 export interface ValidationEvidence {
   type: "validation";
-  validationType:
-    | "delivery-preflight"
-    | "model-preflight"
-    | "slice-branch-validation"
-    | "delivery-branch-validation"
-    | "ship-validation";
+  operation: ValidationOperation;
   passed: boolean;
   summary: string;
 }
 
+export type ValidationOperation =
+  | { type: "delivery-preflight" }
+  | { type: "model-preflight" }
+  | { type: "slice-branch-validation" }
+  | { type: "delivery-branch-validation" }
+  | { type: "ship-validation" };
+
 export interface ExternalOperationEvidence {
   type: "external-operation";
-  operation:
-    | "push-branch"
-    | "create-review-surface"
-    | "merge-review-surface"
-    | "close-review-surface"
-    | "fetch-feedback";
+  operation: ExternalOperation;
   passed: boolean;
   summary: string;
-  provider: SourceControlProvider | null;
 }
+
+export type ExternalOperation =
+  | { type: "push-branch" }
+  | { type: "create-review-surface" }
+  | { type: "merge-review-surface" }
+  | { type: "close-review-surface" }
+  | { type: "fetch-feedback" };
 
 // -----------------------------------------------------------------------------
 // Review Surface
@@ -757,8 +759,7 @@ export type MemoryType =
   | "risk"
   | "architecture"
   | "workflow"
-  | "convention"
-  | (string & {});
+  | "convention";
 
 export interface Memory {
   id: MemoryId;
@@ -828,26 +829,6 @@ export type ResolvedSecretEnvironment = Array<{
   envName: string;
   secretId: SecretId;
 }>;
-
-// -----------------------------------------------------------------------------
-// Decision
-// -----------------------------------------------------------------------------
-
-export interface Decision {
-  id: DecisionId;
-
-  source:
-    | { type: "planning"; agentRunId: AgentRunId }
-    | { type: "delivery-execution"; deliveryId: DeliveryId; actionId: ActionId | null }
-    | { type: "revision-planning"; revisionGateId: RevisionGateId };
-
-  summary: string;
-  body: string;
-  raised: AuditStamp;
-  resolved: DecisionResolved | null;
-}
-
-export interface DecisionResolved extends AuditedRecord {}
 
 // -----------------------------------------------------------------------------
 // Portfolio Snapshot

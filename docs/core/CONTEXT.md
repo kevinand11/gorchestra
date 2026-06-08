@@ -177,7 +177,7 @@ A state transition attempt for a Delivery. An Action records authoritative deliv
 _Avoid_: Job, Execution
 
 **Decision**:
-A request for human judgment raised during Planning or Delivery execution. A Decision captures a point where Gorchestra needs human input before work can continue, such as exhausted correction retries.
+A request for human judgment raised during Planning or Delivery execution. A Decision captures a point where Gorchestra needs human input before work can continue, such as exhausted correction retries. Decision is glossary-level in current v1 docs; exact model/API behavior is deferred.
 _Avoid_: Confirmation, approval, prompt
 
 **Portfolio Memory**:
