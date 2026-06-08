@@ -175,8 +175,16 @@ export interface CoreCommands {
 
   /**
    * Performs one bounded scheduler step for one available processing slot:
-   * records immediately-ready Actions or starts one eligible Agent Run without
-   * waiting for Agent Runs, review, human input, or other asynchronous external
+   * records immediately-ready Actions, starts one eligible Agent Run, or returns
+   * a no-op outcome when the Delivery is schedulable but no work can be performed
+   * in this step. A worked result contains recorded Action IDs and started Agent
+   * Run IDs; failed preflight, validation, and external-operation Actions still
+   * count as worked. Scheduler claims alone do not count as worked. A no-op
+   * result contains no durable Portfolio effects and is returned only for
+   * schedulable Delivery states after preflight passes. no-observed-change is
+   * only for unchanged Review Surface observations; claim-conflict returns after
+   * one failed claim attempt; slice-capacity-full means eligible Slice work exists
+   * but active Slice slots are maxed. It does not wait for Agent Runs, review, human input, or other asynchronous external
    * state. maxActiveSliceSlots limits active Slice work slots for the Delivery. A
    * scheduler loop should refetch Delivery/Slice state before each call and call
    * runDeliveryWork again when capacity remains. Each step atomically claims at
@@ -344,11 +352,24 @@ export interface RunDeliveryWorkInput {
   deliveryId: DeliveryId;
 }
 
-export interface RunDeliveryWorkResult {
-  delivery: Delivery;
-  actions: Action[];
-  agentRuns: AgentRun[];
-}
+export type RunDeliveryWorkResult =
+  /** At least one of actionIds or agentRunIds must be non-empty. */
+  | { type: "worked"; actionIds: ActionId[]; agentRunIds: AgentRunId[] }
+  | { type: "no-op"; reason: RunDeliveryWorkNoOpReason };
+
+export type RunDeliveryWorkNoOpReason =
+  | { type: "no-eligible-work" }
+  | { type: "slice-capacity-full"; activeSlots: number; maxActiveSliceSlots: number }
+  | { type: "claim-conflict"; work: RunDeliveryWorkClaimConflictWork }
+  | { type: "no-observed-change"; observed: RunDeliveryWorkNoObservedChangeTarget };
+
+export type RunDeliveryWorkClaimConflictWork =
+  | { type: "delivery" }
+  | { type: "slice"; sliceId: SliceId };
+
+export type RunDeliveryWorkNoObservedChangeTarget =
+  | { type: "slice-review-surface"; sliceId: SliceId; reviewSurfaceId: ReviewSurfaceId }
+  | { type: "delivery-review-surface"; reviewSurfaceId: ReviewSurfaceId };
 
 export interface RetryDeliveryPreflightInput {
   deliveryId: DeliveryId;
