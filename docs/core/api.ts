@@ -161,10 +161,16 @@ export interface CoreCommands {
   rejectPlanOutput(input: RejectPlanOutputInput, context: OperationContext): Promise<Result<void>>;
 
   // Delivery execution
+  /**
+   * V1 Action authorization policy:
+   * - runDeliveryWork records scheduler/runtime Actions with authorized null.
+   * - queueDelivery, retryDeliveryPreflight, shipDelivery, and abandonDelivery record consumer-authorized Actions.
+   * - other consumer-authorized lifecycle/config operations record domain-named AuditStamp fields instead of Actions.
+   */
   /** Requires Delivery Work State not closed. Does not clear preflight-failed. */
   configureDelivery(input: ConfigureDeliveryInput, context: OperationContext): Promise<Result<Delivery>>;
 
-  /** Requires Delivery Work State unqueued; queueing is one-way and is not overwritten. */
+  /** Requires Delivery Work State unqueued; records exactly one queue-delivery Action; duplicate calls fail with delivery-work-state-mismatch. */
   queueDelivery(input: QueueDeliveryInput, context: OperationContext): Promise<Result<QueueDeliveryResult>>;
 
   /**
@@ -179,9 +185,9 @@ export interface CoreCommands {
    * processed. The claim/lock mechanism is implementation-specific scheduler
    * coordination and is not modeled as Portfolio data in this sketch. Slice work
    * is selected in this priority order: needs-delivery-validation,
-   * needs-artifact-validation, awaiting-review observation/merge, executable
-   * correction, executable initial, then Delivery-level validation/review work
-   * when all Slices are complete. Within each Slice work bucket,
+   * needs-artifact-validation, awaiting-review observation/merge,
+   * needs-artifact-creation, executable correction, executable initial, then Delivery-level validation/review work
+   * when all Slices are complete. slice-operation-failed and correction-blocked Slices are not schedulable until explicit recovery behavior exists. Within each Slice work bucket,
    * selection is deterministic: needs-delivery-validation by promotion Action
    * time; needs-artifact-validation by completed AgentRun time; awaiting-review
    * by current ReviewSurface created time; executable correction by failed Action
@@ -195,19 +201,20 @@ export interface CoreCommands {
    * validate-preflight Action. Failed Delivery preflight records a
    * validate-preflight Action, stops the pass, and returns success with the
    * failed preflight Action and no Agent Runs. If
-   * Delivery Work State is not slices-incomplete, needs-artifact-validation,
-   * needs-review-surface, or awaiting-review, runDeliveryWork returns
+   * Delivery Work State is not needs-artifact-creation, slices-incomplete,
+   * needs-artifact-validation, needs-review-surface, or awaiting-review, runDeliveryWork returns
    * delivery-work-state-mismatch;
-   * scheduling loops should skip non-schedulable Deliveries. Artifact validation
+   * scheduling loops should skip non-schedulable Deliveries. delivery-operation-failed, delivery-validation-failed, and delivery-review-failed are not schedulable until explicit recovery behavior exists. Artifact validation
    * failures are recorded as validate-* Actions with passed false.
    */
   runDeliveryWork(input: RunDeliveryWorkInput, context: OperationContext): Promise<Result<RunDeliveryWorkResult>>;
 
   /**
    * Explicitly retries Delivery preflight for a Delivery whose Delivery Work
-   * State is preflight-failed. Records a validate-preflight Action with
-   * authorized set from the OperationContext; a passed retry supersedes the previous failure by ordering. Returns
-   * delivery-work-state-mismatch if the Delivery Work State is not
+   * State is preflight-failed. Records a validate-preflight Action whose
+   * authorized field is set from the OperationContext because that Action is the
+   * authoritative retry fact; a passed retry supersedes the previous failure by
+   * ordering. Returns delivery-work-state-mismatch if the Delivery Work State is not
    * preflight-failed.
    */
   retryDeliveryPreflight(input: RetryDeliveryPreflightInput, context: OperationContext): Promise<Result<RetryDeliveryPreflightResult>>;
@@ -218,8 +225,9 @@ export interface CoreCommands {
   closeRevisionGate(input: CloseRevisionGateInput, context: OperationContext): Promise<Result<void>>;
 
   // Delivery close operations
-  /** Requires Delivery Work State ready-to-ship; records Shipped without post-merge validation in v1. */
+  /** Requires Delivery Work State ready-to-ship; records exactly one ship-delivery Action without post-merge validation in v1; duplicate calls fail with delivery-work-state-mismatch. */
   shipDelivery(input: ShipDeliveryInput, context: OperationContext): Promise<Result<ShipDeliveryResult>>;
+  /** Requires Delivery Work State not closed; records exactly one abandon-delivery Action after required cleanup evidence is embedded; duplicate calls fail with delivery-work-state-mismatch. */
   abandonDelivery(input: AbandonDeliveryInput, context: OperationContext): Promise<Result<AbandonDeliveryResult>>;
 
   // Project / Repository config
@@ -329,6 +337,7 @@ export interface QueueDeliveryInput {
 
 export interface QueueDeliveryResult {
   delivery: Delivery;
+  action: Action;
 }
 
 export interface RunDeliveryWorkInput {
@@ -382,6 +391,7 @@ export interface ShipDeliveryInput {
 
 export interface ShipDeliveryResult {
   delivery: Delivery;
+  action: Action;
 }
 
 export interface AbandonDeliveryInput {
@@ -391,6 +401,7 @@ export interface AbandonDeliveryInput {
 
 export interface AbandonDeliveryResult {
   delivery: Delivery;
+  action: Action;
 }
 
 export interface CreateProjectInput {
@@ -609,8 +620,8 @@ export interface RepositoryTable<T, Id> {
 export interface SourceControlPort {
   preflightRepository(input: PreflightRepositoryInput): Promise<ValidationEvidence>;
 
-  createDeliveryBranch(input: CreateDeliveryBranchInput): Promise<SourceControlDeliveryArtifactConfig>;
-  createSliceBranch(input: CreateSliceBranchInput): Promise<SourceControlSliceArtifactConfig>;
+  createDeliveryBranch(input: CreateDeliveryBranchInput): Promise<CreateDeliveryBranchResult>;
+  createSliceBranch(input: CreateSliceBranchInput): Promise<CreateSliceBranchResult>;
 
   pushBranch(input: PushBranchInput): Promise<ExternalOperationEvidence>;
   validateBranch(input: ValidateBranchInput): Promise<ValidationEvidence>;
@@ -635,11 +646,21 @@ export interface CreateDeliveryBranchInput {
   targetBranch: string;
 }
 
+export type CreateDeliveryBranchResult =
+  | { type: "created"; config: SourceControlDeliveryArtifactConfig }
+  /** Failed evidence uses operation create-artifact. */
+  | { type: "failed"; evidence: ExternalOperationEvidence };
+
 export interface CreateSliceBranchInput {
   repository: Repository;
   deliveryBranch: string;
   sliceId: SliceId;
 }
+
+export type CreateSliceBranchResult =
+  | { type: "created"; config: SourceControlSliceArtifactConfig }
+  /** Failed evidence uses operation create-artifact. */
+  | { type: "failed"; evidence: ExternalOperationEvidence };
 
 export interface PushBranchInput {
   repository: Repository;

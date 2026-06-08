@@ -15,7 +15,7 @@ Gorchestra has multiple domain contexts:
 
 ADR filenames use sortable date+time prefixes: `YYYY-MM-DD-HHMM-slug.md`.
 
-Core lifecycle data shapes use `field: RuntimeRecord` for runtime lifecycle timestamps, direct domain-named `AuditStamp` fields for consumer-authorized operations, and domain-specific embedded records when a lifecycle moment has additional fields. Embedded records must contain all fields that change atomically with that lifecycle moment, so the model cannot represent half-updated states.
+Core lifecycle data shapes use `field: RuntimeRecord` for runtime lifecycle timestamps, direct domain-named `AuditStamp` fields for consumer-authorized operations, and domain-specific embedded records when a lifecycle moment has additional fields. Delivery state transitions that must appear in the Delivery Action timeline are represented as Actions with non-null `authorized` instead of direct Delivery lifecycle fields. Embedded records must contain all fields that change atomically with that lifecycle moment, so the model cannot represent half-updated states.
 
 Prefer discriminated unions over nullable peer fields when exactly one variant applies.
 

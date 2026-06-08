@@ -45,8 +45,11 @@ export type IsoDateTime = string;
  * - use field: RuntimeRecord for runtime lifecycle timestamps, direct
  *   domain-named AuditStamp fields for consumer-authorized operations, and
  *   domain-specific embedded records when a lifecycle moment has additional
- *   fields. Embedded records contain all fields that change atomically with
- *   that lifecycle moment so half-updated states are not representable.
+ *   fields. Delivery state transitions that must appear in the Delivery Action
+ *   timeline are represented as Actions with non-null authorized instead of
+ *   direct Delivery lifecycle fields. Embedded records contain all fields that
+ *   change atomically with that lifecycle moment so half-updated states are not
+ *   representable.
  */
 
 export interface LocalActorRef {
@@ -360,15 +363,10 @@ export interface Delivery {
   /** Every Delivery has at least one Slice. */
   sliceIds: readonly [SliceId, ...SliceId[]];
 
-  queued: AuditStamp | null;
-
-  /** Shipped and Abandoned are mutually exclusive closed outcomes. */
-  closed: DeliveryClosed | null;
-
   accepted: AuditStamp;
 }
 
-export type DeliveryClosed = DeliveryShipped | DeliveryAbandoned;
+export type DeliveryClosedOutcome = "shipped" | "abandoned";
 
 export interface DeliveryConfigRecord {
   configured: AuditStamp;
@@ -385,18 +383,23 @@ export interface DeliveryConfig {
 
 /**
  * Derived in priority order: closed, unqueued, dependency-blocked,
- * preflight-failed, slices-incomplete, delivery-validation-failed,
- * delivery-review-failed, needs-artifact-validation, needs-review-surface,
- * awaiting-review, then ready-to-ship.
+ * preflight-failed, needs-artifact-creation, slices-incomplete,
+ * delivery-operation-failed, delivery-validation-failed, delivery-review-failed,
+ * needs-artifact-validation, needs-review-surface, awaiting-review, then
+ * ready-to-ship.
  */
 export type DeliveryWorkState =
-  | { type: "closed"; outcome: DeliveryClosed["type"] }
+  | { type: "closed"; outcome: DeliveryClosedOutcome; actionId: ActionId }
   | { type: "unqueued" }
   /** blockedBy contains direct unmet Delivery dependencies only, ordered by dependency accepted time then DeliveryId. */
   | { type: "dependency-blocked"; blockedBy: DeliveryId[] }
   | { type: "preflight-failed"; actionId: ActionId }
+  /** Delivery is queued and unblocked, but its Delivery Artifact has not been created yet. */
+  | { type: "needs-artifact-creation" }
   /** At least one Slice is not complete; detailed per-Slice state comes from SliceWorkState. */
   | { type: "slices-incomplete" }
+  /** Latest Delivery-scoped external operation failed; explicit manual retry/recovery operation will be added later. */
+  | { type: "delivery-operation-failed"; actionId: ActionId }
   /** Latest Delivery-level artifact validation failed; Delivery-level correction behavior is deferred. */
   | { type: "delivery-validation-failed"; actionId: ActionId }
   /** Current Delivery Review Surface closed without merge; exact Delivery-level correction behavior is deferred. */
@@ -415,7 +418,7 @@ export type DeliveryIntegration =
   | { type: "observed-artifact-integration"; actionId: ActionId };
 
 export interface DeliveryWorkConfig {
-  /** Must be >= 1. Limits active Slice work slots: executing, needs-artifact-validation, and needs-delivery-validation Slices plus unexpired scheduler claims count; external waiting states do not. */
+  /** Must be >= 1. Limits active Slice work slots: executing, needs-artifact-validation, needs-delivery-validation, and unexpired scheduler claims, including claims for Slice Artifact creation. Unclaimed needs-artifact-creation and external waiting states do not count. */
   maxActiveSliceSlots: number;
 
   /** Must be >= 0. Counts automatic correction Agent Runs per validation/external-operation failure chain. */
@@ -436,19 +439,6 @@ export interface DeliveryWorkConfig {
  * -> PortfolioConfigRecord.value.work
  */
 export type DeliveryWorkConfigResolution = DeliveryWorkConfig;
-
-export interface DeliveryShipped {
-  type: "shipped";
-  shipped: AuditStamp;
-  integration: DeliveryIntegration;
-}
-
-export interface DeliveryAbandoned {
-  type: "abandoned";
-  abandoned: AuditStamp;
-  reason: string;
-  cleanupEvidence: ExternalOperationEvidence[];
-}
 
 export type DeliveryTarget = SourceControlDeliveryTarget;
 
@@ -474,7 +464,8 @@ export interface Slice {
 /**
  * Derived in priority order: complete, needs-delivery-validation,
  * dependency-blocked, executing, needs-artifact-validation, correction-blocked,
- * awaiting-review, then executable.
+ * awaiting-review, slice-operation-failed, needs-artifact-creation, then
+ * executable.
  */
 export interface FailureChain {
   /** The failed validation or external-operation Action that started the chain. */
@@ -498,6 +489,10 @@ export type SliceWorkState =
   /** actionId points to the latest failed Action that exhausted retries; failureChain.rootActionId points to the first failed Action in the chain. */
   | { type: "correction-blocked"; actionId: ActionId; failureChain: FailureChain }
   | { type: "awaiting-review"; reviewSurfaceId: ReviewSurfaceId }
+  /** Latest Slice-scoped external operation failed before correction could run; explicit manual retry/recovery operation will be added later. */
+  | { type: "slice-operation-failed"; actionId: ActionId }
+  /** Slice is otherwise initially executable, but its Slice Artifact has not been created yet. */
+  | { type: "needs-artifact-creation" }
   | { type: "executable"; mode: "initial" }
   | { type: "executable"; mode: "correction"; failureChain: FailureChain };
 
@@ -583,7 +578,7 @@ export interface Action {
   deliveryId: DeliveryId;
   performed: RuntimeRecord;
 
-  /** Null for scheduler/runtime-driven Actions; in v1 set only for retryDeliveryPreflight. */
+  /** Non-null only when the Action is the authoritative fact created by an explicit consumer-authorized operation; scheduler/runtime Actions use null. */
   authorized: AuditStamp | null;
 
   result: ActionResult;
@@ -591,9 +586,13 @@ export interface Action {
 
 /**
  * Action results are concrete performed facts.
- * Variant names use create/start/observe/validate/promote/record verbs.
+ * Variant names use domain verbs for explicit Delivery lifecycle transitions,
+ * otherwise create/start/observe/validate/promote/record verbs.
  */
 export type ActionResult =
+  | { type: "queue-delivery" }
+  | { type: "ship-delivery"; integration: DeliveryIntegration }
+  | { type: "abandon-delivery"; reason: string; cleanupEvidence: ExternalOperationEvidence[] }
   | { type: "validate-preflight"; evidence: ValidationEvidence }
   | { type: "create-delivery-artifact"; deliveryArtifactId: DeliveryArtifactId }
   | { type: "create-slice-artifact"; sliceId: SliceId; sliceArtifactId: SliceArtifactId }
@@ -666,6 +665,7 @@ export interface ExternalOperationEvidence {
 }
 
 export type ExternalOperation =
+  | { type: "create-artifact" }
   | { type: "push-branch" }
   | { type: "create-review-surface" }
   | { type: "merge-review-surface" }
