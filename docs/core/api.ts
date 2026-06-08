@@ -117,10 +117,14 @@ export type Result<T, E = CoreError> =
   | { ok: true; value: T }
   | { ok: false; error: E };
 
+export type PreflightFailedScope =
+  | { type: "delivery"; deliveryId: DeliveryId }
+  | { type: "model"; modelId: ModelId };
+
 export type CoreError =
   | { type: "not-found"; resource: string; id: string }
   | { type: "invariant-violation"; message: string }
-  | { type: "preflight-failed"; deliveryId: DeliveryId | null; modelId: ModelId | null; evidence: ValidationEvidence[] }
+  | { type: "preflight-failed"; scope: PreflightFailedScope; evidence: ValidationEvidence[] }
   | { type: "closed-delivery"; deliveryId: DeliveryId }
   | { type: "delivery-not-started"; deliveryId: DeliveryId }
   | { type: "delivery-config-unresolved"; deliveryId: DeliveryId }

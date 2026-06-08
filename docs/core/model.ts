@@ -96,7 +96,6 @@ export interface Project {
 }
 
 export type ProjectSource = SourceControlProjectSource;
-export type ProjectSourceType = ProjectSource["type"];
 
 export interface SourceControlProjectSource {
   type: "source-control";
@@ -364,9 +363,6 @@ export interface Delivery {
   /** Every Delivery has at least one Slice. */
   sliceIds: readonly [SliceId, ...SliceId[]];
 
-  /** Repeated readiness checks; latest relevant check contributes to derived readiness. */
-  preflightChecks: PreflightCheck[];
-
   started: DeliveryStarted | null;
 
   /** Shipped and Abandoned are mutually exclusive closed outcomes. */
@@ -392,13 +388,13 @@ export interface DeliveryConfig {
 }
 
 export interface DeliveryWorkConfig {
-  /** Must be >= 1. */
+  /** Must be >= 1. Limits actively running Slice Agent Runs; waiting Slices do not count. */
   maxActiveSlices: number;
 
-  /** Must be >= 0. */
+  /** Must be >= 0. Counts automatic correction Agent Runs per validation/external-operation failure chain. */
   maxCorrectionRetriesPerFailure: number;
 
-  /** Must be >= 1. */
+  /** Must be >= 1. Applies only to Model Agent work; future Agent types get separate timeout fields. */
   modelTimeoutMs: number;
 }
 
@@ -528,13 +524,17 @@ export interface Action {
   result: ActionResult;
 }
 
+/**
+ * Action results are concrete performed facts.
+ * Variant names use create/start/observe/validate/promote/record verbs.
+ */
 export type ActionResult =
-  | { type: "preflight"; evidence: ValidationEvidence }
+  | { type: "validate-preflight"; evidence: ValidationEvidence }
   | { type: "create-delivery-artifact"; deliveryArtifactId: DeliveryArtifactId }
   | { type: "start-slice"; sliceId: SliceId }
   | { type: "create-slice-artifact"; sliceId: SliceId; sliceArtifactId: SliceArtifactId }
-  | { type: "start-slice-agent-run"; sliceId: SliceId; agentRunId: AgentRunId }
-  | { type: "start-revision-agent-run"; revisionId: RevisionId; agentRunId: AgentRunId }
+  | { type: "start-slice-execution"; sliceId: SliceId; agentRunId: AgentRunId }
+  | { type: "start-revision-planning"; revisionGateId: RevisionGateId; agentRunId: AgentRunId }
   | { type: "validate-slice-artifact"; sliceId: SliceId; evidence: ValidationEvidence }
   | { type: "create-slice-review-surface"; sliceId: SliceId; reviewSurfaceId: ReviewSurfaceId }
   | { type: "observe-slice-review-surface"; sliceId: SliceId; reviewSurfaceId: ReviewSurfaceId }
@@ -542,7 +542,7 @@ export type ActionResult =
   | { type: "validate-delivery-artifact"; evidence: ValidationEvidence }
   | { type: "create-delivery-review-surface"; reviewSurfaceId: ReviewSurfaceId }
   | { type: "observe-delivery-review-surface"; reviewSurfaceId: ReviewSurfaceId }
-  | { type: "run-revision"; revisionId: RevisionId; agentRunId: AgentRunId }
+  | { type: "start-revision-execution"; revisionId: RevisionId; agentRunId: AgentRunId }
   | { type: "record-slice-external-operation-failure"; sliceId: SliceId; evidence: ExternalOperationEvidence }
   | { type: "record-revision-external-operation-failure"; revisionId: RevisionId; evidence: ExternalOperationEvidence }
   | { type: "record-delivery-external-operation-failure"; evidence: ExternalOperationEvidence };
@@ -580,10 +580,14 @@ export interface AgentRunSandbox {
 
 export type CorrectionEvidence = ValidationEvidence | ExternalOperationEvidence;
 
+/**
+ * preflightModel returns model-preflight evidence.
+ * validate-preflight Actions carry delivery-preflight evidence.
+ */
 export interface ValidationEvidence {
   type: "validation";
   validationType:
-    | "preflight"
+    | "delivery-preflight"
     | "model-preflight"
     | "slice-branch-validation"
     | "delivery-branch-validation"
@@ -844,16 +848,6 @@ export interface Decision {
 }
 
 export interface DecisionResolved extends AuditedRecord {}
-
-// -----------------------------------------------------------------------------
-// Preflight
-// -----------------------------------------------------------------------------
-
-export interface PreflightCheck extends RuntimeRecord {
-  passed: boolean;
-  summary: string;
-  evidence: ValidationEvidence[];
-}
 
 // -----------------------------------------------------------------------------
 // Portfolio Snapshot

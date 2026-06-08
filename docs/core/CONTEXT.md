@@ -50,18 +50,18 @@ _Avoid_: Repository, repo
 
 **Project Source**:
 The immutable configured execution source a Project manages. A Project Source determines Delivery Artifact behavior, optional Slice Artifact behavior, Slice completion validation, Review Surface behavior, Feedback retrieval behavior, Ship behavior, and Abandon cleanup behavior.
-_Avoid_: source config, target type
+_Avoid_: Project Config, source config, target type
 
 **Project Source Type**:
 The kind of Project Source a Project uses, such as source control.
 _Avoid_: Project kind, target type
 
 **Project Config**:
-Project-level orchestration settings that apply to Plans and Deliveries in a Project unless overridden at a narrower scope.
-_Avoid_: Project Source Type, scheduler settings
+Project-level orchestration settings that apply to Plans and Deliveries in a Project unless overridden at a narrower scope. Project Config does not change the Project Source.
+_Avoid_: scheduler settings
 
 **Source Control Project**:
-The v1 Project Source Type that manages one or more Repositories.
+A Project whose Project Source is source control. In v1, Source Control Projects manage one or more GitHub Repositories.
 _Avoid_: Repository Project, Git project, repo project
 
 **Repository**:
@@ -118,7 +118,7 @@ _Avoid_: Plan Output, Revision Output, prompt
 
 **Delivery Config**:
 Scoped configuration for a Delivery's work. Delivery Config covers all configurable Delivery work behavior, including active Slice concurrency, correction retry limits per failure chain, Model selection for Actions, and Model timeout. Model timeout applies only to Model Agent work; future Agent types get their own config fields. Delivery Config may be configured at Portfolio, Project, or Delivery scope and inherited by a Delivery. Delivery Config is resolved on demand when work needs it, so changing a Delivery's config affects future work. Invalid Delivery Config is rejected when set.
-_Avoid_: Execution Config, Execution Policy, Project Source Type, scheduler settings
+_Avoid_: Execution Config, Execution Policy, scheduler settings
 
 **Agent**:
 The discriminated value recorded on an Agent Run that identifies what performed the work. In v1, the only Agent is Model Agent. Agent is not a stored core model.
@@ -197,7 +197,7 @@ A typed directed relationship between graph nodes such as Plans, Projects, Deliv
 _Avoid_: Relationship, edge, reference, edge-as-node
 
 **Preflight**:
-A readiness validation performed before Gorchestra begins or resumes work. Preflight may check Project, Repository, Model Provider, Model, Secret Binding, or execution target readiness.
+A transient readiness validation performed before Gorchestra begins or resumes work. Preflight may check Project, Repository, Model Provider, Model, Secret Binding, or execution target readiness. Preflight results may be returned to consumers for display, but are not stored as authoritative Portfolio data unless captured as Action evidence.
 _Avoid_: Doctor, health check
 
 **Timeline**:
