@@ -129,7 +129,7 @@ Scoped configuration for a Delivery's work. Delivery Config covers all configura
 _Avoid_: Execution Config, Execution Policy, scheduler settings
 
 **Delivery Work State**:
-A derived state describing whether Delivery work can run. Delivery Work State is computed from Delivery lifecycle fields, dependency Links, dependency Delivery outcomes, and Actions, not stored directly. A Delivery may be closed, unqueued, dependency-blocked, preflight-failed, or ready, derived in that priority order. Ready means runDeliveryWork may be called; it does not guarantee schedulable work exists. Dependency-blocked means direct same-Project Delivery dependencies are not yet closed; blocked dependencies are ordered by dependency acceptance time, then Delivery ID. Preflight-failed means the latest Delivery preflight Action failed and work cannot continue until explicit preflight retry records a later passing Delivery preflight Action.
+A derived state describing the current execution state of a Delivery. Delivery Work State is computed from Delivery lifecycle fields, dependency Links, dependency Delivery outcomes, Actions, Slices, and Review Surfaces, not stored directly. A Delivery may be closed, unqueued, dependency-blocked, preflight-failed, slices-incomplete, delivery-validation-failed, needs-artifact-validation, needs-review-surface, awaiting-review, or ready-to-ship, derived in that priority order. Slices-incomplete means at least one Slice is not complete; detailed per-Slice state comes from Slice Work State. Delivery-validation-failed means the latest Delivery-level artifact validation failed; exact Delivery-level correction behavior is deferred. Needs-artifact-validation means all Slices are complete and the Delivery Artifact needs Delivery-level validation before review/ship flow can continue. Needs-review-surface means Delivery Artifact validation passed and a Delivery Review Surface still needs to be created. Awaiting-review means the Delivery Review Surface exists and is waiting for external review, merge, or observation. Ready-to-ship means the Delivery Review Surface has merged and shipDelivery may be called; v1 does not run post-merge Ship validation. Dependency-blocked means direct same-Project Delivery dependencies are not yet closed; blocked dependencies are ordered by dependency acceptance time, then Delivery ID. Preflight-failed means the latest Delivery preflight Action failed and work cannot continue until explicit preflight retry records a later passing Delivery preflight Action.
 _Avoid_: Execution state, job state, stored work state
 
 **Agent**:
@@ -217,7 +217,7 @@ A Portfolio-level derived list of events that affect Portfolio state, computed f
 _Avoid_: Timeline Event records, log, activity feed
 
 **Ship**:
-To close a Delivery's external integration lifecycle after all of its Slices are complete and required Ship validation passes. For a Source Control Project, a Delivery is Shipped when any Delivery Review Surface merges the Delivery Branch into the Target Branch, whether Gorchestra performs or observes the merge.
+To close a Delivery's external integration lifecycle after all of its Slices are complete and its Delivery Review Surface has merged. For a Source Control Project, a Delivery is Shipped when any Delivery Review Surface merges the Delivery Branch into the Target Branch, whether Gorchestra performs or observes the merge. V1 does not run post-merge Ship validation; post-merge validation is a future feature candidate.
 _Avoid_: Release, submit, land
 
 **Review Surface**:

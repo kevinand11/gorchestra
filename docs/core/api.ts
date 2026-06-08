@@ -180,8 +180,8 @@ export interface CoreCommands {
    * coordination and is not modeled as Portfolio data in this sketch. Slice work
    * is selected in this priority order: needs-delivery-validation,
    * needs-artifact-validation, awaiting-review observation/merge, executable
-   * correction, executable initial, then Delivery-level validation/review/ship
-   * readiness when all Slices are complete. Within each Slice work bucket,
+   * correction, executable initial, then Delivery-level validation/review work
+   * when all Slices are complete. Within each Slice work bucket,
    * selection is deterministic: needs-delivery-validation by promotion Action
    * time; needs-artifact-validation by completed AgentRun time; awaiting-review
    * by current ReviewSurface created time; executable correction by failed Action
@@ -195,9 +195,10 @@ export interface CoreCommands {
    * validate-preflight Action. Failed Delivery preflight records a
    * validate-preflight Action, stops the pass, and returns success with the
    * failed preflight Action and no Agent Runs. If
-   * Delivery Work State is not ready, runDeliveryWork returns
-   * delivery-work-state-mismatch; scheduling loops should skip non-ready
-   * Deliveries. Artifact validation
+   * Delivery Work State is not slices-incomplete, needs-artifact-validation,
+   * needs-review-surface, or awaiting-review, runDeliveryWork returns
+   * delivery-work-state-mismatch;
+   * scheduling loops should skip non-schedulable Deliveries. Artifact validation
    * failures are recorded as validate-* Actions with passed false.
    */
   runDeliveryWork(input: RunDeliveryWorkInput, context: OperationContext): Promise<Result<RunDeliveryWorkResult>>;
@@ -217,6 +218,7 @@ export interface CoreCommands {
   closeRevisionGate(input: CloseRevisionGateInput, context: OperationContext): Promise<Result<void>>;
 
   // Delivery close operations
+  /** Requires Delivery Work State ready-to-ship; records Shipped without post-merge validation in v1. */
   shipDelivery(input: ShipDeliveryInput, context: OperationContext): Promise<Result<ShipDeliveryResult>>;
   abandonDelivery(input: AbandonDeliveryInput, context: OperationContext): Promise<Result<AbandonDeliveryResult>>;
 
@@ -646,7 +648,7 @@ export interface ValidateBranchInput {
   branch: string;
   operation: Extract<
     ValidationOperation,
-    { type: "slice-branch-validation" | "delivery-branch-validation" | "ship-validation" }
+    { type: "slice-branch-validation" | "delivery-branch-validation" }
   >;
 }
 

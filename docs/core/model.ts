@@ -385,7 +385,9 @@ export interface DeliveryConfig {
 
 /**
  * Derived in priority order: closed, unqueued, dependency-blocked,
- * preflight-failed, then ready.
+ * preflight-failed, slices-incomplete, delivery-validation-failed,
+ * needs-artifact-validation, needs-review-surface, awaiting-review, then
+ * ready-to-ship.
  */
 export type DeliveryWorkState =
   | { type: "closed"; outcome: DeliveryClosed["type"] }
@@ -393,7 +395,18 @@ export type DeliveryWorkState =
   /** blockedBy contains direct unmet Delivery dependencies only, ordered by dependency accepted time then DeliveryId. */
   | { type: "dependency-blocked"; blockedBy: DeliveryId[] }
   | { type: "preflight-failed"; actionId: ActionId }
-  | { type: "ready" };
+  /** At least one Slice is not complete; detailed per-Slice state comes from SliceWorkState. */
+  | { type: "slices-incomplete" }
+  /** Latest Delivery-level artifact validation failed; Delivery-level correction behavior is deferred. */
+  | { type: "delivery-validation-failed"; actionId: ActionId }
+  /** All Slices are complete; Delivery Artifact needs Delivery-level validation before review/ship flow can continue. */
+  | { type: "needs-artifact-validation" }
+  /** Delivery Artifact validation passed and Delivery Review Surface still needs to be created. */
+  | { type: "needs-review-surface" }
+  /** Delivery Review Surface exists and is waiting for external review, merge, or observation. */
+  | { type: "awaiting-review"; reviewSurfaceId: ReviewSurfaceId }
+  /** Delivery Review Surface has merged; Delivery can be shipped by shipDelivery. */
+  | { type: "ready-to-ship"; reviewSurfaceId: ReviewSurfaceId };
 
 export interface DeliveryWorkConfig {
   /** Must be >= 1. Limits active Slice work slots: executing, needs-artifact-validation, and needs-delivery-validation Slices plus unexpired scheduler claims count; external waiting states do not. */
@@ -635,8 +648,7 @@ export type ValidationOperation =
   | { type: "delivery-preflight" }
   | { type: "model-preflight" }
   | { type: "slice-branch-validation" }
-  | { type: "delivery-branch-validation" }
-  | { type: "ship-validation" };
+  | { type: "delivery-branch-validation" };
 
 export interface ExternalOperationEvidence {
   type: "external-operation";

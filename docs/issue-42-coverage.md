@@ -84,11 +84,12 @@ These are the main issue-derived areas not fully captured as durable docs:
 5. **Agent Run runtime/provider contracts** — Claude/Codex/Pi SDK boundaries, tool ownership, sandbox input/output validation.
 6. **GitHub integration spec** — permissions, PR operations, branch operations, issue operations if any, review fetch/merge semantics in provider terms.
 7. **Decision spec** — payload types, permissions to answer, expiration, resumption behavior.
-8. **Timeline event taxonomy** — exact derived event types and UI payloads.
-9. **Workspace/Agent Run cleanup spec** — janitor interval, disk quotas, debug retention, cleanup failures.
-10. **Snapshot file format spec** — manifest schema, encryption algorithm, KDF, versioning, import compatibility.
-11. **Web UI PRD** — workspace/project/delivery pages, decision UI, timeline UI, secret management UI.
-12. **Workflow Project Source Type V2 note/spec** — only if/when v2 workflow orchestration becomes active work.
+8. **Post-merge validation spec** — future feature candidate for validation after a Delivery Review Surface merges; v1 ships without post-merge Ship validation.
+9. **Timeline event taxonomy** — exact derived event types and UI payloads.
+10. **Workspace/Agent Run cleanup spec** — janitor interval, disk quotas, debug retention, cleanup failures.
+11. **Snapshot file format spec** — manifest schema, encryption algorithm, KDF, versioning, import compatibility.
+12. **Web UI PRD** — workspace/project/delivery pages, decision UI, timeline UI, secret management UI.
+13. **Workflow Project Source Type V2 note/spec** — only if/when v2 workflow orchestration becomes active work.
 
 ## Summary
 
