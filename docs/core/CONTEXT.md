@@ -21,11 +21,11 @@ A Portfolio-owned sensitive write-only value stored by Gorchestra for repository
 _Avoid_: Credential, token, key, sensitive value
 
 **Environment Variable**:
-A Secret exposed to Agent Runs as a named runtime environment variable.
+A Secret exposed to Agent Runs as a named runtime environment variable through a Secret Binding.
 _Avoid_: Environment, environment secret
 
 **Secret Binding**:
-A Portfolio-owned rule that makes a Secret available at a Portfolio, Project, Delivery, or Execution boundary.
+A Portfolio-owned rule that exposes a Secret to Agent Runs as a named environment variable at a Portfolio, Project, or Delivery boundary.
 _Avoid_: Secret Assignment, credential assignment
 
 **GitHub PAT**:
@@ -77,19 +77,23 @@ The structured proposal shape a planning Agent Run must produce for review as a 
 _Avoid_: Accepted Plan, partial acceptance, staged output set, draft Plan
 
 **Delivery**:
-The Project-level unit of accepted executable work materialized by accepting a Plan Output. A Delivery belongs to a Project for execution and participates in the Portfolio graph for planning, provenance, and same-Project Delivery-level dependencies. A Delivery targets exactly one execution target for its Project type, contains at least one Slice, and cannot begin while blocked by a prerequisite Delivery that is neither Shipped nor Abandoned.
+The Project-level unit of accepted executable work materialized by accepting a Plan Output. A Delivery belongs to a Project for execution and participates in the Portfolio graph for planning, provenance, and same-Project Delivery-level dependencies. A Delivery targets exactly one execution target for its Project type, contains at least one Slice, and cannot begin Slice work until explicitly started.
 _Avoid_: Change, task, ticket, draft Plan
 
+**Started Delivery**:
+A Delivery whose execution has been explicitly started by a core operation. Starting a Delivery allows its Slice work to begin when dependencies and readiness checks permit.
+_Avoid_: running Delivery, active Delivery, Execution
+
 **Shipped Delivery**:
-A terminal Delivery whose external integration lifecycle has been completed.
+A closed Delivery whose external integration lifecycle has been completed.
 _Avoid_: Released Delivery, landed Delivery
 
 **Abandon**:
-To terminally remove a Delivery from active execution consideration without shipping it, after required Project Type-specific cleanup is attempted or recorded.
+To close a Delivery without shipping it, after required Project Type-specific cleanup is attempted or recorded.
 _Avoid_: Archive, delete, cancel, soft-delete
 
 **Abandoned Delivery**:
-A terminal Delivery removed from active execution consideration without being Shipped. Abandoning a started Delivery must close or abandon active external work where possible. For dependency calculation, an Abandoned Delivery satisfies Delivery-level dependencies as if it were Shipped.
+A closed Delivery removed from active execution consideration without being Shipped. Abandoning a started Delivery must close or abandon active external work where possible. For dependency calculation, an Abandoned Delivery satisfies Delivery-level dependencies as if it were Shipped.
 _Avoid_: Archived Delivery, Deleted Delivery, canceled Delivery, soft-deleted Delivery
 
 **Slice**:
@@ -100,20 +104,20 @@ _Avoid_: Step, task, subtask
 Immutable stored instructions used by Agent Runs to perform accepted Slice or Revision work.
 _Avoid_: Plan Output, Revision Output, prompt
 
-**Execution**:
-A single execution session for a Delivery. An Execution groups the Actions and Agent Runs that attempt to move the Delivery forward across its Slices, but does not own lifecycle state.
-_Avoid_: WorkRun
+**Delivery Execution Config**:
+Scoped rules controlling how Gorchestra schedules Delivery Actions and Agent Runs, retries validation or external operation failures, and limits execution. Delivery Execution Config may be configured at Portfolio, Project, Plan, or Delivery scope and inherited by a Delivery. In v1, Delivery Execution Config includes max parallel Slices, max correction retries, and Agent Run timeout.
+_Avoid_: Execution Policy, Project Type, scheduler settings
 
-**Execution Policy**:
-Project-level versioned rules controlling how Gorchestra schedules Actions and Agent Runs, retries validation or external operation failures, and limits execution. In v1, Execution Policy includes max parallel Slices per Delivery, max correction retries, and Agent Run timeout. An Execution uses the Execution Policy version captured when it starts.
-_Avoid_: Project Type, scheduler settings
+**Agent**:
+The discriminated value recorded on an Agent Run that identifies what performed the work. In v1, the only Agent is Model Agent. Agent is not a stored core model.
+_Avoid_: actor, stored Agent, worker, executor
 
 **Agent Type**:
-The kind of performer behind an Agent Run. Agent Type describes how the work is performed, not why a particular run exists. In v1, Model Agent is the only supported Agent Type.
+The kind of Agent recorded on an Agent Run. Agent Type describes how the work is performed, not why a particular run exists. In v1, Model Agent is the only supported Agent Type.
 _Avoid_: Mission type, purpose, interaction mode
 
 **Model Provider**:
-A Portfolio-owned configured source of selectable language Models. A Model Provider has an explicit endpoint and immutable Model Provider Protocol, may reference a Secret-backed API key, and always has a list of Secret-backed custom headers that defaults to empty. Editable Model Provider fields record when they were last updated. Gorchestra does not provide built-in provider endpoints. Model Providers may be archived, which makes their Models unavailable for new work while retaining them for historical references; this availability is derived rather than cascaded to child Models. Archived Model Providers may be updated before being unarchived.
+A Portfolio-owned configured source of selectable language Models. A Model Provider has an explicit endpoint, immutable Model Provider Protocol, optional standard auth backed by generic Secrets, and a list of custom headers backed by generic Secrets that defaults to empty. Editable Model Provider fields record when they were last updated. Gorchestra does not provide built-in provider endpoints. Model Providers may be archived, which makes their Models unavailable for new work while retaining them for historical references; this availability is derived rather than cascaded to child Models. Archived Model Providers may be updated before being unarchived.
 _Avoid_: model source, LLM provider
 
 **Model Provider Protocol**:
@@ -161,11 +165,11 @@ The Source Control Project representation of a Slice Artifact. Slice Branch work
 _Avoid_: Slice Artifact, Delivery Branch, Agent Run Sandbox
 
 **Action**:
-A state transition attempt within an Execution. An Action records authoritative execution lifecycle facts after evaluating Agent Run output, validation, or external operation results. Validation failures may be collected and provided as input to a later Agent Run.
-_Avoid_: Job
+A state transition attempt for a Delivery. An Action records authoritative delivery execution facts after evaluating Agent Run work, validation, or external operation results. Validation failures may be collected and provided as input to a later Agent Run.
+_Avoid_: Job, Execution
 
 **Decision**:
-A request for human judgment raised during Planning or Execution. A Decision captures a point where Gorchestra needs human input before work can continue, such as exhausted correction retries.
+A request for human judgment raised during Planning or Delivery execution. A Decision captures a point where Gorchestra needs human input before work can continue, such as exhausted correction retries.
 _Avoid_: Confirmation, approval, prompt
 
 **Portfolio Memory**:
@@ -193,7 +197,7 @@ A Portfolio-level derived list of events that affect Portfolio state, computed f
 _Avoid_: Timeline Event records, log, activity feed
 
 **Ship**:
-To terminally complete a Delivery's external integration lifecycle after all of its Slices are complete and required Ship validation passes. For a Source Control Project, a Delivery is Shipped when any Delivery Review Surface merges the Delivery Branch into the Target Branch, whether Gorchestra performs or observes the merge.
+To close a Delivery's external integration lifecycle after all of its Slices are complete and required Ship validation passes. For a Source Control Project, a Delivery is Shipped when any Delivery Review Surface merges the Delivery Branch into the Target Branch, whether Gorchestra performs or observes the merge.
 _Avoid_: Release, submit, land
 
 **Review Surface**:

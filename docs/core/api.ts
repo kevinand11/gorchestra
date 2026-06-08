@@ -12,20 +12,16 @@
 
 import type {
   Action,
-  ActionEvidence,
+  CorrectionEvidence,
   ActionId,
   AgentRun,
-  AgentRunEvidence,
   AgentRunId,
-  DecisionId,
+  AgentRunPurpose,
   Delivery,
   DeliveryArtifact,
   DeliveryArtifactId,
+  DeliveryConfig,
   DeliveryId,
-  Execution,
-  ExecutionId,
-  ExecutionPolicy,
-  ExecutionPolicyId,
   ExternalOperationEvidence,
   FetchedFeedback,
   InstructionSource,
@@ -38,6 +34,7 @@ import type {
   Model,
   ModelId,
   ModelProvider,
+  ModelProviderAuth,
   ModelProviderHeader,
   ModelProviderId,
   ModelProviderProtocol,
@@ -125,9 +122,11 @@ export type CoreError =
   | { type: "not-found"; resource: string; id: string }
   | { type: "invariant-violation"; message: string }
   | { type: "preflight-failed"; deliveryId: DeliveryId | null; modelId: ModelId | null; evidence: ValidationEvidence[] }
-  | { type: "terminal-delivery"; deliveryId: DeliveryId }
+  | { type: "closed-delivery"; deliveryId: DeliveryId }
+  | { type: "delivery-not-started"; deliveryId: DeliveryId }
   | { type: "dependency-blocked"; deliveryId: DeliveryId; blockedBy: DeliveryId[] }
   | { type: "revision-gate-closed"; revisionGateId: RevisionGateId }
+  | { type: "agent-run-model-unresolved"; purpose: AgentRunPurpose }
   | { type: "archived-model"; modelId: ModelId }
   | { type: "archived-model-provider"; modelProviderId: ModelProviderId }
   | { type: "external-operation-failed"; evidence: ExternalOperationEvidence };
@@ -157,17 +156,17 @@ export interface CoreCommands {
   acceptPlanOutput(input: AcceptPlanOutputInput, context: OperationContext): Promise<Result<AcceptPlanOutputResult>>;
   rejectPlanOutput(input: RejectPlanOutputInput, context: OperationContext): Promise<Result<void>>;
 
-  // Execution
-  setDeliveryAgentRunConfig(input: SetDeliveryAgentRunConfigInput, context: OperationContext): Promise<Result<Delivery>>;
-  startExecution(input: StartExecutionInput, context: OperationContext): Promise<Result<StartExecutionResult>>;
-  resumeExecution(input: ResumeExecutionInput, context: OperationContext): Promise<Result<ResumeExecutionResult>>;
+  // Delivery execution
+  configureDelivery(input: ConfigureDeliveryInput, context: OperationContext): Promise<Result<Delivery>>;
+  startDelivery(input: StartDeliveryInput, context: OperationContext): Promise<Result<StartDeliveryResult>>;
+  runDeliveryWork(input: RunDeliveryWorkInput, context: OperationContext): Promise<Result<RunDeliveryWorkResult>>;
 
   // Revision
   openRevisionGate(input: OpenRevisionGateInput, context: OperationContext): Promise<Result<OpenRevisionGateResult>>;
   acceptRevisionOutput(input: AcceptRevisionOutputInput, context: OperationContext): Promise<Result<AcceptRevisionOutputResult>>;
   closeRevisionGate(input: CloseRevisionGateInput, context: OperationContext): Promise<Result<void>>;
 
-  // Terminal Delivery operations
+  // Delivery close operations
   shipDelivery(input: ShipDeliveryInput, context: OperationContext): Promise<Result<ShipDeliveryResult>>;
   abandonDelivery(input: AbandonDeliveryInput, context: OperationContext): Promise<Result<AbandonDeliveryResult>>;
 
@@ -177,9 +176,6 @@ export interface CoreCommands {
   setProjectAgentRunConfig(input: SetProjectAgentRunConfigInput, context: OperationContext): Promise<Result<Project>>;
   createRepository(input: CreateRepositoryInput, context: OperationContext): Promise<Result<Repository>>;
   updateRepositoryConfig(input: UpdateRepositoryConfigInput, context: OperationContext): Promise<Result<Repository>>;
-
-  // Execution Policy
-  setExecutionPolicy(input: SetExecutionPolicyInput, context: OperationContext): Promise<Result<ExecutionPolicy>>;
 
   // Secrets
   createSecret(input: CreateSecretInput, context: OperationContext): Promise<Result<Secret>>;
@@ -203,7 +199,7 @@ export interface CreateModelProviderInput {
   name: string;
   protocol: ModelProviderProtocol;
   baseUrl: string;
-  apiKeySecretId: SecretId | null;
+  auth: ModelProviderAuth | null;
   headers: ModelProviderHeader[];
 }
 
@@ -211,7 +207,7 @@ export interface UpdateModelProviderInput {
   modelProviderId: ModelProviderId;
   name: string;
   baseUrl: string;
-  apiKeySecretId: SecretId | null;
+  auth: ModelProviderAuth | null;
   headers: ModelProviderHeader[];
 }
 
@@ -277,32 +273,29 @@ export interface AcceptPlanOutputResult {
 
 export interface RejectPlanOutputInput {
   planId: PlanId;
-  reason: string | null;
 }
 
-export interface SetDeliveryAgentRunConfigInput {
+export interface ConfigureDeliveryInput {
   deliveryId: DeliveryId;
-  agentRun: SetDeliveryAgentRunConfigValue;
+  config: DeliveryConfig;
 }
 
-export interface SetDeliveryAgentRunConfigValue {
-  config: DeliveryAgentRunConfig | null;
-}
-
-export interface StartExecutionInput {
+export interface StartDeliveryInput {
   deliveryId: DeliveryId;
 }
 
-export interface StartExecutionResult {
-  execution: Execution;
+export interface StartDeliveryResult {
+  delivery: Delivery;
 }
 
-export interface ResumeExecutionInput {
-  executionId: ExecutionId;
+export interface RunDeliveryWorkInput {
+  deliveryId: DeliveryId;
 }
 
-export interface ResumeExecutionResult {
-  execution: Execution;
+export interface RunDeliveryWorkResult {
+  delivery: Delivery;
+  actions: Action[];
+  agentRuns: AgentRun[];
 }
 
 export interface OpenRevisionGateInput {
@@ -330,7 +323,6 @@ export interface AcceptRevisionOutputResult {
 
 export interface CloseRevisionGateInput {
   revisionGateId: RevisionGateId;
-  reason: string | null;
 }
 
 export interface ShipDeliveryInput {
@@ -343,7 +335,7 @@ export interface ShipDeliveryResult {
 
 export interface AbandonDeliveryInput {
   deliveryId: DeliveryId;
-  reason: string | null;
+  reason: string;
 }
 
 export interface AbandonDeliveryResult {
@@ -380,13 +372,6 @@ export interface UpdateRepositoryConfigInput {
   config: RepositoryConfig;
 }
 
-export interface SetExecutionPolicyInput {
-  projectId: ProjectId;
-  maxParallelSlicesPerDelivery: number;
-  maxCorrectionRetries: number;
-  agentRunTimeoutMs: number;
-}
-
 export interface CreateSecretInput {
   type: SecretType;
   name: string;
@@ -403,7 +388,7 @@ export interface ReplaceSecretInput {
 export interface BindSecretInput {
   secretId: SecretId;
   scope: SecretBindingScope;
-  environmentVariableName: string | null;
+  envName: string;
 }
 
 export interface ArchiveSecretBindingInput {
@@ -490,7 +475,7 @@ export interface PlanFilter {
 
 export interface DeliveryFilter {
   projectId: ProjectId | null;
-  terminal: "active" | "shipped" | "abandoned" | null;
+  closed: "open" | "shipped" | "abandoned" | null;
 }
 
 export interface TimelineFilter {
@@ -541,7 +526,6 @@ export interface CoreStorageTransaction {
   memories: RepositoryTable<Memory, MemoryId>;
   deliveryArtifacts: RepositoryTable<DeliveryArtifact, DeliveryArtifactId>;
   sliceArtifacts: RepositoryTable<SliceArtifact, SliceArtifactId>;
-  executions: RepositoryTable<Execution, ExecutionId>;
   actions: RepositoryTable<Action, ActionId>;
   agentRuns: RepositoryTable<AgentRun, AgentRunId>;
   reviewSurfaces: RepositoryTable<ReviewSurface, ReviewSurfaceId>;
@@ -549,7 +533,6 @@ export interface CoreStorageTransaction {
   revisions: RepositoryTable<Revision, RevisionId>;
   secrets: RepositoryTable<Secret, SecretId>;
   secretBindings: RepositoryTable<SecretBinding, SecretBindingId>;
-  executionPolicies: RepositoryTable<ExecutionPolicy, ExecutionPolicyId>;
 }
 
 export interface SingletonRepository<T> {
@@ -633,7 +616,6 @@ export interface MergeReviewSurfaceInput {
 
 export interface CloseReviewSurfaceInput {
   reviewSurface: ReviewSurface;
-  reason: string | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -642,7 +624,7 @@ export interface CloseReviewSurfaceInput {
 
 export interface ModelAgentRuntimePort {
   preflightModel(input: PreflightModelRuntimeInput): Promise<ValidationEvidence>;
-  runModelAgent(input: RunModelAgentInput): Promise<RunModelAgentResult>;
+  runModelAgent(input: RunModelAgentInput): Promise<void>;
 }
 
 export interface PreflightModelRuntimeInput {
@@ -661,15 +643,24 @@ export interface RunModelAgentInput {
   instruction: InstructionSource | null;
 
   /** Validation/external operation failures can be passed to a correction Agent Run. */
-  correctionEvidence: ActionEvidence[] | null;
+  correctionEvidence: CorrectionEvidence[];
 
   artifactContext: AgentRunArtifactContext | null;
   timeoutMs: number | null;
 }
 
 export interface ResolvedModelProviderAuth {
-  apiKey: string | null;
+  auth: ResolvedModelProviderStandardAuth | null;
   headers: ResolvedModelProviderHeader[];
+}
+
+export type ResolvedModelProviderStandardAuth = ResolvedModelProviderApiKeyAuth;
+
+export interface ResolvedModelProviderApiKeyAuth {
+  type: "apiKey";
+
+  /** Plaintext exists only transiently. */
+  plaintext: string;
 }
 
 export interface ResolvedModelProviderHeader {
@@ -685,14 +676,6 @@ export type AgentRunArtifactContext = {
   branch: string;
 };
 
-export interface RunModelAgentResult {
-  summary: string;
-  evidence: AgentRunEvidence;
-
-  /** Reference to sandbox output. Core evaluates/promotes through Actions. */
-  sandboxOutputRef: string | null;
-}
-
 // -----------------------------------------------------------------------------
 // Secret resolution port
 // -----------------------------------------------------------------------------
@@ -705,8 +688,7 @@ export interface SecretResolutionPort {
 export interface ResolveSecretsInput {
   scope:
     | { type: "project"; projectId: ProjectId }
-    | { type: "delivery"; deliveryId: DeliveryId }
-    | { type: "execution"; executionId: ExecutionId };
+    | { type: "delivery"; deliveryId: DeliveryId };
 }
 
 export interface ResolveSecretValuesInput {
@@ -715,7 +697,7 @@ export interface ResolveSecretValuesInput {
 
 export interface ResolvedSecret {
   secretId: SecretId;
-  environmentVariableName: string | null;
+  envName: string;
 
   /** Plaintext exists only transiently. */
   plaintext: string;
@@ -766,8 +748,7 @@ export interface CoreEventSink {
 export type CoreEvent =
   | { type: "delivery-updated"; deliveryId: DeliveryId }
   | { type: "slice-updated"; sliceId: SliceId }
-  | { type: "execution-started"; executionId: ExecutionId }
-  | { type: "execution-paused-for-decision"; executionId: ExecutionId; decisionId: DecisionId }
+  | { type: "delivery-work-run"; deliveryId: DeliveryId }
   | { type: "agent-run-started"; agentRunId: AgentRunId }
   | { type: "review-surface-created"; reviewSurfaceId: ReviewSurfaceId }
   | { type: "revision-gate-opened"; revisionGateId: RevisionGateId };

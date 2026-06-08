@@ -15,6 +15,8 @@ Gorchestra has multiple domain contexts:
 
 ADR filenames use sortable date+time prefixes: `YYYY-MM-DD-HHMM-slug.md`.
 
+Core lifecycle data shapes use embedded records for extensibility: use `field: RuntimeRecord` for runtime lifecycle timestamps and `field: AuditedRecord` for consumer-authorized operations. The embedded record must contain all fields that change atomically with that lifecycle moment, so the model cannot represent half-updated states.
+
 ## Context relationships
 
 Gorchestra is a goal-oriented delivery orchestration platform for coordinating planning, execution, review, and shipping work.

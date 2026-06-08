@@ -21,8 +21,6 @@ export type MemoryId = Brand<string, "MemoryId">;
 export type LinkId = Brand<string, "LinkId">;
 export type SecretId = Brand<string, "SecretId">;
 export type SecretBindingId = Brand<string, "SecretBindingId">;
-export type ExecutionId = Brand<string, "ExecutionId">;
-export type ExecutionPolicyId = Brand<string, "ExecutionPolicyId">;
 export type ActionId = Brand<string, "ActionId">;
 export type AgentRunId = Brand<string, "AgentRunId">;
 export type DecisionId = Brand<string, "DecisionId">;
@@ -36,6 +34,20 @@ export type ModelProviderId = Brand<string, "ModelProviderId">;
 export type ModelId = Brand<string, "ModelId">;
 
 export type IsoDateTime = string;
+
+/**
+ * Unless explicitly noted otherwise:
+ * - user-facing names/titles and provider-facing string identifiers are stored
+ *   trimmed and must be non-empty.
+ * - free-form bodies/details are stored trimmed and may be empty.
+ * - collections are stored as arrays; empty arrays mean no items.
+ * - operation-specific reasons, when needed, live on the specific closed state,
+ *   result, or input they explain and are stored as strings that may be empty.
+ * - use field: RuntimeRecord for runtime lifecycle timestamps and
+ *   field: AuditedRecord for consumer-authorized operations. The embedded
+ *   record contains all fields that change atomically with that lifecycle
+ *   moment so half-updated states are not representable.
+ */
 
 export interface LocalActorRef {
   /** Consumer-defined actor category, such as "workspace-member" or "local-user". */
@@ -59,6 +71,14 @@ export interface ImportedAuditStamp {
 
   /** Original operation time copied from the imported audit stamp. */
   at: IsoDateTime;
+}
+
+export interface RuntimeRecord {
+  at: IsoDateTime;
+}
+
+export interface AuditedRecord {
+  audit: AuditStamp;
 }
 
 // -----------------------------------------------------------------------------
@@ -108,13 +128,22 @@ export interface ModelProvider {
   id: ModelProviderId;
   name: string;
   protocol: ModelProviderProtocol;
+
+  /** Full API base URL; trailing slashes are trimmed. Must be https, except localhost/127.0.0.1 may use http. */
   baseUrl: string;
-  apiKeySecretId: SecretId | null;
+
+  /** Standard auth used by the protocol adapter; null means no standard auth. */
+  auth: ModelProviderAuth | null;
+
   headers: ModelProviderHeader[];
   created: AuditStamp;
-  updated: AuditStamp | null;
-  archived: AuditStamp | null;
+  updated: ModelProviderUpdated | null;
+  archived: ModelProviderArchived | null;
 }
+
+export interface ModelProviderUpdated extends AuditedRecord {}
+
+export interface ModelProviderArchived extends AuditedRecord {}
 
 export type ModelProviderProtocol =
   | "anthropic-messages"
@@ -122,8 +151,20 @@ export type ModelProviderProtocol =
   | "openai-completions"
   | "google-generative-ai";
 
+export type ModelProviderAuth = ModelProviderApiKeyAuth;
+
+export interface ModelProviderApiKeyAuth {
+  type: "apiKey";
+
+  /** Must reference a generic Secret. */
+  secretId: SecretId;
+}
+
 export interface ModelProviderHeader {
+  /** Must match /^[A-Za-z0-9-]+$/; unique per provider case-insensitively. */
   name: string;
+
+  /** Must reference a generic Secret. */
   valueSecretId: SecretId;
 }
 
@@ -133,32 +174,28 @@ export interface Model {
   name: string;
   providerModelId: string;
   created: AuditStamp;
-  updated: AuditStamp | null;
-  archived: AuditStamp | null;
+  updated: ModelUpdated | null;
+  archived: ModelArchived | null;
 }
+
+export interface ModelUpdated extends AuditedRecord {}
+
+export interface ModelArchived extends AuditedRecord {}
 
 export interface PortfolioConfig {
   agentRun: PortfolioAgentRunConfigRecord | null;
 }
 
-export interface PortfolioAgentRunConfigRecord {
+export interface PortfolioAgentRunConfigRecord extends AuditedRecord {
   config: PortfolioAgentRunConfig | null;
-  updated: AuditStamp;
 }
 
-export interface ProjectAgentRunConfigRecord {
+export interface ProjectAgentRunConfigRecord extends AuditedRecord {
   config: ProjectAgentRunConfig | null;
-  updated: AuditStamp;
 }
 
-export interface PlanAgentRunConfigRecord {
+export interface PlanAgentRunConfigRecord extends AuditedRecord {
   config: PlanAgentRunConfig | null;
-  updated: AuditStamp;
-}
-
-export interface DeliveryAgentRunConfigRecord {
-  config: DeliveryAgentRunConfig | null;
-  updated: AuditStamp;
 }
 
 export interface PortfolioAgentRunConfig extends ProjectAgentRunConfig {
@@ -181,6 +218,38 @@ export interface DeliveryAgentRunConfig {
   executionModelId: ModelId | null;
   revisionExecutionModelId: ModelId | null;
 }
+
+/**
+ * Effective Agent Run model selection is derived, not stored separately.
+ *
+ * planning:
+ *   Plan.planningModelId
+ *   -> Project.planningModelId
+ *   -> Portfolio.planningModelId
+ *   -> Portfolio.defaultModelId
+ *
+ * revision-planning:
+ *   Delivery.revisionPlanningModelId
+ *   -> Project.revisionPlanningModelId
+ *   -> Portfolio.revisionPlanningModelId
+ *   -> Portfolio.defaultModelId
+ *
+ * execution:
+ *   Delivery.executionModelId
+ *   -> Project.executionModelId
+ *   -> Portfolio.executionModelId
+ *   -> Portfolio.defaultModelId
+ *
+ * revision-execution:
+ *   Delivery.revisionExecutionModelId
+ *   -> Project.revisionExecutionModelId
+ *   -> Portfolio.revisionExecutionModelId
+ *   -> Portfolio.defaultModelId
+ */
+export type AgentRunModelResolution = {
+  purpose: AgentRunPurpose["type"];
+  selectedModelId: ModelId;
+};
 
 // -----------------------------------------------------------------------------
 // Plan / Plan Output proposal shape
@@ -211,7 +280,7 @@ export interface ProposedDelivery {
   title: string;
   target: ProposedDeliveryTarget;
   slices: ProposedSlice[];
-  dependsOnDeliveryIds: DeliveryId[] | null;
+  dependsOnDeliveryIds: DeliveryId[];
 }
 
 export type ProposedDeliveryTarget = ProposedSourceControlDeliveryTarget;
@@ -232,7 +301,7 @@ export interface ProposedSlice {
   instruction: InstructionSource;
 
   /** Same-Delivery dependencies only. */
-  dependsOnProposedSliceKeys: string[] | null;
+  dependsOnProposedSliceKeys: string[];
 }
 
 export interface ProposedMemory {
@@ -273,33 +342,50 @@ export interface Delivery {
   planId: PlanId;
   title: string;
   target: DeliveryTarget;
-  agentRun: DeliveryAgentRunConfigRecord | null;
+  config: DeliveryConfigRecord | null;
 
   /** Every Delivery has at least one Slice. */
   sliceIds: readonly [SliceId, ...SliceId[]];
 
   /** Repeated readiness checks; latest relevant check contributes to derived readiness. */
-  preflightChecks: PreflightCheck[] | null;
+  preflightChecks: PreflightCheck[];
 
-  /** Shipped and Abandoned are mutually exclusive terminal outcomes. */
-  terminal: DeliveryTerminalOutcome | null;
+  started: DeliveryStarted | null;
+
+  /** Shipped and Abandoned are mutually exclusive closed outcomes. */
+  closed: DeliveryClosed | null;
 
   accepted: AuditStamp;
 }
 
-export type DeliveryTerminalOutcome = DeliveryShipped | DeliveryAbandoned;
+export interface DeliveryStarted extends AuditedRecord {}
 
-export interface DeliveryShipped {
-  type: "shipped";
-  recorded: AuditStamp;
-  reviewSurfaceId: ReviewSurfaceId | null;
+export type DeliveryClosed = DeliveryShipped | DeliveryAbandoned;
+
+export interface DeliveryConfigRecord extends AuditedRecord {
+  config: DeliveryConfig;
 }
 
-export interface DeliveryAbandoned {
+export interface DeliveryConfig {
+  agentRun: DeliveryAgentRunConfig | null;
+  execution: DeliveryExecutionConfig;
+}
+
+export interface DeliveryExecutionConfig {
+  maxParallelSlices: number;
+  maxCorrectionRetries: number;
+  agentRunTimeoutMs: number;
+}
+
+export interface DeliveryShipped extends AuditedRecord {
+  type: "shipped";
+  reviewSurfaceId: ReviewSurfaceId;
+}
+
+export interface DeliveryAbandoned extends AuditedRecord {
   type: "abandoned";
-  recorded: AuditStamp;
-  reason: string | null;
-  cleanupEvidence: ExternalOperationEvidence[] | null;
+  reason: string;
+  cleanupEvidence: ExternalOperationEvidence[];
 }
 
 export type DeliveryTarget = SourceControlDeliveryTarget;
@@ -351,8 +437,10 @@ export interface Link {
   created: AuditStamp;
 
   /** Only archivable Link types may set this. */
-  archived: AuditStamp | null;
+  archived: LinkArchived | null;
 }
+
+export interface LinkArchived extends AuditedRecord {}
 
 // -----------------------------------------------------------------------------
 // Artifacts
@@ -393,86 +481,46 @@ export interface SourceControlSliceArtifactConfig {
 }
 
 // -----------------------------------------------------------------------------
-// Execution Policy
+// Action / Agent Run
 // -----------------------------------------------------------------------------
-
-export interface ExecutionPolicy {
-  id: ExecutionPolicyId;
-  projectId: ProjectId;
-  version: number;
-
-  /** v1 minimal policy. */
-  maxParallelSlicesPerDelivery: number;
-  maxCorrectionRetries: number;
-  agentRunTimeoutMs: number;
-
-  created: AuditStamp;
-}
-
-// -----------------------------------------------------------------------------
-// Execution / Action / Agent Run
-// -----------------------------------------------------------------------------
-
-export interface Execution {
-  id: ExecutionId;
-  deliveryId: DeliveryId;
-
-  /** Captured when Execution starts. */
-  executionPolicyId: ExecutionPolicyId;
-  executionPolicyVersion: number;
-
-  started: AuditStamp;
-  endedAt: IsoDateTime | null;
-}
-
-export type ActionType =
-  | "preflight"
-  | "create-delivery-artifact"
-  | "start-slice"
-  | "create-slice-artifact"
-  | "start-agent-run"
-  | "promote-agent-run-output"
-  | "validate-slice-artifact"
-  | "create-slice-review-surface"
-  | "observe-slice-review-surface"
-  | "promote-slice-artifact"
-  | "validate-delivery-artifact"
-  | "create-delivery-review-surface"
-  | "observe-delivery-review-surface"
-  | "run-revision"
-  | "record-external-operation-failure"
-  | "raise-decision";
 
 export interface Action {
   id: ActionId;
-  executionId: ExecutionId;
   deliveryId: DeliveryId;
-  sliceId: SliceId | null;
-  revisionId: RevisionId | null;
-  type: ActionType;
-  startedAt: IsoDateTime;
-  completedAt: IsoDateTime | null;
-  outcome: ActionOutcome | null;
+  performed: RuntimeRecord;
+  result: ActionResult;
 }
 
-export type ActionOutcome =
-  | { type: "succeeded"; evidence: ActionEvidence[] | null }
-  | { type: "failed"; evidence: ActionEvidence[] }
-  | { type: "requires-decision"; decisionId: DecisionId };
+export type ActionResult =
+  | { type: "preflight"; evidence: ValidationEvidence }
+  | { type: "create-delivery-artifact"; deliveryArtifactId: DeliveryArtifactId }
+  | { type: "start-slice"; sliceId: SliceId }
+  | { type: "create-slice-artifact"; sliceId: SliceId; sliceArtifactId: SliceArtifactId }
+  | { type: "start-slice-agent-run"; sliceId: SliceId; agentRunId: AgentRunId }
+  | { type: "start-revision-agent-run"; revisionId: RevisionId; agentRunId: AgentRunId }
+  | { type: "validate-slice-artifact"; sliceId: SliceId; evidence: ValidationEvidence }
+  | { type: "create-slice-review-surface"; sliceId: SliceId; reviewSurfaceId: ReviewSurfaceId }
+  | { type: "observe-slice-review-surface"; sliceId: SliceId; reviewSurfaceId: ReviewSurfaceId }
+  | { type: "promote-slice-artifact"; sliceId: SliceId; evidence: ExternalOperationEvidence }
+  | { type: "validate-delivery-artifact"; evidence: ValidationEvidence }
+  | { type: "create-delivery-review-surface"; reviewSurfaceId: ReviewSurfaceId }
+  | { type: "observe-delivery-review-surface"; reviewSurfaceId: ReviewSurfaceId }
+  | { type: "run-revision"; revisionId: RevisionId; agentRunId: AgentRunId }
+  | { type: "record-slice-external-operation-failure"; sliceId: SliceId; evidence: ExternalOperationEvidence }
+  | { type: "record-revision-external-operation-failure"; revisionId: RevisionId; evidence: ExternalOperationEvidence }
+  | { type: "record-delivery-external-operation-failure"; evidence: ExternalOperationEvidence };
 
 export interface AgentRun {
   id: AgentRunId;
-  agent: AgentRunAgent;
+  agent: Agent;
   purpose: AgentRunPurpose;
-  startedAt: IsoDateTime;
-  completedAt: IsoDateTime | null;
-  traceRef: string | null;
-  toolDataRef: string | null;
+  started: RuntimeRecord;
+  completed: RuntimeRecord | null;
 }
 
-export type AgentRunAgent = ModelAgentRunAgent;
+export type Agent = ModelAgent;
 
-export interface ModelAgentRunAgent {
+export interface ModelAgent {
   type: "model";
   modelId: ModelId;
 }
@@ -493,7 +541,7 @@ export interface AgentRunSandbox {
 // Evidence / validation / external operation failures
 // -----------------------------------------------------------------------------
 
-export type ActionEvidence = ValidationEvidence | ExternalOperationEvidence | AgentRunEvidence;
+export type CorrectionEvidence = ValidationEvidence | ExternalOperationEvidence;
 
 export interface ValidationEvidence {
   type: "validation";
@@ -505,7 +553,6 @@ export interface ValidationEvidence {
     | "ship-validation";
   passed: boolean;
   summary: string;
-  detailsRef: string | null;
 }
 
 export interface ExternalOperationEvidence {
@@ -519,14 +566,6 @@ export interface ExternalOperationEvidence {
   passed: boolean;
   summary: string;
   provider: SourceControlProvider | null;
-  detailsRef: string | null;
-}
-
-export interface AgentRunEvidence {
-  type: "agent-run";
-  agentRunId: AgentRunId;
-  summary: string;
-  detailsRef: string | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -546,8 +585,8 @@ export interface ReviewSurface {
   title: string;
   body: string;
 
-  /** Merged, closed-without-merge, and replaced are mutually exclusive terminal outcomes. */
-  terminal: ReviewSurfaceTerminalOutcome | null;
+  /** Merged, closed-without-merge, and replaced are mutually exclusive closed outcomes. */
+  closed: ReviewSurfaceClosed | null;
 
   created: AuditStamp;
 }
@@ -567,14 +606,13 @@ export interface GitHubPullRequestReviewSurfaceConfig {
   targetBranch: string;
 }
 
-export type ReviewSurfaceTerminalOutcome =
+export type ReviewSurfaceClosed =
   | ReviewSurfaceMerged
   | ReviewSurfaceClosedWithoutMerge
   | ReviewSurfaceReplaced;
 
-export interface ReviewSurfaceMerged {
+export interface ReviewSurfaceMerged extends AuditedRecord {
   type: "merged";
-  recorded: AuditStamp;
   config: ReviewSurfaceMergedConfig;
 }
 
@@ -587,16 +625,13 @@ export interface SourceControlReviewSurfaceMergedConfig {
   targetBranch: string;
 }
 
-export interface ReviewSurfaceClosedWithoutMerge {
+export interface ReviewSurfaceClosedWithoutMerge extends AuditedRecord {
   type: "closed-without-merge";
-  recorded: AuditStamp;
 }
 
-export interface ReviewSurfaceReplaced {
+export interface ReviewSurfaceReplaced extends AuditedRecord {
   type: "replaced";
-  recorded: AuditStamp;
   reviewSurfaceId: ReviewSurfaceId;
-  reason: string | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -634,11 +669,13 @@ export interface RevisionGate {
   scope: RevisionScope;
   reviewSurfaceId: ReviewSurfaceId;
   opened: AuditStamp;
-  closed: AuditStamp | null;
+  closed: RevisionGateClosed | null;
 
   /** Set when a Revision Output is accepted and Revision is created. */
   consumedByRevisionId: RevisionId | null;
 }
+
+export interface RevisionGateClosed extends AuditedRecord {}
 
 /**
  * RevisionOutputProposal is not a stored Portfolio artifact.
@@ -694,7 +731,7 @@ export interface Memory {
 // Secrets
 // -----------------------------------------------------------------------------
 
-export type SecretType = "github-pat" | "environment-variable" | "generic";
+export type SecretType = "github-pat" | "generic";
 
 export interface Secret {
   id: SecretId;
@@ -705,23 +742,51 @@ export interface Secret {
   valueRef: string;
 
   created: AuditStamp;
-  replaced: AuditStamp | null;
+  replaced: SecretReplaced | null;
 }
+
+export interface SecretReplaced extends AuditedRecord {}
 
 export type SecretBindingScope =
   | { type: "portfolio" }
   | { type: "project"; projectId: ProjectId }
-  | { type: "delivery"; deliveryId: DeliveryId }
-  | { type: "execution"; executionId: ExecutionId };
+  | { type: "delivery"; deliveryId: DeliveryId };
 
 export interface SecretBinding {
   id: SecretBindingId;
   secretId: SecretId;
   scope: SecretBindingScope;
-  environmentVariableName: string | null;
+
+  /** Must match /^[A-Z_][A-Z0-9_]*$/. */
+  envName: string;
+
   created: AuditStamp;
-  archived: AuditStamp | null;
+  archived: SecretBindingArchived | null;
 }
+
+export interface SecretBindingArchived extends AuditedRecord {}
+
+/**
+ * Secret Binding environment resolution is derived, not stored separately.
+ * Active bindings with the same envName are unique per exact
+ * scope. Inner scopes override outer scopes by environment variable name.
+ *
+ * planning:
+ *   Portfolio -> Project
+ *
+ * revision-planning:
+ *   Portfolio -> Project -> Delivery
+ *
+ * execution:
+ *   Portfolio -> Project -> Delivery
+ *
+ * revision-execution:
+ *   Portfolio -> Project -> Delivery
+ */
+export type ResolvedSecretEnvironment = Array<{
+  envName: string;
+  secretId: SecretId;
+}>;
 
 // -----------------------------------------------------------------------------
 // Decision
@@ -732,24 +797,25 @@ export interface Decision {
 
   source:
     | { type: "planning"; agentRunId: AgentRunId }
-    | { type: "execution"; executionId: ExecutionId; actionId: ActionId | null }
+    | { type: "delivery-execution"; deliveryId: DeliveryId; actionId: ActionId | null }
     | { type: "revision-planning"; revisionGateId: RevisionGateId };
 
   summary: string;
-  details: string | null;
+  body: string;
   raised: AuditStamp;
-  resolved: AuditStamp | null;
+  resolved: DecisionResolved | null;
 }
+
+export interface DecisionResolved extends AuditedRecord {}
 
 // -----------------------------------------------------------------------------
 // Preflight
 // -----------------------------------------------------------------------------
 
-export interface PreflightCheck {
+export interface PreflightCheck extends RuntimeRecord {
   passed: boolean;
   summary: string;
-  evidence: ValidationEvidence[] | null;
-  checkedAt: IsoDateTime;
+  evidence: ValidationEvidence[];
 }
 
 // -----------------------------------------------------------------------------

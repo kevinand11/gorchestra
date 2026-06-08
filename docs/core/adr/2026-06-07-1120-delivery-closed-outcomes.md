@@ -1,0 +1,3 @@
+# Delivery closed outcomes
+
+A Delivery has at most one closed outcome. Shipped and Abandoned are both closed, dependency-satisfying outcomes, and core rejects attempts to record a second closed outcome for the same Delivery. A Delivery may Ship only after all of its Slices are complete and required Ship validation passes. A Delivery may be Abandoned before all Slices are complete, but core records Abandoned only after required Project Type-specific cleanup is attempted or recorded. This prevents races or retries from making a Delivery appear both successfully integrated and intentionally no longer pursued, prevents partially completed accepted work from being shipped, and keeps abandonment tied to external cleanup responsibilities.
