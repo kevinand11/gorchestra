@@ -3,8 +3,8 @@
  *
  * This file is documentation-by-type, not an implementation contract yet.
  * It describes how consumers call Portfolio-scoped core operations and how core
- * calls consumer-provided ports for storage, source control, missions, secrets,
- * and snapshot encryption.
+ * calls consumer-provided ports for storage, source control, model agents,
+ * secrets, and snapshot encryption.
  *
  * Consumers authorize operations before calling core. Core enforces core
  * invariants and owns orchestration behavior inside the opened Portfolio space.
@@ -14,7 +14,9 @@ import type {
   Action,
   ActionEvidence,
   ActionId,
-  LocalActorRef,
+  AgentRun,
+  AgentRunEvidence,
+  AgentRunId,
   DecisionId,
   Delivery,
   DeliveryArtifact,
@@ -26,22 +28,29 @@ import type {
   ExecutionPolicyId,
   ExternalOperationEvidence,
   FetchedFeedback,
-  Goal,
-  GoalId,
   InstructionSource,
   IsoDateTime,
   Link,
   LinkId,
+  LocalActorRef,
   Memory,
   MemoryId,
-  Mission,
-  MissionEvidence,
-  MissionId,
+  Model,
+  ModelId,
+  ModelProvider,
+  ModelProviderHeader,
+  ModelProviderId,
+  ModelProviderProtocol,
+  DeliveryAgentRunConfig,
   Plan,
+  PlanAgentRunConfig,
   PlanId,
   PlanOutputProposal,
+  PortfolioAgentRunConfig,
+  PortfolioConfig,
   PortfolioSnapshotManifest,
   Project,
+  ProjectAgentRunConfig,
   ProjectConfig,
   ProjectId,
   Repository,
@@ -101,7 +110,7 @@ export interface IdGenerator {
 
 export interface OperationContext {
   actor: LocalActorRef;
-  correlationId?: string;
+  correlationId: string | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -115,10 +124,12 @@ export type Result<T, E = CoreError> =
 export type CoreError =
   | { type: "not-found"; resource: string; id: string }
   | { type: "invariant-violation"; message: string }
-  | { type: "preflight-failed"; deliveryId: DeliveryId; evidence: ValidationEvidence[] }
+  | { type: "preflight-failed"; deliveryId: DeliveryId | null; modelId: ModelId | null; evidence: ValidationEvidence[] }
   | { type: "terminal-delivery"; deliveryId: DeliveryId }
   | { type: "dependency-blocked"; deliveryId: DeliveryId; blockedBy: DeliveryId[] }
   | { type: "revision-gate-closed"; revisionGateId: RevisionGateId }
+  | { type: "archived-model"; modelId: ModelId }
+  | { type: "archived-model-provider"; modelProviderId: ModelProviderId }
   | { type: "external-operation-failed"; evidence: ExternalOperationEvidence };
 
 // -----------------------------------------------------------------------------
@@ -126,13 +137,28 @@ export type CoreError =
 // -----------------------------------------------------------------------------
 
 export interface CoreCommands {
+  // Portfolio config
+  setPortfolioConfig(input: SetPortfolioConfigInput, context: OperationContext): Promise<Result<PortfolioConfig>>;
+
+  // Model Providers / Models
+  createModelProvider(input: CreateModelProviderInput, context: OperationContext): Promise<Result<ModelProvider>>;
+  updateModelProvider(input: UpdateModelProviderInput, context: OperationContext): Promise<Result<ModelProvider>>;
+  archiveModelProvider(input: ArchiveModelProviderInput, context: OperationContext): Promise<Result<ModelProvider>>;
+  unarchiveModelProvider(input: UnarchiveModelProviderInput, context: OperationContext): Promise<Result<ModelProvider>>;
+  createModel(input: CreateModelInput, context: OperationContext): Promise<Result<Model>>;
+  updateModel(input: UpdateModelInput, context: OperationContext): Promise<Result<Model>>;
+  archiveModel(input: ArchiveModelInput, context: OperationContext): Promise<Result<Model>>;
+  unarchiveModel(input: UnarchiveModelInput, context: OperationContext): Promise<Result<Model>>;
+  preflightModel(input: PreflightModelInput, context: OperationContext): Promise<Result<ValidationEvidence>>;
+
   // Planning
-  createGoal(input: CreateGoalInput, context: OperationContext): Promise<Result<Goal>>;
   createPlan(input: CreatePlanInput, context: OperationContext): Promise<Result<Plan>>;
+  setPlanAgentRunConfig(input: SetPlanAgentRunConfigInput, context: OperationContext): Promise<Result<Plan>>;
   acceptPlanOutput(input: AcceptPlanOutputInput, context: OperationContext): Promise<Result<AcceptPlanOutputResult>>;
   rejectPlanOutput(input: RejectPlanOutputInput, context: OperationContext): Promise<Result<void>>;
 
   // Execution
+  setDeliveryAgentRunConfig(input: SetDeliveryAgentRunConfigInput, context: OperationContext): Promise<Result<Delivery>>;
   startExecution(input: StartExecutionInput, context: OperationContext): Promise<Result<StartExecutionResult>>;
   resumeExecution(input: ResumeExecutionInput, context: OperationContext): Promise<Result<ResumeExecutionResult>>;
 
@@ -148,6 +174,7 @@ export interface CoreCommands {
   // Project / Repository config
   createProject(input: CreateProjectInput, context: OperationContext): Promise<Result<Project>>;
   updateProjectConfig(input: UpdateProjectConfigInput, context: OperationContext): Promise<Result<Project>>;
+  setProjectAgentRunConfig(input: SetProjectAgentRunConfigInput, context: OperationContext): Promise<Result<Project>>;
   createRepository(input: CreateRepositoryInput, context: OperationContext): Promise<Result<Repository>>;
   updateRepositoryConfig(input: UpdateRepositoryConfigInput, context: OperationContext): Promise<Result<Repository>>;
 
@@ -164,18 +191,80 @@ export interface CoreCommands {
   exportSnapshot(input: ExportSnapshotInput, context: OperationContext): Promise<Result<PortfolioSnapshotManifest>>;
 }
 
-export interface CreateGoalInput {
-  body: string;
+export interface SetPortfolioConfigInput {
+  agentRun: SetPortfolioAgentRunConfigInput;
+}
+
+export interface SetPortfolioAgentRunConfigInput {
+  config: PortfolioAgentRunConfig | null;
+}
+
+export interface CreateModelProviderInput {
+  name: string;
+  protocol: ModelProviderProtocol;
+  baseUrl: string;
+  apiKeySecretId: SecretId | null;
+  headers: ModelProviderHeader[];
+}
+
+export interface UpdateModelProviderInput {
+  modelProviderId: ModelProviderId;
+  name: string;
+  baseUrl: string;
+  apiKeySecretId: SecretId | null;
+  headers: ModelProviderHeader[];
+}
+
+export interface ArchiveModelProviderInput {
+  modelProviderId: ModelProviderId;
+}
+
+export interface UnarchiveModelProviderInput {
+  modelProviderId: ModelProviderId;
+}
+
+export interface CreateModelInput {
+  providerId: ModelProviderId;
+  name: string;
+  providerModelId: string;
+}
+
+export interface UpdateModelInput {
+  modelId: ModelId;
+  name: string;
+}
+
+export interface ArchiveModelInput {
+  modelId: ModelId;
+}
+
+export interface UnarchiveModelInput {
+  modelId: ModelId;
+}
+
+export interface PreflightModelInput {
+  modelId: ModelId;
 }
 
 export interface CreatePlanInput {
+  projectId: ProjectId;
   title: string;
+  agentRun: PlanAgentRunConfig | null;
+}
+
+export interface SetPlanAgentRunConfigInput {
+  planId: PlanId;
+  agentRun: SetPlanAgentRunConfigValue;
+}
+
+export interface SetPlanAgentRunConfigValue {
+  config: PlanAgentRunConfig | null;
 }
 
 export interface AcceptPlanOutputInput {
   planId: PlanId;
 
-  /** Proposal shape produced by a Planning Mission; not stored as a Portfolio artifact. */
+  /** Proposal shape produced by a planning Agent Run; not stored as a Portfolio artifact. */
   output: PlanOutputProposal;
 }
 
@@ -188,7 +277,16 @@ export interface AcceptPlanOutputResult {
 
 export interface RejectPlanOutputInput {
   planId: PlanId;
-  reason?: string;
+  reason: string | null;
+}
+
+export interface SetDeliveryAgentRunConfigInput {
+  deliveryId: DeliveryId;
+  agentRun: SetDeliveryAgentRunConfigValue;
+}
+
+export interface SetDeliveryAgentRunConfigValue {
+  config: DeliveryAgentRunConfig | null;
 }
 
 export interface StartExecutionInput {
@@ -222,7 +320,7 @@ export interface OpenRevisionGateResult {
 export interface AcceptRevisionOutputInput {
   revisionGateId: RevisionGateId;
 
-  /** Proposal shape produced by a revision planning Mission; not stored as a Portfolio artifact. */
+  /** Proposal shape produced by a revision-planning Agent Run; not stored as a Portfolio artifact. */
   output: RevisionOutputProposal;
 }
 
@@ -232,7 +330,7 @@ export interface AcceptRevisionOutputResult {
 
 export interface CloseRevisionGateInput {
   revisionGateId: RevisionGateId;
-  reason?: string;
+  reason: string | null;
 }
 
 export interface ShipDeliveryInput {
@@ -245,7 +343,7 @@ export interface ShipDeliveryResult {
 
 export interface AbandonDeliveryInput {
   deliveryId: DeliveryId;
-  reason?: string;
+  reason: string | null;
 }
 
 export interface AbandonDeliveryResult {
@@ -255,11 +353,21 @@ export interface AbandonDeliveryResult {
 export interface CreateProjectInput {
   title: string;
   config: ProjectConfig;
+  agentRun: ProjectAgentRunConfig | null;
 }
 
 export interface UpdateProjectConfigInput {
   projectId: ProjectId;
   config: ProjectConfig;
+}
+
+export interface SetProjectAgentRunConfigInput {
+  projectId: ProjectId;
+  agentRun: SetProjectAgentRunConfigValue;
+}
+
+export interface SetProjectAgentRunConfigValue {
+  config: ProjectAgentRunConfig | null;
 }
 
 export interface CreateRepositoryInput {
@@ -276,7 +384,7 @@ export interface SetExecutionPolicyInput {
   projectId: ProjectId;
   maxParallelSlicesPerDelivery: number;
   maxCorrectionRetries: number;
-  missionTimeoutMs: number;
+  agentRunTimeoutMs: number;
 }
 
 export interface CreateSecretInput {
@@ -295,7 +403,7 @@ export interface ReplaceSecretInput {
 export interface BindSecretInput {
   secretId: SecretId;
   scope: SecretBindingScope;
-  environmentVariableName?: string;
+  environmentVariableName: string | null;
 }
 
 export interface ArchiveSecretBindingInput {
@@ -330,48 +438,66 @@ export declare function importSnapshot(
 // -----------------------------------------------------------------------------
 
 export interface CoreQueries {
-  getProject(id: ProjectId): Promise<Project | undefined>;
+  getPortfolioConfig(): Promise<PortfolioConfig | null>;
+
+  getProject(id: ProjectId): Promise<Project | null>;
   listProjects(): Promise<Project[]>;
 
-  getRepository(id: RepositoryId): Promise<Repository | undefined>;
-  listRepositories(filter?: RepositoryFilter): Promise<Repository[]>;
+  getRepository(id: RepositoryId): Promise<Repository | null>;
+  listRepositories(filter: RepositoryFilter | null): Promise<Repository[]>;
 
-  getGoal(id: GoalId): Promise<Goal | undefined>;
-  listGoals(): Promise<Goal[]>;
+  getModelProvider(id: ModelProviderId): Promise<ModelProvider | null>;
+  listModelProviders(filter: ModelProviderFilter | null): Promise<ModelProvider[]>;
 
-  getPlan(id: PlanId): Promise<Plan | undefined>;
-  listPlans(): Promise<Plan[]>;
+  getModel(id: ModelId): Promise<Model | null>;
+  listModels(filter: ModelFilter | null): Promise<Model[]>;
 
-  getDelivery(id: DeliveryId): Promise<Delivery | undefined>;
-  listDeliveries(filter?: DeliveryFilter): Promise<Delivery[]>;
+  getPlan(id: PlanId): Promise<Plan | null>;
+  listPlans(filter: PlanFilter | null): Promise<Plan[]>;
 
-  getSlice(id: SliceId): Promise<Slice | undefined>;
+  getDelivery(id: DeliveryId): Promise<Delivery | null>;
+  listDeliveries(filter: DeliveryFilter | null): Promise<Delivery[]>;
+
+  getSlice(id: SliceId): Promise<Slice | null>;
   listSlices(deliveryId: DeliveryId): Promise<Slice[]>;
 
-  getReviewSurface(id: ReviewSurfaceId): Promise<ReviewSurface | undefined>;
+  getReviewSurface(id: ReviewSurfaceId): Promise<ReviewSurface | null>;
   listReviewSurfaces(scope: ReviewSurfaceScope): Promise<ReviewSurface[]>;
-  getCurrentReviewSurface(scope: ReviewSurfaceScope): Promise<ReviewSurface | undefined>;
+  getCurrentReviewSurface(scope: ReviewSurfaceScope): Promise<ReviewSurface | null>;
 
-  getRevision(id: RevisionId): Promise<Revision | undefined>;
+  getRevision(id: RevisionId): Promise<Revision | null>;
   listRevisions(scope: RevisionScope): Promise<Revision[]>;
 
-  getTimeline(filter?: TimelineFilter): Promise<TimelineEvent[]>;
+  getTimeline(filter: TimelineFilter | null): Promise<TimelineEvent[]>;
 }
 
 export interface RepositoryFilter {
-  projectId?: ProjectId;
+  projectId: ProjectId | null;
+}
+
+export interface ModelProviderFilter {
+  archived: boolean | null;
+}
+
+export interface ModelFilter {
+  providerId: ModelProviderId | null;
+  selectable: boolean | null;
+}
+
+export interface PlanFilter {
+  projectId: ProjectId | null;
 }
 
 export interface DeliveryFilter {
-  projectId?: ProjectId;
-  terminal?: "active" | "shipped" | "abandoned";
+  projectId: ProjectId | null;
+  terminal: "active" | "shipped" | "abandoned" | null;
 }
 
 export interface TimelineFilter {
-  deliveryId?: DeliveryId;
-  sliceId?: SliceId;
-  since?: IsoDateTime;
-  until?: IsoDateTime;
+  deliveryId: DeliveryId | null;
+  sliceId: SliceId | null;
+  since: IsoDateTime | null;
+  until: IsoDateTime | null;
 }
 
 export interface TimelineEvent {
@@ -387,11 +513,11 @@ export interface TimelineEvent {
 export interface CorePorts {
   storage: CoreStorage;
   sourceControl: SourceControlPort;
-  missionRuntime: MissionRuntimePort;
+  modelAgentRuntime: ModelAgentRuntimePort;
   secrets: SecretResolutionPort;
   snapshotEncryption: SnapshotEncryptionPort;
-  events?: CoreEventSink;
-  logger?: CoreLogger;
+  events: CoreEventSink | null;
+  logger: CoreLogger | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -403,9 +529,11 @@ export interface CoreStorage {
 }
 
 export interface CoreStorageTransaction {
+  portfolioConfig: SingletonRepository<PortfolioConfig>;
   projects: RepositoryTable<Project, ProjectId>;
   repositories: RepositoryTable<Repository, RepositoryId>;
-  goals: RepositoryTable<Goal, GoalId>;
+  modelProviders: RepositoryTable<ModelProvider, ModelProviderId>;
+  models: RepositoryTable<Model, ModelId>;
   plans: RepositoryTable<Plan, PlanId>;
   deliveries: RepositoryTable<Delivery, DeliveryId>;
   slices: RepositoryTable<Slice, SliceId>;
@@ -415,7 +543,7 @@ export interface CoreStorageTransaction {
   sliceArtifacts: RepositoryTable<SliceArtifact, SliceArtifactId>;
   executions: RepositoryTable<Execution, ExecutionId>;
   actions: RepositoryTable<Action, ActionId>;
-  missions: RepositoryTable<Mission, MissionId>;
+  agentRuns: RepositoryTable<AgentRun, AgentRunId>;
   reviewSurfaces: RepositoryTable<ReviewSurface, ReviewSurfaceId>;
   revisionGates: RepositoryTable<RevisionGate, RevisionGateId>;
   revisions: RepositoryTable<Revision, RevisionId>;
@@ -424,8 +552,13 @@ export interface CoreStorageTransaction {
   executionPolicies: RepositoryTable<ExecutionPolicy, ExecutionPolicyId>;
 }
 
+export interface SingletonRepository<T> {
+  get(): Promise<T | null>;
+  put(record: T): Promise<void>;
+}
+
 export interface RepositoryTable<T, Id> {
-  get(id: Id): Promise<T | undefined>;
+  get(id: Id): Promise<T | null>;
   put(record: T): Promise<void>;
   list(): Promise<T[]>;
 }
@@ -500,42 +633,64 @@ export interface MergeReviewSurfaceInput {
 
 export interface CloseReviewSurfaceInput {
   reviewSurface: ReviewSurface;
-  reason?: string;
+  reason: string | null;
 }
 
 // -----------------------------------------------------------------------------
-// Mission runtime port
+// Model Agent runtime port
 // -----------------------------------------------------------------------------
 
-export interface MissionRuntimePort {
-  runMission(input: RunMissionInput): Promise<RunMissionResult>;
+export interface ModelAgentRuntimePort {
+  preflightModel(input: PreflightModelRuntimeInput): Promise<ValidationEvidence>;
+  runModelAgent(input: RunModelAgentInput): Promise<RunModelAgentResult>;
 }
 
-export interface RunMissionInput {
-  mission: Mission;
+export interface PreflightModelRuntimeInput {
+  modelProvider: ModelProvider;
+  model: Model;
+  auth: ResolvedModelProviderAuth;
+}
+
+export interface RunModelAgentInput {
+  agentRun: AgentRun;
+  modelProvider: ModelProvider;
+  model: Model;
+  auth: ResolvedModelProviderAuth;
 
   /** Slice execution or Revision execution instructions. */
-  instruction?: InstructionSource;
+  instruction: InstructionSource | null;
 
-  /** Validation/external operation failures can be passed to a correction Mission. */
-  correctionEvidence?: ActionEvidence[];
+  /** Validation/external operation failures can be passed to a correction Agent Run. */
+  correctionEvidence: ActionEvidence[] | null;
 
-  artifactContext?: MissionArtifactContext;
-  timeoutMs?: number;
+  artifactContext: AgentRunArtifactContext | null;
+  timeoutMs: number | null;
 }
 
-export type MissionArtifactContext = {
+export interface ResolvedModelProviderAuth {
+  apiKey: string | null;
+  headers: ResolvedModelProviderHeader[];
+}
+
+export interface ResolvedModelProviderHeader {
+  name: string;
+
+  /** Plaintext exists only transiently. */
+  value: string;
+}
+
+export type AgentRunArtifactContext = {
   type: "source-control";
   repository: Repository;
   branch: string;
 };
 
-export interface RunMissionResult {
+export interface RunModelAgentResult {
   summary: string;
-  evidence: MissionEvidence;
+  evidence: AgentRunEvidence;
 
   /** Reference to sandbox output. Core evaluates/promotes through Actions. */
-  sandboxOutputRef?: string;
+  sandboxOutputRef: string | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -544,6 +699,7 @@ export interface RunMissionResult {
 
 export interface SecretResolutionPort {
   resolveSecrets(input: ResolveSecretsInput): Promise<ResolvedSecret[]>;
+  resolveSecretValues(input: ResolveSecretValuesInput): Promise<ResolvedSecretValue[]>;
 }
 
 export interface ResolveSecretsInput {
@@ -553,9 +709,20 @@ export interface ResolveSecretsInput {
     | { type: "execution"; executionId: ExecutionId };
 }
 
+export interface ResolveSecretValuesInput {
+  secretIds: SecretId[];
+}
+
 export interface ResolvedSecret {
   secretId: SecretId;
-  environmentVariableName?: string;
+  environmentVariableName: string | null;
+
+  /** Plaintext exists only transiently. */
+  plaintext: string;
+}
+
+export interface ResolvedSecretValue {
+  secretId: SecretId;
 
   /** Plaintext exists only transiently. */
   plaintext: string;
@@ -601,12 +768,13 @@ export type CoreEvent =
   | { type: "slice-updated"; sliceId: SliceId }
   | { type: "execution-started"; executionId: ExecutionId }
   | { type: "execution-paused-for-decision"; executionId: ExecutionId; decisionId: DecisionId }
+  | { type: "agent-run-started"; agentRunId: AgentRunId }
   | { type: "review-surface-created"; reviewSurfaceId: ReviewSurfaceId }
   | { type: "revision-gate-opened"; revisionGateId: RevisionGateId };
 
 export interface CoreLogger {
-  debug(message: string, context?: Record<string, unknown>): void;
-  info(message: string, context?: Record<string, unknown>): void;
-  warn(message: string, context?: Record<string, unknown>): void;
-  error(message: string, context?: Record<string, unknown>): void;
+  debug(message: string, context: Record<string, unknown> | null): void;
+  info(message: string, context: Record<string, unknown> | null): void;
+  warn(message: string, context: Record<string, unknown> | null): void;
+  error(message: string, context: Record<string, unknown> | null): void;
 }

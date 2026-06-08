@@ -14,7 +14,6 @@ export type Brand<T, Name extends string> = T & { readonly __brand: Name };
 
 export type ProjectId = Brand<string, "ProjectId">;
 export type RepositoryId = Brand<string, "RepositoryId">;
-export type GoalId = Brand<string, "GoalId">;
 export type PlanId = Brand<string, "PlanId">;
 export type DeliveryId = Brand<string, "DeliveryId">;
 export type SliceId = Brand<string, "SliceId">;
@@ -25,7 +24,7 @@ export type SecretBindingId = Brand<string, "SecretBindingId">;
 export type ExecutionId = Brand<string, "ExecutionId">;
 export type ExecutionPolicyId = Brand<string, "ExecutionPolicyId">;
 export type ActionId = Brand<string, "ActionId">;
-export type MissionId = Brand<string, "MissionId">;
+export type AgentRunId = Brand<string, "AgentRunId">;
 export type DecisionId = Brand<string, "DecisionId">;
 export type RevisionGateId = Brand<string, "RevisionGateId">;
 export type RevisionId = Brand<string, "RevisionId">;
@@ -33,6 +32,8 @@ export type ReviewSurfaceId = Brand<string, "ReviewSurfaceId">;
 export type DeliveryArtifactId = Brand<string, "DeliveryArtifactId">;
 export type SliceArtifactId = Brand<string, "SliceArtifactId">;
 export type SnapshotId = Brand<string, "SnapshotId">;
+export type ModelProviderId = Brand<string, "ModelProviderId">;
+export type ModelId = Brand<string, "ModelId">;
 
 export type IsoDateTime = string;
 
@@ -50,7 +51,7 @@ export interface LocalAuditStamp {
   origin: "local";
   at: IsoDateTime;
   actor: LocalActorRef;
-  correlationId?: string;
+  correlationId: string | null;
 }
 
 export interface ImportedAuditStamp {
@@ -68,6 +69,7 @@ export interface Project {
   id: ProjectId;
   title: string;
   config: ProjectConfig;
+  agentRun: ProjectAgentRunConfigRecord | null;
   created: AuditStamp;
 }
 
@@ -99,24 +101,102 @@ export interface GitHubRepositoryConfig {
 }
 
 // -----------------------------------------------------------------------------
-// Goal / Plan / Plan Output proposal shape
+// Model Providers / Models / Agent Run Config
 // -----------------------------------------------------------------------------
 
-export interface Goal {
-  id: GoalId;
-  body: string;
+export interface ModelProvider {
+  id: ModelProviderId;
+  name: string;
+  protocol: ModelProviderProtocol;
+  baseUrl: string;
+  apiKeySecretId: SecretId | null;
+  headers: ModelProviderHeader[];
   created: AuditStamp;
+  updated: AuditStamp | null;
+  archived: AuditStamp | null;
 }
+
+export type ModelProviderProtocol =
+  | "anthropic-messages"
+  | "openai-responses"
+  | "openai-completions"
+  | "google-generative-ai";
+
+export interface ModelProviderHeader {
+  name: string;
+  valueSecretId: SecretId;
+}
+
+export interface Model {
+  id: ModelId;
+  providerId: ModelProviderId;
+  name: string;
+  providerModelId: string;
+  created: AuditStamp;
+  updated: AuditStamp | null;
+  archived: AuditStamp | null;
+}
+
+export interface PortfolioConfig {
+  agentRun: PortfolioAgentRunConfigRecord | null;
+}
+
+export interface PortfolioAgentRunConfigRecord {
+  config: PortfolioAgentRunConfig | null;
+  updated: AuditStamp;
+}
+
+export interface ProjectAgentRunConfigRecord {
+  config: ProjectAgentRunConfig | null;
+  updated: AuditStamp;
+}
+
+export interface PlanAgentRunConfigRecord {
+  config: PlanAgentRunConfig | null;
+  updated: AuditStamp;
+}
+
+export interface DeliveryAgentRunConfigRecord {
+  config: DeliveryAgentRunConfig | null;
+  updated: AuditStamp;
+}
+
+export interface PortfolioAgentRunConfig extends ProjectAgentRunConfig {
+  defaultModelId: ModelId;
+}
+
+export interface ProjectAgentRunConfig {
+  planningModelId: ModelId | null;
+  revisionPlanningModelId: ModelId | null;
+  executionModelId: ModelId | null;
+  revisionExecutionModelId: ModelId | null;
+}
+
+export interface PlanAgentRunConfig {
+  planningModelId: ModelId | null;
+}
+
+export interface DeliveryAgentRunConfig {
+  revisionPlanningModelId: ModelId | null;
+  executionModelId: ModelId | null;
+  revisionExecutionModelId: ModelId | null;
+}
+
+// -----------------------------------------------------------------------------
+// Plan / Plan Output proposal shape
+// -----------------------------------------------------------------------------
 
 export interface Plan {
   id: PlanId;
+  projectId: ProjectId;
   title: string;
+  agentRun: PlanAgentRunConfigRecord | null;
   created: AuditStamp;
 }
 
 /**
  * PlanOutputProposal is not a stored Portfolio artifact.
- * It is the structured shape a Planning Mission must produce.
+ * It is the structured shape a planning Agent Run must produce.
  * Accepting it materializes Deliveries, Slices, Memories, Links, and Slice Instruction Sources.
  */
 export interface PlanOutputProposal {
@@ -128,11 +208,10 @@ export interface PlanOutputProposal {
 
 export interface ProposedDelivery {
   proposedDeliveryKey: string;
-  projectId: ProjectId;
   title: string;
   target: ProposedDeliveryTarget;
   slices: ProposedSlice[];
-  dependsOnDeliveryIds?: DeliveryId[];
+  dependsOnDeliveryIds: DeliveryId[] | null;
 }
 
 export type ProposedDeliveryTarget = ProposedSourceControlDeliveryTarget;
@@ -153,14 +232,14 @@ export interface ProposedSlice {
   instruction: InstructionSource;
 
   /** Same-Delivery dependencies only. */
-  dependsOnProposedSliceKeys?: string[];
+  dependsOnProposedSliceKeys: string[] | null;
 }
 
 export interface ProposedMemory {
   proposedMemoryKey: string;
   title: string;
   body: string;
-  type?: MemoryType;
+  type: MemoryType | null;
 }
 
 export interface ProposedLink {
@@ -180,7 +259,7 @@ export type ProposedGraphRef =
 // -----------------------------------------------------------------------------
 
 export interface InstructionSource {
-  /** Immutable accepted instructions used by Missions. */
+  /** Immutable accepted instructions used by Agent Runs. */
   body: string;
 }
 
@@ -194,15 +273,16 @@ export interface Delivery {
   planId: PlanId;
   title: string;
   target: DeliveryTarget;
+  agentRun: DeliveryAgentRunConfigRecord | null;
 
   /** Every Delivery has at least one Slice. */
   sliceIds: readonly [SliceId, ...SliceId[]];
 
   /** Repeated readiness checks; latest relevant check contributes to derived readiness. */
-  preflightChecks?: PreflightCheck[];
+  preflightChecks: PreflightCheck[] | null;
 
   /** Shipped and Abandoned are mutually exclusive terminal outcomes. */
-  terminal?: DeliveryTerminalOutcome;
+  terminal: DeliveryTerminalOutcome | null;
 
   accepted: AuditStamp;
 }
@@ -212,14 +292,14 @@ export type DeliveryTerminalOutcome = DeliveryShipped | DeliveryAbandoned;
 export interface DeliveryShipped {
   type: "shipped";
   recorded: AuditStamp;
-  reviewSurfaceId?: ReviewSurfaceId;
+  reviewSurfaceId: ReviewSurfaceId | null;
 }
 
 export interface DeliveryAbandoned {
   type: "abandoned";
   recorded: AuditStamp;
-  reason?: string;
-  cleanupEvidence?: ExternalOperationEvidence[];
+  reason: string | null;
+  cleanupEvidence: ExternalOperationEvidence[] | null;
 }
 
 export type DeliveryTarget = SourceControlDeliveryTarget;
@@ -248,7 +328,6 @@ export interface Slice {
 // -----------------------------------------------------------------------------
 
 export type GraphNodeRef =
-  | { type: "goal"; id: GoalId }
   | { type: "plan"; id: PlanId }
   | { type: "project"; id: ProjectId }
   | { type: "delivery"; id: DeliveryId }
@@ -272,7 +351,7 @@ export interface Link {
   created: AuditStamp;
 
   /** Only archivable Link types may set this. */
-  archived?: AuditStamp;
+  archived: AuditStamp | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -325,13 +404,13 @@ export interface ExecutionPolicy {
   /** v1 minimal policy. */
   maxParallelSlicesPerDelivery: number;
   maxCorrectionRetries: number;
-  missionTimeoutMs: number;
+  agentRunTimeoutMs: number;
 
   created: AuditStamp;
 }
 
 // -----------------------------------------------------------------------------
-// Execution / Action / Mission
+// Execution / Action / Agent Run
 // -----------------------------------------------------------------------------
 
 export interface Execution {
@@ -343,7 +422,7 @@ export interface Execution {
   executionPolicyVersion: number;
 
   started: AuditStamp;
-  endedAt?: IsoDateTime;
+  endedAt: IsoDateTime | null;
 }
 
 export type ActionType =
@@ -351,8 +430,8 @@ export type ActionType =
   | "create-delivery-artifact"
   | "start-slice"
   | "create-slice-artifact"
-  | "run-mission"
-  | "promote-mission-output"
+  | "start-agent-run"
+  | "promote-agent-run-output"
   | "validate-slice-artifact"
   | "create-slice-review-surface"
   | "observe-slice-review-surface"
@@ -368,57 +447,65 @@ export interface Action {
   id: ActionId;
   executionId: ExecutionId;
   deliveryId: DeliveryId;
-  sliceId?: SliceId;
-  revisionId?: RevisionId;
+  sliceId: SliceId | null;
+  revisionId: RevisionId | null;
   type: ActionType;
   startedAt: IsoDateTime;
-  completedAt?: IsoDateTime;
-  outcome?: ActionOutcome;
+  completedAt: IsoDateTime | null;
+  outcome: ActionOutcome | null;
 }
 
 export type ActionOutcome =
-  | { type: "succeeded"; evidence?: ActionEvidence[] }
+  | { type: "succeeded"; evidence: ActionEvidence[] | null }
   | { type: "failed"; evidence: ActionEvidence[] }
   | { type: "requires-decision"; decisionId: DecisionId };
 
-export interface Mission {
-  id: MissionId;
-  executionId?: ExecutionId;
-
-  purpose:
-    | { type: "planning"; planId: PlanId }
-    | { type: "revision-planning"; revisionGateId: RevisionGateId }
-    | { type: "execution"; actionId: ActionId }
-    | { type: "revision-execution"; revisionId: RevisionId; actionId: ActionId };
-
+export interface AgentRun {
+  id: AgentRunId;
+  agent: AgentRunAgent;
+  purpose: AgentRunPurpose;
   startedAt: IsoDateTime;
-  completedAt?: IsoDateTime;
-  traceRef?: string;
-  toolDataRef?: string;
+  completedAt: IsoDateTime | null;
+  traceRef: string | null;
+  toolDataRef: string | null;
 }
 
-export interface MissionSandbox {
-  missionId: MissionId;
+export type AgentRunAgent = ModelAgentRunAgent;
+
+export interface ModelAgentRunAgent {
+  type: "model";
+  modelId: ModelId;
+}
+
+export type AgentRunPurpose =
+  | { type: "planning"; planId: PlanId }
+  | { type: "revision-planning"; revisionGateId: RevisionGateId }
+  | { type: "execution"; actionId: ActionId }
+  | { type: "revision-execution"; revisionId: RevisionId; actionId: ActionId };
+
+export interface AgentRunSandbox {
+  agentRunId: AgentRunId;
   type: "worktree" | "temporary-files" | "other";
-  locationRef?: string;
+  locationRef: string | null;
 }
 
 // -----------------------------------------------------------------------------
 // Evidence / validation / external operation failures
 // -----------------------------------------------------------------------------
 
-export type ActionEvidence = ValidationEvidence | ExternalOperationEvidence | MissionEvidence;
+export type ActionEvidence = ValidationEvidence | ExternalOperationEvidence | AgentRunEvidence;
 
 export interface ValidationEvidence {
   type: "validation";
   validationType:
     | "preflight"
+    | "model-preflight"
     | "slice-branch-validation"
     | "delivery-branch-validation"
     | "ship-validation";
   passed: boolean;
   summary: string;
-  detailsRef?: string;
+  detailsRef: string | null;
 }
 
 export interface ExternalOperationEvidence {
@@ -431,15 +518,15 @@ export interface ExternalOperationEvidence {
     | "fetch-feedback";
   passed: boolean;
   summary: string;
-  provider?: SourceControlProvider;
-  detailsRef?: string;
+  provider: SourceControlProvider | null;
+  detailsRef: string | null;
 }
 
-export interface MissionEvidence {
-  type: "mission";
-  missionId: MissionId;
+export interface AgentRunEvidence {
+  type: "agent-run";
+  agentRunId: AgentRunId;
   summary: string;
-  detailsRef?: string;
+  detailsRef: string | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -460,7 +547,7 @@ export interface ReviewSurface {
   body: string;
 
   /** Merged, closed-without-merge, and replaced are mutually exclusive terminal outcomes. */
-  terminal?: ReviewSurfaceTerminalOutcome;
+  terminal: ReviewSurfaceTerminalOutcome | null;
 
   created: AuditStamp;
 }
@@ -509,7 +596,7 @@ export interface ReviewSurfaceReplaced {
   type: "replaced";
   recorded: AuditStamp;
   reviewSurfaceId: ReviewSurfaceId;
-  reason?: string;
+  reason: string | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -524,8 +611,8 @@ export interface FetchedFeedback {
   reviewSurfaceId: ReviewSurfaceId;
   config: FetchedFeedbackConfig;
   body: string;
-  createdAt?: IsoDateTime;
-  updatedAt?: IsoDateTime;
+  createdAt: IsoDateTime | null;
+  updatedAt: IsoDateTime | null;
 }
 
 export type FetchedFeedbackConfig = GitHubFetchedFeedbackConfig;
@@ -534,8 +621,8 @@ export type FetchedFeedbackProvider = FetchedFeedbackConfig["provider"];
 export interface GitHubFetchedFeedbackConfig {
   provider: "github";
   externalFeedbackId: string;
-  author?: string;
-  url?: string;
+  author: string | null;
+  url: string | null;
 }
 
 export type RevisionScope =
@@ -547,15 +634,15 @@ export interface RevisionGate {
   scope: RevisionScope;
   reviewSurfaceId: ReviewSurfaceId;
   opened: AuditStamp;
-  closed?: AuditStamp;
+  closed: AuditStamp | null;
 
   /** Set when a Revision Output is accepted and Revision is created. */
-  consumedByRevisionId?: RevisionId;
+  consumedByRevisionId: RevisionId | null;
 }
 
 /**
  * RevisionOutputProposal is not a stored Portfolio artifact.
- * It is the structured shape a revision planning Mission must produce.
+ * It is the structured shape a revision-planning Agent Run must produce.
  */
 export interface RevisionOutputProposal {
   revisionGateId: RevisionGateId;
@@ -599,7 +686,7 @@ export interface Memory {
   id: MemoryId;
   title: string;
   body: string;
-  type?: MemoryType;
+  type: MemoryType | null;
   created: AuditStamp;
 }
 
@@ -618,7 +705,7 @@ export interface Secret {
   valueRef: string;
 
   created: AuditStamp;
-  replaced?: AuditStamp;
+  replaced: AuditStamp | null;
 }
 
 export type SecretBindingScope =
@@ -631,9 +718,9 @@ export interface SecretBinding {
   id: SecretBindingId;
   secretId: SecretId;
   scope: SecretBindingScope;
-  environmentVariableName?: string;
+  environmentVariableName: string | null;
   created: AuditStamp;
-  archived?: AuditStamp;
+  archived: AuditStamp | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -644,14 +731,14 @@ export interface Decision {
   id: DecisionId;
 
   source:
-    | { type: "planning"; missionId: MissionId }
-    | { type: "execution"; executionId: ExecutionId; actionId?: ActionId }
+    | { type: "planning"; agentRunId: AgentRunId }
+    | { type: "execution"; executionId: ExecutionId; actionId: ActionId | null }
     | { type: "revision-planning"; revisionGateId: RevisionGateId };
 
   summary: string;
-  details?: string;
+  details: string | null;
   raised: AuditStamp;
-  resolved?: AuditStamp;
+  resolved: AuditStamp | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -661,7 +748,7 @@ export interface Decision {
 export interface PreflightCheck {
   passed: boolean;
   summary: string;
-  evidence?: ValidationEvidence[];
+  evidence: ValidationEvidence[] | null;
   checkedAt: IsoDateTime;
 }
 
