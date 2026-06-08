@@ -89,12 +89,12 @@ The structured proposal shape a planning Agent Run must produce for review as a 
 _Avoid_: Accepted Plan, partial acceptance, staged output set, draft Plan
 
 **Delivery**:
-The Project-level unit of accepted executable work materialized by accepting a Plan Output. A Delivery belongs to a Project for execution and participates in the Portfolio graph for planning, provenance, and same-Project Delivery-level dependencies. A Delivery targets exactly one execution target for its Project Source Type, contains at least one Slice, and cannot begin Slice work until explicitly started.
+The Project-level unit of accepted executable work materialized by accepting a Plan Output. A Delivery belongs to a Project for execution and participates in the Portfolio graph for planning, provenance, and same-Project Delivery-level dependencies. A Delivery targets exactly one execution target for its Project Source Type, contains at least one Slice, and cannot begin Slice work until explicitly queued.
 _Avoid_: Change, task, ticket, draft Plan
 
-**Started Delivery**:
-A Delivery whose execution has been explicitly started by a core operation. Starting a Delivery allows its Slice work to begin when dependencies and readiness checks permit.
-_Avoid_: running Delivery, active Delivery, Execution
+**Queued Delivery**:
+A Delivery explicitly queued by a core operation so its work may run once Delivery Work State gates allow it. Queueing a Delivery records user intent for work to begin when dependencies, readiness checks, and scheduler limits permit.
+_Avoid_: Started Delivery, running Delivery, active Delivery, Execution
 
 **Shipped Delivery**:
 A closed Delivery whose external integration lifecycle has been completed.
@@ -105,7 +105,7 @@ To close a Delivery without shipping it, after required Project Source Type-spec
 _Avoid_: Archive, delete, cancel, soft-delete
 
 **Abandoned Delivery**:
-A closed Delivery removed from active execution consideration without being Shipped. Abandoning a started Delivery must close or abandon active external work where possible. For dependency calculation, an Abandoned Delivery satisfies Delivery-level dependencies as if it were Shipped.
+A closed Delivery removed from active execution consideration without being Shipped. Abandoning a queued Delivery must close or abandon active external work where possible. For dependency calculation, an Abandoned Delivery satisfies Delivery-level dependencies as if it were Shipped.
 _Avoid_: Archived Delivery, Deleted Delivery, canceled Delivery, soft-deleted Delivery
 
 **Slice**:
@@ -119,6 +119,10 @@ _Avoid_: Plan Output, Revision Output, prompt
 **Delivery Config**:
 Scoped configuration for a Delivery's work. Delivery Config covers all configurable Delivery work behavior, including active Slice concurrency, correction retry limits per failure chain, Model selection for Actions, and Model timeout. Model timeout applies only to Model Agent work; future Agent types get their own config fields. Delivery Config may be configured at Portfolio, Project, or Delivery scope and inherited by a Delivery. Delivery Config is resolved on demand when work needs it, so changing a Delivery's config affects future work. Invalid Delivery Config is rejected when set.
 _Avoid_: Execution Config, Execution Policy, scheduler settings
+
+**Delivery Work State**:
+A derived state describing whether Delivery work can run. Delivery Work State is computed from Delivery lifecycle fields, dependency Links, dependency Delivery outcomes, and Actions, not stored directly. A Delivery may be closed, unqueued, dependency-blocked, preflight-failed, or ready, derived in that priority order. Ready means runDeliveryWork may be called; it does not guarantee schedulable work exists. Dependency-blocked means direct same-Project Delivery dependencies are not yet closed; blocked dependencies are ordered by dependency acceptance time, then Delivery ID. Preflight-failed means the latest Delivery preflight Action failed and work cannot continue until explicit preflight retry records a later passing Delivery preflight Action.
+_Avoid_: Execution state, job state, stored work state
 
 **Agent**:
 The discriminated value recorded on an Agent Run that identifies what performed the work. In v1, the only Agent is Model Agent. Agent is not a stored core model.
@@ -197,7 +201,7 @@ A typed directed relationship between graph nodes such as Plans, Projects, Deliv
 _Avoid_: Relationship, edge, reference, edge-as-node
 
 **Preflight**:
-A transient readiness validation performed before Gorchestra begins or resumes work. Preflight may check Project, Repository, Model Provider, Model, Secret Binding, or execution target readiness. Preflight results may be returned to consumers for display, but are not stored as authoritative Portfolio data unless captured as Action evidence.
+A readiness validation performed before Gorchestra begins or resumes work. Delivery preflight runs before each bounded scheduler pass and resolves required Delivery Config and Model selection as transient scheduler data. Successful Delivery preflight is normally not stored, except when it supersedes the latest failed Delivery preflight Action; failed Delivery preflight is recorded as Action evidence. A Delivery whose latest Delivery preflight Action failed is preflight-failed until an explicit retry records a later passing Delivery preflight Action. Other preflight results may be returned to consumers for display without becoming authoritative Portfolio data. Preflight may check Project, Repository, Model Provider, Model, Secret Binding, or execution target readiness.
 _Avoid_: Doctor, health check
 
 **Timeline**:

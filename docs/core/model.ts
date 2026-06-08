@@ -42,10 +42,11 @@ export type IsoDateTime = string;
  * - collections are stored as arrays; empty arrays mean no items.
  * - operation-specific reasons, when needed, live on the specific closed state,
  *   result, or input they explain and are stored as strings that may be empty.
- * - use field: RuntimeRecord for runtime lifecycle timestamps and
- *   field: AuditedRecord for consumer-authorized operations. The embedded
- *   record contains all fields that change atomically with that lifecycle
- *   moment so half-updated states are not representable.
+ * - use field: RuntimeRecord for runtime lifecycle timestamps, direct
+ *   domain-named AuditStamp fields for consumer-authorized operations, and
+ *   domain-specific embedded records when a lifecycle moment has additional
+ *   fields. Embedded records contain all fields that change atomically with
+ *   that lifecycle moment so half-updated states are not representable.
  */
 
 export interface LocalActorRef {
@@ -76,9 +77,6 @@ export interface RuntimeRecord {
   at: IsoDateTime;
 }
 
-export interface AuditedRecord {
-  audit: AuditStamp;
-}
 
 // -----------------------------------------------------------------------------
 // Project / Project Source
@@ -136,13 +134,9 @@ export interface ModelProvider {
 
   headers: ModelProviderHeader[];
   created: AuditStamp;
-  updated: ModelProviderUpdated | null;
-  archived: ModelProviderArchived | null;
+  updated: AuditStamp | null;
+  archived: AuditStamp | null;
 }
-
-export interface ModelProviderUpdated extends AuditedRecord {}
-
-export interface ModelProviderArchived extends AuditedRecord {}
 
 export type ModelProviderProtocol =
   | "anthropic-messages"
@@ -173,13 +167,9 @@ export interface Model {
   name: string;
   providerModelId: string;
   created: AuditStamp;
-  updated: ModelUpdated | null;
-  archived: ModelArchived | null;
+  updated: AuditStamp | null;
+  archived: AuditStamp | null;
 }
-
-export interface ModelUpdated extends AuditedRecord {}
-
-export interface ModelArchived extends AuditedRecord {}
 
 /**
  * Config normalization:
@@ -188,7 +178,8 @@ export interface ModelArchived extends AuditedRecord {}
  * - setProjectConfig/configureDelivery retain the config record; if all dimensions fold to null, record.value is null.
  * - Empty/all-null nested config dimensions fold to null.
  */
-export interface PortfolioConfigRecord extends AuditedRecord {
+export interface PortfolioConfigRecord {
+  configured: AuditStamp;
   value: PortfolioConfig;
 }
 
@@ -197,7 +188,8 @@ export interface PortfolioConfig {
   work: DeliveryWorkConfig | null;
 }
 
-export interface ProjectConfigRecord extends AuditedRecord {
+export interface ProjectConfigRecord {
+  configured: AuditStamp;
   value: ProjectConfig | null;
 }
 
@@ -206,7 +198,8 @@ export interface ProjectConfig {
   work: DeliveryWorkConfig | null;
 }
 
-export interface PlanConfigRecord extends AuditedRecord {
+export interface PlanConfigRecord {
+  configured: AuditStamp;
   value: PlanConfig | null;
 }
 
@@ -289,7 +282,6 @@ export interface Plan {
  * Accepting it materializes Deliveries, Slices, Memories, Links, and Slice Instruction Sources.
  */
 export interface PlanOutputProposal {
-  planId: PlanId;
   proposedDeliveries: ProposedDelivery[];
   proposedMemories: ProposedMemory[];
   proposedLinks: ProposedLink[];
@@ -368,7 +360,7 @@ export interface Delivery {
   /** Every Delivery has at least one Slice. */
   sliceIds: readonly [SliceId, ...SliceId[]];
 
-  started: DeliveryStarted | null;
+  queued: AuditStamp | null;
 
   /** Shipped and Abandoned are mutually exclusive closed outcomes. */
   closed: DeliveryClosed | null;
@@ -376,11 +368,10 @@ export interface Delivery {
   accepted: AuditStamp;
 }
 
-export interface DeliveryStarted extends AuditedRecord {}
-
 export type DeliveryClosed = DeliveryShipped | DeliveryAbandoned;
 
-export interface DeliveryConfigRecord extends AuditedRecord {
+export interface DeliveryConfigRecord {
+  configured: AuditStamp;
   value: DeliveryConfig | null;
 }
 
@@ -391,6 +382,18 @@ export interface DeliveryConfig {
   /** Null means no Delivery-level work override; inherit from outer scopes. */
   work: DeliveryWorkConfig | null;
 }
+
+/**
+ * Derived in priority order: closed, unqueued, dependency-blocked,
+ * preflight-failed, then ready.
+ */
+export type DeliveryWorkState =
+  | { type: "closed"; outcome: DeliveryClosed["type"] }
+  | { type: "unqueued" }
+  /** blockedBy contains direct unmet Delivery dependencies only, ordered by dependency accepted time then DeliveryId. */
+  | { type: "dependency-blocked"; blockedBy: DeliveryId[] }
+  | { type: "preflight-failed"; actionId: ActionId }
+  | { type: "ready" };
 
 export interface DeliveryWorkConfig {
   /** Must be >= 1. Limits actively running Slice Agent Runs; waiting Slices do not count. */
@@ -415,13 +418,15 @@ export interface DeliveryWorkConfig {
  */
 export type DeliveryWorkConfigResolution = DeliveryWorkConfig;
 
-export interface DeliveryShipped extends AuditedRecord {
+export interface DeliveryShipped {
   type: "shipped";
+  shipped: AuditStamp;
   reviewSurfaceId: ReviewSurfaceId;
 }
 
-export interface DeliveryAbandoned extends AuditedRecord {
+export interface DeliveryAbandoned {
   type: "abandoned";
+  abandoned: AuditStamp;
   reason: string;
   cleanupEvidence: ExternalOperationEvidence[];
 }
@@ -475,15 +480,17 @@ export interface Link {
   created: AuditStamp;
 
   /** Only archivable Link types may set this. */
-  archived: LinkArchived | null;
+  archived: AuditStamp | null;
 }
-
-export interface LinkArchived extends AuditedRecord {}
 
 // -----------------------------------------------------------------------------
 // Artifacts
 // -----------------------------------------------------------------------------
 
+/**
+ * Each Delivery has at most one Delivery Artifact. Future Project Source Types
+ * that need multiple concrete artifacts can model them inside their artifact config.
+ */
 export interface DeliveryArtifact {
   id: DeliveryArtifactId;
   deliveryId: DeliveryId;
@@ -496,11 +503,13 @@ export type DeliveryArtifactType = DeliveryArtifactConfig["type"];
 
 export interface SourceControlDeliveryArtifactConfig {
   type: "source-control";
-  repositoryId: RepositoryId;
   deliveryBranch: string;
-  targetBranch: string;
 }
 
+/**
+ * Each Slice has at most one Slice Artifact. Future Project Source Types that
+ * need multiple concrete artifacts can model them inside their artifact config.
+ */
 export interface SliceArtifact {
   id: SliceArtifactId;
   sliceId: SliceId;
@@ -513,9 +522,7 @@ export type SliceArtifactType = SliceArtifactConfig["type"];
 
 export interface SourceControlSliceArtifactConfig {
   type: "source-control";
-  repositoryId: RepositoryId;
   sliceBranch: string;
-  deliveryBranch: string;
 }
 
 // -----------------------------------------------------------------------------
@@ -526,6 +533,10 @@ export interface Action {
   id: ActionId;
   deliveryId: DeliveryId;
   performed: RuntimeRecord;
+
+  /** Null for scheduler/runtime-driven Actions; in v1 set only for retryDeliveryPreflight. */
+  authorized: AuditStamp | null;
+
   result: ActionResult;
 }
 
@@ -581,7 +592,8 @@ export type CorrectionEvidence = ValidationEvidence | ExternalOperationEvidence;
 
 /**
  * preflightModel returns model-preflight evidence.
- * validate-preflight Actions carry delivery-preflight evidence.
+ * runDeliveryWork records failed delivery-preflight evidence as validate-preflight Actions.
+ * Successful delivery-preflight evidence is recorded only when it supersedes the latest failed validate-preflight Action.
  */
 export interface ValidationEvidence {
   type: "validation";
@@ -654,8 +666,9 @@ export type ReviewSurfaceClosed =
   | ReviewSurfaceClosedWithoutMerge
   | ReviewSurfaceReplaced;
 
-export interface ReviewSurfaceMerged extends AuditedRecord {
+export interface ReviewSurfaceMerged {
   type: "merged";
+  merged: AuditStamp;
   config: ReviewSurfaceMergedConfig;
 }
 
@@ -668,12 +681,14 @@ export interface SourceControlReviewSurfaceMergedConfig {
   targetBranch: string;
 }
 
-export interface ReviewSurfaceClosedWithoutMerge extends AuditedRecord {
+export interface ReviewSurfaceClosedWithoutMerge {
   type: "closed-without-merge";
+  closed: AuditStamp;
 }
 
-export interface ReviewSurfaceReplaced extends AuditedRecord {
+export interface ReviewSurfaceReplaced {
   type: "replaced";
+  replaced: AuditStamp;
   reviewSurfaceId: ReviewSurfaceId;
 }
 
@@ -712,21 +727,17 @@ export interface RevisionGate {
   scope: RevisionScope;
   reviewSurfaceId: ReviewSurfaceId;
   opened: AuditStamp;
-  closed: RevisionGateClosed | null;
+  closed: AuditStamp | null;
 
   /** Set when a Revision Output is accepted and Revision is created. */
   consumedByRevisionId: RevisionId | null;
 }
-
-export interface RevisionGateClosed extends AuditedRecord {}
 
 /**
  * RevisionOutputProposal is not a stored Portfolio artifact.
  * It is the structured shape a revision-planning Agent Run must produce.
  */
 export interface RevisionOutputProposal {
-  revisionGateId: RevisionGateId;
-  scope: RevisionScope;
   instruction: InstructionSource;
 
   /** Human-readable account of how fetched Feedback is handled. */
@@ -784,10 +795,8 @@ export interface Secret {
   valueRef: string;
 
   created: AuditStamp;
-  replaced: SecretReplaced | null;
+  replaced: AuditStamp | null;
 }
-
-export interface SecretReplaced extends AuditedRecord {}
 
 export type SecretBindingScope =
   | { type: "portfolio" }
@@ -803,10 +812,8 @@ export interface SecretBinding {
   envName: string;
 
   created: AuditStamp;
-  archived: SecretBindingArchived | null;
+  archived: AuditStamp | null;
 }
-
-export interface SecretBindingArchived extends AuditedRecord {}
 
 /**
  * Secret Binding environment resolution is derived, not stored separately.

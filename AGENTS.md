@@ -15,9 +15,11 @@ Gorchestra has multiple domain contexts:
 
 ADR filenames use sortable date+time prefixes: `YYYY-MM-DD-HHMM-slug.md`.
 
-Core lifecycle data shapes use embedded records for extensibility: use `field: RuntimeRecord` for runtime lifecycle timestamps and `field: AuditedRecord` for consumer-authorized operations. The embedded record must contain all fields that change atomically with that lifecycle moment, so the model cannot represent half-updated states.
+Core lifecycle data shapes use `field: RuntimeRecord` for runtime lifecycle timestamps, direct domain-named `AuditStamp` fields for consumer-authorized operations, and domain-specific embedded records when a lifecycle moment has additional fields. Embedded records must contain all fields that change atomically with that lifecycle moment, so the model cannot represent half-updated states.
 
 Prefer discriminated unions over nullable peer fields when exactly one variant applies.
+
+Prefer passing identifiers and inferring authoritative fields inside core/ports over duplicating inferable values in consumer-facing API inputs, so callers cannot provide contradictory values. For runtime/port calls that perform external actions, core should pass the resolved values needed to perform the action so adapters do not infer, load, or calculate authoritative context themselves.
 
 ## Context relationships
 

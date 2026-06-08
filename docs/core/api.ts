@@ -22,6 +22,7 @@ import type {
   DeliveryArtifactId,
   DeliveryConfig,
   DeliveryId,
+  DeliveryWorkState,
   ExternalOperationEvidence,
   FetchedFeedback,
   InstructionSource,
@@ -118,9 +119,7 @@ export type Result<T, E = CoreError> =
   | { ok: true; value: T }
   | { ok: false; error: E };
 
-export type PreflightFailedScope =
-  | { type: "delivery"; deliveryId: DeliveryId }
-  | { type: "model"; modelId: ModelId };
+export type DeliveryWorkStateType = DeliveryWorkState["type"];
 
 /**
  * invariant-violation is reserved for impossible/corrupt states.
@@ -129,11 +128,8 @@ export type PreflightFailedScope =
 export type CoreError =
   | { type: "not-found"; resource: string; id: string }
   | { type: "invariant-violation"; message: string }
-  | { type: "preflight-failed"; scope: PreflightFailedScope; evidence: ValidationEvidence[] }
-  | { type: "closed-delivery"; deliveryId: DeliveryId }
-  | { type: "delivery-not-started"; deliveryId: DeliveryId }
-  | { type: "delivery-config-unresolved"; deliveryId: DeliveryId }
-  | { type: "dependency-blocked"; deliveryId: DeliveryId; blockedBy: DeliveryId[] }
+  | { type: "model-preflight-failed"; modelId: ModelId; evidence: ValidationEvidence }
+  | { type: "delivery-work-state-mismatch"; deliveryId: DeliveryId; expected: DeliveryWorkStateType[]; actual: DeliveryWorkState }
   | { type: "revision-gate-closed"; revisionGateId: RevisionGateId }
   | { type: "agent-run-model-unresolved"; purpose: AgentRunPurpose }
   | { type: "archived-model"; modelId: ModelId }
@@ -165,9 +161,40 @@ export interface CoreCommands {
   rejectPlanOutput(input: RejectPlanOutputInput, context: OperationContext): Promise<Result<void>>;
 
   // Delivery execution
+  /** Requires Delivery Work State not closed. Does not clear preflight-failed. */
   configureDelivery(input: ConfigureDeliveryInput, context: OperationContext): Promise<Result<Delivery>>;
-  startDelivery(input: StartDeliveryInput, context: OperationContext): Promise<Result<StartDeliveryResult>>;
+
+  /** Requires Delivery Work State unqueued; queueing is one-way and is not overwritten. */
+  queueDelivery(input: QueueDeliveryInput, context: OperationContext): Promise<Result<QueueDeliveryResult>>;
+
+  /**
+   * Performs one bounded scheduler pass: records immediately-ready Actions and
+   * starts eligible Agent Runs up to current limits, without waiting for Agent
+   * Runs, review, human input, or other asynchronous external state.
+   * Successful external operations that change or observe authoritative Delivery
+   * state produce Actions. Failed external operations that produce evidence are
+   * recorded as failure Actions. Delivery preflight runs before every bounded
+   * scheduler pass. Delivery preflight resolves required Delivery Config and
+   * Model selection for the pass as transient scheduler data. Successful Delivery
+   * preflight is normally not stored, except when it supersedes the latest failed
+   * validate-preflight Action. Failed Delivery preflight records a
+   * validate-preflight Action, stops the pass, and returns success with the
+   * failed preflight Action and no Agent Runs. If
+   * Delivery Work State is not ready, runDeliveryWork returns
+   * delivery-work-state-mismatch; scheduling loops should skip non-ready
+   * Deliveries. Artifact validation
+   * failures are recorded as validate-* Actions with passed false.
+   */
   runDeliveryWork(input: RunDeliveryWorkInput, context: OperationContext): Promise<Result<RunDeliveryWorkResult>>;
+
+  /**
+   * Explicitly retries Delivery preflight for a Delivery whose Delivery Work
+   * State is preflight-failed. Records a validate-preflight Action with
+   * authorized set from the OperationContext; a passed retry supersedes the previous failure by ordering. Returns
+   * delivery-work-state-mismatch if the Delivery Work State is not
+   * preflight-failed.
+   */
+  retryDeliveryPreflight(input: RetryDeliveryPreflightInput, context: OperationContext): Promise<Result<RetryDeliveryPreflightResult>>;
 
   // Revision
   openRevisionGate(input: OpenRevisionGateInput, context: OperationContext): Promise<Result<OpenRevisionGateResult>>;
@@ -279,11 +306,11 @@ export interface ConfigureDeliveryInput {
   config: DeliveryConfig;
 }
 
-export interface StartDeliveryInput {
+export interface QueueDeliveryInput {
   deliveryId: DeliveryId;
 }
 
-export interface StartDeliveryResult {
+export interface QueueDeliveryResult {
   delivery: Delivery;
 }
 
@@ -297,8 +324,16 @@ export interface RunDeliveryWorkResult {
   agentRuns: AgentRun[];
 }
 
+export interface RetryDeliveryPreflightInput {
+  deliveryId: DeliveryId;
+}
+
+export interface RetryDeliveryPreflightResult {
+  delivery: Delivery;
+  action: Action;
+}
+
 export interface OpenRevisionGateInput {
-  scope: RevisionScope;
   reviewSurfaceId: ReviewSurfaceId;
 }
 
@@ -544,6 +579,16 @@ export interface RepositoryTable<T, Id> {
 // Source Control port
 // -----------------------------------------------------------------------------
 
+/**
+ * Core uses an internal context resolver to turn authoritative IDs into the
+ * current entities, configs, artifacts, branches, repositories, models, and
+ * secrets required for commands and port calls. Consumer-facing command inputs
+ * prefer IDs over duplicated resolved values so callers cannot provide
+ * contradictory context. Runtime/port calls that perform external actions should
+ * receive the resolved values needed to perform the action so adapters do not
+ * infer, load, or calculate authoritative context themselves.
+ */
+
 export interface SourceControlPort {
   preflightRepository(input: PreflightRepositoryInput): Promise<ValidationEvidence>;
 
@@ -566,8 +611,8 @@ export interface PreflightRepositoryInput {
 
 export interface CreateDeliveryBranchInput {
   repository: Repository;
-  targetBranch: string;
   deliveryId: DeliveryId;
+  targetBranch: string;
 }
 
 export interface CreateSliceBranchInput {
@@ -667,11 +712,9 @@ export interface ResolvedModelProviderHeader {
   value: string;
 }
 
-export type AgentRunArtifactContext = {
-  type: "source-control";
-  repository: Repository;
-  branch: string;
-};
+export type AgentRunArtifactContext =
+  | { type: "delivery-artifact"; deliveryArtifactId: DeliveryArtifactId }
+  | { type: "slice-artifact"; sliceArtifactId: SliceArtifactId };
 
 // -----------------------------------------------------------------------------
 // Secret resolution port
