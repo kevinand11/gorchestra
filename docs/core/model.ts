@@ -396,7 +396,7 @@ export type DeliveryWorkState =
   | { type: "ready" };
 
 export interface DeliveryWorkConfig {
-  /** Must be >= 1. Limits active Slice work slots: executing and needs-artifact-validation Slices plus unexpired scheduler claims count; external waiting states do not. */
+  /** Must be >= 1. Limits active Slice work slots: executing, needs-artifact-validation, and needs-delivery-validation Slices plus unexpired scheduler claims count; external waiting states do not. */
   maxActiveSliceSlots: number;
 
   /** Must be >= 0. Counts automatic correction Agent Runs per validation/external-operation failure chain. */
@@ -457,7 +457,13 @@ export interface Slice {
  * dependency-blocked, executing, needs-artifact-validation, correction-blocked,
  * awaiting-review, then executable.
  */
-export type SliceExecutionMode = "initial" | "correction";
+export interface FailureChain {
+  /** The failed validation or external-operation Action that started the chain. */
+  rootActionId: ActionId;
+
+  /** Number of correction execution Actions started for this chain. */
+  correctionRetries: number;
+}
 
 export type SliceWorkState =
   /** actionId points to the passed validate-delivery-artifact Action that completed the Slice. */
@@ -466,11 +472,15 @@ export type SliceWorkState =
   | { type: "needs-delivery-validation"; actionId: ActionId }
   /** blockedBy contains direct incomplete same-Delivery Slice dependencies only, ordered by dependency accepted time then SliceId. */
   | { type: "dependency-blocked"; blockedBy: SliceId[] }
-  | { type: "executing"; mode: SliceExecutionMode; agentRunId: AgentRunId }
-  | { type: "needs-artifact-validation"; mode: SliceExecutionMode; sliceArtifactId: SliceArtifactId }
-  | { type: "correction-blocked"; actionId: ActionId }
+  | { type: "executing"; mode: "initial"; agentRunId: AgentRunId }
+  | { type: "executing"; mode: "correction"; agentRunId: AgentRunId; failureChain: FailureChain }
+  | { type: "needs-artifact-validation"; mode: "initial"; sliceArtifactId: SliceArtifactId }
+  | { type: "needs-artifact-validation"; mode: "correction"; sliceArtifactId: SliceArtifactId; failureChain: FailureChain }
+  /** actionId points to the latest failed Action that exhausted retries; failureChain.rootActionId points to the first failed Action in the chain. */
+  | { type: "correction-blocked"; actionId: ActionId; failureChain: FailureChain }
   | { type: "awaiting-review"; reviewSurfaceId: ReviewSurfaceId }
-  | { type: "executable"; mode: SliceExecutionMode };
+  | { type: "executable"; mode: "initial" }
+  | { type: "executable"; mode: "correction"; failureChain: FailureChain };
 
 // -----------------------------------------------------------------------------
 // Links / Graph
@@ -568,7 +578,7 @@ export type ActionResult =
   | { type: "validate-preflight"; evidence: ValidationEvidence }
   | { type: "create-delivery-artifact"; deliveryArtifactId: DeliveryArtifactId }
   | { type: "create-slice-artifact"; sliceId: SliceId; sliceArtifactId: SliceArtifactId }
-  | { type: "start-slice-execution"; sliceId: SliceId; mode: SliceExecutionMode; agentRunId: AgentRunId }
+  | { type: "start-slice-execution"; sliceId: SliceId; mode: "initial" | "correction"; agentRunId: AgentRunId }
   | { type: "start-revision-planning"; revisionGateId: RevisionGateId; agentRunId: AgentRunId }
   | { type: "validate-slice-artifact"; sliceId: SliceId; evidence: ValidationEvidence }
   | { type: "create-slice-review-surface"; sliceId: SliceId; reviewSurfaceId: ReviewSurfaceId }
