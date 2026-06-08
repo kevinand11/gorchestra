@@ -386,8 +386,8 @@ export interface DeliveryConfig {
 /**
  * Derived in priority order: closed, unqueued, dependency-blocked,
  * preflight-failed, slices-incomplete, delivery-validation-failed,
- * needs-artifact-validation, needs-review-surface, awaiting-review, then
- * ready-to-ship.
+ * delivery-review-failed, needs-artifact-validation, needs-review-surface,
+ * awaiting-review, then ready-to-ship.
  */
 export type DeliveryWorkState =
   | { type: "closed"; outcome: DeliveryClosed["type"] }
@@ -399,14 +399,20 @@ export type DeliveryWorkState =
   | { type: "slices-incomplete" }
   /** Latest Delivery-level artifact validation failed; Delivery-level correction behavior is deferred. */
   | { type: "delivery-validation-failed"; actionId: ActionId }
+  /** Current Delivery Review Surface closed without merge; exact Delivery-level correction behavior is deferred. */
+  | { type: "delivery-review-failed"; reviewSurfaceId: ReviewSurfaceId }
   /** All Slices are complete; Delivery Artifact needs Delivery-level validation before review/ship flow can continue. */
   | { type: "needs-artifact-validation" }
   /** Delivery Artifact validation passed and Delivery Review Surface still needs to be created. */
   | { type: "needs-review-surface" }
   /** Delivery Review Surface exists and is waiting for external review, merge, or observation. */
   | { type: "awaiting-review"; reviewSurfaceId: ReviewSurfaceId }
-  /** Delivery Review Surface has merged; Delivery can be shipped by shipDelivery. */
-  | { type: "ready-to-ship"; reviewSurfaceId: ReviewSurfaceId };
+  /** Delivery Branch is integrated into the Target Branch; Delivery can be shipped by shipDelivery. */
+  | { type: "ready-to-ship"; integration: DeliveryIntegration };
+
+export type DeliveryIntegration =
+  | { type: "review-surface-merged"; reviewSurfaceId: ReviewSurfaceId }
+  | { type: "observed-artifact-integration"; actionId: ActionId };
 
 export interface DeliveryWorkConfig {
   /** Must be >= 1. Limits active Slice work slots: executing, needs-artifact-validation, and needs-delivery-validation Slices plus unexpired scheduler claims count; external waiting states do not. */
@@ -434,7 +440,7 @@ export type DeliveryWorkConfigResolution = DeliveryWorkConfig;
 export interface DeliveryShipped {
   type: "shipped";
   shipped: AuditStamp;
-  reviewSurfaceId: ReviewSurfaceId;
+  integration: DeliveryIntegration;
 }
 
 export interface DeliveryAbandoned {
@@ -598,6 +604,8 @@ export type ActionResult =
   | { type: "observe-slice-review-surface"; sliceId: SliceId; reviewSurfaceId: ReviewSurfaceId }
   | { type: "promote-slice-artifact"; sliceId: SliceId; evidence: ExternalOperationEvidence }
   | { type: "validate-delivery-artifact"; evidence: ValidationEvidence }
+  /** Positive observation that the Delivery Artifact is already integrated into the target. */
+  | { type: "observe-delivery-artifact-integration"; evidence: ExternalOperationEvidence }
   | { type: "create-delivery-review-surface"; reviewSurfaceId: ReviewSurfaceId }
   | { type: "observe-delivery-review-surface"; reviewSurfaceId: ReviewSurfaceId }
   | { type: "start-revision-execution"; revisionId: RevisionId; agentRunId: AgentRunId }
@@ -661,6 +669,7 @@ export type ExternalOperation =
   | { type: "push-branch" }
   | { type: "create-review-surface" }
   | { type: "merge-review-surface" }
+  | { type: "observe-artifact-integration" }
   | { type: "close-review-surface" }
   | { type: "fetch-feedback" };
 

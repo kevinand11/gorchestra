@@ -615,6 +615,9 @@ export interface SourceControlPort {
   pushBranch(input: PushBranchInput): Promise<ExternalOperationEvidence>;
   validateBranch(input: ValidateBranchInput): Promise<ValidationEvidence>;
 
+  /** Integrated and failed evidence use operation observe-artifact-integration; not-integrated is transient scheduler branching and is not recorded. */
+  observeBranchIntegration(input: ObserveBranchIntegrationInput): Promise<ObserveBranchIntegrationResult>;
+
   createReviewSurface(input: CreateReviewSurfaceInput): Promise<ReviewSurfaceConfig>;
   fetchReviewSurface(input: FetchReviewSurfaceInput): Promise<ReviewSurface>;
   fetchFeedback(input: FetchFeedbackInput): Promise<FetchedFeedback[]>;
@@ -651,6 +654,17 @@ export interface ValidateBranchInput {
     { type: "slice-branch-validation" | "delivery-branch-validation" }
   >;
 }
+
+export interface ObserveBranchIntegrationInput {
+  repository: Repository;
+  sourceBranch: string;
+  targetBranch: string;
+}
+
+export type ObserveBranchIntegrationResult =
+  | { type: "integrated"; evidence: ExternalOperationEvidence }
+  | { type: "not-integrated" }
+  | { type: "failed"; evidence: ExternalOperationEvidence };
 
 export interface CreateReviewSurfaceInput {
   repository: Repository;
