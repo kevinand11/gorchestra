@@ -396,8 +396,8 @@ export type DeliveryWorkState =
   | { type: "ready" };
 
 export interface DeliveryWorkConfig {
-  /** Must be >= 1. Limits actively running Slice Agent Runs; waiting Slices do not count. */
-  maxActiveSlices: number;
+  /** Must be >= 1. Limits active Slice work slots: executing and needs-artifact-validation Slices plus unexpired scheduler claims count; external waiting states do not. */
+  maxActiveSliceSlots: number;
 
   /** Must be >= 0. Counts automatic correction Agent Runs per validation/external-operation failure chain. */
   maxCorrectionRetriesPerFailure: number;
@@ -451,6 +451,26 @@ export interface Slice {
 
   accepted: AuditStamp;
 }
+
+/**
+ * Derived in priority order: complete, needs-delivery-validation,
+ * dependency-blocked, executing, needs-artifact-validation, correction-blocked,
+ * awaiting-review, then executable.
+ */
+export type SliceExecutionMode = "initial" | "correction";
+
+export type SliceWorkState =
+  /** actionId points to the passed validate-delivery-artifact Action that completed the Slice. */
+  | { type: "complete"; actionId: ActionId }
+  /** Slice Artifact was promoted into the Delivery Artifact and the resulting Delivery Artifact still needs validation. */
+  | { type: "needs-delivery-validation"; actionId: ActionId }
+  /** blockedBy contains direct incomplete same-Delivery Slice dependencies only, ordered by dependency accepted time then SliceId. */
+  | { type: "dependency-blocked"; blockedBy: SliceId[] }
+  | { type: "executing"; mode: SliceExecutionMode; agentRunId: AgentRunId }
+  | { type: "needs-artifact-validation"; mode: SliceExecutionMode; sliceArtifactId: SliceArtifactId }
+  | { type: "correction-blocked"; actionId: ActionId }
+  | { type: "awaiting-review"; reviewSurfaceId: ReviewSurfaceId }
+  | { type: "executable"; mode: SliceExecutionMode };
 
 // -----------------------------------------------------------------------------
 // Links / Graph
@@ -547,9 +567,8 @@ export interface Action {
 export type ActionResult =
   | { type: "validate-preflight"; evidence: ValidationEvidence }
   | { type: "create-delivery-artifact"; deliveryArtifactId: DeliveryArtifactId }
-  | { type: "start-slice"; sliceId: SliceId }
   | { type: "create-slice-artifact"; sliceId: SliceId; sliceArtifactId: SliceArtifactId }
-  | { type: "start-slice-execution"; sliceId: SliceId; agentRunId: AgentRunId }
+  | { type: "start-slice-execution"; sliceId: SliceId; mode: SliceExecutionMode; agentRunId: AgentRunId }
   | { type: "start-revision-planning"; revisionGateId: RevisionGateId; agentRunId: AgentRunId }
   | { type: "validate-slice-artifact"; sliceId: SliceId; evidence: ValidationEvidence }
   | { type: "create-slice-review-surface"; sliceId: SliceId; reviewSurfaceId: ReviewSurfaceId }

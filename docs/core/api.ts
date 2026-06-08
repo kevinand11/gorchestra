@@ -168,9 +168,24 @@ export interface CoreCommands {
   queueDelivery(input: QueueDeliveryInput, context: OperationContext): Promise<Result<QueueDeliveryResult>>;
 
   /**
-   * Performs one bounded scheduler pass: records immediately-ready Actions and
-   * starts eligible Agent Runs up to current limits, without waiting for Agent
-   * Runs, review, human input, or other asynchronous external state.
+   * Performs one bounded scheduler step for one available processing slot:
+   * records immediately-ready Actions or starts one eligible Agent Run without
+   * waiting for Agent Runs, review, human input, or other asynchronous external
+   * state. maxActiveSliceSlots limits active Slice work slots for the Delivery. A
+   * scheduler loop should refetch Delivery/Slice state before each call and call
+   * runDeliveryWork again when capacity remains. Each step atomically claims at
+   * most one Slice work item so concurrent workers cannot repeat the same Slice
+   * work. Delivery-level follow-up work is also claimed atomically when
+   * processed. The claim/lock mechanism is implementation-specific scheduler
+   * coordination and is not modeled as Portfolio data in this sketch. Slice work
+   * is selected in this priority order: needs-delivery-validation,
+   * needs-artifact-validation, awaiting-review observation/merge, executable
+   * correction, executable initial, then Delivery-level validation/review/ship
+   * readiness when all Slices are complete. Within each Slice work bucket,
+   * selection is deterministic: needs-delivery-validation by promotion Action
+   * time; needs-artifact-validation by completed AgentRun time; awaiting-review
+   * by current ReviewSurface created time; executable correction by failed Action
+   * time; executable initial by Slice accepted time; all ties by SliceId.
    * Successful external operations that change or observe authoritative Delivery
    * state produce Actions. Failed external operations that produce evidence are
    * recorded as failure Actions. Delivery preflight runs before every bounded

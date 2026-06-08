@@ -112,12 +112,16 @@ _Avoid_: Archived Delivery, Deleted Delivery, canceled Delivery, soft-deleted De
 An independently executable unit inside exactly one Delivery. A Slice's parent Delivery and initial Instruction Source are immutable after acceptance. Slices participate in the Portfolio graph, and Slice-level dependencies are represented by Links between Slices in the same Delivery.
 _Avoid_: Step, task, subtask
 
+**Slice Work State**:
+A derived state describing whether Slice work can run or what external state it is waiting on. Slice Work State is computed from same-Delivery Slice dependency Links, Actions, Agent Runs, Slice Artifacts, and Review Surfaces, not stored directly. A Slice may be complete, needs-delivery-validation, dependency-blocked, executing, needs-artifact-validation, correction-blocked, awaiting-review, or executable, derived in that priority order. Complete means the Slice Artifact has been promoted into the Delivery Artifact and a later Delivery Artifact validation passed. Needs-delivery-validation means the Slice Artifact has been promoted into the Delivery Artifact and the resulting Delivery Artifact still needs validation. Needs-artifact-validation means a completed Slice execution must be validated by Gorchestra before review or promotion. Correction-blocked means automatic correction retry budget is exhausted for the latest Slice failure. Executing, needs-artifact-validation, and needs-delivery-validation Slices count against maxActiveSliceSlots; external waiting states do not. Executable Slices are candidates for runDeliveryWork to claim one processing slot at a time and may be initial or correction work. Dependency-blocked contains direct incomplete same-Delivery Slice dependencies ordered by dependency acceptance time, then Slice ID.
+_Avoid_: Slice status, task state, stored Slice state
+
 **Instruction Source**:
 Immutable stored instructions used by Agent Runs to perform accepted Slice or Revision work.
 _Avoid_: Plan Output, Revision Output, prompt
 
 **Delivery Config**:
-Scoped configuration for a Delivery's work. Delivery Config covers all configurable Delivery work behavior, including active Slice concurrency, correction retry limits per failure chain, Model selection for Actions, and Model timeout. Model timeout applies only to Model Agent work; future Agent types get their own config fields. Delivery Config may be configured at Portfolio, Project, or Delivery scope and inherited by a Delivery. Delivery Config is resolved on demand when work needs it, so changing a Delivery's config affects future work. Invalid Delivery Config is rejected when set.
+Scoped configuration for a Delivery's work. Delivery Config covers all configurable Delivery work behavior, including active Slice work slots, correction retry limits per failure chain, Model selection for Actions, and Model timeout. Model timeout applies only to Model Agent work; future Agent types get their own config fields. Delivery Config may be configured at Portfolio, Project, or Delivery scope and inherited by a Delivery. Delivery Config is resolved on demand when work needs it, so changing a Delivery's config affects future work. Invalid Delivery Config is rejected when set.
 _Avoid_: Execution Config, Execution Policy, scheduler settings
 
 **Delivery Work State**:
