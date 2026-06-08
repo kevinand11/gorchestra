@@ -48,12 +48,20 @@ _Avoid_: Restore, upload, merge
 An orchestration boundary inside a Portfolio where Gorchestra executes Deliveries against one or more execution targets. Project-specific planning context is expressed through Project-level Plans and Links to Portfolio-owned Memories.
 _Avoid_: Repository, repo
 
-**Project Type**:
-The kind of execution environment a Project manages, such as repository or workflow. A Project Type defines Delivery Artifact behavior, optional Slice Artifact behavior, Slice completion validation, Review Surface behavior, Feedback retrieval behavior, Ship behavior, and Abandon cleanup behavior.
+**Project Source**:
+The immutable configured execution source a Project manages. A Project Source determines Delivery Artifact behavior, optional Slice Artifact behavior, Slice completion validation, Review Surface behavior, Feedback retrieval behavior, Ship behavior, and Abandon cleanup behavior.
+_Avoid_: source config, target type
+
+**Project Source Type**:
+The kind of Project Source a Project uses, such as source control.
 _Avoid_: Project kind, target type
 
+**Project Config**:
+Project-level orchestration settings that apply to Plans and Deliveries in a Project unless overridden at a narrower scope.
+_Avoid_: Project Source Type, scheduler settings
+
 **Source Control Project**:
-The v1 Project Type that manages one or more Repositories.
+The v1 Project Source Type that manages one or more Repositories.
 _Avoid_: Repository Project, Git project, repo project
 
 **Repository**:
@@ -63,6 +71,10 @@ _Avoid_: Project, repo
 **Plan**:
 A Project-level reusable planning and discovery artifact. A Plan belongs to exactly one Project, captures research, analysis, requirements, and architectural discussion, and may produce zero, one, or many Plan Outputs for its Project.
 _Avoid_: Grill
+
+**Plan Config**:
+Immutable Plan-level orchestration settings for Planning, set only when the Plan is created. Plan Config does not control accepted Delivery execution.
+_Avoid_: Delivery Config, Project Config
 
 **Planning**:
 The activity of exploring a problem and refining a Plan.
@@ -77,7 +89,7 @@ The structured proposal shape a planning Agent Run must produce for review as a 
 _Avoid_: Accepted Plan, partial acceptance, staged output set, draft Plan
 
 **Delivery**:
-The Project-level unit of accepted executable work materialized by accepting a Plan Output. A Delivery belongs to a Project for execution and participates in the Portfolio graph for planning, provenance, and same-Project Delivery-level dependencies. A Delivery targets exactly one execution target for its Project type, contains at least one Slice, and cannot begin Slice work until explicitly started.
+The Project-level unit of accepted executable work materialized by accepting a Plan Output. A Delivery belongs to a Project for execution and participates in the Portfolio graph for planning, provenance, and same-Project Delivery-level dependencies. A Delivery targets exactly one execution target for its Project Source Type, contains at least one Slice, and cannot begin Slice work until explicitly started.
 _Avoid_: Change, task, ticket, draft Plan
 
 **Started Delivery**:
@@ -89,7 +101,7 @@ A closed Delivery whose external integration lifecycle has been completed.
 _Avoid_: Released Delivery, landed Delivery
 
 **Abandon**:
-To close a Delivery without shipping it, after required Project Type-specific cleanup is attempted or recorded.
+To close a Delivery without shipping it, after required Project Source Type-specific cleanup is attempted or recorded.
 _Avoid_: Archive, delete, cancel, soft-delete
 
 **Abandoned Delivery**:
@@ -104,9 +116,9 @@ _Avoid_: Step, task, subtask
 Immutable stored instructions used by Agent Runs to perform accepted Slice or Revision work.
 _Avoid_: Plan Output, Revision Output, prompt
 
-**Delivery Execution Config**:
-Scoped rules controlling how Gorchestra schedules Delivery Actions and Agent Runs, retries validation or external operation failures, and limits execution. Delivery Execution Config may be configured at Portfolio, Project, Plan, or Delivery scope and inherited by a Delivery. In v1, Delivery Execution Config includes max parallel Slices, max correction retries, and Agent Run timeout.
-_Avoid_: Execution Policy, Project Type, scheduler settings
+**Delivery Config**:
+Scoped configuration for a Delivery's work. Delivery Config covers all configurable Delivery work behavior, including active Slice concurrency, correction retry limits per failure chain, Model selection for Actions, and Model timeout. Model timeout applies only to Model Agent work; future Agent types get their own config fields. Delivery Config may be configured at Portfolio, Project, or Delivery scope and inherited by a Delivery. Delivery Config is resolved on demand when work needs it, so changing a Delivery's config affects future work. Invalid Delivery Config is rejected when set.
+_Avoid_: Execution Config, Execution Policy, Project Source Type, scheduler settings
 
 **Agent**:
 The discriminated value recorded on an Agent Run that identifies what performed the work. In v1, the only Agent is Model Agent. Agent is not a stored core model.
@@ -136,20 +148,16 @@ _Avoid_: LLM Loop Agent, Pi Agent, Codex Agent, external harness
 One concrete session where an agent carries out goal-directed work for Gorchestra. An Agent Run records its agent as a discriminated value, has interactivity derived from its purpose, and may gather information, use tools, edit code, run tests, produce outputs, or request human decisions. An Agent Run does not own authoritative state.
 _Avoid_: Mission, Turn, AgentAttempt, actor
 
-**Agent Run Config**:
-Scoped configuration for selecting Models for Agent Runs. Agent Run Config may be configured at Portfolio, Project, Plan, or Delivery scope and records when it was last updated, including when its config is cleared. Portfolio Agent Run Config defines the default Model and may define purpose-specific overrides. Project Agent Run Config may define overrides for all Agent Run purposes. Plan Agent Run Config may define planning overrides only. Delivery Agent Run Config may define revision-planning, execution, and revision-execution overrides. Effective config comes from the applicable scope hierarchy, and each Agent Run records the selected Model.
-_Avoid_: Agent, global model, user preference, standalone settings model
-
 **Agent Run Sandbox**:
 The isolated environment an Agent Run uses for its work, such as a worktree, temporary files, tools, and runtime environment. An Agent Run Sandbox is isolated to one Agent Run; cross-run state must be promoted by Gorchestra evaluation.
 _Avoid_: Mission Sandbox, Execution Sandbox, shared sandbox, workspace, project checkout
 
 **Delivery Artifact**:
-The Project Type-specific authoritative in-progress artifact for a Delivery, created lazily when execution first begins, promoted by Gorchestra from an Agent Run Sandbox after evaluation, and available to later Agent Runs or Project Type-specific external mutations. Every Project Type defines its Delivery Artifact. For a Source Control Project Delivery, the Delivery Artifact is the Delivery Branch.
+The Project Source Type-specific authoritative in-progress artifact for a Delivery, created lazily when execution first begins, promoted by Gorchestra from an Agent Run Sandbox after evaluation, and available to later Agent Runs or Project Source Type-specific external mutations. Every Project Source Type defines its Delivery Artifact. For a Source Control Project Delivery, the Delivery Artifact is the Delivery Branch.
 _Avoid_: Working Artifact, Working State, Agent Run Sandbox artifact, workspace, branch state
 
 **Slice Artifact**:
-A Project Type-specific temporary artifact for one Slice, created lazily when that Slice first begins. Project Types may define Slice Artifacts when they support isolated or parallel Slice work. A Slice with a Slice Artifact is complete only after the Slice Artifact is promoted into the Delivery Artifact and the resulting Delivery Artifact passes required validation. For a Source Control Project Slice, the Slice Artifact is the Slice Branch.
+A Project Source Type-specific temporary artifact for one Slice, created lazily when that Slice first begins. Project Source Types may define Slice Artifacts when they support isolated or parallel Slice work. A Slice with a Slice Artifact is complete only after the Slice Artifact is promoted into the Delivery Artifact and the resulting Delivery Artifact passes required validation. For a Source Control Project Slice, the Slice Artifact is the Slice Branch.
 _Avoid_: Working Artifact, Agent Run Sandbox artifact, Delivery Artifact
 
 **Delivery Branch**:

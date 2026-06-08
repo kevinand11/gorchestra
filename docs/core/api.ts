@@ -38,18 +38,17 @@ import type {
   ModelProviderHeader,
   ModelProviderId,
   ModelProviderProtocol,
-  DeliveryAgentRunConfig,
   Plan,
-  PlanAgentRunConfig,
+  PlanConfig,
   PlanId,
   PlanOutputProposal,
-  PortfolioAgentRunConfig,
   PortfolioConfig,
+  PortfolioConfigRecord,
   PortfolioSnapshotManifest,
   Project,
-  ProjectAgentRunConfig,
   ProjectConfig,
   ProjectId,
+  ProjectSource,
   Repository,
   RepositoryConfig,
   RepositoryId,
@@ -124,6 +123,7 @@ export type CoreError =
   | { type: "preflight-failed"; deliveryId: DeliveryId | null; modelId: ModelId | null; evidence: ValidationEvidence[] }
   | { type: "closed-delivery"; deliveryId: DeliveryId }
   | { type: "delivery-not-started"; deliveryId: DeliveryId }
+  | { type: "delivery-config-unresolved"; deliveryId: DeliveryId }
   | { type: "dependency-blocked"; deliveryId: DeliveryId; blockedBy: DeliveryId[] }
   | { type: "revision-gate-closed"; revisionGateId: RevisionGateId }
   | { type: "agent-run-model-unresolved"; purpose: AgentRunPurpose }
@@ -137,7 +137,7 @@ export type CoreError =
 
 export interface CoreCommands {
   // Portfolio config
-  setPortfolioConfig(input: SetPortfolioConfigInput, context: OperationContext): Promise<Result<PortfolioConfig>>;
+  setPortfolioConfig(input: SetPortfolioConfigInput, context: OperationContext): Promise<Result<PortfolioConfigRecord>>;
 
   // Model Providers / Models
   createModelProvider(input: CreateModelProviderInput, context: OperationContext): Promise<Result<ModelProvider>>;
@@ -152,7 +152,6 @@ export interface CoreCommands {
 
   // Planning
   createPlan(input: CreatePlanInput, context: OperationContext): Promise<Result<Plan>>;
-  setPlanAgentRunConfig(input: SetPlanAgentRunConfigInput, context: OperationContext): Promise<Result<Plan>>;
   acceptPlanOutput(input: AcceptPlanOutputInput, context: OperationContext): Promise<Result<AcceptPlanOutputResult>>;
   rejectPlanOutput(input: RejectPlanOutputInput, context: OperationContext): Promise<Result<void>>;
 
@@ -172,8 +171,7 @@ export interface CoreCommands {
 
   // Project / Repository config
   createProject(input: CreateProjectInput, context: OperationContext): Promise<Result<Project>>;
-  updateProjectConfig(input: UpdateProjectConfigInput, context: OperationContext): Promise<Result<Project>>;
-  setProjectAgentRunConfig(input: SetProjectAgentRunConfigInput, context: OperationContext): Promise<Result<Project>>;
+  setProjectConfig(input: SetProjectConfigInput, context: OperationContext): Promise<Result<Project>>;
   createRepository(input: CreateRepositoryInput, context: OperationContext): Promise<Result<Repository>>;
   updateRepositoryConfig(input: UpdateRepositoryConfigInput, context: OperationContext): Promise<Result<Repository>>;
 
@@ -188,11 +186,8 @@ export interface CoreCommands {
 }
 
 export interface SetPortfolioConfigInput {
-  agentRun: SetPortfolioAgentRunConfigInput;
-}
-
-export interface SetPortfolioAgentRunConfigInput {
-  config: PortfolioAgentRunConfig | null;
+  /** Creates or updates the retained Portfolio config record; model.defaultModelId is required. */
+  config: PortfolioConfig;
 }
 
 export interface CreateModelProviderInput {
@@ -245,16 +240,9 @@ export interface PreflightModelInput {
 export interface CreatePlanInput {
   projectId: ProjectId;
   title: string;
-  agentRun: PlanAgentRunConfig | null;
-}
 
-export interface SetPlanAgentRunConfigInput {
-  planId: PlanId;
-  agentRun: SetPlanAgentRunConfigValue;
-}
-
-export interface SetPlanAgentRunConfigValue {
-  config: PlanAgentRunConfig | null;
+  /** Null or all-null dimensions start with no Plan config record. */
+  config: PlanConfig | null;
 }
 
 export interface AcceptPlanOutputInput {
@@ -277,6 +265,8 @@ export interface RejectPlanOutputInput {
 
 export interface ConfigureDeliveryInput {
   deliveryId: DeliveryId;
+
+  /** Creates or updates the retained Delivery config record; all-null dimensions store value as null. */
   config: DeliveryConfig;
 }
 
@@ -344,22 +334,17 @@ export interface AbandonDeliveryResult {
 
 export interface CreateProjectInput {
   title: string;
-  config: ProjectConfig;
-  agentRun: ProjectAgentRunConfig | null;
+  source: ProjectSource;
+
+  /** Null or all-null dimensions start with no Project config record. */
+  config: ProjectConfig | null;
 }
 
-export interface UpdateProjectConfigInput {
+export interface SetProjectConfigInput {
   projectId: ProjectId;
+
+  /** Creates or updates the retained Project config record; all-null dimensions store value as null. */
   config: ProjectConfig;
-}
-
-export interface SetProjectAgentRunConfigInput {
-  projectId: ProjectId;
-  agentRun: SetProjectAgentRunConfigValue;
-}
-
-export interface SetProjectAgentRunConfigValue {
-  config: ProjectAgentRunConfig | null;
 }
 
 export interface CreateRepositoryInput {
@@ -423,7 +408,7 @@ export declare function importSnapshot(
 // -----------------------------------------------------------------------------
 
 export interface CoreQueries {
-  getPortfolioConfig(): Promise<PortfolioConfig | null>;
+  getPortfolioConfig(): Promise<PortfolioConfigRecord | null>;
 
   getProject(id: ProjectId): Promise<Project | null>;
   listProjects(): Promise<Project[]>;
@@ -514,7 +499,7 @@ export interface CoreStorage {
 }
 
 export interface CoreStorageTransaction {
-  portfolioConfig: SingletonRepository<PortfolioConfig>;
+  portfolioConfig: SingletonRepository<PortfolioConfigRecord>;
   projects: RepositoryTable<Project, ProjectId>;
   repositories: RepositoryTable<Repository, RepositoryId>;
   modelProviders: RepositoryTable<ModelProvider, ModelProviderId>;

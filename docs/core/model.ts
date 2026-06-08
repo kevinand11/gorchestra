@@ -82,21 +82,23 @@ export interface AuditedRecord {
 }
 
 // -----------------------------------------------------------------------------
-// Project / Project Type
+// Project / Project Source
 // -----------------------------------------------------------------------------
 
 export interface Project {
   id: ProjectId;
   title: string;
-  config: ProjectConfig;
-  agentRun: ProjectAgentRunConfigRecord | null;
+  /** Immutable after Project creation. */
+  source: ProjectSource;
+  /** Starts null; once created by a config setter, the record is retained and value may be cleared to null. */
+  config: ProjectConfigRecord | null;
   created: AuditStamp;
 }
 
-export type ProjectConfig = SourceControlProjectConfig;
-export type ProjectType = ProjectConfig["type"];
+export type ProjectSource = SourceControlProjectSource;
+export type ProjectSourceType = ProjectSource["type"];
 
-export interface SourceControlProjectConfig {
+export interface SourceControlProjectSource {
   type: "source-control";
 }
 
@@ -121,7 +123,7 @@ export interface GitHubRepositoryConfig {
 }
 
 // -----------------------------------------------------------------------------
-// Model Providers / Models / Agent Run Config
+// Model Providers / Models / Config
 // -----------------------------------------------------------------------------
 
 export interface ModelProvider {
@@ -182,38 +184,48 @@ export interface ModelUpdated extends AuditedRecord {}
 
 export interface ModelArchived extends AuditedRecord {}
 
+export interface PortfolioConfigRecord extends AuditedRecord {
+  value: PortfolioConfig;
+}
+
 export interface PortfolioConfig {
-  agentRun: PortfolioAgentRunConfigRecord | null;
+  model: PortfolioModelConfig;
+  work: DeliveryWorkConfig | null;
 }
 
-export interface PortfolioAgentRunConfigRecord extends AuditedRecord {
-  config: PortfolioAgentRunConfig | null;
+export interface ProjectConfigRecord extends AuditedRecord {
+  value: ProjectConfig | null;
 }
 
-export interface ProjectAgentRunConfigRecord extends AuditedRecord {
-  config: ProjectAgentRunConfig | null;
+export interface ProjectConfig {
+  model: ProjectModelConfig | null;
+  work: DeliveryWorkConfig | null;
 }
 
-export interface PlanAgentRunConfigRecord extends AuditedRecord {
-  config: PlanAgentRunConfig | null;
+export interface PlanConfigRecord extends AuditedRecord {
+  value: PlanConfig | null;
 }
 
-export interface PortfolioAgentRunConfig extends ProjectAgentRunConfig {
+export interface PlanConfig {
+  model: PlanModelConfig | null;
+}
+
+export interface PortfolioModelConfig extends ProjectModelConfig {
   defaultModelId: ModelId;
 }
 
-export interface ProjectAgentRunConfig {
+export interface ProjectModelConfig {
   planningModelId: ModelId | null;
   revisionPlanningModelId: ModelId | null;
   executionModelId: ModelId | null;
   revisionExecutionModelId: ModelId | null;
 }
 
-export interface PlanAgentRunConfig {
+export interface PlanModelConfig {
   planningModelId: ModelId | null;
 }
 
-export interface DeliveryAgentRunConfig {
+export interface DeliveryModelConfig {
   revisionPlanningModelId: ModelId | null;
   executionModelId: ModelId | null;
   revisionExecutionModelId: ModelId | null;
@@ -221,30 +233,33 @@ export interface DeliveryAgentRunConfig {
 
 /**
  * Effective Agent Run model selection is derived, not stored separately.
+ * Null config records, null values, and null model dimensions are skipped.
+ * Portfolio model config is never null when Portfolio config exists because it
+ * must include defaultModelId.
  *
  * planning:
- *   Plan.planningModelId
- *   -> Project.planningModelId
- *   -> Portfolio.planningModelId
- *   -> Portfolio.defaultModelId
+ *   Plan.config.value.model.planningModelId
+ *   -> Project.config.value.model.planningModelId
+ *   -> PortfolioConfigRecord.value.model.planningModelId
+ *   -> PortfolioConfigRecord.value.model.defaultModelId
  *
  * revision-planning:
- *   Delivery.revisionPlanningModelId
- *   -> Project.revisionPlanningModelId
- *   -> Portfolio.revisionPlanningModelId
- *   -> Portfolio.defaultModelId
+ *   Delivery.config.value.model.revisionPlanningModelId
+ *   -> Project.config.value.model.revisionPlanningModelId
+ *   -> PortfolioConfigRecord.value.model.revisionPlanningModelId
+ *   -> PortfolioConfigRecord.value.model.defaultModelId
  *
  * execution:
- *   Delivery.executionModelId
- *   -> Project.executionModelId
- *   -> Portfolio.executionModelId
- *   -> Portfolio.defaultModelId
+ *   Delivery.config.value.model.executionModelId
+ *   -> Project.config.value.model.executionModelId
+ *   -> PortfolioConfigRecord.value.model.executionModelId
+ *   -> PortfolioConfigRecord.value.model.defaultModelId
  *
  * revision-execution:
- *   Delivery.revisionExecutionModelId
- *   -> Project.revisionExecutionModelId
- *   -> Portfolio.revisionExecutionModelId
- *   -> Portfolio.defaultModelId
+ *   Delivery.config.value.model.revisionExecutionModelId
+ *   -> Project.config.value.model.revisionExecutionModelId
+ *   -> PortfolioConfigRecord.value.model.revisionExecutionModelId
+ *   -> PortfolioConfigRecord.value.model.defaultModelId
  */
 export type AgentRunModelResolution = {
   purpose: AgentRunPurpose["type"];
@@ -259,7 +274,8 @@ export interface Plan {
   id: PlanId;
   projectId: ProjectId;
   title: string;
-  agentRun: PlanAgentRunConfigRecord | null;
+  /** Immutable after Plan creation; null means the Plan has no Plan-level config. */
+  config: PlanConfigRecord | null;
   created: AuditStamp;
 }
 
@@ -342,6 +358,7 @@ export interface Delivery {
   planId: PlanId;
   title: string;
   target: DeliveryTarget;
+  /** Starts null; once created by configureDelivery, the record is retained and value may be cleared to null. */
   config: DeliveryConfigRecord | null;
 
   /** Every Delivery has at least one Slice. */
@@ -363,19 +380,39 @@ export interface DeliveryStarted extends AuditedRecord {}
 export type DeliveryClosed = DeliveryShipped | DeliveryAbandoned;
 
 export interface DeliveryConfigRecord extends AuditedRecord {
-  config: DeliveryConfig;
+  value: DeliveryConfig | null;
 }
 
 export interface DeliveryConfig {
-  agentRun: DeliveryAgentRunConfig | null;
-  execution: DeliveryExecutionConfig;
+  /** Null means no Delivery-level Agent Run override; inherit from outer scopes. */
+  model: DeliveryModelConfig | null;
+
+  /** Null means no Delivery-level work override; inherit from outer scopes. */
+  work: DeliveryWorkConfig | null;
 }
 
-export interface DeliveryExecutionConfig {
-  maxParallelSlices: number;
-  maxCorrectionRetries: number;
-  agentRunTimeoutMs: number;
+export interface DeliveryWorkConfig {
+  /** Must be >= 1. */
+  maxActiveSlices: number;
+
+  /** Must be >= 0. */
+  maxCorrectionRetriesPerFailure: number;
+
+  /** Must be >= 1. */
+  modelTimeoutMs: number;
 }
+
+/**
+ * Effective Delivery work config is derived on demand, not stored separately.
+ * Delivery work uses the current resolved config each time work is run.
+ * Null config records, null values, and null work dimensions are skipped.
+ * Portfolio config always has a non-null value when its record exists.
+ *
+ * Delivery.config.value.work
+ * -> Project.config.value.work
+ * -> PortfolioConfigRecord.value.work
+ */
+export type DeliveryWorkConfigResolution = DeliveryWorkConfig;
 
 export interface DeliveryShipped extends AuditedRecord {
   type: "shipped";
