@@ -800,9 +800,13 @@ const openCoreOptionsPipe = v.object({
 
 const localActorRefPipe = v.object({ type: rawStringPipe, id: rawStringPipe })
 const operationContextPipe = v.object({ actor: localActorRefPipe, correlationId: v.nullable(rawStringPipe) })
+const encryptedSnapshotPayloadPipe = v
+	.instanceOf(Uint8Array, 'Expected a Uint8Array encrypted snapshot payload.')
+	.pipe(v.custom<Uint8Array<ArrayBuffer>>((value) => value.byteLength > 0, 'Expected a non-empty encrypted snapshot payload.'))
+
 const importSnapshotInputPipe = v.object({
 	passphrase: nonEmptyRawStringPipe,
-	encryptedPayload: v.instanceOf(Uint8Array, 'Expected a Uint8Array encrypted snapshot payload.'),
+	encryptedPayload: encryptedSnapshotPayloadPipe,
 	storage: storagePipe,
 })
 const importSnapshotBoundaryPipe = v.object({ input: importSnapshotInputPipe, context: operationContextPipe })
