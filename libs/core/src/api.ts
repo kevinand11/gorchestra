@@ -219,6 +219,7 @@ export interface CoreCommands {
 	archiveModel(input: ArchiveModelInput, context: OperationContext): Promise<Result<Model>>
 	unarchiveModel(input: UnarchiveModelInput, context: OperationContext): Promise<Result<Model>>
 	preflightModel(input: PreflightModelInput, context: OperationContext): Promise<Result<ValidationEvidence>>
+	preflightRepository(input: PreflightRepositoryInput, context: OperationContext): Promise<Result<ValidationEvidence>>
 
 	// Planning
 	createPlan(input: CreatePlanInput, context: OperationContext): Promise<Result<Plan>>
@@ -371,6 +372,10 @@ export interface UnarchiveModelInput {
 
 export interface PreflightModelInput {
 	modelId: ModelId
+}
+
+export interface PreflightRepositoryInput {
+	repositoryId: RepositoryId
 }
 
 export interface CreatePlanInput {
@@ -1020,6 +1025,7 @@ const commandInputPipes = {
 	archiveModel: v.object({ modelId: brandedIdPipe }),
 	unarchiveModel: v.object({ modelId: brandedIdPipe }),
 	preflightModel: v.object({ modelId: brandedIdPipe }),
+	preflightRepository: v.object({ repositoryId: brandedIdPipe }),
 	createPlan: v.object({
 		projectId: brandedIdPipe,
 		title: nonEmptyTrimmedStringPipe,
@@ -1228,6 +1234,9 @@ function createCoreCommands(): CoreCommands {
 		},
 		preflightModel(input, context) {
 			return commandStub<ValidationEvidence>('preflightModel', input, context)
+		},
+		preflightRepository(input, context) {
+			return commandStub<ValidationEvidence>('preflightRepository', input, context)
 		},
 		createPlan(input, context) {
 			return commandStub<Plan>('createPlan', input, context)
