@@ -8,5 +8,8 @@
   },
   "files": [
     "src"
-  ]
+  ],
+  "dependencies": {
+    "valleyed": "4.5.20"
+  }
 }

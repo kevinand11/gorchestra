@@ -42,7 +42,11 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@types/node@24.10.1)(yaml@2.9.0)
 
-  libs/core: {}
+  libs/core:
+    dependencies:
+      valleyed:
+        specifier: 4.5.20
+        version: 4.5.20
 
 packages:
   "@esbuild/aix-ppc64@0.27.7":
@@ -467,6 +471,10 @@ packages:
       { integrity: sha512-X+zaP2x+j4RXGfbp/seSoRHWnPxzApilDszisZxbYH5C/jTxFhCtDNdPGZb9lJyYPs24wGxruPF7Y+sIXt9Gzw== }
     cpu: [x64]
     os: [win32]
+
+  "@standard-schema/spec@1.1.0":
+    resolution:
+      { integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w== }
 
   "@types/chai@5.2.3":
     resolution:
@@ -964,6 +972,11 @@ packages:
       { integrity: sha512-JmXMZ6wuvDmLiHEml9ykzqO6lwFbof0GG4IkcGaENdCRDDmMVnny7s5HsIgHCbaq0w2MyPhDqkhTUgS2LU2PHA== }
     engines: { node: ">=0.8.19" }
 
+  ip-regex@4.3.0:
+    resolution:
+      { integrity: sha512-B9ZWJxHHOHUhUjCPrMpLD4xEq35bUTClHM1S6CBU5ixQnkZmwipwgc96vAd7AAGM9TGHvJR+Uss+/Ak6UphK+Q== }
+    engines: { node: ">=8" }
+
   is-extglob@2.1.1:
     resolution:
       { integrity: sha512-SbKbANkN603Vi4jEZv49LeVJMn4yGwsbzZworEoyEiutsN3nJYdbO36zfhGJ6QEDpOZIFkDtnq5JRxmvl3jsoQ== }
@@ -1356,6 +1369,11 @@ packages:
       { integrity: sha512-azl+t0z7pw/z958Gy9svOTuzqIk6xq+NSheJzn5MMWtWTFywIacg2wUlzKFGtt3cthx0r2SxMK0yzJOR0IES7Q== }
     engines: { node: ">=14.0.0" }
 
+  tlds@1.261.0:
+    resolution:
+      { integrity: sha512-QXqwfEl9ddlGBaRFXIvNKK6OhipSiLXuRuLJX5DErz0o0Q0rYxulWLdFryTkV5PkdZct5iMInwYEGe/eR++1AA== }
+    hasBin: true
+
   to-regex-range@5.0.1:
     resolution:
       { integrity: sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ== }
@@ -1394,6 +1412,20 @@ packages:
   uri-js@4.4.1:
     resolution:
       { integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg== }
+
+  url-regex-safe@4.0.0:
+    resolution:
+      { integrity: sha512-BrnFCWKNFrFnRzKD66NtJqQepfJrUHNPvPxE5y5NSAhXBb4OlobQjt7907Jm4ItPiXaeX+dDWMkcnOd4jR9N8A== }
+    engines: { node: ">= 14" }
+    peerDependencies:
+      re2: ^1.20.1
+    peerDependenciesMeta:
+      re2:
+        optional: true
+
+  valleyed@4.5.20:
+    resolution:
+      { integrity: sha512-YPnzucaJwVrRSFL4O16IaQkaH18V8CyyCZSG+86dwBCk869hCtFuZGVyBf7Fe1PisIYp4DkV1eqMSgf1OWzW1w== }
 
   vite-node@3.2.4:
     resolution:
@@ -1733,6 +1765,8 @@ snapshots:
 
   "@rollup/rollup-win32-x64-msvc@4.61.1":
     optional: true
+
+  "@standard-schema/spec@1.1.0": {}
 
   "@types/chai@5.2.3":
     dependencies:
@@ -2189,6 +2223,8 @@ snapshots:
 
   imurmurhash@0.1.4: {}
 
+  ip-regex@4.3.0: {}
+
   is-extglob@2.1.1: {}
 
   is-fullwidth-code-point@4.0.0: {}
@@ -2479,6 +2515,8 @@ snapshots:
 
   tinyspy@4.0.4: {}
 
+  tlds@1.261.0: {}
+
   to-regex-range@5.0.1:
     dependencies:
       is-number: 7.0.0
@@ -2509,6 +2547,18 @@ snapshots:
   uri-js@4.4.1:
     dependencies:
       punycode: 2.3.1
+
+  url-regex-safe@4.0.0:
+    dependencies:
+      ip-regex: 4.3.0
+      tlds: 1.261.0
+
+  valleyed@4.5.20:
+    dependencies:
+      "@standard-schema/spec": 1.1.0
+      url-regex-safe: 4.0.0
+    transitivePeerDependencies:
+      - re2
 
   vite-node@3.2.4(@types/node@24.10.1)(yaml@2.9.0):
     dependencies:

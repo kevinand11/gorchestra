@@ -10,6 +10,8 @@
  * invariants and owns orchestration behavior inside the opened Portfolio space.
  */
 
+import { v, type Pipe, type PipeError, type PipeOutput } from "valleyed";
+
 import type {
   Action,
   CorrectionEvidence,
@@ -97,10 +99,10 @@ export interface OpenCoreOptions {
 }
 
 export function openCore(options: OpenCoreOptions): Result<GorchestraCore, OpenCoreError> {
-  const issues = validateOpenCoreOptions(options);
+  const validation = validateCoreInput(openCoreOptionsPipe, options, "construction", "openCore");
 
-  if (issues.length > 0) {
-    return { ok: false, error: { type: "invalid-input", issues } };
+  if (!validation.ok) {
+    return validation;
   }
 
   return {
@@ -131,14 +133,13 @@ export interface OperationContext {
 
 export type Result<T, E = CoreError> = { ok: true; value: T } | { ok: false; error: E };
 
-export interface CoreInputIssue {
-  path: string;
-  message: string;
-}
+export type CoreInputBoundary = "construction" | "snapshot-import" | "command" | "query";
 
 export interface InvalidInputError {
   type: "invalid-input";
-  issues: CoreInputIssue[];
+  boundary: CoreInputBoundary;
+  operation: string;
+  pipeError: PipeError;
 }
 
 export interface NotImplementedError {
@@ -558,18 +559,24 @@ export async function importSnapshot(
   input: ImportSnapshotInput,
   context: OperationContext,
 ): Promise<Result<ImportSnapshotResult, ImportSnapshotError>> {
-  const issues = [...validateImportSnapshotInput(input), ...validateOperationContext(context, "context")];
+  const validation = validateCoreInput(
+    importSnapshotBoundaryPipe,
+    { input, context },
+    "snapshot-import",
+    "importSnapshot",
+  );
 
-  if (issues.length > 0) {
-    return { ok: false, error: { type: "invalid-input", issues } };
+  if (!validation.ok) {
+    return validation;
   }
 
+  const validInput = validation.value.input as ImportSnapshotInput;
   let decrypted: DecryptedSnapshot;
 
   try {
-    decrypted = await input.snapshotEncryption.decrypt({
-      passphrase: input.passphrase,
-      encryptedPayload: input.encryptedPayload,
+    decrypted = await validInput.snapshotEncryption.decrypt({
+      passphrase: validInput.passphrase,
+      encryptedPayload: validInput.encryptedPayload,
     });
   } catch (error) {
     return { ok: false, error: { type: "snapshot-decryption-failed", message: errorToMessage(error) } };
@@ -589,7 +596,7 @@ export async function importSnapshot(
   }
 
   try {
-    await input.storage.transaction(() => Promise.resolve(undefined));
+    await validInput.storage.transaction(() => Promise.resolve(undefined));
   } catch (error) {
     return { ok: false, error: { type: "storage-operation-failed", message: errorToMessage(error) } };
   }
@@ -969,6 +976,366 @@ export interface CoreLogger {
 }
 
 // -----------------------------------------------------------------------------
+// Consumer -> core input validation
+// -----------------------------------------------------------------------------
+
+type AnyFunction = (...args: never[]) => unknown;
+
+const functionDependencyPipe = v
+  .any<unknown>()
+  .pipe(v.custom<unknown>((value) => typeof value === "function", "Expected a function dependency.")) as Pipe<
+  unknown,
+  AnyFunction
+>;
+
+const rawStringPipe = v.string();
+const nonEmptyRawStringPipe = v.string().pipe(v.min(1, "Expected a non-empty string."));
+const trimmedStringPipe = v.string().pipe(v.asTrimmed());
+const nonEmptyTrimmedStringPipe = trimmedStringPipe.pipe(v.min(1, "Expected a non-empty string."));
+const freeFormStringPipe = trimmedStringPipe;
+const brandedIdPipe = nonEmptyTrimmedStringPipe;
+const nullableBrandedIdPipe = v.nullable(brandedIdPipe);
+const secretValueRefPipe = nonEmptyTrimmedStringPipe;
+const integerPipe = v.number().pipe(v.int("Expected an integer."));
+const positiveIntegerPipe = integerPipe.pipe(v.gte(1, "Expected a number greater than or equal to 1."));
+const nonNegativeIntegerPipe = integerPipe.pipe(v.gte(0, "Expected a number greater than or equal to 0."));
+const modelProviderBaseUrlPipe = nonEmptyTrimmedStringPipe
+  .pipe(v.define<string, string>((value) => value.replace(/\/+$/, "")))
+  .pipe(
+    v.custom<string>((value) => {
+      try {
+        const url = new URL(value);
+        const hostname = url.hostname.toLowerCase();
+
+        return (
+          url.protocol === "https:" ||
+          (url.protocol === "http:" && (hostname === "localhost" || hostname === "127.0.0.1"))
+        );
+      } catch {
+        return false;
+      }
+    }, "Expected an https URL, or an http localhost URL."),
+  );
+const headerNamePipe = nonEmptyTrimmedStringPipe.pipe(
+  v.custom<string>((value) => /^[A-Za-z0-9-]+$/.test(value), "Expected an HTTP header name."),
+);
+const envNamePipe = nonEmptyTrimmedStringPipe.pipe(
+  v.custom<string>((value) => /^[A-Z_][A-Z0-9_]*$/.test(value), "Expected an environment variable name."),
+);
+
+const storagePipe = v.object({ transaction: functionDependencyPipe });
+const snapshotEncryptionPortPipe = v.object({ encrypt: functionDependencyPipe, decrypt: functionDependencyPipe });
+const sourceControlPortPipe = v.object({
+  preflightRepository: functionDependencyPipe,
+  createDeliveryBranch: functionDependencyPipe,
+  createSliceBranch: functionDependencyPipe,
+  pushBranch: functionDependencyPipe,
+  validateBranch: functionDependencyPipe,
+  observeBranchIntegration: functionDependencyPipe,
+  createReviewSurface: functionDependencyPipe,
+  fetchReviewSurface: functionDependencyPipe,
+  fetchFeedback: functionDependencyPipe,
+  mergeReviewSurface: functionDependencyPipe,
+  closeReviewSurface: functionDependencyPipe,
+});
+const modelAgentRuntimePortPipe = v.object({
+  preflightModel: functionDependencyPipe,
+  runModelAgent: functionDependencyPipe,
+});
+const secretResolutionPortPipe = v.object({
+  resolveSecrets: functionDependencyPipe,
+  resolveSecretValues: functionDependencyPipe,
+});
+const coreEventSinkPipe = v.object({ publish: functionDependencyPipe });
+const coreLoggerPipe = v.object({
+  debug: functionDependencyPipe,
+  info: functionDependencyPipe,
+  warn: functionDependencyPipe,
+  error: functionDependencyPipe,
+});
+const corePortsPipe = v.object({
+  sourceControl: sourceControlPortPipe,
+  modelAgentRuntime: modelAgentRuntimePortPipe,
+  secrets: secretResolutionPortPipe,
+  snapshotEncryption: snapshotEncryptionPortPipe,
+  events: v.nullable(coreEventSinkPipe),
+  logger: v.nullable(coreLoggerPipe),
+});
+const openCoreOptionsPipe = v.object({
+  storage: storagePipe,
+  ports: corePortsPipe,
+  clock: v.object({ now: functionDependencyPipe }),
+  idGenerator: v.object({ nextId: functionDependencyPipe }),
+});
+
+const localActorRefPipe = v.object({ type: rawStringPipe, id: rawStringPipe });
+const operationContextPipe = v.object({ actor: localActorRefPipe, correlationId: v.nullable(rawStringPipe) });
+const importSnapshotInputPipe = v.object({
+  passphrase: nonEmptyRawStringPipe,
+  encryptedPayload: v.instanceOf(Uint8Array, "Expected a Uint8Array encrypted snapshot payload."),
+  storage: storagePipe,
+  snapshotEncryption: snapshotEncryptionPortPipe,
+});
+const importSnapshotBoundaryPipe = v.object({ input: importSnapshotInputPipe, context: operationContextPipe });
+
+const modelProviderProtocolPipe = enumStringPipe([
+  "anthropic-messages",
+  "openai-responses",
+  "openai-completions",
+  "google-generative-ai",
+] as const);
+const modelProviderAuthPipe = v.discriminate(discriminator, {
+  apiKey: v.object({ type: v.eq("apiKey"), secretId: brandedIdPipe }),
+});
+const modelProviderHeaderPipe = v.object({ name: headerNamePipe, valueSecretId: brandedIdPipe });
+const deliveryWorkConfigPipe = v.object({
+  maxActiveSliceSlots: positiveIntegerPipe,
+  maxCorrectionRetriesPerFailure: nonNegativeIntegerPipe,
+  modelTimeoutMs: positiveIntegerPipe,
+});
+const projectModelConfigPipe = v.object({
+  planningModelId: nullableBrandedIdPipe,
+  revisionPlanningModelId: nullableBrandedIdPipe,
+  executionModelId: nullableBrandedIdPipe,
+  revisionExecutionModelId: nullableBrandedIdPipe,
+});
+const portfolioModelConfigPipe = v.object({
+  defaultModelId: brandedIdPipe,
+  planningModelId: nullableBrandedIdPipe,
+  revisionPlanningModelId: nullableBrandedIdPipe,
+  executionModelId: nullableBrandedIdPipe,
+  revisionExecutionModelId: nullableBrandedIdPipe,
+});
+const planModelConfigPipe = v.object({ planningModelId: nullableBrandedIdPipe });
+const deliveryModelConfigPipe = v.object({
+  revisionPlanningModelId: nullableBrandedIdPipe,
+  executionModelId: nullableBrandedIdPipe,
+  revisionExecutionModelId: nullableBrandedIdPipe,
+});
+const portfolioConfigPipe = v.object({ model: portfolioModelConfigPipe, work: v.nullable(deliveryWorkConfigPipe) });
+const projectConfigPipe = v.object({
+  model: v.nullable(projectModelConfigPipe),
+  work: v.nullable(deliveryWorkConfigPipe),
+});
+const planConfigPipe = v.object({ model: v.nullable(planModelConfigPipe) });
+const deliveryConfigPipe = v.object({
+  model: v.nullable(deliveryModelConfigPipe),
+  work: v.nullable(deliveryWorkConfigPipe),
+});
+
+const projectSourcePipe = v.discriminate(discriminator, {
+  "source-control": v.object({ type: v.eq("source-control") }),
+});
+const repositoryConfigPipe = v.discriminate(discriminatorFrom("provider"), {
+  github: v.object({ provider: v.eq("github"), owner: nonEmptyTrimmedStringPipe, name: nonEmptyTrimmedStringPipe }),
+});
+const proposedDeliveryTargetPipe = v.discriminate(discriminator, {
+  "source-control": v.object({
+    type: v.eq("source-control"),
+    repositoryId: brandedIdPipe,
+    targetBranch: nonEmptyTrimmedStringPipe,
+  }),
+});
+const instructionSourcePipe = v.object({ body: freeFormStringPipe });
+const proposedSlicePipe = v.object({
+  proposedSliceKey: nonEmptyTrimmedStringPipe,
+  title: nonEmptyTrimmedStringPipe,
+  instruction: instructionSourcePipe,
+  dependsOnProposedSliceKeys: v.array(nonEmptyTrimmedStringPipe),
+});
+const proposedDeliveryPipe = v.object({
+  proposedDeliveryKey: nonEmptyTrimmedStringPipe,
+  title: nonEmptyTrimmedStringPipe,
+  target: proposedDeliveryTargetPipe,
+  slices: v.array(proposedSlicePipe),
+  dependsOnDeliveryIds: v.array(brandedIdPipe),
+});
+const memoryTypePipe = enumStringPipe([
+  "decision",
+  "fact",
+  "constraint",
+  "assumption",
+  "risk",
+  "architecture",
+  "workflow",
+  "convention",
+] as const);
+const proposedMemoryPipe = v.object({
+  proposedMemoryKey: nonEmptyTrimmedStringPipe,
+  title: nonEmptyTrimmedStringPipe,
+  body: freeFormStringPipe,
+  type: v.nullable(memoryTypePipe),
+});
+const graphNodeRefPipe = v.discriminate(discriminator, {
+  plan: v.object({ type: v.eq("plan"), id: brandedIdPipe }),
+  project: v.object({ type: v.eq("project"), id: brandedIdPipe }),
+  delivery: v.object({ type: v.eq("delivery"), id: brandedIdPipe }),
+  slice: v.object({ type: v.eq("slice"), id: brandedIdPipe }),
+  memory: v.object({ type: v.eq("memory"), id: brandedIdPipe }),
+});
+const proposedGraphRefPipe = v.discriminate(discriminator, {
+  existing: v.object({ type: v.eq("existing"), node: graphNodeRefPipe }),
+  "proposed-delivery": v.object({ type: v.eq("proposed-delivery"), proposedDeliveryKey: nonEmptyTrimmedStringPipe }),
+  "proposed-slice": v.object({ type: v.eq("proposed-slice"), proposedSliceKey: nonEmptyTrimmedStringPipe }),
+  "proposed-memory": v.object({ type: v.eq("proposed-memory"), proposedMemoryKey: nonEmptyTrimmedStringPipe }),
+});
+const linkTypePipe = enumStringPipe([
+  "produced",
+  "implements",
+  "references",
+  "supersedes",
+  "supports",
+  "contradicts",
+  "depends-on",
+] as const);
+const proposedLinkPipe = v.object({ type: linkTypePipe, from: proposedGraphRefPipe, to: proposedGraphRefPipe });
+const planOutputProposalPipe = v.object({
+  proposedDeliveries: v.array(proposedDeliveryPipe),
+  proposedMemories: v.array(proposedMemoryPipe),
+  proposedLinks: v.array(proposedLinkPipe),
+});
+const revisionDispositionPipe = v.object({ body: freeFormStringPipe });
+const revisionOutputProposalPipe = v.object({
+  instruction: instructionSourcePipe,
+  disposition: revisionDispositionPipe,
+});
+const secretBindingScopePipe = v.discriminate(discriminator, {
+  portfolio: v.object({ type: v.eq("portfolio") }),
+  project: v.object({ type: v.eq("project"), projectId: brandedIdPipe }),
+  delivery: v.object({ type: v.eq("delivery"), deliveryId: brandedIdPipe }),
+});
+const secretTypePipe = enumStringPipe(["github-pat", "generic"] as const);
+const reviewSurfaceScopePipe = v.discriminate(discriminator, {
+  slice: v.object({ type: v.eq("slice"), sliceId: brandedIdPipe, sliceArtifactId: brandedIdPipe }),
+  delivery: v.object({ type: v.eq("delivery"), deliveryId: brandedIdPipe, deliveryArtifactId: brandedIdPipe }),
+});
+const revisionScopePipe = v.discriminate(discriminator, {
+  "slice-artifact": v.object({ type: v.eq("slice-artifact"), sliceId: brandedIdPipe, sliceArtifactId: brandedIdPipe }),
+  "delivery-artifact": v.object({
+    type: v.eq("delivery-artifact"),
+    deliveryId: brandedIdPipe,
+    deliveryArtifactId: brandedIdPipe,
+  }),
+});
+const repositoryFilterPipe = v.object({ projectId: nullableBrandedIdPipe });
+const modelProviderFilterPipe = v.object({ archived: v.nullable(v.boolean()) });
+const modelFilterPipe = v.object({ providerId: nullableBrandedIdPipe, selectable: v.nullable(v.boolean()) });
+const planFilterPipe = v.object({ projectId: nullableBrandedIdPipe });
+const deliveryFilterPipe = v.object({
+  projectId: nullableBrandedIdPipe,
+  closed: v.nullable(enumStringPipe(["open", "shipped", "abandoned"] as const)),
+});
+const timelineFilterPipe = v.object({
+  deliveryId: nullableBrandedIdPipe,
+  sliceId: nullableBrandedIdPipe,
+  since: v.nullable(rawStringPipe),
+  until: v.nullable(rawStringPipe),
+});
+
+const commandInputPipes = {
+  setPortfolioConfig: v.object({ config: portfolioConfigPipe }),
+  createModelProvider: v.object({
+    name: nonEmptyTrimmedStringPipe,
+    protocol: modelProviderProtocolPipe,
+    baseUrl: modelProviderBaseUrlPipe,
+    auth: v.nullable(modelProviderAuthPipe),
+    headers: v.array(modelProviderHeaderPipe),
+  }),
+  updateModelProvider: v.object({
+    modelProviderId: brandedIdPipe,
+    name: nonEmptyTrimmedStringPipe,
+    baseUrl: modelProviderBaseUrlPipe,
+    auth: v.nullable(modelProviderAuthPipe),
+    headers: v.array(modelProviderHeaderPipe),
+  }),
+  archiveModelProvider: v.object({ modelProviderId: brandedIdPipe }),
+  unarchiveModelProvider: v.object({ modelProviderId: brandedIdPipe }),
+  createModel: v.object({
+    providerId: brandedIdPipe,
+    name: nonEmptyTrimmedStringPipe,
+    providerModelId: nonEmptyTrimmedStringPipe,
+  }),
+  updateModel: v.object({ modelId: brandedIdPipe, name: nonEmptyTrimmedStringPipe }),
+  archiveModel: v.object({ modelId: brandedIdPipe }),
+  unarchiveModel: v.object({ modelId: brandedIdPipe }),
+  preflightModel: v.object({ modelId: brandedIdPipe }),
+  createPlan: v.object({
+    projectId: brandedIdPipe,
+    title: nonEmptyTrimmedStringPipe,
+    config: v.nullable(planConfigPipe),
+  }),
+  acceptPlanOutput: v.object({ planId: brandedIdPipe, output: planOutputProposalPipe }),
+  rejectPlanOutput: v.object({ planId: brandedIdPipe }),
+  configureDelivery: v.object({ deliveryId: brandedIdPipe, config: deliveryConfigPipe }),
+  queueDelivery: v.object({ deliveryId: brandedIdPipe }),
+  runDeliveryWork: v.object({ deliveryId: brandedIdPipe }),
+  retryDeliveryPreflight: v.object({ deliveryId: brandedIdPipe }),
+  openRevisionGate: v.object({ reviewSurfaceId: brandedIdPipe }),
+  acceptRevisionOutput: v.object({ revisionGateId: brandedIdPipe, output: revisionOutputProposalPipe }),
+  closeRevisionGate: v.object({ revisionGateId: brandedIdPipe }),
+  shipDelivery: v.object({ deliveryId: brandedIdPipe }),
+  abandonDelivery: v.object({ deliveryId: brandedIdPipe, reason: freeFormStringPipe }),
+  createProject: v.object({
+    title: nonEmptyTrimmedStringPipe,
+    source: projectSourcePipe,
+    config: v.nullable(projectConfigPipe),
+  }),
+  setProjectConfig: v.object({ projectId: brandedIdPipe, config: projectConfigPipe }),
+  createRepository: v.object({ projectId: brandedIdPipe, config: repositoryConfigPipe }),
+  updateRepositoryConfig: v.object({ repositoryId: brandedIdPipe, config: repositoryConfigPipe }),
+  createSecret: v.object({ type: secretTypePipe, name: nonEmptyTrimmedStringPipe, valueRef: secretValueRefPipe }),
+  replaceSecret: v.object({ secretId: brandedIdPipe, valueRef: secretValueRefPipe }),
+  bindSecret: v.object({ secretId: brandedIdPipe, scope: secretBindingScopePipe, envName: envNamePipe }),
+  archiveSecretBinding: v.object({ secretBindingId: brandedIdPipe }),
+  exportSnapshot: v.object({ passphrase: nonEmptyRawStringPipe }),
+} satisfies Record<keyof CoreCommands, Pipe<unknown, unknown>>;
+
+const queryArgumentPipes = {
+  getPortfolioConfig: argumentTuplePipe([]),
+  getProject: argumentTuplePipe([brandedIdPipe]),
+  listProjects: argumentTuplePipe([]),
+  getRepository: argumentTuplePipe([brandedIdPipe]),
+  listRepositories: argumentTuplePipe([v.nullable(repositoryFilterPipe)]),
+  getModelProvider: argumentTuplePipe([brandedIdPipe]),
+  listModelProviders: argumentTuplePipe([v.nullable(modelProviderFilterPipe)]),
+  getModel: argumentTuplePipe([brandedIdPipe]),
+  listModels: argumentTuplePipe([v.nullable(modelFilterPipe)]),
+  getPlan: argumentTuplePipe([brandedIdPipe]),
+  listPlans: argumentTuplePipe([v.nullable(planFilterPipe)]),
+  getDelivery: argumentTuplePipe([brandedIdPipe]),
+  listDeliveries: argumentTuplePipe([v.nullable(deliveryFilterPipe)]),
+  getSlice: argumentTuplePipe([brandedIdPipe]),
+  listSlices: argumentTuplePipe([brandedIdPipe]),
+  getReviewSurface: argumentTuplePipe([brandedIdPipe]),
+  listReviewSurfaces: argumentTuplePipe([reviewSurfaceScopePipe]),
+  getCurrentReviewSurface: argumentTuplePipe([reviewSurfaceScopePipe]),
+  getRevision: argumentTuplePipe([brandedIdPipe]),
+  listRevisions: argumentTuplePipe([revisionScopePipe]),
+  getTimeline: argumentTuplePipe([v.nullable(timelineFilterPipe)]),
+} satisfies Record<keyof CoreQueries, Pipe<unknown, unknown>>;
+
+function argumentTuplePipe(branches: Pipe<unknown, unknown>[]): Pipe<unknown, unknown> {
+  return v
+    .array(v.any<unknown>())
+    .pipe(v.has(branches.length, `Expected exactly ${branches.length} query argument(s).`))
+    .pipe(v.tuple(branches as [])) as Pipe<unknown, unknown>;
+}
+
+function enumStringPipe<const Values extends readonly [string, ...string[]]>(
+  values: Values,
+): Pipe<unknown, Values[number]> {
+  return v.string().pipe(v.in([...values], `Expected one of: ${values.join(", ")}.`)) as Pipe<unknown, Values[number]>;
+}
+
+function discriminator(value: unknown): PropertyKey {
+  return isRecord(value) ? (value["type"] as PropertyKey) : "";
+}
+
+function discriminatorFrom(field: string): (value: unknown) => PropertyKey {
+  return (value) => (isRecord(value) ? (value[field] as PropertyKey) : "");
+}
+
+// -----------------------------------------------------------------------------
 // Runtime stub implementation
 // -----------------------------------------------------------------------------
 
@@ -1072,233 +1439,72 @@ function createCoreCommands(): CoreCommands {
 
 function createCoreQueries(): CoreQueries {
   return {
-    getPortfolioConfig() {
-      return queryStub<PortfolioConfigRecord | null>("getPortfolioConfig");
-    },
-    getProject(id) {
-      return queryStub<Project | null>("getProject", validateId(id, "id"));
-    },
-    listProjects() {
-      return queryStub<Project[]>("listProjects");
-    },
-    getRepository(id) {
-      return queryStub<Repository | null>("getRepository", validateId(id, "id"));
-    },
-    listRepositories(filter) {
-      return queryStub<Repository[]>("listRepositories", validateNullableObject(filter, "filter"));
-    },
-    getModelProvider(id) {
-      return queryStub<ModelProvider | null>("getModelProvider", validateId(id, "id"));
-    },
-    listModelProviders(filter) {
-      return queryStub<ModelProvider[]>("listModelProviders", validateNullableObject(filter, "filter"));
-    },
-    getModel(id) {
-      return queryStub<Model | null>("getModel", validateId(id, "id"));
-    },
-    listModels(filter) {
-      return queryStub<Model[]>("listModels", validateNullableObject(filter, "filter"));
-    },
-    getPlan(id) {
-      return queryStub<Plan | null>("getPlan", validateId(id, "id"));
-    },
-    listPlans(filter) {
-      return queryStub<Plan[]>("listPlans", validateNullableObject(filter, "filter"));
-    },
-    getDelivery(id) {
-      return queryStub<Delivery | null>("getDelivery", validateId(id, "id"));
-    },
-    listDeliveries(filter) {
-      return queryStub<Delivery[]>("listDeliveries", validateNullableObject(filter, "filter"));
-    },
-    getSlice(id) {
-      return queryStub<Slice | null>("getSlice", validateId(id, "id"));
-    },
-    listSlices(deliveryId) {
-      return queryStub<Slice[]>("listSlices", validateId(deliveryId, "deliveryId"));
-    },
-    getReviewSurface(id) {
-      return queryStub<ReviewSurface | null>("getReviewSurface", validateId(id, "id"));
-    },
-    listReviewSurfaces(scope) {
-      return queryStub<ReviewSurface[]>("listReviewSurfaces", validateObject(scope, "scope"));
-    },
-    getCurrentReviewSurface(scope) {
-      return queryStub<ReviewSurface | null>("getCurrentReviewSurface", validateObject(scope, "scope"));
-    },
-    getRevision(id) {
-      return queryStub<Revision | null>("getRevision", validateId(id, "id"));
-    },
-    listRevisions(scope) {
-      return queryStub<Revision[]>("listRevisions", validateObject(scope, "scope"));
-    },
-    getTimeline(filter) {
-      return queryStub<TimelineEvent[]>("getTimeline", validateNullableObject(filter, "filter"));
-    },
+    getPortfolioConfig: (...args: unknown[]) => queryStub<PortfolioConfigRecord | null>("getPortfolioConfig", args),
+    getProject: (...args: unknown[]) => queryStub<Project | null>("getProject", args),
+    listProjects: (...args: unknown[]) => queryStub<Project[]>("listProjects", args),
+    getRepository: (...args: unknown[]) => queryStub<Repository | null>("getRepository", args),
+    listRepositories: (...args: unknown[]) => queryStub<Repository[]>("listRepositories", args),
+    getModelProvider: (...args: unknown[]) => queryStub<ModelProvider | null>("getModelProvider", args),
+    listModelProviders: (...args: unknown[]) => queryStub<ModelProvider[]>("listModelProviders", args),
+    getModel: (...args: unknown[]) => queryStub<Model | null>("getModel", args),
+    listModels: (...args: unknown[]) => queryStub<Model[]>("listModels", args),
+    getPlan: (...args: unknown[]) => queryStub<Plan | null>("getPlan", args),
+    listPlans: (...args: unknown[]) => queryStub<Plan[]>("listPlans", args),
+    getDelivery: (...args: unknown[]) => queryStub<Delivery | null>("getDelivery", args),
+    listDeliveries: (...args: unknown[]) => queryStub<Delivery[]>("listDeliveries", args),
+    getSlice: (...args: unknown[]) => queryStub<Slice | null>("getSlice", args),
+    listSlices: (...args: unknown[]) => queryStub<Slice[]>("listSlices", args),
+    getReviewSurface: (...args: unknown[]) => queryStub<ReviewSurface | null>("getReviewSurface", args),
+    listReviewSurfaces: (...args: unknown[]) => queryStub<ReviewSurface[]>("listReviewSurfaces", args),
+    getCurrentReviewSurface: (...args: unknown[]) => queryStub<ReviewSurface | null>("getCurrentReviewSurface", args),
+    getRevision: (...args: unknown[]) => queryStub<Revision | null>("getRevision", args),
+    listRevisions: (...args: unknown[]) => queryStub<Revision[]>("listRevisions", args),
+    getTimeline: (...args: unknown[]) => queryStub<TimelineEvent[]>("getTimeline", args),
   };
 }
 
-function commandStub<T>(operation: string, input: unknown, context: unknown): Promise<Result<T>> {
-  const issues = [...validateObject(input, "input"), ...validateOperationContext(context, "context")];
+function commandStub<T>(operation: keyof CoreCommands, input: unknown, context: unknown): Promise<Result<T>> {
+  const validation = validateCoreInput(
+    v.object({ input: commandInputPipes[operation], context: operationContextPipe }),
+    { input, context },
+    "command",
+    operation,
+  );
 
-  if (issues.length > 0) {
-    return Promise.resolve({ ok: false, error: { type: "invalid-input", issues } });
+  if (!validation.ok) {
+    return Promise.resolve(validation);
   }
 
   return Promise.resolve(notImplemented<T>(operation));
 }
 
-function queryStub<T>(operation: string, issues: CoreInputIssue[] = []): Promise<Result<T>> {
-  if (issues.length > 0) {
-    return Promise.resolve({ ok: false, error: { type: "invalid-input", issues } });
+function queryStub<T>(operation: keyof CoreQueries, args: unknown[]): Promise<Result<T>> {
+  const validation = validateCoreInput(v.object({ args: queryArgumentPipes[operation] }), { args }, "query", operation);
+
+  if (!validation.ok) {
+    return Promise.resolve(validation);
   }
 
   return Promise.resolve(notImplemented<T>(operation));
+}
+
+function validateCoreInput<TPipe extends Pipe<unknown, unknown>>(
+  pipe: TPipe,
+  value: unknown,
+  boundary: CoreInputBoundary,
+  operation: string,
+): Result<PipeOutput<TPipe>, InvalidInputError> {
+  const result = v.validate(pipe, value);
+
+  if (!result.valid) {
+    return { ok: false, error: { type: "invalid-input", boundary, operation, pipeError: result.error } };
+  }
+
+  return { ok: true, value: result.value };
 }
 
 function notImplemented<T>(operation: string): Result<T> {
   return { ok: false, error: { type: "not-implemented", operation } };
-}
-
-function validateOpenCoreOptions(value: unknown): CoreInputIssue[] {
-  const issues = validateObject(value, "options");
-
-  if (issues.length > 0 || !isRecord(value)) {
-    return issues;
-  }
-
-  return [
-    ...validateStorage(value["storage"], "options.storage"),
-    ...validatePorts(value["ports"], "options.ports"),
-    ...validateFunctionMember(value["clock"], "now", "options.clock"),
-    ...validateFunctionMember(value["idGenerator"], "nextId", "options.idGenerator"),
-  ];
-}
-
-function validateImportSnapshotInput(value: unknown): CoreInputIssue[] {
-  const issues = validateObject(value, "input");
-
-  if (issues.length > 0 || !isRecord(value)) {
-    return issues;
-  }
-
-  return [
-    ...validateNonEmptyString(value["passphrase"], "input.passphrase"),
-    ...(value["encryptedPayload"] instanceof Uint8Array
-      ? []
-      : [issue("input.encryptedPayload", "Expected a Uint8Array encrypted snapshot payload.")]),
-    ...validateStorage(value["storage"], "input.storage"),
-    ...validateFunctionMember(value["snapshotEncryption"], "decrypt", "input.snapshotEncryption"),
-  ];
-}
-
-function validatePorts(value: unknown, path: string): CoreInputIssue[] {
-  const issues = validateObject(value, path);
-
-  if (issues.length > 0 || !isRecord(value)) {
-    return issues;
-  }
-
-  return [
-    ...validateFunctionMembers(value["sourceControl"], pathFor(path, "sourceControl"), [
-      "preflightRepository",
-      "createDeliveryBranch",
-      "createSliceBranch",
-      "pushBranch",
-      "validateBranch",
-      "observeBranchIntegration",
-      "createReviewSurface",
-      "fetchReviewSurface",
-      "fetchFeedback",
-      "mergeReviewSurface",
-      "closeReviewSurface",
-    ]),
-    ...validateFunctionMembers(value["modelAgentRuntime"], pathFor(path, "modelAgentRuntime"), [
-      "preflightModel",
-      "runModelAgent",
-    ]),
-    ...validateFunctionMembers(value["secrets"], pathFor(path, "secrets"), ["resolveSecrets", "resolveSecretValues"]),
-    ...validateFunctionMembers(value["snapshotEncryption"], pathFor(path, "snapshotEncryption"), [
-      "encrypt",
-      "decrypt",
-    ]),
-    ...validateNullableFunctionMembers(value["events"], pathFor(path, "events"), ["publish"]),
-    ...validateNullableFunctionMembers(value["logger"], pathFor(path, "logger"), ["debug", "info", "warn", "error"]),
-  ];
-}
-
-function validateStorage(value: unknown, path: string): CoreInputIssue[] {
-  return validateFunctionMember(value, "transaction", path);
-}
-
-function validateOperationContext(value: unknown, path: string): CoreInputIssue[] {
-  const issues = validateObject(value, path);
-
-  if (issues.length > 0 || !isRecord(value)) {
-    return issues;
-  }
-
-  return [
-    ...validateLocalActorRef(value["actor"], pathFor(path, "actor")),
-    ...(typeof value["correlationId"] === "string" || value["correlationId"] === null
-      ? []
-      : [issue(pathFor(path, "correlationId"), "Expected a string or null correlation id.")]),
-  ];
-}
-
-function validateLocalActorRef(value: unknown, path: string): CoreInputIssue[] {
-  const issues = validateObject(value, path);
-
-  if (issues.length > 0 || !isRecord(value)) {
-    return issues;
-  }
-
-  return [
-    ...validateNonEmptyString(value["type"], pathFor(path, "type")),
-    ...validateNonEmptyString(value["id"], pathFor(path, "id")),
-  ];
-}
-
-function validateObject(value: unknown, path: string): CoreInputIssue[] {
-  return isRecord(value) ? [] : [issue(path, "Expected an object.")];
-}
-
-function validateNullableObject(value: unknown, path: string): CoreInputIssue[] {
-  return value === null || isRecord(value) ? [] : [issue(path, "Expected an object or null.")];
-}
-
-function validateFunctionMembers(value: unknown, path: string, members: string[]): CoreInputIssue[] {
-  const issues = validateObject(value, path);
-
-  if (issues.length > 0 || !isRecord(value)) {
-    return issues;
-  }
-
-  return members.flatMap((member) => validateFunctionMember(value, member, path));
-}
-
-function validateNullableFunctionMembers(value: unknown, path: string, members: string[]): CoreInputIssue[] {
-  if (value === null) {
-    return [];
-  }
-
-  return validateFunctionMembers(value, path, members);
-}
-
-function validateFunctionMember(value: unknown, member: string, path: string): CoreInputIssue[] {
-  if (!isRecord(value)) {
-    return [issue(path, "Expected an object.")];
-  }
-
-  return typeof value[member] === "function" ? [] : [issue(pathFor(path, member), "Expected a function dependency.")];
-}
-
-function validateId(value: unknown, path: string): CoreInputIssue[] {
-  return validateNonEmptyString(value, path);
-}
-
-function validateNonEmptyString(value: unknown, path: string): CoreInputIssue[] {
-  return typeof value === "string" && value.trim().length > 0 ? [] : [issue(path, "Expected a non-empty string.")];
 }
 
 function decodeSnapshotPayload(bytes: Uint8Array): Result<unknown, InvalidSnapshotError> {
@@ -1329,12 +1535,4 @@ function errorToMessage(error: unknown): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function issue(path: string, message: string): CoreInputIssue {
-  return { path, message };
-}
-
-function pathFor(path: string, member: string): string {
-  return `${path}.${member}`;
 }
