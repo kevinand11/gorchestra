@@ -3,7 +3,7 @@
  *
  * This file is documentation-by-type, not an implementation contract yet.
  * It describes how consumers call Portfolio-scoped core operations and how core
- * calls consumer-provided ports for storage, source control, model agents,
+ * calls consumer-provided storage and ports for source control, model agents,
  * secrets, and snapshot encryption.
  *
  * Consumers authorize operations before calling core. Core enforces core
@@ -96,7 +96,7 @@ export interface OpenCoreOptions {
   idGenerator: IdGenerator;
 }
 
-export declare function openCore(options: OpenCoreOptions): GorchestraCore;
+export declare function openCore(options: OpenCoreOptions): Result<GorchestraCore, OpenCoreError>;
 
 export interface Clock {
   now(): IsoDateTime;
@@ -119,6 +119,23 @@ export type Result<T, E = CoreError> =
   | { ok: true; value: T }
   | { ok: false; error: E };
 
+export interface CoreInputIssue {
+  path: string;
+  message: string;
+}
+
+export interface InvalidInputError {
+  type: "invalid-input";
+  issues: CoreInputIssue[];
+}
+
+export interface NotImplementedError {
+  type: "not-implemented";
+  operation: string;
+}
+
+export type OpenCoreError = InvalidInputError;
+
 export type DeliveryWorkStateType = DeliveryWorkState["type"];
 
 /**
@@ -126,6 +143,8 @@ export type DeliveryWorkStateType = DeliveryWorkState["type"];
  * Expected domain failures should use specific CoreError variants.
  */
 export type CoreError =
+  | InvalidInputError
+  | NotImplementedError
   | { type: "not-found"; resource: string; id: string }
   | { type: "invariant-violation"; message: string }
   | { type: "model-preflight-failed"; modelId: ModelId; evidence: ValidationEvidence }
@@ -483,55 +502,78 @@ export interface ExportSnapshotInput {
  */
 export interface ImportSnapshotInput {
   passphrase: string;
-  encryptedPayloadRef: string;
+  encryptedPayload: Uint8Array;
   storage: CoreStorage;
+  snapshotEncryption: SnapshotEncryptionPort;
 }
 
 export interface ImportSnapshotResult {
   manifest: PortfolioSnapshotManifest;
 }
 
+export interface SnapshotDecryptionFailureError {
+  type: "snapshot-decryption-failed";
+  message: string;
+}
+
+export interface InvalidSnapshotError {
+  type: "invalid-snapshot";
+  message: string;
+}
+
+export interface StorageOperationFailureError {
+  type: "storage-operation-failed";
+  message: string;
+}
+
+export type ImportSnapshotError =
+  | InvalidInputError
+  | SnapshotDecryptionFailureError
+  | InvalidSnapshotError
+  | StorageOperationFailureError
+  | NotImplementedError;
+
 export declare function importSnapshot(
   input: ImportSnapshotInput,
   context: OperationContext,
-): Promise<Result<ImportSnapshotResult>>;
+): Promise<Result<ImportSnapshotResult, ImportSnapshotError>>;
 
 // -----------------------------------------------------------------------------
 // Consumer -> core queries
 // -----------------------------------------------------------------------------
 
 export interface CoreQueries {
-  getPortfolioConfig(): Promise<PortfolioConfigRecord | null>;
+  getPortfolioConfig(): Promise<Result<PortfolioConfigRecord | null>>;
 
-  getProject(id: ProjectId): Promise<Project | null>;
-  listProjects(): Promise<Project[]>;
+  getProject(id: ProjectId): Promise<Result<Project | null>>;
+  listProjects(): Promise<Result<Project[]>>;
 
-  getRepository(id: RepositoryId): Promise<Repository | null>;
-  listRepositories(filter: RepositoryFilter | null): Promise<Repository[]>;
+  getRepository(id: RepositoryId): Promise<Result<Repository | null>>;
+  listRepositories(filter: RepositoryFilter | null): Promise<Result<Repository[]>>;
 
-  getModelProvider(id: ModelProviderId): Promise<ModelProvider | null>;
-  listModelProviders(filter: ModelProviderFilter | null): Promise<ModelProvider[]>;
+  getModelProvider(id: ModelProviderId): Promise<Result<ModelProvider | null>>;
+  listModelProviders(filter: ModelProviderFilter | null): Promise<Result<ModelProvider[]>>;
 
-  getModel(id: ModelId): Promise<Model | null>;
-  listModels(filter: ModelFilter | null): Promise<Model[]>;
+  getModel(id: ModelId): Promise<Result<Model | null>>;
+  listModels(filter: ModelFilter | null): Promise<Result<Model[]>>;
 
-  getPlan(id: PlanId): Promise<Plan | null>;
-  listPlans(filter: PlanFilter | null): Promise<Plan[]>;
+  getPlan(id: PlanId): Promise<Result<Plan | null>>;
+  listPlans(filter: PlanFilter | null): Promise<Result<Plan[]>>;
 
-  getDelivery(id: DeliveryId): Promise<Delivery | null>;
-  listDeliveries(filter: DeliveryFilter | null): Promise<Delivery[]>;
+  getDelivery(id: DeliveryId): Promise<Result<Delivery | null>>;
+  listDeliveries(filter: DeliveryFilter | null): Promise<Result<Delivery[]>>;
 
-  getSlice(id: SliceId): Promise<Slice | null>;
-  listSlices(deliveryId: DeliveryId): Promise<Slice[]>;
+  getSlice(id: SliceId): Promise<Result<Slice | null>>;
+  listSlices(deliveryId: DeliveryId): Promise<Result<Slice[]>>;
 
-  getReviewSurface(id: ReviewSurfaceId): Promise<ReviewSurface | null>;
-  listReviewSurfaces(scope: ReviewSurfaceScope): Promise<ReviewSurface[]>;
-  getCurrentReviewSurface(scope: ReviewSurfaceScope): Promise<ReviewSurface | null>;
+  getReviewSurface(id: ReviewSurfaceId): Promise<Result<ReviewSurface | null>>;
+  listReviewSurfaces(scope: ReviewSurfaceScope): Promise<Result<ReviewSurface[]>>;
+  getCurrentReviewSurface(scope: ReviewSurfaceScope): Promise<Result<ReviewSurface | null>>;
 
-  getRevision(id: RevisionId): Promise<Revision | null>;
-  listRevisions(scope: RevisionScope): Promise<Revision[]>;
+  getRevision(id: RevisionId): Promise<Result<Revision | null>>;
+  listRevisions(scope: RevisionScope): Promise<Result<Revision[]>>;
 
-  getTimeline(filter: TimelineFilter | null): Promise<TimelineEvent[]>;
+  getTimeline(filter: TimelineFilter | null): Promise<Result<TimelineEvent[]>>;
 }
 
 export interface RepositoryFilter {
@@ -574,7 +616,6 @@ export interface TimelineEvent {
 // -----------------------------------------------------------------------------
 
 export interface CorePorts {
-  storage: CoreStorage;
   sourceControl: SourceControlPort;
   modelAgentRuntime: ModelAgentRuntimePort;
   secrets: SecretResolutionPort;

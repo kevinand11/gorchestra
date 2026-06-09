@@ -3,7 +3,7 @@
  *
  * This file is documentation-by-type, not an implementation contract yet.
  * It describes how consumers call Portfolio-scoped core operations and how core
- * calls consumer-provided ports for storage, source control, model agents,
+ * calls consumer-provided storage and ports for source control, model agents,
  * secrets, and snapshot encryption.
  *
  * Consumers authorize operations before calling core. Core enforces core
@@ -96,7 +96,21 @@ export interface OpenCoreOptions {
   idGenerator: IdGenerator;
 }
 
-export declare function openCore(options: OpenCoreOptions): GorchestraCore;
+export function openCore(options: OpenCoreOptions): Result<GorchestraCore, OpenCoreError> {
+  const issues = validateOpenCoreOptions(options);
+
+  if (issues.length > 0) {
+    return { ok: false, error: { type: "invalid-input", issues } };
+  }
+
+  return {
+    ok: true,
+    value: {
+      commands: createCoreCommands(),
+      queries: createCoreQueries(),
+    },
+  };
+}
 
 export interface Clock {
   now(): IsoDateTime;
@@ -117,6 +131,23 @@ export interface OperationContext {
 
 export type Result<T, E = CoreError> = { ok: true; value: T } | { ok: false; error: E };
 
+export interface CoreInputIssue {
+  path: string;
+  message: string;
+}
+
+export interface InvalidInputError {
+  type: "invalid-input";
+  issues: CoreInputIssue[];
+}
+
+export interface NotImplementedError {
+  type: "not-implemented";
+  operation: string;
+}
+
+export type OpenCoreError = InvalidInputError;
+
 export type DeliveryWorkStateType = DeliveryWorkState["type"];
 
 /**
@@ -124,6 +155,8 @@ export type DeliveryWorkStateType = DeliveryWorkState["type"];
  * Expected domain failures should use specific CoreError variants.
  */
 export type CoreError =
+  | InvalidInputError
+  | NotImplementedError
   | { type: "not-found"; resource: string; id: string }
   | { type: "invariant-violation"; message: string }
   | { type: "model-preflight-failed"; modelId: ModelId; evidence: ValidationEvidence }
@@ -490,55 +523,116 @@ export interface ExportSnapshotInput {
  */
 export interface ImportSnapshotInput {
   passphrase: string;
-  encryptedPayloadRef: string;
+  encryptedPayload: Uint8Array;
   storage: CoreStorage;
+  snapshotEncryption: SnapshotEncryptionPort;
 }
 
 export interface ImportSnapshotResult {
   manifest: PortfolioSnapshotManifest;
 }
 
-export declare function importSnapshot(
+export interface SnapshotDecryptionFailureError {
+  type: "snapshot-decryption-failed";
+  message: string;
+}
+
+export interface InvalidSnapshotError {
+  type: "invalid-snapshot";
+  message: string;
+}
+
+export interface StorageOperationFailureError {
+  type: "storage-operation-failed";
+  message: string;
+}
+
+export type ImportSnapshotError =
+  | InvalidInputError
+  | SnapshotDecryptionFailureError
+  | InvalidSnapshotError
+  | StorageOperationFailureError
+  | NotImplementedError;
+
+export async function importSnapshot(
   input: ImportSnapshotInput,
   context: OperationContext,
-): Promise<Result<ImportSnapshotResult>>;
+): Promise<Result<ImportSnapshotResult, ImportSnapshotError>> {
+  const issues = [...validateImportSnapshotInput(input), ...validateOperationContext(context, "context")];
+
+  if (issues.length > 0) {
+    return { ok: false, error: { type: "invalid-input", issues } };
+  }
+
+  let decrypted: DecryptedSnapshot;
+
+  try {
+    decrypted = await input.snapshotEncryption.decrypt({
+      passphrase: input.passphrase,
+      encryptedPayload: input.encryptedPayload,
+    });
+  } catch (error) {
+    return { ok: false, error: { type: "snapshot-decryption-failed", message: errorToMessage(error) } };
+  }
+
+  if (!isRecord(decrypted) || !(decrypted.bytes instanceof Uint8Array)) {
+    return {
+      ok: false,
+      error: { type: "snapshot-decryption-failed", message: "Snapshot decrypt did not return bytes." },
+    };
+  }
+
+  const decodedSnapshot = decodeSnapshotPayload(decrypted.bytes);
+
+  if (!decodedSnapshot.ok) {
+    return decodedSnapshot;
+  }
+
+  try {
+    await input.storage.transaction(() => Promise.resolve(undefined));
+  } catch (error) {
+    return { ok: false, error: { type: "storage-operation-failed", message: errorToMessage(error) } };
+  }
+
+  return { ok: false, error: { type: "not-implemented", operation: "importSnapshot" } };
+}
 
 // -----------------------------------------------------------------------------
 // Consumer -> core queries
 // -----------------------------------------------------------------------------
 
 export interface CoreQueries {
-  getPortfolioConfig(): Promise<PortfolioConfigRecord | null>;
+  getPortfolioConfig(): Promise<Result<PortfolioConfigRecord | null>>;
 
-  getProject(id: ProjectId): Promise<Project | null>;
-  listProjects(): Promise<Project[]>;
+  getProject(id: ProjectId): Promise<Result<Project | null>>;
+  listProjects(): Promise<Result<Project[]>>;
 
-  getRepository(id: RepositoryId): Promise<Repository | null>;
-  listRepositories(filter: RepositoryFilter | null): Promise<Repository[]>;
+  getRepository(id: RepositoryId): Promise<Result<Repository | null>>;
+  listRepositories(filter: RepositoryFilter | null): Promise<Result<Repository[]>>;
 
-  getModelProvider(id: ModelProviderId): Promise<ModelProvider | null>;
-  listModelProviders(filter: ModelProviderFilter | null): Promise<ModelProvider[]>;
+  getModelProvider(id: ModelProviderId): Promise<Result<ModelProvider | null>>;
+  listModelProviders(filter: ModelProviderFilter | null): Promise<Result<ModelProvider[]>>;
 
-  getModel(id: ModelId): Promise<Model | null>;
-  listModels(filter: ModelFilter | null): Promise<Model[]>;
+  getModel(id: ModelId): Promise<Result<Model | null>>;
+  listModels(filter: ModelFilter | null): Promise<Result<Model[]>>;
 
-  getPlan(id: PlanId): Promise<Plan | null>;
-  listPlans(filter: PlanFilter | null): Promise<Plan[]>;
+  getPlan(id: PlanId): Promise<Result<Plan | null>>;
+  listPlans(filter: PlanFilter | null): Promise<Result<Plan[]>>;
 
-  getDelivery(id: DeliveryId): Promise<Delivery | null>;
-  listDeliveries(filter: DeliveryFilter | null): Promise<Delivery[]>;
+  getDelivery(id: DeliveryId): Promise<Result<Delivery | null>>;
+  listDeliveries(filter: DeliveryFilter | null): Promise<Result<Delivery[]>>;
 
-  getSlice(id: SliceId): Promise<Slice | null>;
-  listSlices(deliveryId: DeliveryId): Promise<Slice[]>;
+  getSlice(id: SliceId): Promise<Result<Slice | null>>;
+  listSlices(deliveryId: DeliveryId): Promise<Result<Slice[]>>;
 
-  getReviewSurface(id: ReviewSurfaceId): Promise<ReviewSurface | null>;
-  listReviewSurfaces(scope: ReviewSurfaceScope): Promise<ReviewSurface[]>;
-  getCurrentReviewSurface(scope: ReviewSurfaceScope): Promise<ReviewSurface | null>;
+  getReviewSurface(id: ReviewSurfaceId): Promise<Result<ReviewSurface | null>>;
+  listReviewSurfaces(scope: ReviewSurfaceScope): Promise<Result<ReviewSurface[]>>;
+  getCurrentReviewSurface(scope: ReviewSurfaceScope): Promise<Result<ReviewSurface | null>>;
 
-  getRevision(id: RevisionId): Promise<Revision | null>;
-  listRevisions(scope: RevisionScope): Promise<Revision[]>;
+  getRevision(id: RevisionId): Promise<Result<Revision | null>>;
+  listRevisions(scope: RevisionScope): Promise<Result<Revision[]>>;
 
-  getTimeline(filter: TimelineFilter | null): Promise<TimelineEvent[]>;
+  getTimeline(filter: TimelineFilter | null): Promise<Result<TimelineEvent[]>>;
 }
 
 export interface RepositoryFilter {
@@ -581,7 +675,6 @@ export interface TimelineEvent {
 // -----------------------------------------------------------------------------
 
 export interface CorePorts {
-  storage: CoreStorage;
   sourceControl: SourceControlPort;
   modelAgentRuntime: ModelAgentRuntimePort;
   secrets: SecretResolutionPort;
@@ -873,4 +966,375 @@ export interface CoreLogger {
   info(message: string, context: Record<string, unknown> | null): void;
   warn(message: string, context: Record<string, unknown> | null): void;
   error(message: string, context: Record<string, unknown> | null): void;
+}
+
+// -----------------------------------------------------------------------------
+// Runtime stub implementation
+// -----------------------------------------------------------------------------
+
+function createCoreCommands(): CoreCommands {
+  return {
+    setPortfolioConfig(input, context) {
+      return commandStub<PortfolioConfigRecord>("setPortfolioConfig", input, context);
+    },
+    createModelProvider(input, context) {
+      return commandStub<ModelProvider>("createModelProvider", input, context);
+    },
+    updateModelProvider(input, context) {
+      return commandStub<ModelProvider>("updateModelProvider", input, context);
+    },
+    archiveModelProvider(input, context) {
+      return commandStub<ModelProvider>("archiveModelProvider", input, context);
+    },
+    unarchiveModelProvider(input, context) {
+      return commandStub<ModelProvider>("unarchiveModelProvider", input, context);
+    },
+    createModel(input, context) {
+      return commandStub<Model>("createModel", input, context);
+    },
+    updateModel(input, context) {
+      return commandStub<Model>("updateModel", input, context);
+    },
+    archiveModel(input, context) {
+      return commandStub<Model>("archiveModel", input, context);
+    },
+    unarchiveModel(input, context) {
+      return commandStub<Model>("unarchiveModel", input, context);
+    },
+    preflightModel(input, context) {
+      return commandStub<ValidationEvidence>("preflightModel", input, context);
+    },
+    createPlan(input, context) {
+      return commandStub<Plan>("createPlan", input, context);
+    },
+    acceptPlanOutput(input, context) {
+      return commandStub<AcceptPlanOutputResult>("acceptPlanOutput", input, context);
+    },
+    rejectPlanOutput(input, context) {
+      return commandStub<void>("rejectPlanOutput", input, context);
+    },
+    configureDelivery(input, context) {
+      return commandStub<Delivery>("configureDelivery", input, context);
+    },
+    queueDelivery(input, context) {
+      return commandStub<QueueDeliveryResult>("queueDelivery", input, context);
+    },
+    runDeliveryWork(input, context) {
+      return commandStub<RunDeliveryWorkResult>("runDeliveryWork", input, context);
+    },
+    retryDeliveryPreflight(input, context) {
+      return commandStub<RetryDeliveryPreflightResult>("retryDeliveryPreflight", input, context);
+    },
+    openRevisionGate(input, context) {
+      return commandStub<OpenRevisionGateResult>("openRevisionGate", input, context);
+    },
+    acceptRevisionOutput(input, context) {
+      return commandStub<AcceptRevisionOutputResult>("acceptRevisionOutput", input, context);
+    },
+    closeRevisionGate(input, context) {
+      return commandStub<void>("closeRevisionGate", input, context);
+    },
+    shipDelivery(input, context) {
+      return commandStub<ShipDeliveryResult>("shipDelivery", input, context);
+    },
+    abandonDelivery(input, context) {
+      return commandStub<AbandonDeliveryResult>("abandonDelivery", input, context);
+    },
+    createProject(input, context) {
+      return commandStub<Project>("createProject", input, context);
+    },
+    setProjectConfig(input, context) {
+      return commandStub<Project>("setProjectConfig", input, context);
+    },
+    createRepository(input, context) {
+      return commandStub<Repository>("createRepository", input, context);
+    },
+    updateRepositoryConfig(input, context) {
+      return commandStub<Repository>("updateRepositoryConfig", input, context);
+    },
+    createSecret(input, context) {
+      return commandStub<Secret>("createSecret", input, context);
+    },
+    replaceSecret(input, context) {
+      return commandStub<Secret>("replaceSecret", input, context);
+    },
+    bindSecret(input, context) {
+      return commandStub<SecretBinding>("bindSecret", input, context);
+    },
+    archiveSecretBinding(input, context) {
+      return commandStub<void>("archiveSecretBinding", input, context);
+    },
+    exportSnapshot(input, context) {
+      return commandStub<PortfolioSnapshotManifest>("exportSnapshot", input, context);
+    },
+  };
+}
+
+function createCoreQueries(): CoreQueries {
+  return {
+    getPortfolioConfig() {
+      return queryStub<PortfolioConfigRecord | null>("getPortfolioConfig");
+    },
+    getProject(id) {
+      return queryStub<Project | null>("getProject", validateId(id, "id"));
+    },
+    listProjects() {
+      return queryStub<Project[]>("listProjects");
+    },
+    getRepository(id) {
+      return queryStub<Repository | null>("getRepository", validateId(id, "id"));
+    },
+    listRepositories(filter) {
+      return queryStub<Repository[]>("listRepositories", validateNullableObject(filter, "filter"));
+    },
+    getModelProvider(id) {
+      return queryStub<ModelProvider | null>("getModelProvider", validateId(id, "id"));
+    },
+    listModelProviders(filter) {
+      return queryStub<ModelProvider[]>("listModelProviders", validateNullableObject(filter, "filter"));
+    },
+    getModel(id) {
+      return queryStub<Model | null>("getModel", validateId(id, "id"));
+    },
+    listModels(filter) {
+      return queryStub<Model[]>("listModels", validateNullableObject(filter, "filter"));
+    },
+    getPlan(id) {
+      return queryStub<Plan | null>("getPlan", validateId(id, "id"));
+    },
+    listPlans(filter) {
+      return queryStub<Plan[]>("listPlans", validateNullableObject(filter, "filter"));
+    },
+    getDelivery(id) {
+      return queryStub<Delivery | null>("getDelivery", validateId(id, "id"));
+    },
+    listDeliveries(filter) {
+      return queryStub<Delivery[]>("listDeliveries", validateNullableObject(filter, "filter"));
+    },
+    getSlice(id) {
+      return queryStub<Slice | null>("getSlice", validateId(id, "id"));
+    },
+    listSlices(deliveryId) {
+      return queryStub<Slice[]>("listSlices", validateId(deliveryId, "deliveryId"));
+    },
+    getReviewSurface(id) {
+      return queryStub<ReviewSurface | null>("getReviewSurface", validateId(id, "id"));
+    },
+    listReviewSurfaces(scope) {
+      return queryStub<ReviewSurface[]>("listReviewSurfaces", validateObject(scope, "scope"));
+    },
+    getCurrentReviewSurface(scope) {
+      return queryStub<ReviewSurface | null>("getCurrentReviewSurface", validateObject(scope, "scope"));
+    },
+    getRevision(id) {
+      return queryStub<Revision | null>("getRevision", validateId(id, "id"));
+    },
+    listRevisions(scope) {
+      return queryStub<Revision[]>("listRevisions", validateObject(scope, "scope"));
+    },
+    getTimeline(filter) {
+      return queryStub<TimelineEvent[]>("getTimeline", validateNullableObject(filter, "filter"));
+    },
+  };
+}
+
+function commandStub<T>(operation: string, input: unknown, context: unknown): Promise<Result<T>> {
+  const issues = [...validateObject(input, "input"), ...validateOperationContext(context, "context")];
+
+  if (issues.length > 0) {
+    return Promise.resolve({ ok: false, error: { type: "invalid-input", issues } });
+  }
+
+  return Promise.resolve(notImplemented<T>(operation));
+}
+
+function queryStub<T>(operation: string, issues: CoreInputIssue[] = []): Promise<Result<T>> {
+  if (issues.length > 0) {
+    return Promise.resolve({ ok: false, error: { type: "invalid-input", issues } });
+  }
+
+  return Promise.resolve(notImplemented<T>(operation));
+}
+
+function notImplemented<T>(operation: string): Result<T> {
+  return { ok: false, error: { type: "not-implemented", operation } };
+}
+
+function validateOpenCoreOptions(value: unknown): CoreInputIssue[] {
+  const issues = validateObject(value, "options");
+
+  if (issues.length > 0 || !isRecord(value)) {
+    return issues;
+  }
+
+  return [
+    ...validateStorage(value["storage"], "options.storage"),
+    ...validatePorts(value["ports"], "options.ports"),
+    ...validateFunctionMember(value["clock"], "now", "options.clock"),
+    ...validateFunctionMember(value["idGenerator"], "nextId", "options.idGenerator"),
+  ];
+}
+
+function validateImportSnapshotInput(value: unknown): CoreInputIssue[] {
+  const issues = validateObject(value, "input");
+
+  if (issues.length > 0 || !isRecord(value)) {
+    return issues;
+  }
+
+  return [
+    ...validateNonEmptyString(value["passphrase"], "input.passphrase"),
+    ...(value["encryptedPayload"] instanceof Uint8Array
+      ? []
+      : [issue("input.encryptedPayload", "Expected a Uint8Array encrypted snapshot payload.")]),
+    ...validateStorage(value["storage"], "input.storage"),
+    ...validateFunctionMember(value["snapshotEncryption"], "decrypt", "input.snapshotEncryption"),
+  ];
+}
+
+function validatePorts(value: unknown, path: string): CoreInputIssue[] {
+  const issues = validateObject(value, path);
+
+  if (issues.length > 0 || !isRecord(value)) {
+    return issues;
+  }
+
+  return [
+    ...validateFunctionMembers(value["sourceControl"], pathFor(path, "sourceControl"), [
+      "preflightRepository",
+      "createDeliveryBranch",
+      "createSliceBranch",
+      "pushBranch",
+      "validateBranch",
+      "observeBranchIntegration",
+      "createReviewSurface",
+      "fetchReviewSurface",
+      "fetchFeedback",
+      "mergeReviewSurface",
+      "closeReviewSurface",
+    ]),
+    ...validateFunctionMembers(value["modelAgentRuntime"], pathFor(path, "modelAgentRuntime"), [
+      "preflightModel",
+      "runModelAgent",
+    ]),
+    ...validateFunctionMembers(value["secrets"], pathFor(path, "secrets"), ["resolveSecrets", "resolveSecretValues"]),
+    ...validateFunctionMembers(value["snapshotEncryption"], pathFor(path, "snapshotEncryption"), [
+      "encrypt",
+      "decrypt",
+    ]),
+    ...validateNullableFunctionMembers(value["events"], pathFor(path, "events"), ["publish"]),
+    ...validateNullableFunctionMembers(value["logger"], pathFor(path, "logger"), ["debug", "info", "warn", "error"]),
+  ];
+}
+
+function validateStorage(value: unknown, path: string): CoreInputIssue[] {
+  return validateFunctionMember(value, "transaction", path);
+}
+
+function validateOperationContext(value: unknown, path: string): CoreInputIssue[] {
+  const issues = validateObject(value, path);
+
+  if (issues.length > 0 || !isRecord(value)) {
+    return issues;
+  }
+
+  return [
+    ...validateLocalActorRef(value["actor"], pathFor(path, "actor")),
+    ...(typeof value["correlationId"] === "string" || value["correlationId"] === null
+      ? []
+      : [issue(pathFor(path, "correlationId"), "Expected a string or null correlation id.")]),
+  ];
+}
+
+function validateLocalActorRef(value: unknown, path: string): CoreInputIssue[] {
+  const issues = validateObject(value, path);
+
+  if (issues.length > 0 || !isRecord(value)) {
+    return issues;
+  }
+
+  return [
+    ...validateNonEmptyString(value["type"], pathFor(path, "type")),
+    ...validateNonEmptyString(value["id"], pathFor(path, "id")),
+  ];
+}
+
+function validateObject(value: unknown, path: string): CoreInputIssue[] {
+  return isRecord(value) ? [] : [issue(path, "Expected an object.")];
+}
+
+function validateNullableObject(value: unknown, path: string): CoreInputIssue[] {
+  return value === null || isRecord(value) ? [] : [issue(path, "Expected an object or null.")];
+}
+
+function validateFunctionMembers(value: unknown, path: string, members: string[]): CoreInputIssue[] {
+  const issues = validateObject(value, path);
+
+  if (issues.length > 0 || !isRecord(value)) {
+    return issues;
+  }
+
+  return members.flatMap((member) => validateFunctionMember(value, member, path));
+}
+
+function validateNullableFunctionMembers(value: unknown, path: string, members: string[]): CoreInputIssue[] {
+  if (value === null) {
+    return [];
+  }
+
+  return validateFunctionMembers(value, path, members);
+}
+
+function validateFunctionMember(value: unknown, member: string, path: string): CoreInputIssue[] {
+  if (!isRecord(value)) {
+    return [issue(path, "Expected an object.")];
+  }
+
+  return typeof value[member] === "function" ? [] : [issue(pathFor(path, member), "Expected a function dependency.")];
+}
+
+function validateId(value: unknown, path: string): CoreInputIssue[] {
+  return validateNonEmptyString(value, path);
+}
+
+function validateNonEmptyString(value: unknown, path: string): CoreInputIssue[] {
+  return typeof value === "string" && value.trim().length > 0 ? [] : [issue(path, "Expected a non-empty string.")];
+}
+
+function decodeSnapshotPayload(bytes: Uint8Array): Result<unknown, InvalidSnapshotError> {
+  let decoded: string;
+
+  try {
+    decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (error) {
+    return { ok: false, error: { type: "invalid-snapshot", message: errorToMessage(error) } };
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(decoded);
+
+    if (!isRecord(parsed)) {
+      return { ok: false, error: { type: "invalid-snapshot", message: "Snapshot payload must be a JSON object." } };
+    }
+
+    return { ok: true, value: parsed };
+  } catch (error) {
+    return { ok: false, error: { type: "invalid-snapshot", message: errorToMessage(error) } };
+  }
+}
+
+function errorToMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error.";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function issue(path: string, message: string): CoreInputIssue {
+  return { path, message };
+}
+
+function pathFor(path: string, member: string): string {
+  return `${path}.${member}`;
 }
