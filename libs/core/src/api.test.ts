@@ -17,15 +17,19 @@ const context: OperationContext = {
 }
 
 const storage: CoreStorageService = {
+	preflight: () => Promise.resolve({ ok: true }),
 	transaction: <T>(fn: (tx: CoreStorageTransaction) => Promise<T>): Promise<T> => fn({} as CoreStorageTransaction),
 }
 
 const secrets: CoreSecretsService = {
+	preflight: () => Promise.resolve({ ok: true }),
 	resolveSecrets: () => Promise.resolve([]),
 	resolveSecretValues: () => Promise.resolve([]),
 }
 
-const sandbox: CoreSandboxService = {}
+const sandbox: CoreSandboxService = {
+	preflight: () => Promise.resolve({ ok: true }),
+}
 
 function openCoreOptions() {
 	return {
@@ -114,6 +118,7 @@ describe('core runtime stub', () => {
 
 		expect(result).toMatchObject({ ok: true })
 		if (result.ok) {
+			expect(typeof result.value.preflight).toBe('function')
 			expect(typeof result.value.commands.createProject).toBe('function')
 			expect(typeof result.value.queries.listProjects).toBe('function')
 		}
@@ -136,11 +141,17 @@ describe('core runtime stub', () => {
 	it('validates Core Service shape without probing service behavior', () => {
 		const options = {
 			storage: {
+				preflight: () => {
+					throw new Error('storage preflight was probed')
+				},
 				transaction: () => {
 					throw new Error('storage transaction was probed')
 				},
 			},
 			secrets: {
+				preflight: () => {
+					throw new Error('secret preflight was probed')
+				},
 				resolveSecrets: () => {
 					throw new Error('secret resolution was probed')
 				},
@@ -148,7 +159,11 @@ describe('core runtime stub', () => {
 					throw new Error('secret value resolution was probed')
 				},
 			},
-			sandbox: {},
+			sandbox: {
+				preflight: () => {
+					throw new Error('sandbox preflight was probed')
+				},
+			},
 			clock: {
 				now: () => {
 					throw new Error('clock was probed')
@@ -218,6 +233,157 @@ describe('core runtime stub', () => {
 				operation: 'openCore',
 				pipeError: { messages: [expect.objectContaining({ path: 'eventSink' })] },
 			},
+		})
+	})
+
+	it('preflights required Core Services and runtime dependencies outside commands and queries', async () => {
+		const calls: string[] = []
+		const opened = openCore({
+			storage: {
+				...storage,
+				preflight: () => {
+					calls.push('storage')
+					return Promise.resolve({ ok: true })
+				},
+			},
+			secrets: {
+				...secrets,
+				preflight: () => {
+					calls.push('secrets')
+					return Promise.resolve({ ok: true })
+				},
+			},
+			sandbox: {
+				preflight: () => {
+					calls.push('sandbox')
+					return Promise.resolve({ ok: true })
+				},
+			},
+			clock: {
+				now: () => {
+					calls.push('clock')
+					return new Date('2026-06-09T00:00:00.000Z')
+				},
+			},
+			idGenerator: {
+				next: (brand: string) => {
+					calls.push(`idGenerator:${brand}`)
+					return `${brand}-1`
+				},
+			},
+			logger: {
+				debug: () => {
+					throw new Error('logger was checked')
+				},
+				info: () => {
+					throw new Error('logger was checked')
+				},
+				warn: () => {
+					throw new Error('logger was checked')
+				},
+				error: () => {
+					throw new Error('logger was checked')
+				},
+			},
+			eventSink: {
+				publish: () => {
+					throw new Error('event sink was checked')
+				},
+			},
+		})
+		expect(opened).toMatchObject({ ok: true })
+		if (!opened.ok) return
+
+		expect((opened.value.commands as unknown as Record<string, unknown>)['preflight']).toBeUndefined()
+		expect((opened.value.queries as unknown as Record<string, unknown>)['preflight']).toBeUndefined()
+		await expect(opened.value.preflight()).resolves.toEqual({
+			ok: true,
+			value: {
+				passed: true,
+				checks: {
+					storage: { ok: true },
+					secrets: { ok: true },
+					sandbox: { ok: true },
+					clock: { ok: true },
+					idGenerator: { ok: true },
+				},
+			},
+		})
+		expect(calls).toEqual(['storage', 'secrets', 'sandbox', 'clock', 'idGenerator:core-preflight'])
+	})
+
+	it('returns failed checks for failed and thrown readiness probes', async () => {
+		const opened = openCore({
+			...openCoreOptions(),
+			storage: {
+				...storage,
+				preflight: () => Promise.resolve({ ok: false, message: 'storage is offline' }),
+			},
+			secrets: {
+				...secrets,
+				preflight: () => Promise.reject(new Error('raw secret resolver failure')),
+			},
+			clock: {
+				now: () => {
+					throw new Error('raw clock failure')
+				},
+			},
+			idGenerator: {
+				next: () => {
+					throw new Error('raw id generator failure')
+				},
+			},
+		})
+		expect(opened).toMatchObject({ ok: true })
+		if (!opened.ok) return
+
+		await expect(opened.value.preflight()).resolves.toEqual({
+			ok: true,
+			value: {
+				passed: false,
+				checks: {
+					storage: { ok: false, reason: 'not-ready', message: 'storage is offline' },
+					secrets: { ok: false, reason: 'probe-failed', message: null },
+					sandbox: { ok: true },
+					clock: { ok: false, reason: 'probe-failed', message: null },
+					idGenerator: { ok: false, reason: 'probe-failed', message: null },
+				},
+			},
+		})
+	})
+
+	it('returns invalid-core-service-output for malformed readiness outputs', async () => {
+		const malformedStorage = openCore({
+			...openCoreOptions(),
+			storage: { ...storage, preflight: () => Promise.resolve({ ok: 'yes' }) as never },
+		})
+		expect(malformedStorage).toMatchObject({ ok: true })
+		if (!malformedStorage.ok) return
+		await expect(malformedStorage.value.preflight()).resolves.toMatchObject({
+			ok: false,
+			error: { type: 'invalid-core-service-output', service: 'storage', operation: 'preflight' },
+		})
+
+		const malformedClock = openCore({
+			...openCoreOptions(),
+			clock: { now: () => new Date('not a date') },
+		})
+		expect(malformedClock).toMatchObject({ ok: true })
+		if (!malformedClock.ok) return
+		await expect(malformedClock.value.preflight()).resolves.toMatchObject({
+			ok: false,
+			error: { type: 'invalid-core-service-output', service: 'clock', operation: 'now' },
+		})
+
+		const malformedId = openCore({
+			...openCoreOptions(),
+			idGenerator: { next: () => '   ' },
+		})
+		expect(malformedId).toMatchObject({ ok: true })
+		if (!malformedId.ok) return
+		await expect(malformedId.value.preflight()).resolves.toMatchObject({
+			ok: false,
+			error: { type: 'invalid-core-service-output', service: 'idGenerator', operation: 'next' },
 		})
 	})
 
@@ -431,6 +597,10 @@ describe('core runtime stub', () => {
 	it('validates snapshot import input and context before returning not-implemented', async () => {
 		let storageCalled = false
 		const probingStorage: CoreStorageService = {
+			preflight: () => {
+				storageCalled = true
+				return Promise.reject(new Error('storage preflight was probed'))
+			},
 			transaction: <T>(): Promise<T> => {
 				storageCalled = true
 				return Promise.reject(new Error('storage transaction was probed'))
