@@ -10,6 +10,8 @@
  * invariants and owns orchestration behavior inside the opened Portfolio space.
  */
 
+import type { PipeError } from "valleyed";
+
 import type {
   Action,
   CorrectionEvidence,
@@ -119,14 +121,13 @@ export type Result<T, E = CoreError> =
   | { ok: true; value: T }
   | { ok: false; error: E };
 
-export interface CoreInputIssue {
-  path: string;
-  message: string;
-}
+export type CoreInputBoundary = "construction" | "snapshot-import" | "command" | "query";
 
 export interface InvalidInputError {
   type: "invalid-input";
-  issues: CoreInputIssue[];
+  boundary: CoreInputBoundary;
+  operation: string;
+  pipeError: PipeError;
 }
 
 export interface NotImplementedError {

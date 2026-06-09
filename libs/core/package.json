@@ -8,5 +8,8 @@
   },
   "files": [
     "src"
-  ]
+  ],
+  "dependencies": {
+    "valleyed": "latest"
+  }
 }
