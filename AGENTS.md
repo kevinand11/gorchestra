@@ -49,7 +49,7 @@ This root AGENTS.md is the project-wide DOX rail: it gives repo-wide instruction
 ## Verification
 
 - Use the closest child AGENTS.md for subtree-specific checks.
-- For repo-wide source/config changes, run from repo root: `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm format`.
+- For repo-wide source/config changes, run from repo root: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm format`, and `pnpm fallow:audit`.
 
 ## Child DOX Index
 

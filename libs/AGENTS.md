@@ -24,7 +24,7 @@ The `libs/` tree contains workspace packages that implement Gorchestra source su
 
 ## Verification
 
-- From repo root, run `pnpm lint`, `pnpm typecheck`, and `pnpm test` after package source changes.
+- From repo root, run `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm fallow:audit` after package source changes.
 - Use package-specific verification from the nearest child AGENTS.md when available.
 
 ## Child DOX Index
