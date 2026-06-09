@@ -10,29 +10,29 @@
 // Common primitives
 // -----------------------------------------------------------------------------
 
-export type Brand<T, Name extends string> = T & { readonly __brand: Name };
+export type Brand<T, Name extends string> = T & { readonly __brand: Name }
 
-export type ProjectId = Brand<string, "ProjectId">;
-export type RepositoryId = Brand<string, "RepositoryId">;
-export type PlanId = Brand<string, "PlanId">;
-export type DeliveryId = Brand<string, "DeliveryId">;
-export type SliceId = Brand<string, "SliceId">;
-export type MemoryId = Brand<string, "MemoryId">;
-export type LinkId = Brand<string, "LinkId">;
-export type SecretId = Brand<string, "SecretId">;
-export type SecretBindingId = Brand<string, "SecretBindingId">;
-export type ActionId = Brand<string, "ActionId">;
-export type AgentRunId = Brand<string, "AgentRunId">;
-export type RevisionGateId = Brand<string, "RevisionGateId">;
-export type RevisionId = Brand<string, "RevisionId">;
-export type ReviewSurfaceId = Brand<string, "ReviewSurfaceId">;
-export type DeliveryArtifactId = Brand<string, "DeliveryArtifactId">;
-export type SliceArtifactId = Brand<string, "SliceArtifactId">;
-export type SnapshotId = Brand<string, "SnapshotId">;
-export type ModelProviderId = Brand<string, "ModelProviderId">;
-export type ModelId = Brand<string, "ModelId">;
+export type ProjectId = Brand<string, 'ProjectId'>
+export type RepositoryId = Brand<string, 'RepositoryId'>
+export type PlanId = Brand<string, 'PlanId'>
+export type DeliveryId = Brand<string, 'DeliveryId'>
+export type SliceId = Brand<string, 'SliceId'>
+export type MemoryId = Brand<string, 'MemoryId'>
+export type LinkId = Brand<string, 'LinkId'>
+export type SecretId = Brand<string, 'SecretId'>
+export type SecretBindingId = Brand<string, 'SecretBindingId'>
+export type ActionId = Brand<string, 'ActionId'>
+export type AgentRunId = Brand<string, 'AgentRunId'>
+export type RevisionGateId = Brand<string, 'RevisionGateId'>
+export type RevisionId = Brand<string, 'RevisionId'>
+export type ReviewSurfaceId = Brand<string, 'ReviewSurfaceId'>
+export type DeliveryArtifactId = Brand<string, 'DeliveryArtifactId'>
+export type SliceArtifactId = Brand<string, 'SliceArtifactId'>
+export type SnapshotId = Brand<string, 'SnapshotId'>
+export type ModelProviderId = Brand<string, 'ModelProviderId'>
+export type ModelId = Brand<string, 'ModelId'>
 
-export type IsoDateTime = string;
+export type IsoDateTime = string
 
 /**
  * Unless explicitly noted otherwise:
@@ -53,31 +53,31 @@ export type IsoDateTime = string;
  */
 
 export interface LocalActorRef {
-  /** Consumer-defined actor category, such as "workspace-member" or "local-user". */
-  type: string;
+	/** Consumer-defined actor category, such as "workspace-member" or "local-user". */
+	type: string
 
-  /** Consumer-local actor identifier. Core stores this opaquely and never interprets it. */
-  id: string;
+	/** Consumer-local actor identifier. Core stores this opaquely and never interprets it. */
+	id: string
 }
 
-export type AuditStamp = LocalAuditStamp | ImportedAuditStamp;
+export type AuditStamp = LocalAuditStamp | ImportedAuditStamp
 
 export interface LocalAuditStamp {
-  origin: "local";
-  at: IsoDateTime;
-  actor: LocalActorRef;
-  correlationId: string | null;
+	origin: 'local'
+	at: IsoDateTime
+	actor: LocalActorRef
+	correlationId: string | null
 }
 
 export interface ImportedAuditStamp {
-  origin: "imported";
+	origin: 'imported'
 
-  /** Original operation time copied from the imported audit stamp. */
-  at: IsoDateTime;
+	/** Original operation time copied from the imported audit stamp. */
+	at: IsoDateTime
 }
 
 export interface RuntimeRecord {
-  at: IsoDateTime;
+	at: IsoDateTime
 }
 
 // -----------------------------------------------------------------------------
@@ -85,19 +85,19 @@ export interface RuntimeRecord {
 // -----------------------------------------------------------------------------
 
 export interface Project {
-  id: ProjectId;
-  title: string;
-  /** Immutable after Project creation. */
-  source: ProjectSource;
-  /** Starts null; once created by a config setter, the record is retained and value may be cleared to null. */
-  config: ProjectConfigRecord | null;
-  created: AuditStamp;
+	id: ProjectId
+	title: string
+	/** Immutable after Project creation. */
+	source: ProjectSource
+	/** Starts null; once created by a config setter, the record is retained and value may be cleared to null. */
+	config: ProjectConfigRecord | null
+	created: AuditStamp
 }
 
-export type ProjectSource = SourceControlProjectSource;
+export type ProjectSource = SourceControlProjectSource
 
 export interface SourceControlProjectSource {
-  type: "source-control";
+	type: 'source-control'
 }
 
 // -----------------------------------------------------------------------------
@@ -105,18 +105,18 @@ export interface SourceControlProjectSource {
 // -----------------------------------------------------------------------------
 
 export interface Repository {
-  id: RepositoryId;
-  projectId: ProjectId;
-  config: RepositoryConfig;
-  created: AuditStamp;
+	id: RepositoryId
+	projectId: ProjectId
+	config: RepositoryConfig
+	created: AuditStamp
 }
 
-export type RepositoryConfig = GitHubRepositoryConfig;
+export type RepositoryConfig = GitHubRepositoryConfig
 
 export interface GitHubRepositoryConfig {
-  provider: "github";
-  owner: string;
-  name: string;
+	provider: 'github'
+	owner: string
+	name: string
 }
 
 // -----------------------------------------------------------------------------
@@ -124,53 +124,49 @@ export interface GitHubRepositoryConfig {
 // -----------------------------------------------------------------------------
 
 export interface ModelProvider {
-  id: ModelProviderId;
-  name: string;
-  protocol: ModelProviderProtocol;
+	id: ModelProviderId
+	name: string
+	protocol: ModelProviderProtocol
 
-  /** Full API base URL; trailing slashes are trimmed. Must be https, except localhost/127.0.0.1 may use http. */
-  baseUrl: string;
+	/** Full API base URL; trailing slashes are trimmed. Must be https, except localhost/127.0.0.1 may use http. */
+	baseUrl: string
 
-  /** Standard auth used by the protocol adapter; null means no standard auth. */
-  auth: ModelProviderAuth | null;
+	/** Standard auth used by the protocol adapter; null means no standard auth. */
+	auth: ModelProviderAuth | null
 
-  headers: ModelProviderHeader[];
-  created: AuditStamp;
-  updated: AuditStamp | null;
-  archived: AuditStamp | null;
+	headers: ModelProviderHeader[]
+	created: AuditStamp
+	updated: AuditStamp | null
+	archived: AuditStamp | null
 }
 
-export type ModelProviderProtocol =
-  | "anthropic-messages"
-  | "openai-responses"
-  | "openai-completions"
-  | "google-generative-ai";
+export type ModelProviderProtocol = 'anthropic-messages' | 'openai-responses' | 'openai-completions' | 'google-generative-ai'
 
-export type ModelProviderAuth = ModelProviderApiKeyAuth;
+export type ModelProviderAuth = ModelProviderApiKeyAuth
 
 export interface ModelProviderApiKeyAuth {
-  type: "apiKey";
+	type: 'apiKey'
 
-  /** Must reference a generic Secret. */
-  secretId: SecretId;
+	/** Must reference a generic Secret. */
+	secretId: SecretId
 }
 
 export interface ModelProviderHeader {
-  /** Must match /^[A-Za-z0-9-]+$/; unique per provider case-insensitively. */
-  name: string;
+	/** Must match /^[A-Za-z0-9-]+$/; unique per provider case-insensitively. */
+	name: string
 
-  /** Must reference a generic Secret. */
-  valueSecretId: SecretId;
+	/** Must reference a generic Secret. */
+	valueSecretId: SecretId
 }
 
 export interface Model {
-  id: ModelId;
-  providerId: ModelProviderId;
-  name: string;
-  providerModelId: string;
-  created: AuditStamp;
-  updated: AuditStamp | null;
-  archived: AuditStamp | null;
+	id: ModelId
+	providerId: ModelProviderId
+	name: string
+	providerModelId: string
+	created: AuditStamp
+	updated: AuditStamp | null
+	archived: AuditStamp | null
 }
 
 /**
@@ -181,53 +177,53 @@ export interface Model {
  * - Empty/all-null nested config dimensions fold to null.
  */
 export interface PortfolioConfigRecord {
-  configured: AuditStamp;
-  value: PortfolioConfig;
+	configured: AuditStamp
+	value: PortfolioConfig
 }
 
 export interface PortfolioConfig {
-  model: PortfolioModelConfig;
-  work: DeliveryWorkConfig | null;
+	model: PortfolioModelConfig
+	work: DeliveryWorkConfig | null
 }
 
 export interface ProjectConfigRecord {
-  configured: AuditStamp;
-  value: ProjectConfig | null;
+	configured: AuditStamp
+	value: ProjectConfig | null
 }
 
 export interface ProjectConfig {
-  model: ProjectModelConfig | null;
-  work: DeliveryWorkConfig | null;
+	model: ProjectModelConfig | null
+	work: DeliveryWorkConfig | null
 }
 
 export interface PlanConfigRecord {
-  configured: AuditStamp;
-  value: PlanConfig | null;
+	configured: AuditStamp
+	value: PlanConfig | null
 }
 
 export interface PlanConfig {
-  model: PlanModelConfig | null;
+	model: PlanModelConfig | null
 }
 
 export interface PortfolioModelConfig extends ProjectModelConfig {
-  defaultModelId: ModelId;
+	defaultModelId: ModelId
 }
 
 export interface ProjectModelConfig {
-  planningModelId: ModelId | null;
-  revisionPlanningModelId: ModelId | null;
-  executionModelId: ModelId | null;
-  revisionExecutionModelId: ModelId | null;
+	planningModelId: ModelId | null
+	revisionPlanningModelId: ModelId | null
+	executionModelId: ModelId | null
+	revisionExecutionModelId: ModelId | null
 }
 
 export interface PlanModelConfig {
-  planningModelId: ModelId | null;
+	planningModelId: ModelId | null
 }
 
 export interface DeliveryModelConfig {
-  revisionPlanningModelId: ModelId | null;
-  executionModelId: ModelId | null;
-  revisionExecutionModelId: ModelId | null;
+	revisionPlanningModelId: ModelId | null
+	executionModelId: ModelId | null
+	revisionExecutionModelId: ModelId | null
 }
 
 /**
@@ -261,21 +257,21 @@ export interface DeliveryModelConfig {
  *   -> PortfolioConfigRecord.value.model.defaultModelId
  */
 export type AgentRunModelResolution = {
-  purpose: AgentRunPurpose["type"];
-  selectedModelId: ModelId;
-};
+	purpose: AgentRunPurpose['type']
+	selectedModelId: ModelId
+}
 
 // -----------------------------------------------------------------------------
 // Plan / Plan Output proposal shape
 // -----------------------------------------------------------------------------
 
 export interface Plan {
-  id: PlanId;
-  projectId: ProjectId;
-  title: string;
-  /** Immutable after Plan creation; null means the Plan has no Plan-level config. */
-  config: PlanConfigRecord | null;
-  created: AuditStamp;
+	id: PlanId
+	projectId: ProjectId
+	title: string
+	/** Immutable after Plan creation; null means the Plan has no Plan-level config. */
+	config: PlanConfigRecord | null
+	created: AuditStamp
 }
 
 /**
@@ -284,66 +280,66 @@ export interface Plan {
  * Accepting it materializes Deliveries, Slices, Memories, Links, and Slice Instruction Sources.
  */
 export interface PlanOutputProposal {
-  proposedDeliveries: ProposedDelivery[];
-  proposedMemories: ProposedMemory[];
-  proposedLinks: ProposedLink[];
+	proposedDeliveries: ProposedDelivery[]
+	proposedMemories: ProposedMemory[]
+	proposedLinks: ProposedLink[]
 }
 
 export interface ProposedDelivery {
-  proposedDeliveryKey: string;
-  title: string;
-  target: ProposedDeliveryTarget;
-  slices: ProposedSlice[];
-  dependsOnDeliveryIds: DeliveryId[];
+	proposedDeliveryKey: string
+	title: string
+	target: ProposedDeliveryTarget
+	slices: ProposedSlice[]
+	dependsOnDeliveryIds: DeliveryId[]
 }
 
-export type ProposedDeliveryTarget = ProposedSourceControlDeliveryTarget;
+export type ProposedDeliveryTarget = ProposedSourceControlDeliveryTarget
 
 export interface ProposedSourceControlDeliveryTarget {
-  type: "source-control";
-  repositoryId: RepositoryId;
+	type: 'source-control'
+	repositoryId: RepositoryId
 
-  /** Immutable after Delivery acceptance. */
-  targetBranch: string;
+	/** Immutable after Delivery acceptance. */
+	targetBranch: string
 }
 
 export interface ProposedSlice {
-  proposedSliceKey: string;
-  title: string;
+	proposedSliceKey: string
+	title: string
 
-  /** Becomes the materialized Slice's immutable Instruction Source. */
-  instruction: InstructionSource;
+	/** Becomes the materialized Slice's immutable Instruction Source. */
+	instruction: InstructionSource
 
-  /** Same-Delivery dependencies only. */
-  dependsOnProposedSliceKeys: string[];
+	/** Same-Delivery dependencies only. */
+	dependsOnProposedSliceKeys: string[]
 }
 
 export interface ProposedMemory {
-  proposedMemoryKey: string;
-  title: string;
-  body: string;
-  type: MemoryType | null;
+	proposedMemoryKey: string
+	title: string
+	body: string
+	type: MemoryType | null
 }
 
 export interface ProposedLink {
-  type: LinkType;
-  from: ProposedGraphRef;
-  to: ProposedGraphRef;
+	type: LinkType
+	from: ProposedGraphRef
+	to: ProposedGraphRef
 }
 
 export type ProposedGraphRef =
-  | { type: "existing"; node: GraphNodeRef }
-  | { type: "proposed-delivery"; proposedDeliveryKey: string }
-  | { type: "proposed-slice"; proposedSliceKey: string }
-  | { type: "proposed-memory"; proposedMemoryKey: string };
+	| { type: 'existing'; node: GraphNodeRef }
+	| { type: 'proposed-delivery'; proposedDeliveryKey: string }
+	| { type: 'proposed-slice'; proposedSliceKey: string }
+	| { type: 'proposed-memory'; proposedMemoryKey: string }
 
 // -----------------------------------------------------------------------------
 // Instruction Source
 // -----------------------------------------------------------------------------
 
 export interface InstructionSource {
-  /** Immutable accepted instructions used by Agent Runs. */
-  body: string;
+	/** Immutable accepted instructions used by Agent Runs. */
+	body: string
 }
 
 // -----------------------------------------------------------------------------
@@ -351,33 +347,33 @@ export interface InstructionSource {
 // -----------------------------------------------------------------------------
 
 export interface Delivery {
-  id: DeliveryId;
-  projectId: ProjectId;
-  planId: PlanId;
-  title: string;
-  target: DeliveryTarget;
-  /** Starts null; once created by configureDelivery, the record is retained and value may be cleared to null. */
-  config: DeliveryConfigRecord | null;
+	id: DeliveryId
+	projectId: ProjectId
+	planId: PlanId
+	title: string
+	target: DeliveryTarget
+	/** Starts null; once created by configureDelivery, the record is retained and value may be cleared to null. */
+	config: DeliveryConfigRecord | null
 
-  /** Every Delivery has at least one Slice. */
-  sliceIds: readonly [SliceId, ...SliceId[]];
+	/** Every Delivery has at least one Slice. */
+	sliceIds: readonly [SliceId, ...SliceId[]]
 
-  accepted: AuditStamp;
+	accepted: AuditStamp
 }
 
-export type DeliveryClosedOutcome = "shipped" | "abandoned";
+export type DeliveryClosedOutcome = 'shipped' | 'abandoned'
 
 export interface DeliveryConfigRecord {
-  configured: AuditStamp;
-  value: DeliveryConfig | null;
+	configured: AuditStamp
+	value: DeliveryConfig | null
 }
 
 export interface DeliveryConfig {
-  /** Null means no Delivery-level Agent Run override; inherit from outer scopes. */
-  model: DeliveryModelConfig | null;
+	/** Null means no Delivery-level Agent Run override; inherit from outer scopes. */
+	model: DeliveryModelConfig | null
 
-  /** Null means no Delivery-level work override; inherit from outer scopes. */
-  work: DeliveryWorkConfig | null;
+	/** Null means no Delivery-level work override; inherit from outer scopes. */
+	work: DeliveryWorkConfig | null
 }
 
 /**
@@ -388,43 +384,43 @@ export interface DeliveryConfig {
  * ready-to-ship.
  */
 export type DeliveryWorkState =
-  | { type: "closed"; outcome: DeliveryClosedOutcome; actionId: ActionId }
-  | { type: "unqueued" }
-  /** blockedBy contains direct unmet Delivery dependencies only, ordered by dependency accepted time then DeliveryId. */
-  | { type: "dependency-blocked"; blockedBy: DeliveryId[] }
-  | { type: "preflight-failed"; actionId: ActionId }
-  /** Delivery is queued and unblocked, but its Delivery Artifact has not been created yet. */
-  | { type: "needs-artifact-creation" }
-  /** At least one Slice is not complete; detailed per-Slice state comes from SliceWorkState. */
-  | { type: "slices-incomplete" }
-  /** Latest Delivery-scoped external operation failed; explicit manual retry/recovery operation will be added later. */
-  | { type: "delivery-operation-failed"; actionId: ActionId }
-  /** Latest Delivery-level artifact validation failed; Delivery-level correction behavior is deferred. */
-  | { type: "delivery-validation-failed"; actionId: ActionId }
-  /** Current Delivery Review Surface closed without merge; exact Delivery-level correction behavior is deferred. */
-  | { type: "delivery-review-failed"; reviewSurfaceId: ReviewSurfaceId }
-  /** All Slices are complete; Delivery Artifact needs Delivery-level validation before review/ship flow can continue. */
-  | { type: "needs-artifact-validation" }
-  /** Delivery Artifact validation passed and Delivery Review Surface still needs to be created. */
-  | { type: "needs-review-surface" }
-  /** Delivery Review Surface exists and is waiting for external review, merge, or observation. */
-  | { type: "awaiting-review"; reviewSurfaceId: ReviewSurfaceId }
-  /** Delivery Branch is integrated into the Target Branch; Delivery can be shipped by shipDelivery. */
-  | { type: "ready-to-ship"; integration: DeliveryIntegration };
+	| { type: 'closed'; outcome: DeliveryClosedOutcome; actionId: ActionId }
+	| { type: 'unqueued' }
+	/** blockedBy contains direct unmet Delivery dependencies only, ordered by dependency accepted time then DeliveryId. */
+	| { type: 'dependency-blocked'; blockedBy: DeliveryId[] }
+	| { type: 'preflight-failed'; actionId: ActionId }
+	/** Delivery is queued and unblocked, but its Delivery Artifact has not been created yet. */
+	| { type: 'needs-artifact-creation' }
+	/** At least one Slice is not complete; detailed per-Slice state comes from SliceWorkState. */
+	| { type: 'slices-incomplete' }
+	/** Latest Delivery-scoped external operation failed; explicit manual retry/recovery operation will be added later. */
+	| { type: 'delivery-operation-failed'; actionId: ActionId }
+	/** Latest Delivery-level artifact validation failed; Delivery-level correction behavior is deferred. */
+	| { type: 'delivery-validation-failed'; actionId: ActionId }
+	/** Current Delivery Review Surface closed without merge; exact Delivery-level correction behavior is deferred. */
+	| { type: 'delivery-review-failed'; reviewSurfaceId: ReviewSurfaceId }
+	/** All Slices are complete; Delivery Artifact needs Delivery-level validation before review/ship flow can continue. */
+	| { type: 'needs-artifact-validation' }
+	/** Delivery Artifact validation passed and Delivery Review Surface still needs to be created. */
+	| { type: 'needs-review-surface' }
+	/** Delivery Review Surface exists and is waiting for external review, merge, or observation. */
+	| { type: 'awaiting-review'; reviewSurfaceId: ReviewSurfaceId }
+	/** Delivery Branch is integrated into the Target Branch; Delivery can be shipped by shipDelivery. */
+	| { type: 'ready-to-ship'; integration: DeliveryIntegration }
 
 export type DeliveryIntegration =
-  | { type: "review-surface-merged"; reviewSurfaceId: ReviewSurfaceId }
-  | { type: "observed-artifact-integration"; actionId: ActionId };
+	| { type: 'review-surface-merged'; reviewSurfaceId: ReviewSurfaceId }
+	| { type: 'observed-artifact-integration'; actionId: ActionId }
 
 export interface DeliveryWorkConfig {
-  /** Must be >= 1. Limits active Slice work slots: executing, needs-artifact-validation, needs-delivery-validation, and unexpired scheduler claims, including claims for Slice Artifact creation. Unclaimed needs-artifact-creation and external waiting states do not count. */
-  maxActiveSliceSlots: number;
+	/** Must be >= 1. Limits active Slice work slots: executing, needs-artifact-validation, needs-delivery-validation, and unexpired scheduler claims, including claims for Slice Artifact creation. Unclaimed needs-artifact-creation and external waiting states do not count. */
+	maxActiveSliceSlots: number
 
-  /** Must be >= 0. Counts automatic correction Agent Runs per validation/external-operation failure chain. */
-  maxCorrectionRetriesPerFailure: number;
+	/** Must be >= 0. Counts automatic correction Agent Runs per validation/external-operation failure chain. */
+	maxCorrectionRetriesPerFailure: number
 
-  /** Must be >= 1. Applies only to Model Agent work; future Agent types get separate timeout fields. */
-  modelTimeoutMs: number;
+	/** Must be >= 1. Applies only to Model Agent work; future Agent types get separate timeout fields. */
+	modelTimeoutMs: number
 }
 
 /**
@@ -437,27 +433,27 @@ export interface DeliveryWorkConfig {
  * -> Project.config.value.work
  * -> PortfolioConfigRecord.value.work
  */
-export type DeliveryWorkConfigResolution = DeliveryWorkConfig;
+export type DeliveryWorkConfigResolution = DeliveryWorkConfig
 
-export type DeliveryTarget = SourceControlDeliveryTarget;
+export type DeliveryTarget = SourceControlDeliveryTarget
 
 export interface SourceControlDeliveryTarget {
-  type: "source-control";
-  repositoryId: RepositoryId;
+	type: 'source-control'
+	repositoryId: RepositoryId
 
-  /** Immutable. Delivery Branch is created from this and merged back into it on Ship. */
-  targetBranch: string;
+	/** Immutable. Delivery Branch is created from this and merged back into it on Ship. */
+	targetBranch: string
 }
 
 export interface Slice {
-  id: SliceId;
-  deliveryId: DeliveryId;
-  title: string;
+	id: SliceId
+	deliveryId: DeliveryId
+	title: string
 
-  /** Immutable after Plan Output acceptance. */
-  instruction: InstructionSource;
+	/** Immutable after Plan Output acceptance. */
+	instruction: InstructionSource
 
-  accepted: AuditStamp;
+	accepted: AuditStamp
 }
 
 /**
@@ -467,68 +463,61 @@ export interface Slice {
  * executable.
  */
 export interface FailureChain {
-  /** The failed validation or external-operation Action that started the chain. */
-  rootActionId: ActionId;
+	/** The failed validation or external-operation Action that started the chain. */
+	rootActionId: ActionId
 
-  /** Number of correction execution Actions started for this chain. */
-  correctionRetries: number;
+	/** Number of correction execution Actions started for this chain. */
+	correctionRetries: number
 }
 
 export type SliceWorkState =
-  /** actionId points to the passed validate-delivery-artifact Action that completed the Slice. */
-  | { type: "complete"; actionId: ActionId }
-  /** Slice Artifact was promoted into the Delivery Artifact and the resulting Delivery Artifact still needs validation. */
-  | { type: "needs-delivery-validation"; actionId: ActionId }
-  /** blockedBy contains direct incomplete same-Delivery Slice dependencies only, ordered by dependency accepted time then SliceId. */
-  | { type: "dependency-blocked"; blockedBy: SliceId[] }
-  | { type: "executing"; mode: "initial"; agentRunId: AgentRunId }
-  | { type: "executing"; mode: "correction"; agentRunId: AgentRunId; failureChain: FailureChain }
-  | { type: "needs-artifact-validation"; mode: "initial"; sliceArtifactId: SliceArtifactId }
-  | {
-      type: "needs-artifact-validation";
-      mode: "correction";
-      sliceArtifactId: SliceArtifactId;
-      failureChain: FailureChain;
-    }
-  /** actionId points to the latest failed Action that exhausted retries; failureChain.rootActionId points to the first failed Action in the chain. */
-  | { type: "correction-blocked"; actionId: ActionId; failureChain: FailureChain }
-  | { type: "awaiting-review"; reviewSurfaceId: ReviewSurfaceId }
-  /** Latest Slice-scoped external operation failed before correction could run; explicit manual retry/recovery operation will be added later. */
-  | { type: "slice-operation-failed"; actionId: ActionId }
-  /** Slice is otherwise initially executable, but its Slice Artifact has not been created yet. */
-  | { type: "needs-artifact-creation" }
-  | { type: "executable"; mode: "initial" }
-  | { type: "executable"; mode: "correction"; failureChain: FailureChain };
+	/** actionId points to the passed validate-delivery-artifact Action that completed the Slice. */
+	| { type: 'complete'; actionId: ActionId }
+	/** Slice Artifact was promoted into the Delivery Artifact and the resulting Delivery Artifact still needs validation. */
+	| { type: 'needs-delivery-validation'; actionId: ActionId }
+	/** blockedBy contains direct incomplete same-Delivery Slice dependencies only, ordered by dependency accepted time then SliceId. */
+	| { type: 'dependency-blocked'; blockedBy: SliceId[] }
+	| { type: 'executing'; mode: 'initial'; agentRunId: AgentRunId }
+	| { type: 'executing'; mode: 'correction'; agentRunId: AgentRunId; failureChain: FailureChain }
+	| { type: 'needs-artifact-validation'; mode: 'initial'; sliceArtifactId: SliceArtifactId }
+	| {
+			type: 'needs-artifact-validation'
+			mode: 'correction'
+			sliceArtifactId: SliceArtifactId
+			failureChain: FailureChain
+	  }
+	/** actionId points to the latest failed Action that exhausted retries; failureChain.rootActionId points to the first failed Action in the chain. */
+	| { type: 'correction-blocked'; actionId: ActionId; failureChain: FailureChain }
+	| { type: 'awaiting-review'; reviewSurfaceId: ReviewSurfaceId }
+	/** Latest Slice-scoped external operation failed before correction could run; explicit manual retry/recovery operation will be added later. */
+	| { type: 'slice-operation-failed'; actionId: ActionId }
+	/** Slice is otherwise initially executable, but its Slice Artifact has not been created yet. */
+	| { type: 'needs-artifact-creation' }
+	| { type: 'executable'; mode: 'initial' }
+	| { type: 'executable'; mode: 'correction'; failureChain: FailureChain }
 
 // -----------------------------------------------------------------------------
 // Links / Graph
 // -----------------------------------------------------------------------------
 
 export type GraphNodeRef =
-  | { type: "plan"; id: PlanId }
-  | { type: "project"; id: ProjectId }
-  | { type: "delivery"; id: DeliveryId }
-  | { type: "slice"; id: SliceId }
-  | { type: "memory"; id: MemoryId };
+	| { type: 'plan'; id: PlanId }
+	| { type: 'project'; id: ProjectId }
+	| { type: 'delivery'; id: DeliveryId }
+	| { type: 'slice'; id: SliceId }
+	| { type: 'memory'; id: MemoryId }
 
-export type LinkType =
-  | "produced"
-  | "implements"
-  | "references"
-  | "supersedes"
-  | "supports"
-  | "contradicts"
-  | "depends-on";
+export type LinkType = 'produced' | 'implements' | 'references' | 'supersedes' | 'supports' | 'contradicts' | 'depends-on'
 
 export interface Link {
-  id: LinkId;
-  type: LinkType;
-  from: GraphNodeRef;
-  to: GraphNodeRef;
-  created: AuditStamp;
+	id: LinkId
+	type: LinkType
+	from: GraphNodeRef
+	to: GraphNodeRef
+	created: AuditStamp
 
-  /** Only archivable Link types may set this. */
-  archived: AuditStamp | null;
+	/** Only archivable Link types may set this. */
+	archived: AuditStamp | null
 }
 
 // -----------------------------------------------------------------------------
@@ -540,18 +529,18 @@ export interface Link {
  * that need multiple concrete artifacts can model them inside their artifact config.
  */
 export interface DeliveryArtifact {
-  id: DeliveryArtifactId;
-  deliveryId: DeliveryId;
-  config: DeliveryArtifactConfig;
-  created: AuditStamp;
+	id: DeliveryArtifactId
+	deliveryId: DeliveryId
+	config: DeliveryArtifactConfig
+	created: AuditStamp
 }
 
-export type DeliveryArtifactConfig = SourceControlDeliveryArtifactConfig;
-export type DeliveryArtifactType = DeliveryArtifactConfig["type"];
+export type DeliveryArtifactConfig = SourceControlDeliveryArtifactConfig
+export type DeliveryArtifactType = DeliveryArtifactConfig['type']
 
 export interface SourceControlDeliveryArtifactConfig {
-  type: "source-control";
-  deliveryBranch: string;
+	type: 'source-control'
+	deliveryBranch: string
 }
 
 /**
@@ -559,18 +548,18 @@ export interface SourceControlDeliveryArtifactConfig {
  * need multiple concrete artifacts can model them inside their artifact config.
  */
 export interface SliceArtifact {
-  id: SliceArtifactId;
-  sliceId: SliceId;
-  config: SliceArtifactConfig;
-  created: AuditStamp;
+	id: SliceArtifactId
+	sliceId: SliceId
+	config: SliceArtifactConfig
+	created: AuditStamp
 }
 
-export type SliceArtifactConfig = SourceControlSliceArtifactConfig;
-export type SliceArtifactType = SliceArtifactConfig["type"];
+export type SliceArtifactConfig = SourceControlSliceArtifactConfig
+export type SliceArtifactType = SliceArtifactConfig['type']
 
 export interface SourceControlSliceArtifactConfig {
-  type: "source-control";
-  sliceBranch: string;
+	type: 'source-control'
+	sliceBranch: string
 }
 
 // -----------------------------------------------------------------------------
@@ -578,14 +567,14 @@ export interface SourceControlSliceArtifactConfig {
 // -----------------------------------------------------------------------------
 
 export interface Action {
-  id: ActionId;
-  deliveryId: DeliveryId;
-  performed: RuntimeRecord;
+	id: ActionId
+	deliveryId: DeliveryId
+	performed: RuntimeRecord
 
-  /** Non-null only when the Action is the authoritative fact created by an explicit consumer-authorized operation; scheduler/runtime Actions use null. */
-  authorized: AuditStamp | null;
+	/** Non-null only when the Action is the authoritative fact created by an explicit consumer-authorized operation; scheduler/runtime Actions use null. */
+	authorized: AuditStamp | null
 
-  result: ActionResult;
+	result: ActionResult
 }
 
 /**
@@ -594,54 +583,54 @@ export interface Action {
  * otherwise create/start/observe/validate/promote/record verbs.
  */
 export type ActionResult =
-  | { type: "queue-delivery" }
-  | { type: "ship-delivery"; integration: DeliveryIntegration }
-  | { type: "abandon-delivery"; reason: string; cleanupEvidence: ExternalOperationEvidence[] }
-  | { type: "validate-preflight"; evidence: ValidationEvidence }
-  | { type: "create-delivery-artifact"; deliveryArtifactId: DeliveryArtifactId }
-  | { type: "create-slice-artifact"; sliceId: SliceId; sliceArtifactId: SliceArtifactId }
-  | { type: "start-slice-execution"; sliceId: SliceId; mode: "initial" | "correction"; agentRunId: AgentRunId }
-  | { type: "start-revision-planning"; revisionGateId: RevisionGateId; agentRunId: AgentRunId }
-  | { type: "validate-slice-artifact"; sliceId: SliceId; evidence: ValidationEvidence }
-  | { type: "create-slice-review-surface"; sliceId: SliceId; reviewSurfaceId: ReviewSurfaceId }
-  | { type: "observe-slice-review-surface"; sliceId: SliceId; reviewSurfaceId: ReviewSurfaceId }
-  | { type: "promote-slice-artifact"; sliceId: SliceId; evidence: ExternalOperationEvidence }
-  | { type: "validate-delivery-artifact"; evidence: ValidationEvidence }
-  /** Positive observation that the Delivery Artifact is already integrated into the target. */
-  | { type: "observe-delivery-artifact-integration"; evidence: ExternalOperationEvidence }
-  | { type: "create-delivery-review-surface"; reviewSurfaceId: ReviewSurfaceId }
-  | { type: "observe-delivery-review-surface"; reviewSurfaceId: ReviewSurfaceId }
-  | { type: "start-revision-execution"; revisionId: RevisionId; agentRunId: AgentRunId }
-  | { type: "record-slice-external-operation-failure"; sliceId: SliceId; evidence: ExternalOperationEvidence }
-  | { type: "record-revision-external-operation-failure"; revisionId: RevisionId; evidence: ExternalOperationEvidence }
-  | { type: "record-delivery-external-operation-failure"; evidence: ExternalOperationEvidence };
+	| { type: 'queue-delivery' }
+	| { type: 'ship-delivery'; integration: DeliveryIntegration }
+	| { type: 'abandon-delivery'; reason: string; cleanupEvidence: ExternalOperationEvidence[] }
+	| { type: 'validate-preflight'; evidence: ValidationEvidence }
+	| { type: 'create-delivery-artifact'; deliveryArtifactId: DeliveryArtifactId }
+	| { type: 'create-slice-artifact'; sliceId: SliceId; sliceArtifactId: SliceArtifactId }
+	| { type: 'start-slice-execution'; sliceId: SliceId; mode: 'initial' | 'correction'; agentRunId: AgentRunId }
+	| { type: 'start-revision-planning'; revisionGateId: RevisionGateId; agentRunId: AgentRunId }
+	| { type: 'validate-slice-artifact'; sliceId: SliceId; evidence: ValidationEvidence }
+	| { type: 'create-slice-review-surface'; sliceId: SliceId; reviewSurfaceId: ReviewSurfaceId }
+	| { type: 'observe-slice-review-surface'; sliceId: SliceId; reviewSurfaceId: ReviewSurfaceId }
+	| { type: 'promote-slice-artifact'; sliceId: SliceId; evidence: ExternalOperationEvidence }
+	| { type: 'validate-delivery-artifact'; evidence: ValidationEvidence }
+	/** Positive observation that the Delivery Artifact is already integrated into the target. */
+	| { type: 'observe-delivery-artifact-integration'; evidence: ExternalOperationEvidence }
+	| { type: 'create-delivery-review-surface'; reviewSurfaceId: ReviewSurfaceId }
+	| { type: 'observe-delivery-review-surface'; reviewSurfaceId: ReviewSurfaceId }
+	| { type: 'start-revision-execution'; revisionId: RevisionId; agentRunId: AgentRunId }
+	| { type: 'record-slice-external-operation-failure'; sliceId: SliceId; evidence: ExternalOperationEvidence }
+	| { type: 'record-revision-external-operation-failure'; revisionId: RevisionId; evidence: ExternalOperationEvidence }
+	| { type: 'record-delivery-external-operation-failure'; evidence: ExternalOperationEvidence }
 
 export interface AgentRun {
-  id: AgentRunId;
-  agent: Agent;
-  purpose: AgentRunPurpose;
-  started: RuntimeRecord;
-  completed: RuntimeRecord | null;
+	id: AgentRunId
+	agent: Agent
+	purpose: AgentRunPurpose
+	started: RuntimeRecord
+	completed: RuntimeRecord | null
 }
 
-export type Agent = ModelAgent;
+export type Agent = ModelAgent
 
 export interface ModelAgent {
-  type: "model";
-  modelId: ModelId;
+	type: 'model'
+	modelId: ModelId
 }
 
 export type AgentRunPurpose =
-  | { type: "planning"; planId: PlanId }
-  | { type: "revision-planning"; revisionGateId: RevisionGateId }
-  | { type: "execution"; actionId: ActionId }
-  | { type: "revision-execution"; revisionId: RevisionId; actionId: ActionId };
+	| { type: 'planning'; planId: PlanId }
+	| { type: 'revision-planning'; revisionGateId: RevisionGateId }
+	| { type: 'execution'; actionId: ActionId }
+	| { type: 'revision-execution'; revisionId: RevisionId; actionId: ActionId }
 
 // -----------------------------------------------------------------------------
 // Evidence / validation / external operation failures
 // -----------------------------------------------------------------------------
 
-export type CorrectionEvidence = ValidationEvidence | ExternalOperationEvidence;
+export type CorrectionEvidence = ValidationEvidence | ExternalOperationEvidence
 
 /**
  * preflightModel returns model-preflight evidence.
@@ -649,98 +638,98 @@ export type CorrectionEvidence = ValidationEvidence | ExternalOperationEvidence;
  * Successful delivery-preflight evidence is recorded only when it supersedes the latest failed validate-preflight Action.
  */
 export interface ValidationEvidence {
-  type: "validation";
-  operation: ValidationOperation;
-  passed: boolean;
-  summary: string;
+	type: 'validation'
+	operation: ValidationOperation
+	passed: boolean
+	summary: string
 }
 
 export type ValidationOperation =
-  | { type: "delivery-preflight" }
-  | { type: "model-preflight" }
-  | { type: "slice-branch-validation" }
-  | { type: "delivery-branch-validation" };
+	| { type: 'delivery-preflight' }
+	| { type: 'model-preflight' }
+	| { type: 'slice-branch-validation' }
+	| { type: 'delivery-branch-validation' }
 
 export interface ExternalOperationEvidence {
-  type: "external-operation";
-  operation: ExternalOperation;
-  passed: boolean;
-  summary: string;
+	type: 'external-operation'
+	operation: ExternalOperation
+	passed: boolean
+	summary: string
 }
 
 export type ExternalOperation =
-  | { type: "create-artifact" }
-  | { type: "push-branch" }
-  | { type: "create-review-surface" }
-  | { type: "merge-review-surface" }
-  | { type: "observe-artifact-integration" }
-  | { type: "close-review-surface" }
-  | { type: "fetch-feedback" };
+	| { type: 'create-artifact' }
+	| { type: 'push-branch' }
+	| { type: 'create-review-surface' }
+	| { type: 'merge-review-surface' }
+	| { type: 'observe-artifact-integration' }
+	| { type: 'close-review-surface' }
+	| { type: 'fetch-feedback' }
 
 // -----------------------------------------------------------------------------
 // Review Surface
 // -----------------------------------------------------------------------------
 
 export type ReviewSurfaceScope =
-  | { type: "slice"; sliceId: SliceId; sliceArtifactId: SliceArtifactId }
-  | { type: "delivery"; deliveryId: DeliveryId; deliveryArtifactId: DeliveryArtifactId };
+	| { type: 'slice'; sliceId: SliceId; sliceArtifactId: SliceArtifactId }
+	| { type: 'delivery'; deliveryId: DeliveryId; deliveryArtifactId: DeliveryArtifactId }
 
 export interface ReviewSurface {
-  id: ReviewSurfaceId;
-  scope: ReviewSurfaceScope;
-  config: ReviewSurfaceConfig;
+	id: ReviewSurfaceId
+	scope: ReviewSurfaceScope
+	config: ReviewSurfaceConfig
 
-  /** Required creation metadata only. No labels/assignees/reviewers/comments in v1. */
-  title: string;
-  body: string;
+	/** Required creation metadata only. No labels/assignees/reviewers/comments in v1. */
+	title: string
+	body: string
 
-  /** Merged, closed-without-merge, and replaced are mutually exclusive closed outcomes. */
-  closed: ReviewSurfaceClosed | null;
+	/** Merged, closed-without-merge, and replaced are mutually exclusive closed outcomes. */
+	closed: ReviewSurfaceClosed | null
 
-  created: AuditStamp;
+	created: AuditStamp
 }
 
-export type ReviewSurfaceConfig = GitHubPullRequestReviewSurfaceConfig;
-export type ReviewSurfaceProvider = ReviewSurfaceConfig["provider"];
+export type ReviewSurfaceConfig = GitHubPullRequestReviewSurfaceConfig
+export type ReviewSurfaceProvider = ReviewSurfaceConfig['provider']
 
 export interface GitHubPullRequestReviewSurfaceConfig {
-  provider: "github";
+	provider: 'github'
 
-  /** GitHub pull request identity within the repository. */
-  pullRequestNumber: number;
+	/** GitHub pull request identity within the repository. */
+	pullRequestNumber: number
 
-  /** Source Control facts. */
-  repositoryId: RepositoryId;
-  sourceBranch: string;
-  targetBranch: string;
+	/** Source Control facts. */
+	repositoryId: RepositoryId
+	sourceBranch: string
+	targetBranch: string
 }
 
-export type ReviewSurfaceClosed = ReviewSurfaceMerged | ReviewSurfaceClosedWithoutMerge | ReviewSurfaceReplaced;
+export type ReviewSurfaceClosed = ReviewSurfaceMerged | ReviewSurfaceClosedWithoutMerge | ReviewSurfaceReplaced
 
 export interface ReviewSurfaceMerged {
-  type: "merged";
-  merged: AuditStamp;
-  config: ReviewSurfaceMergedConfig;
+	type: 'merged'
+	merged: AuditStamp
+	config: ReviewSurfaceMergedConfig
 }
 
-export type ReviewSurfaceMergedConfig = SourceControlReviewSurfaceMergedConfig;
+export type ReviewSurfaceMergedConfig = SourceControlReviewSurfaceMergedConfig
 
 export interface SourceControlReviewSurfaceMergedConfig {
-  type: "source-control";
-  repositoryId: RepositoryId;
-  sourceBranch: string;
-  targetBranch: string;
+	type: 'source-control'
+	repositoryId: RepositoryId
+	sourceBranch: string
+	targetBranch: string
 }
 
 export interface ReviewSurfaceClosedWithoutMerge {
-  type: "closed-without-merge";
-  closed: AuditStamp;
+	type: 'closed-without-merge'
+	closed: AuditStamp
 }
 
 export interface ReviewSurfaceReplaced {
-  type: "replaced";
-  replaced: AuditStamp;
-  reviewSurfaceId: ReviewSurfaceId;
+	type: 'replaced'
+	replaced: AuditStamp
+	reviewSurfaceId: ReviewSurfaceId
 }
 
 // -----------------------------------------------------------------------------
@@ -752,36 +741,36 @@ export interface ReviewSurfaceReplaced {
  * It is not stored as authoritative Portfolio data in v1.
  */
 export interface FetchedFeedback {
-  reviewSurfaceId: ReviewSurfaceId;
-  config: FetchedFeedbackConfig;
-  body: string;
-  createdAt: IsoDateTime | null;
-  updatedAt: IsoDateTime | null;
+	reviewSurfaceId: ReviewSurfaceId
+	config: FetchedFeedbackConfig
+	body: string
+	createdAt: IsoDateTime | null
+	updatedAt: IsoDateTime | null
 }
 
-export type FetchedFeedbackConfig = GitHubFetchedFeedbackConfig;
-export type FetchedFeedbackProvider = FetchedFeedbackConfig["provider"];
+export type FetchedFeedbackConfig = GitHubFetchedFeedbackConfig
+export type FetchedFeedbackProvider = FetchedFeedbackConfig['provider']
 
 export interface GitHubFetchedFeedbackConfig {
-  provider: "github";
-  externalFeedbackId: string;
-  author: string | null;
-  url: string | null;
+	provider: 'github'
+	externalFeedbackId: string
+	author: string | null
+	url: string | null
 }
 
 export type RevisionScope =
-  | { type: "slice-artifact"; sliceId: SliceId; sliceArtifactId: SliceArtifactId }
-  | { type: "delivery-artifact"; deliveryId: DeliveryId; deliveryArtifactId: DeliveryArtifactId };
+	| { type: 'slice-artifact'; sliceId: SliceId; sliceArtifactId: SliceArtifactId }
+	| { type: 'delivery-artifact'; deliveryId: DeliveryId; deliveryArtifactId: DeliveryArtifactId }
 
 export interface RevisionGate {
-  id: RevisionGateId;
-  scope: RevisionScope;
-  reviewSurfaceId: ReviewSurfaceId;
-  opened: AuditStamp;
-  closed: AuditStamp | null;
+	id: RevisionGateId
+	scope: RevisionScope
+	reviewSurfaceId: ReviewSurfaceId
+	opened: AuditStamp
+	closed: AuditStamp | null
 
-  /** Set when a Revision Output is accepted and Revision is created. */
-  consumedByRevisionId: RevisionId | null;
+	/** Set when a Revision Output is accepted and Revision is created. */
+	consumedByRevisionId: RevisionId | null
 }
 
 /**
@@ -789,81 +778,73 @@ export interface RevisionGate {
  * It is the structured shape a revision-planning Agent Run must produce.
  */
 export interface RevisionOutputProposal {
-  instruction: InstructionSource;
+	instruction: InstructionSource
 
-  /** Human-readable account of how fetched Feedback is handled. */
-  disposition: RevisionDisposition;
+	/** Human-readable account of how fetched Feedback is handled. */
+	disposition: RevisionDisposition
 }
 
 export interface Revision {
-  id: RevisionId;
-  revisionGateId: RevisionGateId;
-  scope: RevisionScope;
-  instruction: InstructionSource;
-  disposition: RevisionDisposition;
-  accepted: AuditStamp;
+	id: RevisionId
+	revisionGateId: RevisionGateId
+	scope: RevisionScope
+	instruction: InstructionSource
+	disposition: RevisionDisposition
+	accepted: AuditStamp
 }
 
 export interface RevisionDisposition {
-  /** Immutable human-readable account of how the Revision responds to fetched Feedback. */
-  body: string;
+	/** Immutable human-readable account of how the Revision responds to fetched Feedback. */
+	body: string
 }
 
 // -----------------------------------------------------------------------------
 // Memory
 // -----------------------------------------------------------------------------
 
-export type MemoryType =
-  | "decision"
-  | "fact"
-  | "constraint"
-  | "assumption"
-  | "risk"
-  | "architecture"
-  | "workflow"
-  | "convention";
+export type MemoryType = 'decision' | 'fact' | 'constraint' | 'assumption' | 'risk' | 'architecture' | 'workflow' | 'convention'
 
 export interface Memory {
-  id: MemoryId;
-  title: string;
-  body: string;
-  type: MemoryType | null;
-  created: AuditStamp;
+	id: MemoryId
+	title: string
+	body: string
+	type: MemoryType | null
+	created: AuditStamp
 }
 
 // -----------------------------------------------------------------------------
 // Secrets
 // -----------------------------------------------------------------------------
 
-export type SecretType = "github-pat" | "generic";
+export type SecretType = 'github-pat' | 'generic'
 
 export interface Secret {
-  id: SecretId;
-  type: SecretType;
-  name: string;
+	id: SecretId
+	type: SecretType
+	name: string
 
-  /** Consumer-specific protected value reference. Core never exposes/logs plaintext. */
-  valueRef: string;
+	/** Consumer-specific protected value reference. Core never exposes/logs plaintext. */
+	valueRef: string
 
-  created: AuditStamp;
-  replaced: AuditStamp | null;
+	created: AuditStamp
+	replaced: AuditStamp | null
 }
 
 export type SecretBindingScope =
-  | { type: "portfolio" }
-  | { type: "project"; projectId: ProjectId }
-  | { type: "delivery"; deliveryId: DeliveryId };
+	| { type: 'portfolio' }
+	| { type: 'project'; projectId: ProjectId }
+	| { type: 'delivery'; deliveryId: DeliveryId }
 
 export interface SecretBinding {
-  id: SecretBindingId;
-  secretId: SecretId;
-  scope: SecretBindingScope;
+	id: SecretBindingId
+	secretId: SecretId
+	scope: SecretBindingScope
 
-  /** Must match /^[A-Z_][A-Z0-9_]*$/. */
-  envName: string;
+	/** Must match /^[A-Z_][A-Z0-9_]*$/. */
+	envName: string
 
-  created: AuditStamp;
-  archived: AuditStamp | null;
+	created: AuditStamp
+	archived: AuditStamp | null
 }
 
 /**
@@ -884,19 +865,19 @@ export interface SecretBinding {
  *   Portfolio -> Project -> Delivery
  */
 export type ResolvedSecretEnvironment = Array<{
-  envName: string;
-  secretId: SecretId;
-}>;
+	envName: string
+	secretId: SecretId
+}>
 
 // -----------------------------------------------------------------------------
 // Portfolio Snapshot
 // -----------------------------------------------------------------------------
 
 export interface PortfolioSnapshotManifest {
-  id: SnapshotId;
-  snapshotVersion: string;
-  exported: AuditStamp;
+	id: SnapshotId
+	snapshotVersion: string
+	exported: AuditStamp
 
-  /** Passphrase-encrypted payload containing Portfolio storage contents. */
-  encryptedPayloadRef: string;
+	/** Passphrase-encrypted payload containing Portfolio storage contents. */
+	encryptedPayloadRef: string
 }

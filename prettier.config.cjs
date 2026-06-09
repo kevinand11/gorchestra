@@ -1,1 +1,1 @@
-module.exports = require("./configs/prettier.cjs");
+module.exports = require('@k11/configs/prettier')

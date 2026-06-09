@@ -7,11 +7,11 @@
 Gorchestra has multiple domain contexts:
 
 - Core context: `docs/core/CONTEXT.md`
-  - Core ADRs: `docs/core/adr/`
+    - Core ADRs: `docs/core/adr/`
 - Consumers context map: `docs/consumers/CONTEXT.md`
-  - Consumer-wide ADRs: `docs/consumers/adr/`
+    - Consumer-wide ADRs: `docs/consumers/adr/`
 - Server Consumer context: `docs/consumers/server/CONTEXT.md`
-  - Server Consumer ADRs: `docs/consumers/server/adr/`
+    - Server Consumer ADRs: `docs/consumers/server/adr/`
 
 ADR filenames use sortable date+time prefixes: `YYYY-MM-DD-HHMM-slug.md`.
 
