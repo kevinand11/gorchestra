@@ -81,6 +81,7 @@ import type {
 // -----------------------------------------------------------------------------
 
 export interface GorchestraCore {
+	preflight(): Promise<Result<CorePreflightReport, CorePreflightError>>
 	commands: CoreCommands
 	queries: CoreQueries
 }
@@ -102,14 +103,45 @@ export function openCore(options: OpenCoreOptions): Result<GorchestraCore, OpenC
 		return validation
 	}
 
+	const coreServices = validation.value as OpenCoreOptions
+
 	return {
 		ok: true,
 		value: {
+			preflight: () => preflightCore(coreServices),
 			commands: createCoreCommands(),
 			queries: createCoreQueries(),
 		},
 	}
 }
+
+export type CorePreflightCheckName = 'storage' | 'secrets' | 'sandbox' | 'clock' | 'idGenerator'
+
+export interface CorePreflightReport {
+	passed: boolean
+	checks: CorePreflightChecks
+}
+
+export interface CorePreflightChecks {
+	storage: CorePreflightCheck
+	secrets: CorePreflightCheck
+	sandbox: CorePreflightCheck
+	clock: CorePreflightCheck
+	idGenerator: CorePreflightCheck
+}
+
+export type CorePreflightCheck = { ok: true } | { ok: false; reason: 'not-ready' | 'probe-failed'; message: string | null }
+
+export type CoreServicePreflightOutput = { ok: true } | { ok: false; message: string | null }
+
+export interface InvalidCoreServiceOutputError {
+	type: 'invalid-core-service-output'
+	service: CorePreflightCheckName
+	operation: string
+	pipeError: PipeError
+}
+
+export type CorePreflightError = InvalidCoreServiceOutputError
 
 export interface CoreClockService {
 	now(): Date
@@ -621,6 +653,7 @@ export interface TimelineEvent {
  */
 
 export interface CoreStorageService {
+	preflight(): Promise<CoreServicePreflightOutput>
 	transaction<T>(fn: (tx: CoreStorageTransaction) => Promise<T>): Promise<T>
 }
 
@@ -660,6 +693,7 @@ export interface RepositoryTable<T, Id> {
 }
 
 export interface CoreSecretsService {
+	preflight(): Promise<CoreServicePreflightOutput>
 	resolveSecrets(input: ResolveSecretsInput): Promise<ResolvedSecret[]>
 	resolveSecretValues(input: ResolveSecretValuesInput): Promise<ResolvedSecretValue[]>
 }
@@ -693,6 +727,7 @@ export interface ResolvedSecretValue {
  * object is present.
  */
 export interface CoreSandboxService {
+	preflight(): Promise<CoreServicePreflightOutput>
 	[capability: string]: unknown
 }
 
@@ -759,12 +794,13 @@ const envNamePipe = nonEmptyTrimmedStringPipe.pipe(
 	v.custom<string>((value) => /^[A-Z_][A-Z0-9_]*$/.test(value), 'Expected an environment variable name.'),
 )
 
-const storagePipe = v.object({ transaction: functionDependencyPipe })
+const storagePipe = v.object({ preflight: functionDependencyPipe, transaction: functionDependencyPipe })
 const coreSecretsServicePipe = v.object({
+	preflight: functionDependencyPipe,
 	resolveSecrets: functionDependencyPipe,
 	resolveSecretValues: functionDependencyPipe,
 })
-const coreSandboxServicePipe = v.object({})
+const coreSandboxServicePipe = v.object({ preflight: functionDependencyPipe })
 const coreEventSinkPipe = v.object({ publish: functionDependencyPipe })
 const coreLoggerPipe = v.object({
 	debug: functionDependencyPipe,
@@ -938,6 +974,16 @@ const timelineFilterPipe = v.object({
 	since: v.nullable(rawStringPipe),
 	until: v.nullable(rawStringPipe),
 })
+const coreServicePreflightOutputPipe = v
+	.any<unknown>()
+	.pipe(v.custom<unknown>(isCoreServicePreflightOutput, 'Expected a Core Service preflight output.')) as Pipe<
+	unknown,
+	CoreServicePreflightOutput
+>
+const coreClockOutputPipe = v
+	.instanceOf(Date, 'Expected a Date.')
+	.pipe(v.custom<Date>((value) => !Number.isNaN(value.getTime()), 'Expected a valid Date.'))
+const coreIdOutputPipe = nonEmptyTrimmedStringPipe
 
 const commandInputPipes = {
 	setPortfolioConfig: v.object({ config: portfolioConfigPipe }),
@@ -1042,6 +1088,101 @@ function discriminator(value: unknown): PropertyKey {
 
 function discriminatorFrom(field: string): (value: unknown) => PropertyKey {
 	return (value) => (isRecord(value) ? (value[field] as PropertyKey) : '')
+}
+
+async function preflightCore(options: OpenCoreOptions): Promise<Result<CorePreflightReport, CorePreflightError>> {
+	const storageCheck = await preflightCoreService('storage', () => options.storage.preflight())
+	if (!storageCheck.ok) return storageCheck
+
+	const secretsCheck = await preflightCoreService('secrets', () => options.secrets.preflight())
+	if (!secretsCheck.ok) return secretsCheck
+
+	const sandboxCheck = await preflightCoreService('sandbox', () => options.sandbox.preflight())
+	if (!sandboxCheck.ok) return sandboxCheck
+
+	const clockCheck = preflightRuntimeService('clock', 'now', () => options.clock.now(), coreClockOutputPipe)
+	if (!clockCheck.ok) return clockCheck
+
+	const idGeneratorCheck = preflightRuntimeService(
+		'idGenerator',
+		'next',
+		() => options.idGenerator.next('core-preflight'),
+		coreIdOutputPipe,
+	)
+	if (!idGeneratorCheck.ok) return idGeneratorCheck
+
+	const checks: CorePreflightChecks = {
+		storage: storageCheck.value,
+		secrets: secretsCheck.value,
+		sandbox: sandboxCheck.value,
+		clock: clockCheck.value,
+		idGenerator: idGeneratorCheck.value,
+	}
+
+	const passed = [checks.storage, checks.secrets, checks.sandbox, checks.clock, checks.idGenerator].every((check) => check.ok)
+
+	return { ok: true, value: { passed, checks } }
+}
+
+async function preflightCoreService(
+	service: 'storage' | 'secrets' | 'sandbox',
+	probe: () => Promise<CoreServicePreflightOutput>,
+): Promise<Result<CorePreflightCheck, CorePreflightError>> {
+	try {
+		const output = await probe()
+		const validation = validateCoreServiceOutput(coreServicePreflightOutputPipe, output, service, 'preflight')
+
+		if (!validation.ok) {
+			return validation
+		}
+
+		return { ok: true, value: preflightCheckFromCoreServiceOutput(output) }
+	} catch {
+		return { ok: true, value: failedProbeCheck() }
+	}
+}
+
+function preflightRuntimeService<TPipe extends Pipe<unknown, unknown>>(
+	service: 'clock' | 'idGenerator',
+	operation: string,
+	probe: () => unknown,
+	outputPipe: TPipe,
+): Result<CorePreflightCheck, CorePreflightError> {
+	try {
+		const output = probe()
+		const validation = validateCoreServiceOutput(outputPipe, output, service, operation)
+
+		if (!validation.ok) {
+			return validation
+		}
+
+		return { ok: true, value: { ok: true } }
+	} catch {
+		return { ok: true, value: failedProbeCheck() }
+	}
+}
+
+function preflightCheckFromCoreServiceOutput(output: CoreServicePreflightOutput): CorePreflightCheck {
+	return output.ok ? { ok: true } : { ok: false, reason: 'not-ready', message: output.message }
+}
+
+function failedProbeCheck(): CorePreflightCheck {
+	return { ok: false, reason: 'probe-failed', message: null }
+}
+
+function validateCoreServiceOutput<TPipe extends Pipe<unknown, unknown>>(
+	pipe: TPipe,
+	value: unknown,
+	service: CorePreflightCheckName,
+	operation: string,
+): Result<PipeOutput<TPipe>, InvalidCoreServiceOutputError> {
+	const result = v.validate(pipe, value)
+
+	if (!result.valid) {
+		return { ok: false, error: { type: 'invalid-core-service-output', service, operation, pipeError: result.error } }
+	}
+
+	return { ok: true, value: result.value }
 }
 
 // -----------------------------------------------------------------------------
@@ -1214,6 +1355,18 @@ function validateCoreInput<TPipe extends Pipe<unknown, unknown>>(
 
 function notImplemented<T>(operation: string): Result<T> {
 	return { ok: false, error: { type: 'not-implemented', operation } }
+}
+
+function isCoreServicePreflightOutput(value: unknown): value is CoreServicePreflightOutput {
+	if (!isRecord(value)) {
+		return false
+	}
+
+	if (value['ok'] === true) {
+		return true
+	}
+
+	return value['ok'] === false && (typeof value['message'] === 'string' || value['message'] === null)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
