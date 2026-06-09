@@ -117,6 +117,9 @@ export interface GitHubRepositoryConfig {
 	provider: 'github'
 	owner: string
 	name: string
+
+	/** Secret Core resolves for GitHub provider access; Repository config writes validate the Secret exists without calling GitHub. */
+	secretId: SecretId
 }
 
 // -----------------------------------------------------------------------------
@@ -147,7 +150,7 @@ export type ModelProviderAuth = ModelProviderApiKeyAuth
 export interface ModelProviderApiKeyAuth {
 	type: 'apiKey'
 
-	/** Must reference a generic Secret. */
+	/** Must reference a Secret. */
 	secretId: SecretId
 }
 
@@ -155,7 +158,7 @@ export interface ModelProviderHeader {
 	/** Must match /^[A-Za-z0-9-]+$/; unique per provider case-insensitively. */
 	name: string
 
-	/** Must reference a generic Secret. */
+	/** Must reference a Secret. */
 	valueSecretId: SecretId
 }
 
@@ -816,11 +819,8 @@ export interface Memory {
 // Secrets
 // -----------------------------------------------------------------------------
 
-export type SecretType = 'github-pat' | 'generic'
-
 export interface Secret {
 	id: SecretId
-	type: SecretType
 	name: string
 
 	/** Consumer-specific protected value reference. Core never exposes/logs plaintext. */

@@ -68,7 +68,6 @@ import type {
 	SecretBindingId,
 	SecretBindingScope,
 	SecretId,
-	SecretType,
 	Slice,
 	SliceArtifact,
 	SliceArtifactId,
@@ -275,7 +274,9 @@ export interface CoreCommands {
 	// Project / Repository config
 	createProject(input: CreateProjectInput, context: OperationContext): Promise<Result<Project>>
 	setProjectConfig(input: SetProjectConfigInput, context: OperationContext): Promise<Result<Project>>
+	/** Validates the Project and referenced Secret exist in Portfolio storage, then writes Repository config without calling GitHub. */
 	createRepository(input: CreateRepositoryInput, context: OperationContext): Promise<Result<Repository>>
+	/** Validates the Repository and referenced Secret exist in Portfolio storage, then writes Repository config without calling GitHub. */
 	updateRepositoryConfig(input: UpdateRepositoryConfigInput, context: OperationContext): Promise<Result<Repository>>
 
 	// Secrets
@@ -482,7 +483,6 @@ export interface UpdateRepositoryConfigInput {
 }
 
 export interface CreateSecretInput {
-	type: SecretType
 	name: string
 
 	/** Consumer-specific protected value reference. */
@@ -851,7 +851,12 @@ const projectSourcePipe = v.discriminate(discriminator, {
 	'source-control': v.object({ type: v.eq('source-control') }),
 })
 const repositoryConfigPipe = v.discriminate(discriminatorFrom('provider'), {
-	github: v.object({ provider: v.eq('github'), owner: nonEmptyTrimmedStringPipe, name: nonEmptyTrimmedStringPipe }),
+	github: v.object({
+		provider: v.eq('github'),
+		owner: nonEmptyTrimmedStringPipe,
+		name: nonEmptyTrimmedStringPipe,
+		secretId: brandedIdPipe,
+	}),
 })
 const proposedDeliveryTargetPipe = v.discriminate(discriminator, {
 	'source-control': v.object({
@@ -911,7 +916,6 @@ const secretBindingScopePipe = v.discriminate(discriminator, {
 	project: v.object({ type: v.eq('project'), projectId: brandedIdPipe }),
 	delivery: v.object({ type: v.eq('delivery'), deliveryId: brandedIdPipe }),
 })
-const secretTypePipe = enumStringPipe(['github-pat', 'generic'])
 const reviewSurfaceScopePipe = v.discriminate(discriminator, {
 	slice: v.object({ type: v.eq('slice'), sliceId: brandedIdPipe, sliceArtifactId: brandedIdPipe }),
 	delivery: v.object({ type: v.eq('delivery'), deliveryId: brandedIdPipe, deliveryArtifactId: brandedIdPipe }),
@@ -990,7 +994,7 @@ const commandInputPipes = {
 	setProjectConfig: v.object({ projectId: brandedIdPipe, config: projectConfigPipe }),
 	createRepository: v.object({ projectId: brandedIdPipe, config: repositoryConfigPipe }),
 	updateRepositoryConfig: v.object({ repositoryId: brandedIdPipe, config: repositoryConfigPipe }),
-	createSecret: v.object({ type: secretTypePipe, name: nonEmptyTrimmedStringPipe, valueRef: secretValueRefPipe }),
+	createSecret: v.object({ name: nonEmptyTrimmedStringPipe, valueRef: secretValueRefPipe }),
 	replaceSecret: v.object({ secretId: brandedIdPipe, valueRef: secretValueRefPipe }),
 	bindSecret: v.object({ secretId: brandedIdPipe, scope: secretBindingScopePipe, envName: envNamePipe }),
 	archiveSecretBinding: v.object({ secretBindingId: brandedIdPipe }),

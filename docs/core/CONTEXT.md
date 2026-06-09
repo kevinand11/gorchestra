@@ -85,7 +85,7 @@ A Core-owned provider implementation for Source Control Project external operati
 _Avoid_: Source Control Port, Project Source Type, consumer integration logic
 
 **Repository**:
-A Source Control Project-managed source control target. For Source Control Projects, a Delivery targets exactly one Repository, while Plans may coordinate work across multiple Repositories in the same Project. Repository provider config identifies the target and the Secret Core uses for provider access.
+A Source Control Project-managed source control target. For Source Control Projects, a Delivery targets exactly one Repository, while Plans may coordinate work across multiple Repositories in the same Project. Repository provider config identifies the target and the Secret Core uses for provider access. Repository config writes validate the referenced Secret exists in the Portfolio without calling GitHub; external access validation happens in preflight or provider operations.
 _Avoid_: Project, repo
 
 **Plan**:

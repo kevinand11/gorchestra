@@ -59,7 +59,7 @@ function validCommandInputs(): Record<string, Record<string, unknown>> {
 	}
 	const planOutput = { proposedDeliveries: [], proposedMemories: [], proposedLinks: [] }
 	const revisionOutput = { instruction: { body: '  ' }, disposition: { body: ' handled ' } }
-	const repositoryConfig = { provider: 'github', owner: ' octo ', name: ' repo ' }
+	const repositoryConfig = { provider: 'github', owner: ' octo ', name: ' repo ', secretId: id }
 
 	return {
 		setPortfolioConfig: { config: portfolioConfig },
@@ -100,7 +100,7 @@ function validCommandInputs(): Record<string, Record<string, unknown>> {
 		setProjectConfig: { projectId: id, config: projectConfig },
 		createRepository: { projectId: id, config: repositoryConfig },
 		updateRepositoryConfig: { repositoryId: id, config: repositoryConfig },
-		createSecret: { type: 'generic', name: 'secret', valueRef: ' ref ' },
+		createSecret: { name: 'secret', valueRef: ' ref ' },
 		replaceSecret: { secretId: id, valueRef: ' ref ' },
 		bindSecret: { secretId: id, scope: { type: 'portfolio' }, envName: 'TOKEN' },
 		archiveSecretBinding: { secretBindingId: id },
@@ -350,8 +350,21 @@ describe('core runtime stub', () => {
 		})
 
 		await expect(
-			result.value.commands.createSecret({ type: 'generic', name: 'secret', valueRef: '   ' } as never, context),
+			result.value.commands.createRepository(
+				{ projectId: 'project-1', config: { provider: 'github', owner: 'octo', name: 'repo', secretId: '   ' } } as never,
+				context,
+			),
 		).resolves.toMatchObject({
+			ok: false,
+			error: {
+				type: 'invalid-input',
+				boundary: 'command',
+				operation: 'createRepository',
+				pipeError: { messages: [expect.objectContaining({ path: 'input.config.secretId' })] },
+			},
+		})
+
+		await expect(result.value.commands.createSecret({ name: 'secret', valueRef: '   ' }, context)).resolves.toMatchObject({
 			ok: false,
 			error: { type: 'invalid-input', boundary: 'command', operation: 'createSecret' },
 		})
