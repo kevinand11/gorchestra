@@ -43,8 +43,8 @@ This root AGENTS.md is the project-wide DOX rail: it gives repo-wide instruction
 - Delivery state transitions that must appear in the Delivery Action timeline are represented as Actions with non-null `authorized` instead of direct Delivery lifecycle fields.
 - Embedded records must contain all fields that change atomically with that lifecycle moment, so the model cannot represent half-updated states.
 - Prefer discriminated unions over nullable peer fields when exactly one variant applies.
-- Prefer passing identifiers and inferring authoritative fields inside core/ports over duplicating inferable values in consumer-facing API inputs, so callers cannot provide contradictory values.
-- For runtime/port calls that perform external actions, core should pass the resolved values needed to perform the action so adapters do not infer, load, or calculate authoritative context themselves.
+- Prefer passing identifiers and inferring authoritative fields inside Core over duplicating inferable values in consumer-facing API inputs, so callers cannot provide contradictory values.
+- For Core-owned provider/runtime behavior and Core Service calls that perform external actions, resolved values should be available at the boundary so service/provider code does not infer, load, or calculate authoritative context itself.
 
 ## Verification
 

@@ -2,9 +2,10 @@
  * Gorchestra core API sketch.
  *
  * This file is documentation-by-type, not an implementation contract yet.
- * It describes how consumers call Portfolio-scoped core operations and how core
- * calls consumer-provided storage and ports for source control, model agents,
- * secrets, and snapshot encryption.
+ * It describes how consumers call Portfolio-scoped core operations and sketches
+ * Core runtime boundaries. Current Core docs/ADRs define provider behavior,
+ * Model Agent runtime behavior, and Snapshot encryption as Core-owned, while
+ * consumers provide deployment mechanics as Core Services.
  *
  * Consumers authorize operations before calling core. Core enforces core
  * invariants and owns orchestration behavior inside the opened Portfolio space.
@@ -14,7 +15,6 @@ import { v, type Pipe, type PipeError, type PipeOutput } from 'valleyed'
 
 import type {
 	Action,
-	CorrectionEvidence,
 	ActionId,
 	AgentRun,
 	AgentRunId,
@@ -27,7 +27,6 @@ import type {
 	DeliveryWorkState,
 	ExternalOperationEvidence,
 	FetchedFeedback,
-	InstructionSource,
 	IsoDateTime,
 	Link,
 	LinkId,
@@ -56,9 +55,7 @@ import type {
 	RepositoryConfig,
 	RepositoryId,
 	ReviewSurface,
-	ReviewSurfaceConfig,
 	ReviewSurfaceId,
-	ReviewSurfaceMerged,
 	ReviewSurfaceScope,
 	Revision,
 	RevisionGate,
@@ -71,15 +68,11 @@ import type {
 	SecretBindingId,
 	SecretBindingScope,
 	SecretId,
-	SecretType,
 	Slice,
 	SliceArtifact,
 	SliceArtifactId,
 	SliceId,
-	SourceControlDeliveryArtifactConfig,
-	SourceControlSliceArtifactConfig,
 	ValidationEvidence,
-	ValidationOperation,
 } from './model'
 
 // -----------------------------------------------------------------------------
@@ -87,15 +80,19 @@ import type {
 // -----------------------------------------------------------------------------
 
 export interface GorchestraCore {
+	preflight(): Promise<Result<CorePreflightReport, CorePreflightError>>
 	commands: CoreCommands
 	queries: CoreQueries
 }
 
 export interface OpenCoreOptions {
-	storage: CoreStorage
-	ports: CorePorts
-	clock: Clock
-	idGenerator: IdGenerator
+	storage: CoreStorageService
+	secrets: CoreSecretsService
+	sandbox: CoreSandboxService
+	clock: CoreClockService
+	idGenerator: CoreIdGeneratorService
+	logger?: CoreLogger
+	eventSink?: CoreEventSink
 }
 
 export function openCore(options: OpenCoreOptions): Result<GorchestraCore, OpenCoreError> {
@@ -105,21 +102,52 @@ export function openCore(options: OpenCoreOptions): Result<GorchestraCore, OpenC
 		return validation
 	}
 
+	const coreServices = validation.value as OpenCoreOptions
+
 	return {
 		ok: true,
 		value: {
+			preflight: () => preflightCore(coreServices),
 			commands: createCoreCommands(),
 			queries: createCoreQueries(),
 		},
 	}
 }
 
-export interface Clock {
-	now(): IsoDateTime
+export type CorePreflightCheckName = 'storage' | 'secrets' | 'sandbox' | 'clock' | 'idGenerator'
+
+export interface CorePreflightReport {
+	passed: boolean
+	checks: CorePreflightChecks
 }
 
-export interface IdGenerator {
-	nextId<Name extends string>(brand: Name): string
+export interface CorePreflightChecks {
+	storage: CorePreflightCheck
+	secrets: CorePreflightCheck
+	sandbox: CorePreflightCheck
+	clock: CorePreflightCheck
+	idGenerator: CorePreflightCheck
+}
+
+export type CorePreflightCheck = { ok: true } | { ok: false; reason: 'not-ready' | 'probe-failed'; message: string | null }
+
+export type CoreServicePreflightOutput = { ok: true } | { ok: false; message: string | null }
+
+export interface InvalidCoreServiceOutputError {
+	type: 'invalid-core-service-output'
+	service: CorePreflightCheckName
+	operation: string
+	pipeError: PipeError
+}
+
+export type CorePreflightError = InvalidCoreServiceOutputError
+
+export interface CoreClockService {
+	now(): Date
+}
+
+export interface CoreIdGeneratorService {
+	next<Name extends string>(brand: Name): string
 }
 
 export interface OperationContext {
@@ -191,6 +219,7 @@ export interface CoreCommands {
 	archiveModel(input: ArchiveModelInput, context: OperationContext): Promise<Result<Model>>
 	unarchiveModel(input: UnarchiveModelInput, context: OperationContext): Promise<Result<Model>>
 	preflightModel(input: PreflightModelInput, context: OperationContext): Promise<Result<ValidationEvidence>>
+	preflightRepository(input: PreflightRepositoryInput, context: OperationContext): Promise<Result<ValidationEvidence>>
 
 	// Planning
 	createPlan(input: CreatePlanInput, context: OperationContext): Promise<Result<Plan>>
@@ -278,7 +307,9 @@ export interface CoreCommands {
 	// Project / Repository config
 	createProject(input: CreateProjectInput, context: OperationContext): Promise<Result<Project>>
 	setProjectConfig(input: SetProjectConfigInput, context: OperationContext): Promise<Result<Project>>
+	/** Validates the Project and referenced Secret exist in Portfolio storage, then writes Repository config without calling GitHub. */
 	createRepository(input: CreateRepositoryInput, context: OperationContext): Promise<Result<Repository>>
+	/** Validates the Repository and referenced Secret exist in Portfolio storage, then writes Repository config without calling GitHub. */
 	updateRepositoryConfig(input: UpdateRepositoryConfigInput, context: OperationContext): Promise<Result<Repository>>
 
 	// Secrets
@@ -341,6 +372,10 @@ export interface UnarchiveModelInput {
 
 export interface PreflightModelInput {
 	modelId: ModelId
+}
+
+export interface PreflightRepositoryInput {
+	repositoryId: RepositoryId
 }
 
 export interface CreatePlanInput {
@@ -485,7 +520,6 @@ export interface UpdateRepositoryConfigInput {
 }
 
 export interface CreateSecretInput {
-	type: SecretType
 	name: string
 
 	/** Consumer-specific protected value reference. */
@@ -518,35 +552,14 @@ export interface ExportSnapshotInput {
 export interface ImportSnapshotInput {
 	passphrase: string
 	encryptedPayload: Uint8Array
-	storage: CoreStorage
-	snapshotEncryption: SnapshotEncryptionPort
+	storage: CoreStorageService
 }
 
 export interface ImportSnapshotResult {
 	manifest: PortfolioSnapshotManifest
 }
 
-export interface SnapshotDecryptionFailureError {
-	type: 'snapshot-decryption-failed'
-	message: string
-}
-
-export interface InvalidSnapshotError {
-	type: 'invalid-snapshot'
-	message: string
-}
-
-export interface StorageOperationFailureError {
-	type: 'storage-operation-failed'
-	message: string
-}
-
-export type ImportSnapshotError =
-	| InvalidInputError
-	| SnapshotDecryptionFailureError
-	| InvalidSnapshotError
-	| StorageOperationFailureError
-	| NotImplementedError
+export type ImportSnapshotError = InvalidInputError | NotImplementedError
 
 export async function importSnapshot(
 	input: ImportSnapshotInput,
@@ -558,37 +571,7 @@ export async function importSnapshot(
 		return validation
 	}
 
-	let decrypted: DecryptedSnapshot
-
-	try {
-		decrypted = await input.snapshotEncryption.decrypt({
-			passphrase: input.passphrase,
-			encryptedPayload: input.encryptedPayload,
-		})
-	} catch (error) {
-		return { ok: false, error: { type: 'snapshot-decryption-failed', message: errorToMessage(error) } }
-	}
-
-	if (!isRecord(decrypted) || !(decrypted.bytes instanceof Uint8Array)) {
-		return {
-			ok: false,
-			error: { type: 'snapshot-decryption-failed', message: 'Snapshot decrypt did not return bytes.' },
-		}
-	}
-
-	const decodedSnapshot = decodeSnapshotPayload(decrypted.bytes)
-
-	if (!decodedSnapshot.ok) {
-		return decodedSnapshot
-	}
-
-	try {
-		await input.storage.transaction(() => Promise.resolve(undefined))
-	} catch (error) {
-		return { ok: false, error: { type: 'storage-operation-failed', message: errorToMessage(error) } }
-	}
-
-	return { ok: false, error: { type: 'not-implemented', operation: 'importSnapshot' } }
+	return Promise.resolve({ ok: false, error: { type: 'not-implemented', operation: 'importSnapshot' } })
 }
 
 // -----------------------------------------------------------------------------
@@ -665,25 +648,21 @@ export interface TimelineEvent {
 }
 
 // -----------------------------------------------------------------------------
-// Core -> consumer ports
+// Core Services
 // -----------------------------------------------------------------------------
 
-export interface CorePorts {
-	sourceControl: SourceControlPort
-	modelAgentRuntime: ModelAgentRuntimePort
-	secrets: SecretResolutionPort
-	snapshotEncryption: SnapshotEncryptionPort
-	events: CoreEventSink | null
-	logger: CoreLogger | null
-}
+/**
+ * Consumer-provided deployment mechanics. Core-owned source-control providers,
+ * Model Provider Protocol adapters, Model Agent runtime orchestration, and
+ * Snapshot encryption are intentionally not public service boundaries.
+ */
 
-// -----------------------------------------------------------------------------
-// Storage port
-// -----------------------------------------------------------------------------
-
-export interface CoreStorage {
+export interface CoreStorageService {
+	preflight(): Promise<CoreServicePreflightOutput>
 	transaction<T>(fn: (tx: CoreStorageTransaction) => Promise<T>): Promise<T>
 }
+
+export type CoreStorage = CoreStorageService
 
 export interface CoreStorageTransaction {
 	portfolioConfig: SingletonRepository<PortfolioConfigRecord>
@@ -718,173 +697,8 @@ export interface RepositoryTable<T, Id> {
 	list(): Promise<T[]>
 }
 
-// -----------------------------------------------------------------------------
-// Source Control port
-// -----------------------------------------------------------------------------
-
-/**
- * Core uses an internal context resolver to turn authoritative IDs into the
- * current entities, configs, artifacts, branches, repositories, models, and
- * secrets required for commands and port calls. Consumer-facing command inputs
- * prefer IDs over duplicated resolved values so callers cannot provide
- * contradictory context. Runtime/port calls that perform external actions should
- * receive the resolved values needed to perform the action so adapters do not
- * infer, load, or calculate authoritative context themselves.
- */
-
-export interface SourceControlPort {
-	preflightRepository(input: PreflightRepositoryInput): Promise<ValidationEvidence>
-
-	createDeliveryBranch(input: CreateDeliveryBranchInput): Promise<CreateDeliveryBranchResult>
-	createSliceBranch(input: CreateSliceBranchInput): Promise<CreateSliceBranchResult>
-
-	pushBranch(input: PushBranchInput): Promise<ExternalOperationEvidence>
-	validateBranch(input: ValidateBranchInput): Promise<ValidationEvidence>
-
-	/** Integrated and failed evidence use operation observe-artifact-integration; not-integrated is transient scheduler branching and is not recorded. */
-	observeBranchIntegration(input: ObserveBranchIntegrationInput): Promise<ObserveBranchIntegrationResult>
-
-	createReviewSurface(input: CreateReviewSurfaceInput): Promise<ReviewSurfaceConfig>
-	fetchReviewSurface(input: FetchReviewSurfaceInput): Promise<ReviewSurface>
-	fetchFeedback(input: FetchFeedbackInput): Promise<FetchedFeedback[]>
-	mergeReviewSurface(input: MergeReviewSurfaceInput): Promise<ReviewSurfaceMerged>
-	closeReviewSurface(input: CloseReviewSurfaceInput): Promise<ExternalOperationEvidence>
-}
-
-export interface PreflightRepositoryInput {
-	repository: Repository
-}
-
-export interface CreateDeliveryBranchInput {
-	repository: Repository
-	deliveryId: DeliveryId
-	targetBranch: string
-}
-
-export type CreateDeliveryBranchResult =
-	| { type: 'created'; config: SourceControlDeliveryArtifactConfig }
-	/** Failed evidence uses operation create-artifact. */
-	| { type: 'failed'; evidence: ExternalOperationEvidence }
-
-export interface CreateSliceBranchInput {
-	repository: Repository
-	deliveryBranch: string
-	sliceId: SliceId
-}
-
-export type CreateSliceBranchResult =
-	| { type: 'created'; config: SourceControlSliceArtifactConfig }
-	/** Failed evidence uses operation create-artifact. */
-	| { type: 'failed'; evidence: ExternalOperationEvidence }
-
-export interface PushBranchInput {
-	repository: Repository
-	branch: string
-}
-
-export interface ValidateBranchInput {
-	repository: Repository
-	branch: string
-	operation: Extract<ValidationOperation, { type: 'slice-branch-validation' | 'delivery-branch-validation' }>
-}
-
-export interface ObserveBranchIntegrationInput {
-	repository: Repository
-	sourceBranch: string
-	targetBranch: string
-}
-
-export type ObserveBranchIntegrationResult =
-	| { type: 'integrated'; evidence: ExternalOperationEvidence }
-	| { type: 'not-integrated' }
-	| { type: 'failed'; evidence: ExternalOperationEvidence }
-
-export interface CreateReviewSurfaceInput {
-	repository: Repository
-	scope: ReviewSurfaceScope
-	sourceBranch: string
-	targetBranch: string
-	title: string
-	body: string
-}
-
-export interface FetchReviewSurfaceInput {
-	reviewSurface: ReviewSurface
-}
-
-export interface FetchFeedbackInput {
-	reviewSurface: ReviewSurface
-}
-
-export interface MergeReviewSurfaceInput {
-	reviewSurface: ReviewSurface
-}
-
-export interface CloseReviewSurfaceInput {
-	reviewSurface: ReviewSurface
-}
-
-// -----------------------------------------------------------------------------
-// Model Agent runtime port
-// -----------------------------------------------------------------------------
-
-export interface ModelAgentRuntimePort {
-	preflightModel(input: PreflightModelRuntimeInput): Promise<ValidationEvidence>
-	runModelAgent(input: RunModelAgentInput): Promise<void>
-}
-
-export interface PreflightModelRuntimeInput {
-	modelProvider: ModelProvider
-	model: Model
-	auth: ResolvedModelProviderAuth
-}
-
-export interface RunModelAgentInput {
-	agentRun: AgentRun
-	modelProvider: ModelProvider
-	model: Model
-	auth: ResolvedModelProviderAuth
-
-	/** Slice execution or Revision execution instructions. */
-	instruction: InstructionSource | null
-
-	/** Validation/external operation failures can be passed to a correction Agent Run. */
-	correctionEvidence: CorrectionEvidence[]
-
-	artifactContext: AgentRunArtifactContext | null
-	timeoutMs: number | null
-}
-
-export interface ResolvedModelProviderAuth {
-	auth: ResolvedModelProviderStandardAuth | null
-	headers: ResolvedModelProviderHeader[]
-}
-
-export type ResolvedModelProviderStandardAuth = ResolvedModelProviderApiKeyAuth
-
-export interface ResolvedModelProviderApiKeyAuth {
-	type: 'apiKey'
-
-	/** Plaintext exists only transiently. */
-	plaintext: string
-}
-
-export interface ResolvedModelProviderHeader {
-	name: string
-
-	/** Plaintext exists only transiently. */
-	value: string
-}
-
-export type AgentRunArtifactContext =
-	| { type: 'delivery-artifact'; deliveryArtifactId: DeliveryArtifactId }
-	| { type: 'slice-artifact'; sliceArtifactId: SliceArtifactId }
-
-// -----------------------------------------------------------------------------
-// Secret resolution port
-// -----------------------------------------------------------------------------
-
-export interface SecretResolutionPort {
+export interface CoreSecretsService {
+	preflight(): Promise<CoreServicePreflightOutput>
 	resolveSecrets(input: ResolveSecretsInput): Promise<ResolvedSecret[]>
 	resolveSecretValues(input: ResolveSecretValuesInput): Promise<ResolvedSecretValue[]>
 }
@@ -912,31 +726,14 @@ export interface ResolvedSecretValue {
 	plaintext: string
 }
 
-// -----------------------------------------------------------------------------
-// Snapshot encryption port
-// -----------------------------------------------------------------------------
-
-export interface SnapshotEncryptionPort {
-	encrypt(input: EncryptSnapshotInput): Promise<EncryptedSnapshot>
-	decrypt(input: DecryptSnapshotInput): Promise<DecryptedSnapshot>
-}
-
-export interface EncryptSnapshotInput {
-	passphrase: string
-	plaintextPayload: Uint8Array
-}
-
-export interface DecryptSnapshotInput {
-	passphrase: string
-	encryptedPayload: Uint8Array
-}
-
-export interface EncryptedSnapshot {
-	bytes: Uint8Array
-}
-
-export interface DecryptedSnapshot {
-	bytes: Uint8Array
+/**
+ * Sandbox capabilities are deployment-specific and consumed by Core-owned Agent
+ * Run orchestration. The current stub validates only that a sandbox service
+ * object is present.
+ */
+export interface CoreSandboxService {
+	preflight(): Promise<CoreServicePreflightOutput>
+	[capability: string]: unknown
 }
 
 // -----------------------------------------------------------------------------
@@ -944,7 +741,7 @@ export interface DecryptedSnapshot {
 // -----------------------------------------------------------------------------
 
 export interface CoreEventSink {
-	publish(event: CoreEvent): Promise<void>
+	publish(event: CoreEvent): void
 }
 
 export type CoreEvent =
@@ -1002,29 +799,13 @@ const envNamePipe = nonEmptyTrimmedStringPipe.pipe(
 	v.custom<string>((value) => /^[A-Z_][A-Z0-9_]*$/.test(value), 'Expected an environment variable name.'),
 )
 
-const storagePipe = v.object({ transaction: functionDependencyPipe })
-const snapshotEncryptionPortPipe = v.object({ encrypt: functionDependencyPipe, decrypt: functionDependencyPipe })
-const sourceControlPortPipe = v.object({
-	preflightRepository: functionDependencyPipe,
-	createDeliveryBranch: functionDependencyPipe,
-	createSliceBranch: functionDependencyPipe,
-	pushBranch: functionDependencyPipe,
-	validateBranch: functionDependencyPipe,
-	observeBranchIntegration: functionDependencyPipe,
-	createReviewSurface: functionDependencyPipe,
-	fetchReviewSurface: functionDependencyPipe,
-	fetchFeedback: functionDependencyPipe,
-	mergeReviewSurface: functionDependencyPipe,
-	closeReviewSurface: functionDependencyPipe,
-})
-const modelAgentRuntimePortPipe = v.object({
-	preflightModel: functionDependencyPipe,
-	runModelAgent: functionDependencyPipe,
-})
-const secretResolutionPortPipe = v.object({
+const storagePipe = v.object({ preflight: functionDependencyPipe, transaction: functionDependencyPipe })
+const coreSecretsServicePipe = v.object({
+	preflight: functionDependencyPipe,
 	resolveSecrets: functionDependencyPipe,
 	resolveSecretValues: functionDependencyPipe,
 })
+const coreSandboxServicePipe = v.object({ preflight: functionDependencyPipe })
 const coreEventSinkPipe = v.object({ publish: functionDependencyPipe })
 const coreLoggerPipe = v.object({
 	debug: functionDependencyPipe,
@@ -1032,28 +813,42 @@ const coreLoggerPipe = v.object({
 	warn: functionDependencyPipe,
 	error: functionDependencyPipe,
 })
-const corePortsPipe = v.object({
-	sourceControl: sourceControlPortPipe,
-	modelAgentRuntime: modelAgentRuntimePortPipe,
-	secrets: secretResolutionPortPipe,
-	snapshotEncryption: snapshotEncryptionPortPipe,
-	events: v.nullable(coreEventSinkPipe),
-	logger: v.nullable(coreLoggerPipe),
-})
+const optionalCoreEventSinkPipe = v
+	.any<unknown>()
+	.pipe(
+		v.custom<unknown>(
+			(value) => value === undefined || acceptsPipe(coreEventSinkPipe, value),
+			'Expected a Core Event Sink service when provided.',
+		),
+	) as Pipe<unknown, CoreEventSink | undefined>
+const optionalCoreLoggerPipe = v
+	.any<unknown>()
+	.pipe(
+		v.custom<unknown>(
+			(value) => value === undefined || acceptsPipe(coreLoggerPipe, value),
+			'Expected a Core Logger service when provided.',
+		),
+	) as Pipe<unknown, CoreLogger | undefined>
 const openCoreOptionsPipe = v.object({
 	storage: storagePipe,
-	ports: corePortsPipe,
+	secrets: coreSecretsServicePipe,
+	sandbox: coreSandboxServicePipe,
 	clock: v.object({ now: functionDependencyPipe }),
-	idGenerator: v.object({ nextId: functionDependencyPipe }),
+	idGenerator: v.object({ next: functionDependencyPipe }),
+	logger: optionalCoreLoggerPipe,
+	eventSink: optionalCoreEventSinkPipe,
 })
 
 const localActorRefPipe = v.object({ type: rawStringPipe, id: rawStringPipe })
 const operationContextPipe = v.object({ actor: localActorRefPipe, correlationId: v.nullable(rawStringPipe) })
+const encryptedSnapshotPayloadPipe = v
+	.instanceOf(Uint8Array, 'Expected a Uint8Array encrypted snapshot payload.')
+	.pipe(v.custom<Uint8Array<ArrayBuffer>>((value) => value.byteLength > 0, 'Expected a non-empty encrypted snapshot payload.'))
+
 const importSnapshotInputPipe = v.object({
 	passphrase: nonEmptyRawStringPipe,
-	encryptedPayload: v.instanceOf(Uint8Array, 'Expected a Uint8Array encrypted snapshot payload.'),
+	encryptedPayload: encryptedSnapshotPayloadPipe,
 	storage: storagePipe,
-	snapshotEncryption: snapshotEncryptionPortPipe,
 })
 const importSnapshotBoundaryPipe = v.object({ input: importSnapshotInputPipe, context: operationContextPipe })
 
@@ -1101,7 +896,12 @@ const projectSourcePipe = v.discriminate(discriminator, {
 	'source-control': v.object({ type: v.eq('source-control') }),
 })
 const repositoryConfigPipe = v.discriminate(discriminatorFrom('provider'), {
-	github: v.object({ provider: v.eq('github'), owner: nonEmptyTrimmedStringPipe, name: nonEmptyTrimmedStringPipe }),
+	github: v.object({
+		provider: v.eq('github'),
+		owner: nonEmptyTrimmedStringPipe,
+		name: nonEmptyTrimmedStringPipe,
+		secretId: brandedIdPipe,
+	}),
 })
 const proposedDeliveryTargetPipe = v.discriminate(discriminator, {
 	'source-control': v.object({
@@ -1161,7 +961,6 @@ const secretBindingScopePipe = v.discriminate(discriminator, {
 	project: v.object({ type: v.eq('project'), projectId: brandedIdPipe }),
 	delivery: v.object({ type: v.eq('delivery'), deliveryId: brandedIdPipe }),
 })
-const secretTypePipe = enumStringPipe(['github-pat', 'generic'])
 const reviewSurfaceScopePipe = v.discriminate(discriminator, {
 	slice: v.object({ type: v.eq('slice'), sliceId: brandedIdPipe, sliceArtifactId: brandedIdPipe }),
 	delivery: v.object({ type: v.eq('delivery'), deliveryId: brandedIdPipe, deliveryArtifactId: brandedIdPipe }),
@@ -1188,6 +987,16 @@ const timelineFilterPipe = v.object({
 	since: v.nullable(rawStringPipe),
 	until: v.nullable(rawStringPipe),
 })
+const coreServicePreflightOutputPipe = v
+	.any<unknown>()
+	.pipe(v.custom<unknown>(isCoreServicePreflightOutput, 'Expected a Core Service preflight output.')) as Pipe<
+	unknown,
+	CoreServicePreflightOutput
+>
+const coreClockOutputPipe = v
+	.instanceOf(Date, 'Expected a Date.')
+	.pipe(v.custom<Date>((value) => !Number.isNaN(value.getTime()), 'Expected a valid Date.'))
+const coreIdOutputPipe = nonEmptyTrimmedStringPipe
 
 const commandInputPipes = {
 	setPortfolioConfig: v.object({ config: portfolioConfigPipe }),
@@ -1216,6 +1025,7 @@ const commandInputPipes = {
 	archiveModel: v.object({ modelId: brandedIdPipe }),
 	unarchiveModel: v.object({ modelId: brandedIdPipe }),
 	preflightModel: v.object({ modelId: brandedIdPipe }),
+	preflightRepository: v.object({ repositoryId: brandedIdPipe }),
 	createPlan: v.object({
 		projectId: brandedIdPipe,
 		title: nonEmptyTrimmedStringPipe,
@@ -1240,7 +1050,7 @@ const commandInputPipes = {
 	setProjectConfig: v.object({ projectId: brandedIdPipe, config: projectConfigPipe }),
 	createRepository: v.object({ projectId: brandedIdPipe, config: repositoryConfigPipe }),
 	updateRepositoryConfig: v.object({ repositoryId: brandedIdPipe, config: repositoryConfigPipe }),
-	createSecret: v.object({ type: secretTypePipe, name: nonEmptyTrimmedStringPipe, valueRef: secretValueRefPipe }),
+	createSecret: v.object({ name: nonEmptyTrimmedStringPipe, valueRef: secretValueRefPipe }),
 	replaceSecret: v.object({ secretId: brandedIdPipe, valueRef: secretValueRefPipe }),
 	bindSecret: v.object({ secretId: brandedIdPipe, scope: secretBindingScopePipe, envName: envNamePipe }),
 	archiveSecretBinding: v.object({ secretBindingId: brandedIdPipe }),
@@ -1271,6 +1081,10 @@ const queryArgumentPipes = {
 	getTimeline: argumentTuplePipe([v.nullable(timelineFilterPipe)]),
 } satisfies Record<keyof CoreQueries, Pipe<unknown, unknown>>
 
+function acceptsPipe(pipe: Pipe<unknown, unknown>, value: unknown): boolean {
+	return v.validate(pipe, value).valid
+}
+
 function argumentTuplePipe(branches: Pipe<unknown, unknown>[]): Pipe<unknown, unknown> {
 	return v
 		.array(v.any<unknown>())
@@ -1288,6 +1102,101 @@ function discriminator(value: unknown): PropertyKey {
 
 function discriminatorFrom(field: string): (value: unknown) => PropertyKey {
 	return (value) => (isRecord(value) ? (value[field] as PropertyKey) : '')
+}
+
+async function preflightCore(options: OpenCoreOptions): Promise<Result<CorePreflightReport, CorePreflightError>> {
+	const storageCheck = await preflightCoreService('storage', () => options.storage.preflight())
+	if (!storageCheck.ok) return storageCheck
+
+	const secretsCheck = await preflightCoreService('secrets', () => options.secrets.preflight())
+	if (!secretsCheck.ok) return secretsCheck
+
+	const sandboxCheck = await preflightCoreService('sandbox', () => options.sandbox.preflight())
+	if (!sandboxCheck.ok) return sandboxCheck
+
+	const clockCheck = preflightRuntimeService('clock', 'now', () => options.clock.now(), coreClockOutputPipe)
+	if (!clockCheck.ok) return clockCheck
+
+	const idGeneratorCheck = preflightRuntimeService(
+		'idGenerator',
+		'next',
+		() => options.idGenerator.next('core-preflight'),
+		coreIdOutputPipe,
+	)
+	if (!idGeneratorCheck.ok) return idGeneratorCheck
+
+	const checks: CorePreflightChecks = {
+		storage: storageCheck.value,
+		secrets: secretsCheck.value,
+		sandbox: sandboxCheck.value,
+		clock: clockCheck.value,
+		idGenerator: idGeneratorCheck.value,
+	}
+
+	const passed = [checks.storage, checks.secrets, checks.sandbox, checks.clock, checks.idGenerator].every((check) => check.ok)
+
+	return { ok: true, value: { passed, checks } }
+}
+
+async function preflightCoreService(
+	service: 'storage' | 'secrets' | 'sandbox',
+	probe: () => Promise<CoreServicePreflightOutput>,
+): Promise<Result<CorePreflightCheck, CorePreflightError>> {
+	try {
+		const output = await probe()
+		const validation = validateCoreServiceOutput(coreServicePreflightOutputPipe, output, service, 'preflight')
+
+		if (!validation.ok) {
+			return validation
+		}
+
+		return { ok: true, value: preflightCheckFromCoreServiceOutput(output) }
+	} catch {
+		return { ok: true, value: failedProbeCheck() }
+	}
+}
+
+function preflightRuntimeService<TPipe extends Pipe<unknown, unknown>>(
+	service: 'clock' | 'idGenerator',
+	operation: string,
+	probe: () => unknown,
+	outputPipe: TPipe,
+): Result<CorePreflightCheck, CorePreflightError> {
+	try {
+		const output = probe()
+		const validation = validateCoreServiceOutput(outputPipe, output, service, operation)
+
+		if (!validation.ok) {
+			return validation
+		}
+
+		return { ok: true, value: { ok: true } }
+	} catch {
+		return { ok: true, value: failedProbeCheck() }
+	}
+}
+
+function preflightCheckFromCoreServiceOutput(output: CoreServicePreflightOutput): CorePreflightCheck {
+	return output.ok ? { ok: true } : { ok: false, reason: 'not-ready', message: output.message }
+}
+
+function failedProbeCheck(): CorePreflightCheck {
+	return { ok: false, reason: 'probe-failed', message: null }
+}
+
+function validateCoreServiceOutput<TPipe extends Pipe<unknown, unknown>>(
+	pipe: TPipe,
+	value: unknown,
+	service: CorePreflightCheckName,
+	operation: string,
+): Result<PipeOutput<TPipe>, InvalidCoreServiceOutputError> {
+	const result = v.validate(pipe, value)
+
+	if (!result.valid) {
+		return { ok: false, error: { type: 'invalid-core-service-output', service, operation, pipeError: result.error } }
+	}
+
+	return { ok: true, value: result.value }
 }
 
 // -----------------------------------------------------------------------------
@@ -1325,6 +1234,9 @@ function createCoreCommands(): CoreCommands {
 		},
 		preflightModel(input, context) {
 			return commandStub<ValidationEvidence>('preflightModel', input, context)
+		},
+		preflightRepository(input, context) {
+			return commandStub<ValidationEvidence>('preflightRepository', input, context)
 		},
 		createPlan(input, context) {
 			return commandStub<Plan>('createPlan', input, context)
@@ -1462,30 +1374,16 @@ function notImplemented<T>(operation: string): Result<T> {
 	return { ok: false, error: { type: 'not-implemented', operation } }
 }
 
-function decodeSnapshotPayload(bytes: Uint8Array): Result<unknown, InvalidSnapshotError> {
-	let decoded: string
-
-	try {
-		decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
-	} catch (error) {
-		return { ok: false, error: { type: 'invalid-snapshot', message: errorToMessage(error) } }
+function isCoreServicePreflightOutput(value: unknown): value is CoreServicePreflightOutput {
+	if (!isRecord(value)) {
+		return false
 	}
 
-	try {
-		const parsed: unknown = JSON.parse(decoded)
-
-		if (!isRecord(parsed)) {
-			return { ok: false, error: { type: 'invalid-snapshot', message: 'Snapshot payload must be a JSON object.' } }
-		}
-
-		return { ok: true, value: parsed }
-	} catch (error) {
-		return { ok: false, error: { type: 'invalid-snapshot', message: errorToMessage(error) } }
+	if (value['ok'] === true) {
+		return true
 	}
-}
 
-function errorToMessage(error: unknown): string {
-	return error instanceof Error ? error.message : 'Unknown error.'
+	return value['ok'] === false && (typeof value['message'] === 'string' || value['message'] === null)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
