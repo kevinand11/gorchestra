@@ -16,6 +16,14 @@ _Avoid_: User, Workspace Member, account
 The recorded operation time and attribution metadata attached to attribution-bearing core records or outcomes. A local Audit Stamp contains a Local Actor Ref and optional correlation id; an imported Audit Stamp preserves the original operation time while marking attribution as not locally resolvable.
 _Avoid_: createdBy field, Workspace Member field
 
+**Core Input**:
+A value a Consumer passes through a public core API boundary, including operation inputs, Operation Context values, Open Core options, Import Snapshot inputs, and query arguments.
+_Avoid_: payload, request body, port result
+
+**Invalid Core Input**:
+A Core Input rejected before core behavior runs because it fails the declared input pipe for that public core API boundary.
+_Avoid_: invariant violation, domain failure, malformed request
+
 **Secret**:
 A Portfolio-owned sensitive write-only value stored by Gorchestra for repository access or execution environments. Users may create or replace Secret values, but may not view plaintext values after creation.
 _Avoid_: Credential, token, key, sensitive value
@@ -251,3 +259,18 @@ _Avoid_: Feedback, Feedback Disposition, stored comment, review response
 **Feedback**:
 Review input fetched from a Review Surface. Feedback does not authorize revision work unless the Revision Gate is open.
 _Avoid_: Review signal, stored comment
+
+## Relationships
+
+- A **Consumer** passes **Core Inputs** to core after authorizing an operation.
+- **Invalid Core Input** is rejected before the operation can create or mutate Portfolio facts.
+- Port and storage return values are not **Core Inputs** because they are data supplied to core by adapters after the Consumer-to-core boundary.
+
+## Example dialogue
+
+> **Dev:** "If the Server Consumer calls `queueDelivery` with a missing Delivery id, is that a Delivery Work State failure?"
+> **Domain expert:** "No — the missing id is **Invalid Core Input**. Delivery Work State failures happen only after the **Core Input** has passed validation and core can inspect Portfolio facts."
+
+## Flagged ambiguities
+
+- "input passed to core" was narrowed to **Core Input** at the public Consumer-to-core boundary; port and storage return values are separate adapter data, not part of this validation scope.

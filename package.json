@@ -1,0 +1,67 @@
+{
+	"name": "gorchestra",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"packageManager": "pnpm@9.5.0",
+	"scripts": {
+		"lint": "eslint \"libs/**/*.ts\"",
+		"lint:fix": "eslint \"libs/**/*.ts\" --fix",
+		"format": "prettier --check .",
+		"format:fix": "prettier --write .",
+		"typecheck": "tsc -b --pretty false",
+		"test": "pnpm -r --if-present test",
+		"commitlint": "commitlint",
+		"lint-staged": "lint-staged",
+		"prepare": "husky"
+	},
+	"lint-staged": {
+		"libs/**/*.ts": "eslint --fix",
+		"*.{ts,tsx,js,cjs,mjs,json,md,yml,yaml}": "prettier --write"
+	},
+	"pnpm": {
+		"overrides": {
+			"valleyed": "4.5.20"
+		}
+	},
+	"devDependencies": {
+		"@commitlint/cli": "^21.0.2",
+		"@commitlint/config-conventional": "^21.0.2",
+		"@k11/configs": "^0.1.2",
+		"@types/node": "^25.9.2",
+		"eslint": "^10.4.1",
+		"husky": "^9.1.7",
+		"lint-staged": "^17.0.7",
+		"prettier": "^3.8.3",
+		"typescript": "^6.0.3",
+		"typescript-eslint": "^8.61.0",
+		"vitest": "^4.1.8"
+	},
+	"commitlint": {
+		"extends": [
+			"@commitlint/config-conventional"
+		],
+		"rules": {
+			"header-max-length": [
+				2,
+				"always",
+				100
+			],
+			"subject-case": [
+				2,
+				"never",
+				[
+					"sentence-case",
+					"start-case",
+					"pascal-case",
+					"upper-case"
+				]
+			],
+			"scope-case": [
+				2,
+				"always",
+				"lower-case"
+			]
+		}
+	}
+}
