@@ -471,16 +471,32 @@ describe("core runtime stub", () => {
       ),
     ).resolves.toMatchObject({ ok: false, error: { type: "storage-operation-failed" } });
 
+    const statefulSnapshotEncryption = {
+      payload: new TextEncoder().encode("{}"),
+      encrypt: () => Promise.resolve({ bytes: new Uint8Array() }),
+      decrypt() {
+        return Promise.resolve({ bytes: this.payload });
+      },
+    };
+    const statefulStorage = {
+      called: false,
+      transaction<T>(fn: (tx: CoreStorageTransaction) => Promise<T>): Promise<T> {
+        this.called = true;
+        return fn({} as CoreStorageTransaction);
+      },
+    };
+
     await expect(
       importSnapshot(
         {
           passphrase: "passphrase",
           encryptedPayload: new Uint8Array([1]),
-          storage,
-          snapshotEncryption: createPorts().snapshotEncryption,
+          storage: statefulStorage,
+          snapshotEncryption: statefulSnapshotEncryption,
         },
         context,
       ),
     ).resolves.toEqual({ ok: false, error: { type: "not-implemented", operation: "importSnapshot" } });
+    expect(statefulStorage.called).toBe(true);
   });
 });

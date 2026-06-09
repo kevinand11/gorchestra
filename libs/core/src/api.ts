@@ -570,13 +570,12 @@ export async function importSnapshot(
     return validation;
   }
 
-  const validInput = validation.value.input as ImportSnapshotInput;
   let decrypted: DecryptedSnapshot;
 
   try {
-    decrypted = await validInput.snapshotEncryption.decrypt({
-      passphrase: validInput.passphrase,
-      encryptedPayload: validInput.encryptedPayload,
+    decrypted = await input.snapshotEncryption.decrypt({
+      passphrase: input.passphrase,
+      encryptedPayload: input.encryptedPayload,
     });
   } catch (error) {
     return { ok: false, error: { type: "snapshot-decryption-failed", message: errorToMessage(error) } };
@@ -596,7 +595,7 @@ export async function importSnapshot(
   }
 
   try {
-    await validInput.storage.transaction(() => Promise.resolve(undefined));
+    await input.storage.transaction(() => Promise.resolve(undefined));
   } catch (error) {
     return { ok: false, error: { type: "storage-operation-failed", message: errorToMessage(error) } };
   }
