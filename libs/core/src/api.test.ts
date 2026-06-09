@@ -626,6 +626,46 @@ describe('core runtime stub', () => {
 			importSnapshot(
 				{
 					passphrase: 'passphrase',
+					encryptedPayload: new Uint8Array(),
+					storage: probingStorage,
+				},
+				context,
+			),
+		).resolves.toMatchObject({
+			ok: false,
+			error: {
+				type: 'invalid-input',
+				boundary: 'snapshot-import',
+				operation: 'importSnapshot',
+				pipeError: { messages: [expect.objectContaining({ path: 'input.encryptedPayload' })] },
+			},
+		})
+		expect(storageCalled).toBe(false)
+
+		await expect(
+			importSnapshot(
+				{
+					passphrase: 'passphrase',
+					encryptedPayload: new Uint8Array([1]),
+					storage: {},
+				} as never,
+				context,
+			),
+		).resolves.toMatchObject({
+			ok: false,
+			error: {
+				type: 'invalid-input',
+				boundary: 'snapshot-import',
+				operation: 'importSnapshot',
+				pipeError: { messages: [expect.objectContaining({ path: 'input.storage.transaction' })] },
+			},
+		})
+		expect(storageCalled).toBe(false)
+
+		await expect(
+			importSnapshot(
+				{
+					passphrase: 'passphrase',
 					encryptedPayload: new Uint8Array([1]),
 					storage: probingStorage,
 				},
