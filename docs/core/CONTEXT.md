@@ -25,7 +25,7 @@ A consumer-provided deployment boundary used by Core for mechanics such as stora
 _Avoid_: Core Port, plugin, consumer policy, integration logic
 
 **Core Service Output**:
-A value returned to Core by a Core Service. Core validates Core Service Outputs before trusting them; notification-only services such as logging or event publishing do not produce Core Service Outputs.
+A value returned to Core by a Core Service. Core validates Core Service Outputs before trusting them; notification-only services such as logging or event publishing do not produce Core Service Outputs. Malformed readiness outputs from required Core Services are reported as invalid Core Service Outputs rather than failed readiness.
 _Avoid_: Core Input, provider behavior, consumer policy
 
 **Invalid Core Input**:
@@ -229,7 +229,7 @@ A typed directed relationship between graph nodes such as Plans, Projects, Deliv
 _Avoid_: Relationship, edge, reference, edge-as-node
 
 **Preflight**:
-A readiness validation performed before Gorchestra begins or resumes work. Delivery preflight runs before each bounded scheduler pass and resolves required Delivery Config and Model selection as transient scheduler data. Successful Delivery preflight is normally not stored, except when it supersedes the latest failed Delivery preflight Action; failed Delivery preflight is recorded as Action evidence. A Delivery whose latest Delivery preflight Action failed is preflight-failed until an explicit retry records a later passing Delivery preflight Action. Other preflight results, such as explicit Repository preflight, may be returned to consumers as safe validation evidence without storing Actions or authoritative Portfolio facts. Preflight may check Project, Repository, Model Provider, Model, Secret Binding, or execution target readiness.
+A readiness validation performed before Gorchestra begins or resumes work. Top-level Core preflight is an opened-Core API that checks required deployment mechanics: storage, Secrets, Agent Run Sandbox, Clock, and ID generation. It returns a transient readiness report for consumers and does not check optional logger/event publishing or provider-specific readiness. Delivery preflight runs before each bounded scheduler pass and resolves required Delivery Config and Model selection as transient scheduler data. Successful Delivery preflight is normally not stored, except when it supersedes the latest failed Delivery preflight Action; failed Delivery preflight is recorded as Action evidence. A Delivery whose latest Delivery preflight Action failed is preflight-failed until an explicit retry records a later passing Delivery preflight Action. Other preflight results, such as explicit Repository preflight, may be returned to consumers as safe validation evidence without storing Actions or authoritative Portfolio facts. Preflight may check Project, Repository, Model Provider, Model, Secret Binding, or execution target readiness.
 _Avoid_: Doctor, health check
 
 **Timeline**:

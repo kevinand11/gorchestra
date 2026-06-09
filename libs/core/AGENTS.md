@@ -19,6 +19,7 @@ The `libs/core/` package is the private Core package source surface for reusable
 - Consumer-facing API inputs should prefer identifiers and let Core infer authoritative fields instead of accepting duplicated inferable values.
 - Durable Core docs/ADRs define Core-owned provider behavior and consumer-provided Core Services; do not add new consumer-owned behavior ports.
 - Core-owned provider/runtime behavior and Core Service calls that perform external actions should receive resolved values needed to perform the action so service/provider code does not infer authoritative context itself.
+- Opened Core exposes top-level `preflight()` for required Core Service readiness; keep it separate from command/query APIs and do not include optional logger/event checks.
 
 ## Work Guidance
 
