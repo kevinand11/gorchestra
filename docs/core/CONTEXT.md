@@ -21,7 +21,7 @@ A value a Consumer passes through a public core API boundary, including operatio
 _Avoid_: payload, request body, port result
 
 **Core Service**:
-A consumer-provided deployment boundary used by Core for mechanics such as storage, Secret resolution, sandbox isolation, logging, or encryption. Core Services do not own Portfolio orchestration, Source Control Provider, Model Provider Protocol, or Agent Run behavior.
+A consumer-provided deployment boundary used by Core for mechanics such as storage, Secret-at-rest protection and plaintext resolution, sandbox isolation, Clock, ID generation, logging, or event publishing. Core Services do not own Portfolio orchestration, Source Control Provider, Model Provider Protocol, Agent Run behavior, or portable Snapshot encryption.
 _Avoid_: Core Port, plugin, consumer policy, integration logic
 
 **Core Service Output**:

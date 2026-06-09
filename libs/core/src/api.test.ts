@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest'
 import {
 	importSnapshot,
 	openCore,
-	type CorePorts,
-	type CoreStorage,
+	type CoreSandboxService,
+	type CoreSecretsService,
+	type CoreStorageService,
 	type CoreStorageTransaction,
 	type OperationContext,
 	type Result,
@@ -15,93 +16,29 @@ const context: OperationContext = {
 	correlationId: null,
 }
 
-const storage: CoreStorage = {
+const storage: CoreStorageService = {
 	transaction: <T>(fn: (tx: CoreStorageTransaction) => Promise<T>): Promise<T> => fn({} as CoreStorageTransaction),
 }
 
-function createPorts(): CorePorts {
-	return {
-		sourceControl: {
-			preflightRepository: () =>
-				Promise.resolve({
-					type: 'validation',
-					operation: { type: 'delivery-preflight' },
-					passed: true,
-					summary: 'ok',
-				}),
-			createDeliveryBranch: () => Promise.resolve({ type: 'failed', evidence: externalOperationEvidence() }),
-			createSliceBranch: () => Promise.resolve({ type: 'failed', evidence: externalOperationEvidence() }),
-			pushBranch: () => Promise.resolve(externalOperationEvidence()),
-			validateBranch: () =>
-				Promise.resolve({
-					type: 'validation',
-					operation: { type: 'delivery-branch-validation' },
-					passed: true,
-					summary: 'ok',
-				}),
-			observeBranchIntegration: () => Promise.resolve({ type: 'not-integrated' }),
-			createReviewSurface: () =>
-				Promise.resolve({
-					provider: 'github',
-					pullRequestNumber: 1,
-					repositoryId: 'repository-1' as never,
-					sourceBranch: 'delivery/1',
-					targetBranch: 'main',
-				}),
-			fetchReviewSurface: (input) => Promise.resolve(input.reviewSurface),
-			fetchFeedback: () => Promise.resolve([]),
-			mergeReviewSurface: () =>
-				Promise.resolve({
-					type: 'merged',
-					merged: { origin: 'local', at: '2026-06-09T00:00:00.000Z', actor: context.actor, correlationId: null },
-					config: {
-						type: 'source-control',
-						repositoryId: 'repository-1' as never,
-						sourceBranch: 'delivery/1',
-						targetBranch: 'main',
-					},
-				}),
-			closeReviewSurface: () => Promise.resolve(externalOperationEvidence()),
-		},
-		modelAgentRuntime: {
-			preflightModel: () =>
-				Promise.resolve({
-					type: 'validation',
-					operation: { type: 'model-preflight' },
-					passed: true,
-					summary: 'ok',
-				}),
-			runModelAgent: () => Promise.resolve(),
-		},
-		secrets: {
-			resolveSecrets: () => Promise.resolve([]),
-			resolveSecretValues: () => Promise.resolve([]),
-		},
-		snapshotEncryption: {
-			encrypt: () => Promise.resolve({ bytes: new Uint8Array() }),
-			decrypt: () => Promise.resolve({ bytes: new TextEncoder().encode('{}') }),
-		},
-		events: null,
-		logger: null,
-	}
+const secrets: CoreSecretsService = {
+	resolveSecrets: () => Promise.resolve([]),
+	resolveSecretValues: () => Promise.resolve([]),
 }
 
-function externalOperationEvidence() {
+const sandbox: CoreSandboxService = {}
+
+function openCoreOptions() {
 	return {
-		type: 'external-operation' as const,
-		operation: { type: 'create-artifact' as const },
-		passed: false,
-		summary: 'stub',
+		storage,
+		secrets,
+		sandbox,
+		clock: { now: () => new Date('2026-06-09T00:00:00.000Z') },
+		idGenerator: { next: (brand: string) => `${brand}-1` },
 	}
 }
 
 function openTestCore() {
-	return openCore({
-		storage,
-		ports: createPorts(),
-		clock: { now: () => '2026-06-09T00:00:00.000Z' },
-		idGenerator: { nextId: (brand) => `${brand}-1` },
-	})
+	return openCore(openCoreOptions())
 }
 
 function validCommandInputs(): Record<string, Record<string, unknown>> {
@@ -172,7 +109,7 @@ function validCommandInputs(): Record<string, Record<string, unknown>> {
 }
 
 describe('core runtime stub', () => {
-	it('opens synchronously with valid dependencies', () => {
+	it('opens synchronously with valid Core Services', () => {
 		const result = openTestCore()
 
 		expect(result).toMatchObject({ ok: true })
@@ -196,21 +133,29 @@ describe('core runtime stub', () => {
 		})
 	})
 
-	it('validates dependency adapter shape without probing adapter behavior', () => {
+	it('validates Core Service shape without probing service behavior', () => {
 		const options = {
 			storage: {
 				transaction: () => {
 					throw new Error('storage transaction was probed')
 				},
 			},
-			ports: createPorts(),
+			secrets: {
+				resolveSecrets: () => {
+					throw new Error('secret resolution was probed')
+				},
+				resolveSecretValues: () => {
+					throw new Error('secret value resolution was probed')
+				},
+			},
+			sandbox: {},
 			clock: {
 				now: () => {
 					throw new Error('clock was probed')
 				},
 			},
 			idGenerator: {
-				nextId: () => {
+				next: () => {
 					throw new Error('id generator was probed')
 				},
 			},
@@ -218,16 +163,60 @@ describe('core runtime stub', () => {
 
 		expect(openCore(options)).toMatchObject({ ok: true })
 
-		const invalidPorts = createPorts() as unknown as { sourceControl: { preflightRepository?: unknown } }
-		delete invalidPorts.sourceControl.preflightRepository
+		const invalidSecrets = { ...options.secrets } as { resolveSecrets?: unknown }
+		delete invalidSecrets.resolveSecrets
 
-		expect(openCore({ ...options, ports: invalidPorts as never })).toMatchObject({
+		expect(openCore({ ...options, secrets: invalidSecrets as never })).toMatchObject({
 			ok: false,
 			error: {
 				type: 'invalid-input',
 				boundary: 'construction',
 				operation: 'openCore',
-				pipeError: { messages: [expect.objectContaining({ path: 'ports.sourceControl.preflightRepository' })] },
+				pipeError: { messages: [expect.objectContaining({ path: 'secrets.resolveSecrets' })] },
+			},
+		})
+
+		expect(openCore({ ...options, idGenerator: {} as never })).toMatchObject({
+			ok: false,
+			error: {
+				type: 'invalid-input',
+				boundary: 'construction',
+				operation: 'openCore',
+				pipeError: { messages: [expect.objectContaining({ path: 'idGenerator.next' })] },
+			},
+		})
+	})
+
+	it('treats logger and event sink as optional-only Core Services', () => {
+		expect(openCore(openCoreOptions())).toMatchObject({ ok: true })
+		expect(
+			openCore({
+				...openCoreOptions(),
+				logger: {
+					debug: () => {},
+					info: () => {},
+					warn: () => {},
+					error: () => {},
+				},
+				eventSink: { publish: () => {} },
+			}),
+		).toMatchObject({ ok: true })
+		expect(openCore({ ...openCoreOptions(), logger: null as never })).toMatchObject({
+			ok: false,
+			error: {
+				type: 'invalid-input',
+				boundary: 'construction',
+				operation: 'openCore',
+				pipeError: { messages: [expect.objectContaining({ path: 'logger' })] },
+			},
+		})
+		expect(openCore({ ...openCoreOptions(), eventSink: null as never })).toMatchObject({
+			ok: false,
+			error: {
+				type: 'invalid-input',
+				boundary: 'construction',
+				operation: 'openCore',
+				pipeError: { messages: [expect.objectContaining({ path: 'eventSink' })] },
 			},
 		})
 	})
@@ -386,10 +375,7 @@ describe('core runtime stub', () => {
 
 	it('accepts unknown object fields at public boundaries rather than rejecting them', async () => {
 		const opened = openCore({
-			storage,
-			ports: createPorts(),
-			clock: { now: () => '2026-06-09T00:00:00.000Z' },
-			idGenerator: { nextId: (brand: string) => `${brand}-1` },
+			...openCoreOptions(),
 			unknown: 'stripped',
 		} as never)
 
@@ -418,7 +404,6 @@ describe('core runtime stub', () => {
 					passphrase: 'passphrase',
 					encryptedPayload: new Uint8Array([1]),
 					storage,
-					snapshotEncryption: createPorts().snapshotEncryption,
 					unknown: 'stripped',
 				} as never,
 				{
@@ -430,22 +415,21 @@ describe('core runtime stub', () => {
 		).resolves.toEqual({ ok: false, error: { type: 'not-implemented', operation: 'importSnapshot' } })
 	})
 
-	it('validates snapshot import input and context before import behavior', async () => {
-		let decryptCalled = false
+	it('validates snapshot import input and context before returning not-implemented', async () => {
+		let storageCalled = false
+		const probingStorage: CoreStorageService = {
+			transaction: <T>(): Promise<T> => {
+				storageCalled = true
+				return Promise.reject(new Error('storage transaction was probed'))
+			},
+		}
 
 		await expect(
 			importSnapshot(
 				{
 					passphrase: '',
 					encryptedPayload: new Uint8Array([1]),
-					storage,
-					snapshotEncryption: {
-						encrypt: () => Promise.resolve({ bytes: new Uint8Array() }),
-						decrypt: () => {
-							decryptCalled = true
-							return Promise.resolve({ bytes: new TextEncoder().encode('{}') })
-						},
-					},
+					storage: probingStorage,
 				},
 				context,
 			),
@@ -453,21 +437,14 @@ describe('core runtime stub', () => {
 			ok: false,
 			error: { type: 'invalid-input', boundary: 'snapshot-import', operation: 'importSnapshot' },
 		})
-		expect(decryptCalled).toBe(false)
+		expect(storageCalled).toBe(false)
 
 		await expect(
 			importSnapshot(
 				{
 					passphrase: 'passphrase',
 					encryptedPayload: new Uint8Array([1]),
-					storage,
-					snapshotEncryption: {
-						encrypt: () => Promise.resolve({ bytes: new Uint8Array() }),
-						decrypt: () => {
-							decryptCalled = true
-							return Promise.resolve({ bytes: new TextEncoder().encode('{}') })
-						},
-					},
+					storage: probingStorage,
 				},
 				{ actor: { type: 123, id: 'actor-1' }, correlationId: null } as never,
 			),
@@ -480,80 +457,18 @@ describe('core runtime stub', () => {
 				pipeError: { messages: [expect.objectContaining({ path: 'context.actor.type' })] },
 			},
 		})
-		expect(decryptCalled).toBe(false)
-	})
-
-	it('returns import-specific errors before the import stub not-implemented result', async () => {
-		await expect(
-			importSnapshot(
-				{
-					passphrase: 'passphrase',
-					encryptedPayload: new Uint8Array([1]),
-					storage,
-					snapshotEncryption: {
-						encrypt: () => Promise.resolve({ bytes: new Uint8Array() }),
-						decrypt: () => Promise.reject(new Error('bad passphrase')),
-					},
-				},
-				context,
-			),
-		).resolves.toMatchObject({ ok: false, error: { type: 'snapshot-decryption-failed' } })
+		expect(storageCalled).toBe(false)
 
 		await expect(
 			importSnapshot(
 				{
 					passphrase: 'passphrase',
 					encryptedPayload: new Uint8Array([1]),
-					storage,
-					snapshotEncryption: {
-						encrypt: () => Promise.resolve({ bytes: new Uint8Array() }),
-						decrypt: () => Promise.resolve({ bytes: new TextEncoder().encode('not json') }),
-					},
-				},
-				context,
-			),
-		).resolves.toMatchObject({ ok: false, error: { type: 'invalid-snapshot' } })
-
-		await expect(
-			importSnapshot(
-				{
-					passphrase: 'passphrase',
-					encryptedPayload: new Uint8Array([1]),
-					storage: {
-						transaction: () => Promise.reject(new Error('disk full')),
-					},
-					snapshotEncryption: createPorts().snapshotEncryption,
-				},
-				context,
-			),
-		).resolves.toMatchObject({ ok: false, error: { type: 'storage-operation-failed' } })
-
-		const statefulSnapshotEncryption = {
-			payload: new TextEncoder().encode('{}'),
-			encrypt: () => Promise.resolve({ bytes: new Uint8Array() }),
-			decrypt() {
-				return Promise.resolve({ bytes: this.payload })
-			},
-		}
-		const statefulStorage = {
-			called: false,
-			transaction<T>(fn: (tx: CoreStorageTransaction) => Promise<T>): Promise<T> {
-				this.called = true
-				return fn({} as CoreStorageTransaction)
-			},
-		}
-
-		await expect(
-			importSnapshot(
-				{
-					passphrase: 'passphrase',
-					encryptedPayload: new Uint8Array([1]),
-					storage: statefulStorage,
-					snapshotEncryption: statefulSnapshotEncryption,
+					storage: probingStorage,
 				},
 				context,
 			),
 		).resolves.toEqual({ ok: false, error: { type: 'not-implemented', operation: 'importSnapshot' } })
-		expect(statefulStorage.called).toBe(true)
+		expect(storageCalled).toBe(false)
 	})
 })
