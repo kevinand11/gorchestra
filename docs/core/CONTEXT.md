@@ -20,12 +20,20 @@ _Avoid_: createdBy field, Workspace Member field
 A value a Consumer passes through a public core API boundary, including operation inputs, Operation Context values, Open Core options, Import Snapshot inputs, and query arguments.
 _Avoid_: payload, request body, port result
 
+**Core Service**:
+A consumer-provided deployment boundary used by Core for mechanics such as storage, Secret resolution, sandbox isolation, logging, or encryption. Core Services do not own Portfolio orchestration, Source Control Provider, Model Provider Protocol, or Agent Run behavior.
+_Avoid_: Core Port, plugin, consumer policy, integration logic
+
+**Core Service Output**:
+A value returned to Core by a Core Service. Core validates Core Service Outputs before trusting them; notification-only services such as logging or event publishing do not produce Core Service Outputs.
+_Avoid_: Core Input, provider behavior, consumer policy
+
 **Invalid Core Input**:
 A Core Input rejected before core behavior runs because it fails the declared input pipe for that public core API boundary.
 _Avoid_: invariant violation, domain failure, malformed request
 
 **Secret**:
-A Portfolio-owned sensitive write-only value stored by Gorchestra for repository access or execution environments. Users may create or replace Secret values, but may not view plaintext values after creation.
+A Portfolio-owned named sensitive write-only value stored by Gorchestra for provider access or execution environments. Users may create or replace Secret values, but may not view plaintext values after creation; v1 Secrets do not have provider-specific Secret types.
 _Avoid_: Credential, token, key, sensitive value
 
 **Environment Variable**:
@@ -37,19 +45,19 @@ A Portfolio-owned rule that exposes a Secret to Agent Runs as a named environmen
 _Avoid_: Secret Assignment, credential assignment
 
 **GitHub PAT**:
-A Secret that grants Gorchestra GitHub access using a user-supplied personal access token.
+A personal access token value a user may store as a Secret for GitHub Repository access. GitHub PAT is not a separate Secret type in v1.
 _Avoid_: GitHub token, GitHub credential
 
 **Portfolio Snapshot**:
-A passphrase-encrypted portable artifact containing Portfolio storage contents. Portfolio Snapshots always include Secrets and can be imported by any Gorchestra consumer with the passphrase.
+A Core-encrypted portable artifact containing Portfolio storage contents. Portfolio Snapshots always include Secrets and can be imported by any Gorchestra consumer with the passphrase.
 _Avoid_: Backup, dump, workspace export
 
 **Export**:
-The operation that creates a Portfolio Snapshot.
+The operation that creates a passphrase-encrypted Portfolio Snapshot using Core-owned snapshot encryption behavior.
 _Avoid_: Backup, dump
 
 **Import**:
-The operation that creates a new Portfolio from a Portfolio Snapshot using its passphrase.
+The operation that creates a new Portfolio from a Core-encrypted Portfolio Snapshot using its passphrase.
 _Avoid_: Restore, upload, merge
 
 **Project**:
@@ -61,7 +69,7 @@ The immutable configured execution source a Project manages. A Project Source de
 _Avoid_: Project Config, source config, target type
 
 **Project Source Type**:
-The kind of Project Source a Project uses, such as source control.
+The kind of Project Source a Project uses, such as source control. Core owns Project Source Type behavior; provider operations perform that behavior on Core's behalf without deciding workflow semantics.
 _Avoid_: Project kind, target type
 
 **Project Config**:
@@ -72,8 +80,12 @@ _Avoid_: scheduler settings
 A Project whose Project Source is source control. In v1, Source Control Projects manage one or more GitHub Repositories.
 _Avoid_: Repository Project, Git project, repo project
 
+**Source Control Provider**:
+A Core-owned provider implementation for Source Control Project external operations, such as GitHub. A Repository uses one supported Source Control Provider, and that provider satisfies Core's Source Control Provider contract while Core owns Source Control Project workflow semantics.
+_Avoid_: Source Control Port, Project Source Type, consumer integration logic
+
 **Repository**:
-A Source Control Project-managed source control target. For Source Control Projects, a Delivery targets exactly one Repository, while Plans may coordinate work across multiple Repositories in the same Project.
+A Source Control Project-managed source control target. For Source Control Projects, a Delivery targets exactly one Repository, while Plans may coordinate work across multiple Repositories in the same Project. Repository provider config identifies the target and the Secret Core uses for provider access.
 _Avoid_: Project, repo
 
 **Plan**:
@@ -149,11 +161,11 @@ The kind of Agent recorded on an Agent Run. Agent Type describes how the work is
 _Avoid_: Mission type, purpose, interaction mode
 
 **Model Provider**:
-A Portfolio-owned configured source of selectable language Models. A Model Provider has an explicit endpoint, immutable Model Provider Protocol, optional standard auth backed by generic Secrets, and a list of custom headers backed by generic Secrets that defaults to empty. Editable Model Provider fields record when they were last updated. Gorchestra does not provide built-in provider endpoints. Model Providers may be archived, which makes their Models unavailable for new work while retaining them for historical references; this availability is derived rather than cascaded to child Models. Archived Model Providers may be updated before being unarchived.
-_Avoid_: model source, LLM provider
+A Portfolio-owned configured source of selectable language Models. A Model Provider has an explicit endpoint, immutable Model Provider Protocol, optional standard auth backed by Secrets, and a list of custom headers backed by Secrets that defaults to empty. Core owns Model Provider Protocol behavior so Model Agent execution is consistent across consumers. Editable Model Provider fields record when they were last updated. Model Providers may be archived, which makes their Models unavailable for new work while retaining them for historical references; this availability is derived rather than cascaded to child Models. Archived Model Providers may be updated before being unarchived.
+_Avoid_: model source, LLM provider, consumer model adapter
 
 **Model Provider Protocol**:
-The stable wire/API protocol Gorchestra uses to call a Model Provider.
+The stable wire/API protocol Gorchestra uses to call a Model Provider. A Model Provider Protocol is a Core-owned provider behavior contract, not consumer-defined integration logic.
 _Avoid_: provider brand, model type, API key type
 
 **Model**:
@@ -161,15 +173,15 @@ A named Portfolio-owned selectable language model under a Model Provider. A Mode
 _Avoid_: provider/model string, model slug
 
 **Model Agent**:
-An Agent Type where Gorchestra's own agent loop uses a configured Model to perform goal-directed work.
-_Avoid_: LLM Loop Agent, Pi Agent, Codex Agent, external harness
+An Agent Type where Gorchestra's Core-owned agent loop uses a configured Model to perform goal-directed work consistently across consumers.
+_Avoid_: LLM Loop Agent, Pi Agent, Codex Agent, external harness, consumer agent adapter
 
 **Agent Run**:
-One concrete session where an agent carries out goal-directed work for Gorchestra. An Agent Run records its agent as a discriminated value, has interactivity derived from its purpose, and may gather information, use tools, edit code, run tests, produce outputs, or request human decisions. An Agent Run does not own authoritative state.
+One concrete session where an agent carries out goal-directed work for Gorchestra. An Agent Run records its agent as a discriminated value, has interactivity derived from its purpose, and may gather information, use tools, edit code, run tests, produce outputs, or request human decisions. Core owns Agent Run behavior; an Agent Run does not own authoritative state.
 _Avoid_: Mission, Turn, AgentAttempt, actor
 
 **Agent Run Sandbox**:
-The isolated environment an Agent Run uses for its work, such as a worktree, temporary files, tools, and runtime environment. An Agent Run Sandbox is isolated to one Agent Run; cross-run state must be promoted by Gorchestra evaluation.
+The isolated environment an Agent Run uses for its work, such as a worktree, temporary files, tools, and runtime environment. Core owns Agent Run orchestration semantics, while consumers provide deployment-specific sandbox primitives such as allocation, execution isolation, resource limits, and cleanup. An Agent Run Sandbox is isolated to one Agent Run; cross-run state must be promoted by Gorchestra evaluation.
 _Avoid_: Mission Sandbox, Execution Sandbox, shared sandbox, workspace, project checkout
 
 **Delivery Artifact**:
@@ -193,7 +205,7 @@ The Source Control Project representation of a Slice Artifact. Slice Branch work
 _Avoid_: Slice Artifact, Delivery Branch, Agent Run Sandbox
 
 **Action**:
-An authoritative Delivery lifecycle or execution fact. An Action records queueing, shipping, abandonment, evaluated Agent Run work, validation, or external operation results. Delivery queued and closed states are derived from Actions so the Action list is the complete timeline of Delivery state transitions. Action authorization is non-null only when the Action is the authoritative fact created by an explicit consumer-authorized operation. If a consumer-authorized operation writes a domain lifecycle field instead, that domain-named Audit Stamp carries the authorization and scheduler/runtime Actions use null authorization. Validation failures may be collected and provided as input to a later Agent Run.
+An authoritative Delivery lifecycle or execution fact. An Action records queueing, shipping, abandonment, evaluated Agent Run work, validation, or external operation results. Delivery queued and closed states are derived from Actions so the Action list is the complete timeline of Delivery state transitions. Action authorization is non-null only when the Action is the authoritative fact created by an explicit consumer-authorized operation. If a consumer-authorized operation writes a domain lifecycle field instead, that domain-named Audit Stamp carries the authorization and scheduler/runtime Actions use null authorization. Evidence attached to Actions is safe/redacted before storage or reuse, including when provided as input to a later Agent Run.
 _Avoid_: Job, Execution
 
 **Decision**:
@@ -264,7 +276,7 @@ _Avoid_: Review signal, stored comment
 
 - A **Consumer** passes **Core Inputs** to core after authorizing an operation.
 - **Invalid Core Input** is rejected before the operation can create or mutate Portfolio facts.
-- Port and storage return values are not **Core Inputs** because they are data supplied to core by adapters after the Consumer-to-core boundary.
+- **Core Services** provide deployment mechanics to Core; any returned value is a **Core Service Output** and is validated before Core trusts it.
 
 ## Example dialogue
 
@@ -273,4 +285,4 @@ _Avoid_: Review signal, stored comment
 
 ## Flagged ambiguities
 
-- "input passed to core" was narrowed to **Core Input** at the public Consumer-to-core boundary; port and storage return values are separate adapter data, not part of this validation scope.
+- "input passed to core" was narrowed to **Core Input** at the public Consumer-to-core API boundary; values returned by Core Services are **Core Service Outputs** with their own validation boundary.

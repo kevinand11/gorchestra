@@ -2,9 +2,11 @@
  * Gorchestra core API sketch.
  *
  * This file is documentation-by-type, not an implementation contract yet.
- * It describes how consumers call Portfolio-scoped core operations and how core
- * calls consumer-provided storage and ports for source control, model agents,
- * secrets, and snapshot encryption.
+ * It describes how consumers call Portfolio-scoped core operations and sketches
+ * Core runtime boundaries. Current Core docs/ADRs define provider behavior,
+ * Model Agent runtime behavior, and Snapshot encryption as Core-owned, while
+ * consumers provide deployment mechanics as Core Services. Some interfaces in
+ * this sketch still use historical Port names pending that source refactor.
  *
  * Consumers authorize operations before calling core. Core enforces core
  * invariants and owns orchestration behavior inside the opened Portfolio space.
@@ -665,9 +667,14 @@ export interface TimelineEvent {
 }
 
 // -----------------------------------------------------------------------------
-// Core -> consumer ports
+// Core services / legacy port sketch
 // -----------------------------------------------------------------------------
 
+/**
+ * Historical API sketch name. Current Core docs/ADRs call consumer-provided
+ * deployment mechanics Core Services and reserve source-control, model-provider,
+ * Model Agent runtime, and Snapshot encryption behavior for Core-owned modules.
+ */
 export interface CorePorts {
 	sourceControl: SourceControlPort
 	modelAgentRuntime: ModelAgentRuntimePort
@@ -719,17 +726,18 @@ export interface RepositoryTable<T, Id> {
 }
 
 // -----------------------------------------------------------------------------
-// Source Control port
+// Source Control provider behavior sketch
 // -----------------------------------------------------------------------------
 
 /**
  * Core uses an internal context resolver to turn authoritative IDs into the
  * current entities, configs, artifacts, branches, repositories, models, and
- * secrets required for commands and port calls. Consumer-facing command inputs
- * prefer IDs over duplicated resolved values so callers cannot provide
- * contradictory context. Runtime/port calls that perform external actions should
- * receive the resolved values needed to perform the action so adapters do not
- * infer, load, or calculate authoritative context themselves.
+ * secrets required for commands, Core-owned provider behavior, and Core Service
+ * calls. Consumer-facing command inputs prefer IDs over duplicated resolved
+ * values so callers cannot provide contradictory context. Boundaries that
+ * perform external actions should receive the resolved values needed to perform
+ * the action so service/provider code does not infer, load, or calculate
+ * authoritative context itself.
  */
 
 export interface SourceControlPort {

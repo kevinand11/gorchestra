@@ -81,7 +81,7 @@ These are the main issue-derived areas not fully captured as durable docs:
 2. **PAT validation and expiry behavior** — exact checks, warnings, replacement flow, and failure states.
 3. **Preflight spec** — exact checks and whether to add an ADR for Preflight as validation primitive rather than job.
 4. **Scheduler spec** — claim algorithm, lock TTLs, heartbeats, retries, cancellation, and concurrency.
-5. **Agent Run runtime/provider contracts** — Claude/Codex/Pi SDK boundaries, tool ownership, sandbox input/output validation.
+5. **Agent Run runtime/provider contracts** — Model Provider SDK boundaries, Core-owned tool orchestration, sandbox input/output validation, and sandbox failure classification between infrastructure failure, work failure, and cleanup failure.
 6. **GitHub integration spec** — permissions, PR operations, branch operations, issue operations if any, review fetch/merge semantics in provider terms.
 7. **Decision spec** — payload types, permissions to answer, expiration, resumption behavior.
 8. **Post-merge validation spec** — future feature candidate for validation after a Delivery Review Surface merges; v1 ships without post-merge Ship validation.
