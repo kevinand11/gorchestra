@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
 	...base,
-	...tseslint.configs.recommendedTypeChecked,
+	...tseslint.configs.recommendedTypeChecked.slice(1),
 	{
 		ignores: ['coverage/**', '.husky/_/**'],
 		settings: {

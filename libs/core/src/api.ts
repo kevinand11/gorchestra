@@ -1057,12 +1057,7 @@ const importSnapshotInputPipe = v.object({
 })
 const importSnapshotBoundaryPipe = v.object({ input: importSnapshotInputPipe, context: operationContextPipe })
 
-const modelProviderProtocolPipe = enumStringPipe([
-	'anthropic-messages',
-	'openai-responses',
-	'openai-completions',
-	'google-generative-ai',
-] as const)
+const modelProviderProtocolPipe = enumStringPipe(['anthropic-messages', 'openai-responses', 'openai-completions', 'google-generative-ai'])
 const modelProviderAuthPipe = v.discriminate(discriminator, {
 	apiKey: v.object({ type: v.eq('apiKey'), secretId: brandedIdPipe }),
 })
@@ -1129,16 +1124,7 @@ const proposedDeliveryPipe = v.object({
 	slices: v.array(proposedSlicePipe),
 	dependsOnDeliveryIds: v.array(brandedIdPipe),
 })
-const memoryTypePipe = enumStringPipe([
-	'decision',
-	'fact',
-	'constraint',
-	'assumption',
-	'risk',
-	'architecture',
-	'workflow',
-	'convention',
-] as const)
+const memoryTypePipe = enumStringPipe(['decision', 'fact', 'constraint', 'assumption', 'risk', 'architecture', 'workflow', 'convention'])
 const proposedMemoryPipe = v.object({
 	proposedMemoryKey: nonEmptyTrimmedStringPipe,
 	title: nonEmptyTrimmedStringPipe,
@@ -1158,15 +1144,7 @@ const proposedGraphRefPipe = v.discriminate(discriminator, {
 	'proposed-slice': v.object({ type: v.eq('proposed-slice'), proposedSliceKey: nonEmptyTrimmedStringPipe }),
 	'proposed-memory': v.object({ type: v.eq('proposed-memory'), proposedMemoryKey: nonEmptyTrimmedStringPipe }),
 })
-const linkTypePipe = enumStringPipe([
-	'produced',
-	'implements',
-	'references',
-	'supersedes',
-	'supports',
-	'contradicts',
-	'depends-on',
-] as const)
+const linkTypePipe = enumStringPipe(['produced', 'implements', 'references', 'supersedes', 'supports', 'contradicts', 'depends-on'])
 const proposedLinkPipe = v.object({ type: linkTypePipe, from: proposedGraphRefPipe, to: proposedGraphRefPipe })
 const planOutputProposalPipe = v.object({
 	proposedDeliveries: v.array(proposedDeliveryPipe),
@@ -1183,7 +1161,7 @@ const secretBindingScopePipe = v.discriminate(discriminator, {
 	project: v.object({ type: v.eq('project'), projectId: brandedIdPipe }),
 	delivery: v.object({ type: v.eq('delivery'), deliveryId: brandedIdPipe }),
 })
-const secretTypePipe = enumStringPipe(['github-pat', 'generic'] as const)
+const secretTypePipe = enumStringPipe(['github-pat', 'generic'])
 const reviewSurfaceScopePipe = v.discriminate(discriminator, {
 	slice: v.object({ type: v.eq('slice'), sliceId: brandedIdPipe, sliceArtifactId: brandedIdPipe }),
 	delivery: v.object({ type: v.eq('delivery'), deliveryId: brandedIdPipe, deliveryArtifactId: brandedIdPipe }),
@@ -1202,7 +1180,7 @@ const modelFilterPipe = v.object({ providerId: nullableBrandedIdPipe, selectable
 const planFilterPipe = v.object({ projectId: nullableBrandedIdPipe })
 const deliveryFilterPipe = v.object({
 	projectId: nullableBrandedIdPipe,
-	closed: v.nullable(enumStringPipe(['open', 'shipped', 'abandoned'] as const)),
+	closed: v.nullable(enumStringPipe(['open', 'shipped', 'abandoned'])),
 })
 const timelineFilterPipe = v.object({
 	deliveryId: nullableBrandedIdPipe,
@@ -1297,11 +1275,11 @@ function argumentTuplePipe(branches: Pipe<unknown, unknown>[]): Pipe<unknown, un
 	return v
 		.array(v.any<unknown>())
 		.pipe(v.has(branches.length, `Expected exactly ${branches.length} query argument(s).`))
-		.pipe(v.tuple(branches as [])) as Pipe<unknown, unknown>
+		.pipe(v.tuple(branches))
 }
 
 function enumStringPipe<const Values extends readonly [string, ...string[]]>(values: Values): Pipe<unknown, Values[number]> {
-	return v.string().pipe(v.in([...values], `Expected one of: ${values.join(', ')}.`)) as Pipe<unknown, Values[number]>
+	return v.string().pipe(v.in(values, `Expected one of: ${values.join(', ')}.`))
 }
 
 function discriminator(value: unknown): PropertyKey {
