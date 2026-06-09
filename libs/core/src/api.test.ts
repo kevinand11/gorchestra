@@ -343,11 +343,22 @@ describe("core runtime stub", () => {
     });
 
     await expect(
-      result.value.commands.queueDelivery({ deliveryId: " delivery-1 ", unknown: "stripped" } as never, {
-        actor: { type: "", id: "" },
-        correlationId: " keep exact ",
-      }),
-    ).resolves.toEqual({ ok: false, error: { type: "not-implemented", operation: "queueDelivery" } });
+      result.value.commands.queueDelivery(
+        { deliveryId: "delivery-1" } as never,
+        {
+          actor: { type: 123, id: "actor-1" },
+          correlationId: null,
+        } as never,
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        type: "invalid-input",
+        boundary: "command",
+        operation: "queueDelivery",
+        pipeError: { messages: [expect.objectContaining({ path: "context.actor.type" })] },
+      },
+    });
 
     await expect(
       result.value.commands.createSecret({ type: "generic", name: "secret", valueRef: "   " } as never, context),
@@ -371,6 +382,51 @@ describe("core runtime stub", () => {
         pipeError: { messages: [expect.objectContaining({ path: "args.0" })] },
       },
     });
+  });
+
+  it("accepts unknown object fields at public boundaries rather than rejecting them", async () => {
+    const opened = openCore({
+      storage,
+      ports: createPorts(),
+      clock: { now: () => "2026-06-09T00:00:00.000Z" },
+      idGenerator: { nextId: (brand: string) => `${brand}-1` },
+      unknown: "stripped",
+    } as never);
+
+    expect(opened).toMatchObject({ ok: true });
+    if (!opened.ok) return;
+
+    await expect(
+      opened.value.commands.queueDelivery(
+        { deliveryId: " delivery-1 ", unknown: "stripped" } as never,
+        {
+          actor: { type: "local-user", id: "actor-1", unknown: "stripped" },
+          correlationId: null,
+          unknown: "stripped",
+        } as never,
+      ),
+    ).resolves.toEqual({ ok: false, error: { type: "not-implemented", operation: "queueDelivery" } });
+
+    await expect(
+      opened.value.queries.listRepositories({ projectId: null, unknown: "stripped" } as never),
+    ).resolves.toEqual({ ok: false, error: { type: "not-implemented", operation: "listRepositories" } });
+
+    await expect(
+      importSnapshot(
+        {
+          passphrase: "passphrase",
+          encryptedPayload: new Uint8Array([1]),
+          storage,
+          snapshotEncryption: createPorts().snapshotEncryption,
+          unknown: "stripped",
+        } as never,
+        {
+          actor: { type: "local-user", id: "actor-1", unknown: "stripped" },
+          correlationId: null,
+          unknown: "stripped",
+        } as never,
+      ),
+    ).resolves.toEqual({ ok: false, error: { type: "not-implemented", operation: "importSnapshot" } });
   });
 
   it("validates snapshot import input and context before import behavior", async () => {
