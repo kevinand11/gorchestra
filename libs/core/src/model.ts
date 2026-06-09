@@ -637,6 +637,7 @@ export type CorrectionEvidence = ValidationEvidence | ExternalOperationEvidence
 
 /**
  * preflightModel returns model-preflight evidence.
+ * preflightRepository returns repository-preflight evidence without storing Actions or authoritative Portfolio facts.
  * runDeliveryWork records failed delivery-preflight evidence as validate-preflight Actions.
  * Successful delivery-preflight evidence is recorded only when it supersedes the latest failed validate-preflight Action.
  */
@@ -650,6 +651,7 @@ export interface ValidationEvidence {
 export type ValidationOperation =
 	| { type: 'delivery-preflight' }
 	| { type: 'model-preflight' }
+	| { type: 'repository-preflight' }
 	| { type: 'slice-branch-validation' }
 	| { type: 'delivery-branch-validation' }
 

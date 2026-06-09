@@ -84,6 +84,7 @@ function validCommandInputs(): Record<string, Record<string, unknown>> {
 		archiveModel: { modelId: id },
 		unarchiveModel: { modelId: id },
 		preflightModel: { modelId: id },
+		preflightRepository: { repositoryId: id },
 		createPlan: { projectId: id, title: ' title ', config: planConfig },
 		acceptPlanOutput: { planId: id, output: planOutput },
 		rejectPlanOutput: { planId: id },
@@ -241,6 +242,7 @@ describe('core runtime stub', () => {
 			'archiveModel',
 			'unarchiveModel',
 			'preflightModel',
+			'preflightRepository',
 			'createPlan',
 			'acceptPlanOutput',
 			'rejectPlanOutput',
@@ -328,6 +330,16 @@ describe('core runtime stub', () => {
 				boundary: 'command',
 				operation: 'queueDelivery',
 				pipeError: { messages: [expect.objectContaining({ path: 'input.deliveryId' })] },
+			},
+		})
+
+		await expect(result.value.commands.preflightRepository({ repositoryId: '   ' } as never, context)).resolves.toMatchObject({
+			ok: false,
+			error: {
+				type: 'invalid-input',
+				boundary: 'command',
+				operation: 'preflightRepository',
+				pipeError: { messages: [expect.objectContaining({ path: 'input.repositoryId' })] },
 			},
 		})
 
