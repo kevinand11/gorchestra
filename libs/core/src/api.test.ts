@@ -1,15 +1,44 @@
-import { describe, expect, it } from 'vitest'
+import type { PipeOutput } from 'valleyed'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import {
 	importSnapshot,
 	openCore,
+	type AgentRunModelUnresolvedError,
+	type ArchivedModelError,
+	type ArchivedModelProviderError,
+	type CoreCommands,
+	type CoreError,
+	type CoreQueries,
+	type CoreResource,
 	type CoreSandboxService,
+	type CoreServicePreflightOutput,
+	type CreateRepositoryInput,
 	type CoreSecretsService,
+	type CoreStorageOperation,
 	type CoreStorageService,
 	type CoreStorageTransaction,
+	type DeliveryWorkStateMismatchError,
+	type ExternalOperationFailedError,
+	type GetDeliveryWorkStateError,
+	type GetSliceWorkStateError,
+	type InvalidCoreServiceOutputError,
+	type InvalidInputError,
+	type InvariantViolationError,
+	type ModelPreflightFailedError,
+	type NotImplementedError,
+	type OpenCoreOptions,
 	type OperationContext,
+	type QueueDeliveryError,
+	type QueueDeliveryResult,
+	type ResourceNotFoundError,
 	type Result,
+	type RevisionGateClosedError,
+	type StorageOperationFailedError,
 } from './api'
+import type { createRepositoryInputPipe, operationContextPipe } from './boundary-pipes'
+import type { DeliveryWorkState, SliceWorkState } from './model'
+import type { coreServicePreflightOutputPipe, openCoreOptionsPipe, storagePipe } from './services'
 
 const context: OperationContext = {
 	actor: { type: 'local-user', id: 'actor-1' },
@@ -121,7 +150,7 @@ describe('core runtime stub', () => {
 		if (result.ok) {
 			expect(typeof result.value.preflight).toBe('function')
 			expect(typeof result.value.commands.createProject).toBe('function')
-			expect(typeof result.value.queries.listProjects).toBe('function')
+			expect(typeof result.value.queries.getDeliveryWorkState).toBe('function')
 		}
 	})
 
@@ -395,7 +424,7 @@ describe('core runtime stub', () => {
 
 		const commands = result.value.commands as unknown as Record<
 			string,
-			(input: Record<string, unknown>, operationContext: OperationContext) => Promise<Result<unknown>>
+			(input: Record<string, unknown>, operationContext: OperationContext) => Promise<Result<unknown, unknown>>
 		>
 		const commandNames = [
 			'setPortfolioConfig',
@@ -445,36 +474,20 @@ describe('core runtime stub', () => {
 		)
 	})
 
-	it('exposes every documented query and returns Result not-implemented for valid calls', async () => {
+	it('prunes raw record queries and exposes only work-state query stubs', async () => {
 		const result = openTestCore()
 		expect(result.ok).toBe(true)
 		if (!result.ok) return
 
+		expect(Object.keys(result.value.queries).sort()).toEqual(['getDeliveryWorkState', 'getSliceWorkState'])
+		expect((result.value.queries as unknown as Record<string, unknown>)['getProject']).toBeUndefined()
+		expect((result.value.queries as unknown as Record<string, unknown>)['listProjects']).toBeUndefined()
+		expect((result.value.queries as unknown as Record<string, unknown>)['getTimeline']).toBeUndefined()
+
 		const id = 'id-1' as never
-		const reviewScope = { type: 'delivery', deliveryId: id, deliveryArtifactId: id } as never
-		const revisionScope = { type: 'delivery-artifact', deliveryId: id, deliveryArtifactId: id } as never
-		const queryCalls: Array<[string, () => Promise<Result<unknown>>]> = [
-			['getPortfolioConfig', () => result.value.queries.getPortfolioConfig()],
-			['getProject', () => result.value.queries.getProject(id)],
-			['listProjects', () => result.value.queries.listProjects()],
-			['getRepository', () => result.value.queries.getRepository(id)],
-			['listRepositories', () => result.value.queries.listRepositories(null)],
-			['getModelProvider', () => result.value.queries.getModelProvider(id)],
-			['listModelProviders', () => result.value.queries.listModelProviders(null)],
-			['getModel', () => result.value.queries.getModel(id)],
-			['listModels', () => result.value.queries.listModels(null)],
-			['getPlan', () => result.value.queries.getPlan(id)],
-			['listPlans', () => result.value.queries.listPlans(null)],
-			['getDelivery', () => result.value.queries.getDelivery(id)],
-			['listDeliveries', () => result.value.queries.listDeliveries(null)],
-			['getSlice', () => result.value.queries.getSlice(id)],
-			['listSlices', () => result.value.queries.listSlices(id)],
-			['getReviewSurface', () => result.value.queries.getReviewSurface(id)],
-			['listReviewSurfaces', () => result.value.queries.listReviewSurfaces(reviewScope)],
-			['getCurrentReviewSurface', () => result.value.queries.getCurrentReviewSurface(reviewScope)],
-			['getRevision', () => result.value.queries.getRevision(id)],
-			['listRevisions', () => result.value.queries.listRevisions(revisionScope)],
-			['getTimeline', () => result.value.queries.getTimeline(null)],
+		const queryCalls: Array<[string, () => Promise<Result<unknown, unknown>>]> = [
+			['getDeliveryWorkState', () => result.value.queries.getDeliveryWorkState(id)],
+			['getSliceWorkState', () => result.value.queries.getSliceWorkState(id)],
 		]
 
 		await Promise.all(
@@ -553,12 +566,12 @@ describe('core runtime stub', () => {
 		expect(result.ok).toBe(true)
 		if (!result.ok) return
 
-		await expect(result.value.queries.getProject('   ' as never)).resolves.toMatchObject({
+		await expect(result.value.queries.getDeliveryWorkState('   ' as never)).resolves.toMatchObject({
 			ok: false,
 			error: {
 				type: 'invalid-input',
 				boundary: 'query',
-				operation: 'getProject',
+				operation: 'getDeliveryWorkState',
 				pipeError: { messages: [expect.objectContaining({ path: 'args.0' })] },
 			},
 		})
@@ -584,11 +597,6 @@ describe('core runtime stub', () => {
 			),
 		).resolves.toEqual({ ok: false, error: { type: 'not-implemented', operation: 'queueDelivery' } })
 
-		await expect(opened.value.queries.listRepositories({ projectId: null, unknown: 'stripped' } as never)).resolves.toEqual({
-			ok: false,
-			error: { type: 'not-implemented', operation: 'listRepositories' },
-		})
-
 		await expect(
 			importSnapshot(
 				{
@@ -604,6 +612,76 @@ describe('core runtime stub', () => {
 				} as never,
 			),
 		).resolves.toEqual({ ok: false, error: { type: 'not-implemented', operation: 'importSnapshot' } })
+	})
+
+	it('types public operations with explicit operation-specific error unions', () => {
+		// @ts-expect-error Result callers must name the operation error union explicitly.
+		expectTypeOf<Result<unknown>>().toEqualTypeOf<Result<unknown, never>>()
+
+		expectTypeOf<ReturnType<CoreCommands['queueDelivery']>>().toEqualTypeOf<Promise<Result<QueueDeliveryResult, QueueDeliveryError>>>()
+		expectTypeOf<OpenCoreOptions>().toEqualTypeOf<PipeOutput<typeof openCoreOptionsPipe>>()
+		expectTypeOf<CoreServicePreflightOutput>().toEqualTypeOf<PipeOutput<typeof coreServicePreflightOutputPipe>>()
+		expectTypeOf<CoreStorageService>().toEqualTypeOf<PipeOutput<typeof storagePipe>>()
+		expectTypeOf<OperationContext>().toEqualTypeOf<PipeOutput<typeof operationContextPipe>>()
+		expectTypeOf<CreateRepositoryInput>().toEqualTypeOf<PipeOutput<typeof createRepositoryInputPipe>>()
+		expectTypeOf<ReturnType<CoreQueries['getDeliveryWorkState']>>().toEqualTypeOf<
+			Promise<Result<DeliveryWorkState, GetDeliveryWorkStateError>>
+		>()
+		expectTypeOf<ReturnType<CoreQueries['getSliceWorkState']>>().toEqualTypeOf<
+			Promise<Result<SliceWorkState, GetSliceWorkStateError>>
+		>()
+
+		type QueueDeliveryDoesNotUseUmbrella = CoreError extends QueueDeliveryError ? false : true
+		type DeliveryWorkStateDoesNotUseUmbrella = CoreError extends GetDeliveryWorkStateError ? false : true
+
+		expectTypeOf<QueueDeliveryDoesNotUseUmbrella>().toEqualTypeOf<true>()
+		expectTypeOf<DeliveryWorkStateDoesNotUseUmbrella>().toEqualTypeOf<true>()
+	})
+
+	it('types generic resource and storage errors with closed discriminated shapes', () => {
+		expectTypeOf<CoreResource>().toEqualTypeOf<
+			| 'portfolio-config'
+			| 'project'
+			| 'repository'
+			| 'model-provider'
+			| 'model'
+			| 'plan'
+			| 'delivery'
+			| 'slice'
+			| 'link'
+			| 'memory'
+			| 'delivery-artifact'
+			| 'slice-artifact'
+			| 'action'
+			| 'agent-run'
+			| 'review-surface'
+			| 'revision-gate'
+			| 'revision'
+			| 'secret'
+			| 'secret-binding'
+		>()
+		expectTypeOf<CoreStorageOperation>().toEqualTypeOf<
+			| { type: 'get'; resource: CoreResource; id: string | null }
+			| { type: 'put'; resource: CoreResource; id: string | null }
+			| { type: 'list'; resource: CoreResource }
+		>()
+		expectTypeOf<Extract<CoreError, { type: 'not-found' }>['resource']>().toEqualTypeOf<CoreResource>()
+		expectTypeOf<Extract<CoreError, { type: 'storage-operation-failed' }>['operation']>().toEqualTypeOf<CoreStorageOperation>()
+		expectTypeOf<CoreError>().toEqualTypeOf<
+			| InvalidInputError
+			| InvalidCoreServiceOutputError
+			| NotImplementedError
+			| ResourceNotFoundError
+			| StorageOperationFailedError
+			| InvariantViolationError
+			| ModelPreflightFailedError
+			| DeliveryWorkStateMismatchError
+			| RevisionGateClosedError
+			| AgentRunModelUnresolvedError
+			| ArchivedModelError
+			| ArchivedModelProviderError
+			| ExternalOperationFailedError
+		>()
 	})
 
 	it('validates snapshot import input and context before returning not-implemented', async () => {
