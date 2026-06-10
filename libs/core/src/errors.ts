@@ -1,22 +1,14 @@
 import type { PipeError } from 'valleyed'
 
-import type {
-	AgentRunPurpose,
-	DeliveryId,
-	DeliveryWorkState,
-	ExternalOperationEvidence,
-	ModelId,
-	ModelProviderId,
-	RevisionGateId,
-	SecretBindingId,
-	SecretBindingScope,
-	SecretId,
-	ValidationEvidence,
-} from './model'
+import type { AgentRunPurpose } from './domain/agent-run'
+import type { Id } from './domain/commons'
+import type { DeliveryWorkState } from './domain/delivery'
+import type { ExternalOperationEvidence, ValidationEvidence } from './domain/evidence'
+import type { SecretBindingScope } from './domain/secret'
 
 export type CorePreflightCheckName = 'storage' | 'secrets' | 'sandbox' | 'clock' | 'idGenerator'
 
-export type CoreInputBoundary = 'construction' | 'snapshot-import' | 'command' | 'query'
+export type CoreInputBoundary = 'construction' | 'command' | 'query' | 'snapshot'
 
 export interface InvalidInputError {
 	type: 'invalid-input'
@@ -67,25 +59,26 @@ export type ArchivableCoreResource = Extract<CoreResource, 'model-provider' | 'm
 export interface ResourceNotFoundError {
 	type: 'not-found'
 	resource: CoreResource
-	id: string
+	id: Id
 }
 
 export interface AlreadyArchivedError {
 	type: 'already-archived'
 	resource: ArchivableCoreResource
-	id: string
+	id: Id
 }
 
 export interface NotArchivedError {
 	type: 'not-archived'
 	resource: ArchivableCoreResource
-	id: string
+	id: Id
 }
 
 export type CoreStorageOperation =
 	| { type: 'transaction' }
-	| { type: 'get'; resource: CoreResource; id: string | null }
-	| { type: 'put'; resource: CoreResource; id: string | null }
+	| { type: 'get'; resource: CoreResource; id: Id }
+	| { type: 'put'; resource: CoreResource; id: Id }
+	| { type: 'put-singleton'; resource: CoreResource }
 	| { type: 'list'; resource: CoreResource }
 
 export interface StorageOperationFailedError {
@@ -97,22 +90,22 @@ export interface DuplicateSecretBindingError {
 	type: 'duplicate-secret-binding'
 	scope: SecretBindingScope
 	envName: string
-	existingSecretBindingId: SecretBindingId
+	existingSecretBindingId: Id
 }
 
 export interface ArchivedSecretReferenceError {
 	type: 'archived-secret-reference'
-	secretId: SecretId
+	secretId: Id
 }
 
 export interface ArchivedModelReferenceError {
 	type: 'archived-model-reference'
-	modelId: ModelId
+	modelId: Id
 }
 
 export interface ArchivedModelProviderReferenceError {
 	type: 'archived-model-provider-reference'
-	modelProviderId: ModelProviderId
+	modelProviderId: Id
 }
 
 export interface InvariantViolationError {
@@ -122,7 +115,7 @@ export interface InvariantViolationError {
 
 export interface ModelPreflightFailedError {
 	type: 'model-preflight-failed'
-	modelId: ModelId
+	modelId: Id
 	evidence: ValidationEvidence
 }
 
@@ -130,18 +123,18 @@ export type ModelNotSelectableReason = 'model-archived' | 'provider-archived'
 
 export interface ModelNotSelectableError {
 	type: 'model-not-selectable'
-	modelId: ModelId
+	modelId: Id
 	reason: ModelNotSelectableReason
 }
 
 export interface SecretNotActiveError {
 	type: 'secret-not-active'
-	secretId: string
+	secretId: Id
 }
 
 export interface DuplicateRepositoryTargetError {
 	type: 'duplicate-repository-target'
-	projectId: string
+	projectId: Id
 	provider: 'github'
 	owner: string
 	name: string
@@ -149,21 +142,21 @@ export interface DuplicateRepositoryTargetError {
 
 export interface ProjectSourceTypeMismatchError {
 	type: 'project-source-type-mismatch'
-	projectId: string
+	projectId: Id
 	expected: 'source-control'
 	actual: string
 }
 
 export interface DeliveryWorkStateMismatchError {
 	type: 'delivery-work-state-mismatch'
-	deliveryId: DeliveryId
+	deliveryId: Id
 	expected: DeliveryWorkStateType[]
 	actual: DeliveryWorkState
 }
 
 export interface RevisionGateClosedError {
 	type: 'revision-gate-closed'
-	revisionGateId: RevisionGateId
+	revisionGateId: Id
 }
 
 export interface AgentRunModelUnresolvedError {
@@ -206,4 +199,3 @@ export type CoreError =
 export type CommandStubError = InvalidInputError | NotImplementedError
 export type WorkStateQueryError = InvalidInputError | NotImplementedError
 export type CorePreflightError = InvalidCoreServiceOutputError
-export type ImportSnapshotError = InvalidInputError | NotImplementedError

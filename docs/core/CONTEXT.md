@@ -21,7 +21,7 @@ A lifecycle record containing the Audit Stamp that archived a record and, when l
 _Avoid_: archived flag, deleted flag
 
 **Core Input**:
-A value a Consumer passes through a public core API boundary, including operation inputs, Operation Context values, Open Core options, Import Snapshot inputs, and query arguments.
+A value a Consumer passes through a public core API boundary, including command inputs, query arguments, Snapshot operation inputs, Operation Context values, and Open Core options.
 _Avoid_: payload, request body, port result
 
 **Core Orchestration API**:
@@ -65,16 +65,16 @@ A personal access token value a user may store as a Secret for GitHub Repository
 _Avoid_: GitHub token, GitHub credential
 
 **Portfolio Snapshot**:
-A Core-encrypted portable artifact containing Portfolio storage contents. Portfolio Snapshots always include Secrets and can be imported by any Gorchestra consumer with the passphrase.
+A Core-encrypted portable artifact containing Portfolio storage contents. Portfolio Snapshots always include Secrets and can be restored by any Gorchestra consumer with the passphrase.
 _Avoid_: Backup, dump, workspace export
 
 **Export**:
-The operation that creates a passphrase-encrypted Portfolio Snapshot using Core-owned snapshot encryption behavior.
+The operation that creates a passphrase-encrypted Portfolio Snapshot from the currently-open Portfolio using Core-owned snapshot encryption behavior.
 _Avoid_: Backup, dump
 
-**Import**:
-The operation that creates a new Portfolio from a Core-encrypted Portfolio Snapshot using its passphrase.
-_Avoid_: Restore, upload, merge
+**Restore**:
+The operation that replaces the currently-open Portfolio contents with a Core-encrypted Portfolio Snapshot using its passphrase.
+_Avoid_: Import, upload, merge
 
 **Project**:
 An orchestration boundary inside a Portfolio where Gorchestra executes Deliveries against one or more execution targets. Project-specific planning context is expressed through Project-level Plans and Links to Portfolio-owned Memories.

@@ -5,7 +5,7 @@ settings:
     excludeLinksFromLockfile: false
 
 overrides:
-    valleyed: 4.5.20
+    valleyed: 4.5.22
 
 importers:
     .:
@@ -50,8 +50,8 @@ importers:
     libs/core:
         dependencies:
             valleyed:
-                specifier: 4.5.20
-                version: 4.5.20
+                specifier: 4.5.22
+                version: 4.5.22
 
 packages:
     '@babel/code-frame@7.29.7':
@@ -669,7 +669,7 @@ packages:
         resolution: { integrity: sha512-42zatd5qSvvcV1JdDBCLxYRznvP4eIHpPoZXdkPFnAmanA4FuZ5dibSnCBggY8hQnqajPpoGjXFdZ7fIJKQnlA== }
         engines: { node: ^18.18.0 || ^20.9.0 || >=21.1.0 }
         peerDependencies:
-            typescript: 5.9.3
+            typescript: '>=4.8.4 <6.1.0'
 
     '@typescript-eslint/utils@8.61.0':
         resolution: { integrity: sha512-3bzFt7ImFMW/jVYwJamDoe/dMOdFLSC6pom6rRjdh4SZJEYupyMzem8e7vKZLclLfpHjlwSAXOUxtKxGXUiLqA== }
@@ -2133,8 +2133,8 @@ packages:
     util-deprecate@1.0.2:
         resolution: { integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw== }
 
-    valleyed@4.5.20:
-        resolution: { integrity: sha512-YPnzucaJwVrRSFL4O16IaQkaH18V8CyyCZSG+86dwBCk869hCtFuZGVyBf7Fe1PisIYp4DkV1eqMSgf1OWzW1w== }
+    valleyed@4.5.22:
+        resolution: { integrity: sha512-35LqzMX24sS6nTKvk8oF863BgdIPWu89Ow8OdEmpHo+ZNETNE6Mh5CfHFOzvBEdg0cTVLzbjkup+19kZKt+v5Q== }
 
     vite@7.3.5:
         resolution: { integrity: sha512-KuOaNhcnGFN2zIPGA7wRmzF+lJA1sea7rHq17aiJ++9lzY1WWG6Jpwqwe1KNbRVPIqHmr8GLYx7jbrQcN/7/ww== }
@@ -4600,7 +4600,7 @@ snapshots:
 
     util-deprecate@1.0.2: {}
 
-    valleyed@4.5.20:
+    valleyed@4.5.22:
         dependencies:
             '@standard-schema/spec': 1.1.0
             url-regex-safe: 4.0.0

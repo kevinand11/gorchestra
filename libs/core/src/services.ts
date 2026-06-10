@@ -1,44 +1,22 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type {
-	Action,
-	ActionId,
-	AgentRun,
-	AgentRunId,
-	Delivery,
-	DeliveryArtifact,
-	DeliveryArtifactId,
-	DeliveryId,
-	Link,
-	LinkId,
-	Memory,
-	MemoryId,
-	Model,
-	ModelId,
-	ModelProvider,
-	ModelProviderId,
-	Plan,
-	PlanId,
-	PortfolioConfigRecord,
-	Project,
-	ProjectId,
-	Repository,
-	RepositoryId,
-	ReviewSurface,
-	ReviewSurfaceId,
-	Revision,
-	RevisionGate,
-	RevisionGateId,
-	RevisionId,
-	Secret,
-	SecretBinding,
-	SecretBindingId,
-	SecretId,
-	Slice,
-	SliceArtifact,
-	SliceArtifactId,
-	SliceId,
-} from './model'
+import type { Action } from './domain/action'
+import type { AgentRun } from './domain/agent-run'
+import type { DeliveryArtifact, SliceArtifact } from './domain/artifact'
+import type { Id } from './domain/commons'
+import type { PortfolioConfigRecord } from './domain/config'
+import type { Delivery } from './domain/delivery'
+import type { Link } from './domain/graph'
+import type { Memory } from './domain/memory'
+import type { Model } from './domain/model'
+import type { ModelProvider } from './domain/model-provider'
+import type { Plan } from './domain/plan'
+import type { Project } from './domain/project'
+import type { Repository } from './domain/repository'
+import type { ReviewSurface } from './domain/review-surface'
+import type { Revision, RevisionGate } from './domain/revision'
+import type { Secret, SecretBinding } from './domain/secret'
+import type { Slice } from './domain/slice'
 
 type AnyFunction = (...args: never[]) => unknown
 
@@ -66,24 +44,24 @@ export type CorePreflightCheck = { ok: true } | { ok: false; reason: 'not-ready'
 
 export interface CoreStorageTransaction {
 	portfolioConfig: SingletonRepository<PortfolioConfigRecord>
-	projects: RepositoryTable<Project, ProjectId>
-	repositories: RepositoryTable<Repository, RepositoryId>
-	modelProviders: RepositoryTable<ModelProvider, ModelProviderId>
-	models: RepositoryTable<Model, ModelId>
-	plans: RepositoryTable<Plan, PlanId>
-	deliveries: RepositoryTable<Delivery, DeliveryId>
-	slices: RepositoryTable<Slice, SliceId>
-	links: RepositoryTable<Link, LinkId>
-	memories: RepositoryTable<Memory, MemoryId>
-	deliveryArtifacts: RepositoryTable<DeliveryArtifact, DeliveryArtifactId>
-	sliceArtifacts: RepositoryTable<SliceArtifact, SliceArtifactId>
-	actions: RepositoryTable<Action, ActionId>
-	agentRuns: RepositoryTable<AgentRun, AgentRunId>
-	reviewSurfaces: RepositoryTable<ReviewSurface, ReviewSurfaceId>
-	revisionGates: RepositoryTable<RevisionGate, RevisionGateId>
-	revisions: RepositoryTable<Revision, RevisionId>
-	secrets: RepositoryTable<Secret, SecretId>
-	secretBindings: RepositoryTable<SecretBinding, SecretBindingId>
+	projects: RepositoryTable<Project>
+	repositories: RepositoryTable<Repository>
+	modelProviders: RepositoryTable<ModelProvider>
+	models: RepositoryTable<Model>
+	plans: RepositoryTable<Plan>
+	deliveries: RepositoryTable<Delivery>
+	slices: RepositoryTable<Slice>
+	links: RepositoryTable<Link>
+	memories: RepositoryTable<Memory>
+	deliveryArtifacts: RepositoryTable<DeliveryArtifact>
+	sliceArtifacts: RepositoryTable<SliceArtifact>
+	actions: RepositoryTable<Action>
+	agentRuns: RepositoryTable<AgentRun>
+	reviewSurfaces: RepositoryTable<ReviewSurface>
+	revisionGates: RepositoryTable<RevisionGate>
+	revisions: RepositoryTable<Revision>
+	secrets: RepositoryTable<Secret>
+	secretBindings: RepositoryTable<SecretBinding>
 }
 
 export interface SingletonRepository<T> {
@@ -91,22 +69,22 @@ export interface SingletonRepository<T> {
 	put(record: T): Promise<void>
 }
 
-export interface RepositoryTable<T, Id> {
+export interface RepositoryTable<T> {
 	get(id: Id): Promise<T | null>
 	put(record: T): Promise<void>
 	list(): Promise<T[]>
 }
 
 export interface ResolveSecretsInput {
-	scope: { type: 'project'; projectId: ProjectId } | { type: 'delivery'; deliveryId: DeliveryId }
+	scope: { type: 'project'; projectId: Id } | { type: 'delivery'; deliveryId: Id }
 }
 
 export interface ResolveSecretValuesInput {
-	secretIds: SecretId[]
+	secretIds: Id[]
 }
 
 export interface ResolvedSecret {
-	secretId: SecretId
+	secretId: Id
 	envName: string
 
 	/** Plaintext exists only transiently. */
@@ -114,19 +92,19 @@ export interface ResolvedSecret {
 }
 
 export interface ResolvedSecretValue {
-	secretId: SecretId
+	secretId: Id
 
 	/** Plaintext exists only transiently. */
 	plaintext: string
 }
 
 export type CoreEvent =
-	| { type: 'delivery-updated'; deliveryId: DeliveryId }
-	| { type: 'slice-updated'; sliceId: SliceId }
-	| { type: 'delivery-work-run'; deliveryId: DeliveryId }
-	| { type: 'agent-run-started'; agentRunId: AgentRunId }
-	| { type: 'review-surface-created'; reviewSurfaceId: ReviewSurfaceId }
-	| { type: 'revision-gate-opened'; revisionGateId: RevisionGateId }
+	| { type: 'delivery-updated'; deliveryId: Id }
+	| { type: 'slice-updated'; sliceId: Id }
+	| { type: 'delivery-work-run'; deliveryId: Id }
+	| { type: 'agent-run-started'; agentRunId: Id }
+	| { type: 'review-surface-created'; reviewSurfaceId: Id }
+	| { type: 'revision-gate-opened'; revisionGateId: Id }
 
 type CoreStorageServiceShape = {
 	preflight(): Promise<CoreServicePreflightOutput>
@@ -284,10 +262,11 @@ function acceptsPipe(pipe: typeof coreEventSinkPipe | typeof coreLoggerPipe, val
 	return v.validate(pipe, value).valid
 }
 
-function typedFunctionDependencyPipe<Fn>() {
+function typedFunctionDependencyPipe<Fn extends AnyFunction>() {
 	return v.any<Fn>().pipe(v.custom((value) => typeof value === 'function', 'Expected a function dependency.'))
 }
 
+// fallow-ignore-next-line complexity
 function isCoreServicePreflightOutputValue(value: unknown): boolean {
 	if (!isRecord(value)) {
 		return false

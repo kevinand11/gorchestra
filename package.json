@@ -26,7 +26,7 @@
 	},
 	"pnpm": {
 		"overrides": {
-			"valleyed": "4.5.20"
+			"valleyed": "4.5.22"
 		}
 	},
 	"devDependencies": {

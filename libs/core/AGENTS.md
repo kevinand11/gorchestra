@@ -6,9 +6,12 @@ The `libs/core/` package is the private Core package source surface for reusable
 
 ## Ownership
 
-- `src/model.ts` owns the current Core package domain model types.
-- `src/api.ts` owns the public Core API barrel.
-- `src/commands.ts`, `src/storage-backed-commands.ts`, `src/queries.ts`, `src/core.ts`, `src/services.ts`, `src/errors.ts`, `src/boundary-pipes.ts`, `src/validation.ts`, and `src/result.ts` own the split Core API concerns, storage-backed setup commands, Core Services/runtime boundary direction, validation, implemented Secret, Model Provider, Model, Portfolio Config, Project, Repository, and Plan commands, and remaining stubs.
+- `src/domain/` owns Core package domain models, reusable domain pipes, and shared primitives; domain files do not own operation input pipes. `src/domain/index.ts` is a type-only namespace index for public `Domain.*` exports, not a runtime barrel.
+- `src/api.ts` owns the public Core API barrel and exports operation/domain contract families through type-only namespaces; do not add `api.test.ts` for barrel-only behavior.
+- `src/commands/` owns command construction, command implementations, and command contract types; keep one Core command per file with its source test, input pipe/type, `Input`, `Result`, `Error`, and `Operation` types in that same file, and let `src/commands/index.ts` assemble commands and derive `Commands.Core` for `openCore`.
+- `src/queries/` owns query construction, query implementations, and query contract types; keep one Core query per file with its source test, object input pipe/type, `Input`, `Result`, `Error`, and `Operation` types in that same file, and let `src/queries/index.ts` assemble queries and derive `Queries.Core` for `openCore`.
+- `src/snapshots/` owns Snapshot operation construction, implementations, and contract types; keep one Snapshot operation per file with its source test, input pipe/type, `Input`, `Result`, `Error`, and `Operation` types in that same file, and let `src/snapshots/index.ts` assemble Snapshot operations and derive `Snapshots.Core` for `openCore`.
+- `src/core.ts`, `src/services.ts`, `src/errors.ts`, `src/validation.ts`, and `src/types.ts` own the remaining split Core API concerns, Core runtime opening/preflight, Core Services/runtime boundary direction, validation, shared public types, and result/error contracts.
 - `src/index.ts` owns package exports.
 - `vitest.config.ts` owns package-local test discovery, including source tests through `import.meta.vitest`.
 
@@ -17,7 +20,10 @@ The `libs/core/` package is the private Core package source surface for reusable
 - Before changing domain shapes or API semantics, read `../../docs/core/CONTEXT.md` and relevant ADRs in `../../docs/core/adr/`.
 - Keep package source and Core documentation synchronized when a change affects both durable domain language and source contracts.
 - Source tests may use `import.meta.vitest`; test-only APIs should stay scoped inside the `if (import.meta.vitest)` block.
+- Do not add Vitest test blocks whose only purpose is to assert static TypeScript types; project-reference typechecking already verifies type contracts.
 - Consumer-facing API inputs should prefer identifiers and let Core infer authoritative fields instead of accepting duplicated inferable values.
+- Core-owned identifiers use `src/domain/commons.ts` as the source of truth for `Id` and `idPipe`; keep domain-specific field names and do not add resource-specific ID aliases.
+- For every domain model or operation input shape with a runtime pipe, define the pipe as the source of truth and infer the exported type with `PipeOutput<typeof pipe>`; do not duplicate that shape with a handwritten interface/type.
 - Durable Core docs/ADRs define Core-owned provider behavior and consumer-provided Core Services; do not add new consumer-owned behavior ports.
 - Core-owned provider/runtime behavior and Core Service calls that perform external actions should receive resolved values needed to perform the action so service/provider code does not infer authoritative context itself.
 - Opened Core exposes top-level `preflight()` for required Core Service readiness; keep it separate from command/query APIs and do not include optional logger/event checks.
@@ -25,8 +31,12 @@ The `libs/core/` package is the private Core package source surface for reusable
 
 ## Work Guidance
 
-- Keep `model.ts` focused on data shapes and domain records.
+- Keep `src/domain/*` files focused by domain entity or shared domain primitive; put reusable cross-domain shapes in `src/domain/commons.ts`.
 - Keep the split Core API modules focused by concern; `api.ts` should remain a small public barrel.
+- Keep operation files focused on one runtime API method each; define operation input pipes file-local unless another module needs them. Operation files export generic contract type names (`Input`, `Result`, `Error`, `Operation`) and their indexes expose PascalCase type namespaces such as `Commands.CreateProject`, `Queries.GetDeliveryWorkState`, and `Snapshots.Restore`. Put behavior tests in the source file that owns the behavior rather than testing it through the public API barrel.
+- Keep command files focused on one `Commands.Core` method each. Share only genuinely reusable command helpers through `src/commands/*-utils.ts`, and keep shared helper error unions private in `src/commands/errors.ts` unless consumers need them.
+- Keep query files focused on one `Queries.Core` method each and use object inputs rather than positional arguments for public query calls.
+- Keep Snapshot operations under `core.snapshots`; use `core.snapshots.export(input)` for creating a Snapshot from the currently-open Portfolio and `core.snapshots.restore(input)` for replacing the currently-open Portfolio contents.
 - Core public APIs return `Result` for expected domain, boundary, dependency, provider, service, storage, and validation failures; do not throw for those cases.
 - Preserve typed linting and type-only imports.
 - Do not move tests to a root Vitest config; package tests belong to this package.
