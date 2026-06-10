@@ -6,6 +6,7 @@ import type {
 	DeliveryWorkState,
 	ExternalOperationEvidence,
 	ModelId,
+	ModelProviderId,
 	RevisionGateId,
 	SecretBindingId,
 	SecretBindingScope,
@@ -103,6 +104,16 @@ export interface ArchivedSecretReferenceError {
 	secretId: SecretId
 }
 
+export interface ArchivedModelReferenceError {
+	type: 'archived-model-reference'
+	modelId: ModelId
+}
+
+export interface ArchivedModelProviderReferenceError {
+	type: 'archived-model-provider-reference'
+	modelProviderId: ModelProviderId
+}
+
 export interface InvariantViolationError {
 	type: 'invariant-violation'
 	message: string
@@ -150,6 +161,8 @@ export type CoreError =
 	| StorageOperationFailedError
 	| DuplicateSecretBindingError
 	| ArchivedSecretReferenceError
+	| ArchivedModelReferenceError
+	| ArchivedModelProviderReferenceError
 	| InvariantViolationError
 	| ModelPreflightFailedError
 	| DeliveryWorkStateMismatchError
