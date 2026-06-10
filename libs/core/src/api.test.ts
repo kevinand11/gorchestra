@@ -1,3 +1,4 @@
+import type { PipeOutput } from 'valleyed'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import {
@@ -11,6 +12,8 @@ import {
 	type CoreQueries,
 	type CoreResource,
 	type CoreSandboxService,
+	type CoreServicePreflightOutput,
+	type CreateRepositoryInput,
 	type CoreSecretsService,
 	type CoreStorageOperation,
 	type CoreStorageService,
@@ -24,6 +27,7 @@ import {
 	type InvariantViolationError,
 	type ModelPreflightFailedError,
 	type NotImplementedError,
+	type OpenCoreOptions,
 	type OperationContext,
 	type QueueDeliveryError,
 	type QueueDeliveryResult,
@@ -32,7 +36,9 @@ import {
 	type RevisionGateClosedError,
 	type StorageOperationFailedError,
 } from './api'
+import type { createRepositoryInputPipe, operationContextPipe } from './boundary-pipes'
 import type { DeliveryWorkState, SliceWorkState } from './model'
+import type { coreServicePreflightOutputPipe, openCoreOptionsPipe, storagePipe } from './services'
 
 const context: OperationContext = {
 	actor: { type: 'local-user', id: 'actor-1' },
@@ -613,6 +619,11 @@ describe('core runtime stub', () => {
 		expectTypeOf<Result<unknown>>().toEqualTypeOf<Result<unknown, never>>()
 
 		expectTypeOf<ReturnType<CoreCommands['queueDelivery']>>().toEqualTypeOf<Promise<Result<QueueDeliveryResult, QueueDeliveryError>>>()
+		expectTypeOf<OpenCoreOptions>().toEqualTypeOf<PipeOutput<typeof openCoreOptionsPipe>>()
+		expectTypeOf<CoreServicePreflightOutput>().toEqualTypeOf<PipeOutput<typeof coreServicePreflightOutputPipe>>()
+		expectTypeOf<CoreStorageService>().toEqualTypeOf<PipeOutput<typeof storagePipe>>()
+		expectTypeOf<OperationContext>().toEqualTypeOf<PipeOutput<typeof operationContextPipe>>()
+		expectTypeOf<CreateRepositoryInput>().toEqualTypeOf<PipeOutput<typeof createRepositoryInputPipe>>()
 		expectTypeOf<ReturnType<CoreQueries['getDeliveryWorkState']>>().toEqualTypeOf<
 			Promise<Result<DeliveryWorkState, GetDeliveryWorkStateError>>
 		>()
