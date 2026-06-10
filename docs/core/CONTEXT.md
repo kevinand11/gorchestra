@@ -9,16 +9,24 @@ A core orchestration boundary that groups Projects and shared reusable context o
 _Avoid_: Project Space, program, workspace
 
 **Local Actor Ref**:
-An opaque consumer-supplied reference to the actor associated with a local core operation. A Local Actor Ref contains a consumer-defined actor type and actor id. Core stores Local Actor Refs for attribution but does not interpret their identity semantics.
+An opaque consumer-supplied reference to the actor associated with a local core operation. A Local Actor Ref contains a consumer-defined actor type and actor id. Core validates only that these values are strings, stores them exactly as supplied for attribution, and does not inspect, trim, or interpret their contents.
 _Avoid_: User, Workspace Member, account
 
 **Audit Stamp**:
-The recorded operation time and attribution metadata attached to attribution-bearing core records or outcomes. A local Audit Stamp contains a Local Actor Ref and optional correlation id; an imported Audit Stamp preserves the original operation time while marking attribution as not locally resolvable.
+The recorded operation time and attribution metadata attached to attribution-bearing core records or outcomes. A local Audit Stamp contains a Local Actor Ref and optional opaque correlation id stored exactly as supplied by the Consumer; an imported Audit Stamp preserves the original operation time while marking attribution as not locally resolvable.
 _Avoid_: createdBy field, Workspace Member field
+
+**Archive Period**:
+A lifecycle record containing the Audit Stamp that archived a record and, when later reactivated, the Audit Stamp that unarchived it. Current archival state is derived from whether the latest Archive Period has no unarchived stamp.
+_Avoid_: archived flag, deleted flag
 
 **Core Input**:
 A value a Consumer passes through a public core API boundary, including operation inputs, Operation Context values, Open Core options, Import Snapshot inputs, and query arguments.
 _Avoid_: payload, request body, port result
+
+**Core Orchestration API**:
+The public Core command/query surface for operations that Core runtime or orchestration behavior needs to enforce Core-owned invariants, perform work, or record lifecycle facts. Consumers may use their own storage access or projections for non-orchestration UI/admin views, but mutations that affect Core invariants or lifecycle facts go through Core commands.
+_Avoid_: UI API, admin API, storage API
 
 **Core Service**:
 A consumer-provided deployment boundary used by Core for mechanics such as storage, Secret-at-rest protection and plaintext resolution, sandbox isolation, Clock, ID generation, logging, or event publishing. Core Services do not own Portfolio orchestration, Source Control Provider, Model Provider Protocol, Agent Run behavior, or portable Snapshot encryption.
@@ -32,16 +40,24 @@ _Avoid_: Core Input, provider behavior, consumer policy
 A Core Input rejected before core behavior runs because it fails the declared input pipe for that public core API boundary.
 _Avoid_: invariant violation, domain failure, malformed request
 
+**Operation Error Union**:
+An operation-specific exported union of only the error variants a public Core operation can return.
+_Avoid_: full CoreError return, catch-all error type
+
 **Secret**:
-A Portfolio-owned named sensitive write-only value stored by Gorchestra for provider access or execution environments. Users may create or replace Secret values, but may not view plaintext values after creation; v1 Secrets do not have provider-specific Secret types.
+A Portfolio-owned named sensitive value whose stored record includes a protected value reference but never plaintext. Users may create, replace, and archive Secret values, and Core may return Secret records from write operations, but users may not view plaintext values after creation; v1 Secrets do not have provider-specific Secret types.
 _Avoid_: Credential, token, key, sensitive value
+
+**Protected Secret Value Reference**:
+A consumer-specific protected reference to Secret plaintext that may be stored and returned by Core because it is not plaintext.
+_Avoid_: Plaintext secret, decrypted secret value
 
 **Environment Variable**:
 A Secret exposed to Agent Runs as a named runtime environment variable through a Secret Binding.
 _Avoid_: Environment, environment secret
 
 **Secret Binding**:
-A Portfolio-owned rule that exposes a Secret to Agent Runs as a named environment variable at a Portfolio, Project, or Delivery boundary.
+A Portfolio-owned archivable rule that exposes a Secret to Agent Runs as a named environment variable at a Portfolio, Project, or Delivery boundary; no two Secret Bindings may share the same exact scope and environment variable name, even when one is archived.
 _Avoid_: Secret Assignment, credential assignment
 
 **GitHub PAT**:
@@ -277,12 +293,18 @@ _Avoid_: Review signal, stored comment
 - A **Consumer** passes **Core Inputs** to core after authorizing an operation.
 - **Invalid Core Input** is rejected before the operation can create or mutate Portfolio facts.
 - **Core Services** provide deployment mechanics to Core; any returned value is a **Core Service Output** and is validated before Core trusts it.
+- An archivable record stores **Archive Periods**; its current archived state is derived from the latest period.
 
 ## Example dialogue
 
-> **Dev:** "If the Server Consumer calls `queueDelivery` with a missing Delivery id, is that a Delivery Work State failure?"
-> **Domain expert:** "No — the missing id is **Invalid Core Input**. Delivery Work State failures happen only after the **Core Input** has passed validation and core can inspect Portfolio facts."
+> **Dev:** "Should the Core Orchestration API expose `listSecrets` so the UI can show a settings page?"
+> **Domain expert:** "No — that is a non-orchestration view, so the Consumer can use its storage projection. Core commands still create, replace, archive, and bind **Secrets** because those mutations affect Core invariants."
+>
+> **Dev:** "When a **Model** is archived and later unarchived, do we clear an archived field?"
+> **Domain expert:** "No — we close the latest **Archive Period** so the current state and the transition history are both preserved."
 
 ## Flagged ambiguities
 
 - "input passed to core" was narrowed to **Core Input** at the public Consumer-to-core API boundary; values returned by Core Services are **Core Service Outputs** with their own validation boundary.
+- Archival was narrowed from nullable `archived` stamps to **Archive Period** history so unarchive transitions are preserved instead of erased.
+- Core operation results were narrowed from catch-all **CoreError** returns to **Operation Error Unions** so each public operation advertises only the error variants it can return.

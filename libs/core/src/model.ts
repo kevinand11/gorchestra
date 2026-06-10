@@ -76,6 +76,11 @@ export interface ImportedAuditStamp {
 	at: IsoDateTime
 }
 
+export interface ArchivePeriod {
+	archived: AuditStamp
+	unarchived: AuditStamp | null
+}
+
 export interface RuntimeRecord {
 	at: IsoDateTime
 }
@@ -140,7 +145,7 @@ export interface ModelProvider {
 	headers: ModelProviderHeader[]
 	created: AuditStamp
 	updated: AuditStamp | null
-	archived: AuditStamp | null
+	archivePeriods: ArchivePeriod[]
 }
 
 export type ModelProviderProtocol = 'anthropic-messages' | 'openai-responses' | 'openai-completions' | 'google-generative-ai'
@@ -169,7 +174,7 @@ export interface Model {
 	providerModelId: string
 	created: AuditStamp
 	updated: AuditStamp | null
-	archived: AuditStamp | null
+	archivePeriods: ArchivePeriod[]
 }
 
 /**
@@ -519,8 +524,8 @@ export interface Link {
 	to: GraphNodeRef
 	created: AuditStamp
 
-	/** Only archivable Link types may set this. */
-	archived: AuditStamp | null
+	/** Only archivable Link types may have non-empty periods; immutable Link types keep this empty. */
+	archivePeriods: ArchivePeriod[]
 }
 
 // -----------------------------------------------------------------------------
@@ -830,6 +835,7 @@ export interface Secret {
 
 	created: AuditStamp
 	replaced: AuditStamp | null
+	archivePeriods: ArchivePeriod[]
 }
 
 export type SecretBindingScope =
@@ -846,13 +852,13 @@ export interface SecretBinding {
 	envName: string
 
 	created: AuditStamp
-	archived: AuditStamp | null
+	archivePeriods: ArchivePeriod[]
 }
 
 /**
  * Secret Binding environment resolution is derived, not stored separately.
- * Active bindings with the same envName are unique per exact
- * scope. Inner scopes override outer scopes by environment variable name.
+ * Bindings with the same envName are unique per exact scope, including archived
+ * bindings. Inner scopes override outer scopes by environment variable name.
  *
  * planning:
  *   Portfolio -> Project

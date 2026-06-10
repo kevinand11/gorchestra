@@ -10,8 +10,6 @@ Current workspace package:
 
 - `libs/core` (`@gorchestra/core`) — a **private internal** package exported directly from source (`./src/index.ts`) for other workspace packages to consume while the Core design is being built.
 
-`@gorchestra/core` is not the future public npm package. The public package boundary, package name, build output, and publishing setup are still separate work and have not been added to this repository yet.
-
 ## Common commands
 
 Install dependencies from the repository root:
