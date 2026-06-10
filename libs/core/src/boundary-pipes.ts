@@ -295,11 +295,20 @@ export type CreateSecretInput = PipeOutput<typeof createSecretInputPipe>
 export const replaceSecretInputPipe = v.object({ secretId: secretIdPipe, valueRef: secretValueRefPipe })
 export type ReplaceSecretInput = PipeOutput<typeof replaceSecretInputPipe>
 
+export const archiveSecretInputPipe = v.object({ secretId: secretIdPipe })
+export type ArchiveSecretInput = PipeOutput<typeof archiveSecretInputPipe>
+
+export const unarchiveSecretInputPipe = v.object({ secretId: secretIdPipe })
+export type UnarchiveSecretInput = PipeOutput<typeof unarchiveSecretInputPipe>
+
 export const bindSecretInputPipe = v.object({ secretId: secretIdPipe, scope: secretBindingScopePipe, envName: envNamePipe })
 export type BindSecretInput = PipeOutput<typeof bindSecretInputPipe>
 
 export const archiveSecretBindingInputPipe = v.object({ secretBindingId: secretBindingIdPipe })
 export type ArchiveSecretBindingInput = PipeOutput<typeof archiveSecretBindingInputPipe>
+
+export const unarchiveSecretBindingInputPipe = v.object({ secretBindingId: secretBindingIdPipe })
+export type UnarchiveSecretBindingInput = PipeOutput<typeof unarchiveSecretBindingInputPipe>
 
 export const exportSnapshotInputPipe = v.object({ passphrase: nonEmptyRawStringPipe })
 export type ExportSnapshotInput = PipeOutput<typeof exportSnapshotInputPipe>

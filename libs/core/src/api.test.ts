@@ -6,10 +6,13 @@ import {
 	openCore,
 	type AgentRunModelUnresolvedError,
 	type AlreadyArchivedError,
+	type ArchivedSecretReferenceError,
 	type ArchivableCoreResource,
 	type ArchiveModelError,
 	type ArchiveModelProviderError,
 	type ArchiveSecretBindingError,
+	type ArchiveSecretError,
+	type BindSecretError,
 	type CoreCommands,
 	type CoreError,
 	type CoreQueries,
@@ -21,7 +24,9 @@ import {
 	type CoreStorageOperation,
 	type CoreStorageService,
 	type CoreStorageTransaction,
+	type CreateSecretError,
 	type DeliveryWorkStateMismatchError,
+	type DuplicateSecretBindingError,
 	type ExternalOperationFailedError,
 	type GetDeliveryWorkStateError,
 	type GetSliceWorkStateError,
@@ -35,12 +40,16 @@ import {
 	type OperationContext,
 	type QueueDeliveryError,
 	type QueueDeliveryResult,
+	type ReplaceSecretError,
+	type RepositoryTable,
 	type ResourceNotFoundError,
 	type Result,
 	type RevisionGateClosedError,
 	type StorageOperationFailedError,
 	type UnarchiveModelError,
 	type UnarchiveModelProviderError,
+	type UnarchiveSecretBindingError,
+	type UnarchiveSecretError,
 } from './api'
 import type { createRepositoryInputPipe, operationContextPipe } from './boundary-pipes'
 import type {
@@ -88,6 +97,60 @@ function openCoreOptions() {
 
 function openTestCore() {
 	return openCore(openCoreOptions())
+}
+
+function memoryTable<T extends { id: Id }, Id extends string>(records = new Map<Id, T>()): RepositoryTable<T, Id> {
+	return {
+		get: (id) => Promise.resolve(records.get(id) ?? null),
+		put: (record) => {
+			records.set(record.id, record)
+			return Promise.resolve()
+		},
+		list: () => Promise.resolve([...records.values()]),
+	}
+}
+
+function openSecretCommandCore(times: string[] = []) {
+	const secretRecords = new Map<Secret['id'], Secret>()
+	const secretBindingRecords = new Map<SecretBinding['id'], SecretBinding>()
+	const counters = new Map<string, number>()
+	const nextTime = () => times.shift() ?? '2026-06-09T00:00:00.000Z'
+	const storageService: CoreStorageService = {
+		preflight: () => Promise.resolve({ ok: true }),
+		transaction: <T>(fn: (tx: CoreStorageTransaction) => Promise<T>): Promise<T> =>
+			fn({
+				secrets: memoryTable(secretRecords),
+				secretBindings: memoryTable(secretBindingRecords),
+			} as CoreStorageTransaction),
+	}
+	const opened = openCore({
+		...openCoreOptions(),
+		storage: storageService,
+		clock: { now: () => new Date(nextTime()) },
+		idGenerator: {
+			next: (brand) => {
+				const next = (counters.get(brand) ?? 0) + 1
+				counters.set(brand, next)
+				return `${brand}-${next}`
+			},
+		},
+	})
+
+	if (!opened.ok) {
+		throw new Error('test core failed to open')
+	}
+
+	return {
+		core: opened.value,
+		records: {
+			secrets: secretRecords,
+			secretBindings: secretBindingRecords,
+		},
+	}
+}
+
+function localStamp(at: string): AuditStamp {
+	return { origin: 'local', at, actor: context.actor, correlationId: context.correlationId }
 }
 
 function validCommandInputs(): Record<string, Record<string, unknown>> {
@@ -152,8 +215,11 @@ function validCommandInputs(): Record<string, Record<string, unknown>> {
 		updateRepositoryConfig: { repositoryId: id, config: repositoryConfig },
 		createSecret: { name: 'secret', valueRef: ' ref ' },
 		replaceSecret: { secretId: id, valueRef: ' ref ' },
+		archiveSecret: { secretId: id },
+		unarchiveSecret: { secretId: id },
 		bindSecret: { secretId: id, scope: { type: 'portfolio' }, envName: 'TOKEN' },
 		archiveSecretBinding: { secretBindingId: id },
+		unarchiveSecretBinding: { secretBindingId: id },
 		exportSnapshot: { passphrase: 'passphrase' },
 	}
 }
@@ -433,7 +499,7 @@ describe('core runtime stub', () => {
 		})
 	})
 
-	it('exposes every documented command and returns not-implemented for valid calls', async () => {
+	it('exposes every documented command and returns not-implemented for remaining stubs', async () => {
 		const result = openTestCore()
 		expect(result.ok).toBe(true)
 		if (!result.ok) return
@@ -472,22 +538,231 @@ describe('core runtime stub', () => {
 			'updateRepositoryConfig',
 			'createSecret',
 			'replaceSecret',
+			'archiveSecret',
+			'unarchiveSecret',
 			'bindSecret',
 			'archiveSecretBinding',
+			'unarchiveSecretBinding',
 			'exportSnapshot',
 		]
+		const implementedCommandNames = new Set([
+			'createSecret',
+			'replaceSecret',
+			'archiveSecret',
+			'unarchiveSecret',
+			'bindSecret',
+			'archiveSecretBinding',
+			'unarchiveSecretBinding',
+		])
 
 		const inputs = validCommandInputs()
 
+		expect(Object.keys(commands).sort()).toEqual([...commandNames].sort())
 		await Promise.all(
-			commandNames.map(async (name) => {
-				expect(typeof commands[name]).toBe('function')
-				await expect(commands[name]?.(inputs[name] ?? {}, context)).resolves.toEqual({
-					ok: false,
-					error: { type: 'not-implemented', operation: name },
-				})
-			}),
+			commandNames
+				.filter((name) => !implementedCommandNames.has(name))
+				.map(async (name) => {
+					expect(typeof commands[name]).toBe('function')
+					await expect(commands[name]?.(inputs[name] ?? {}, context)).resolves.toEqual({
+						ok: false,
+						error: { type: 'not-implemented', operation: name },
+					})
+				}),
 		)
+	})
+
+	it('creates Secrets with protected value references and empty Archive Periods', async () => {
+		const { core, records } = openSecretCommandCore(['2026-06-10T00:00:00.000Z'])
+
+		const result = await core.commands.createSecret({ name: ' GitHub PAT ', valueRef: ' protected-ref-1 ' }, context)
+
+		expect(result).toEqual({
+			ok: true,
+			value: {
+				id: 'secret-1',
+				name: 'GitHub PAT',
+				valueRef: 'protected-ref-1',
+				created: localStamp('2026-06-10T00:00:00.000Z'),
+				replaced: null,
+				archivePeriods: [],
+			},
+		})
+		expect(records.secrets.get('secret-1' as never)).toEqual(result.ok ? result.value : null)
+	})
+
+	it('replaces Secret protected value references and replacement Audit Stamps, including while archived', async () => {
+		const { core } = openSecretCommandCore(['2026-06-10T00:00:00.000Z', '2026-06-10T00:01:00.000Z', '2026-06-10T00:02:00.000Z'])
+		const created = await core.commands.createSecret({ name: 'Token', valueRef: 'protected-ref-1' }, context)
+		expect(created.ok).toBe(true)
+		if (!created.ok) return
+
+		await expect(core.commands.archiveSecret({ secretId: created.value.id }, context)).resolves.toMatchObject({ ok: true })
+		const replaced = await core.commands.replaceSecret({ secretId: created.value.id, valueRef: ' protected-ref-2 ' }, context)
+
+		expect(replaced).toEqual({
+			ok: true,
+			value: {
+				...created.value,
+				valueRef: 'protected-ref-2',
+				replaced: localStamp('2026-06-10T00:02:00.000Z'),
+				archivePeriods: [{ archived: localStamp('2026-06-10T00:01:00.000Z'), unarchived: null }],
+			},
+		})
+	})
+
+	it('archives and unarchives Secrets while preserving Archive Period history and exact lifecycle errors', async () => {
+		const { core } = openSecretCommandCore([
+			'2026-06-10T00:00:00.000Z',
+			'2026-06-10T00:01:00.000Z',
+			'2026-06-10T00:02:00.000Z',
+			'2026-06-10T00:03:00.000Z',
+		])
+		const created = await core.commands.createSecret({ name: 'Token', valueRef: 'protected-ref-1' }, context)
+		expect(created.ok).toBe(true)
+		if (!created.ok) return
+
+		const archived = await core.commands.archiveSecret({ secretId: created.value.id }, context)
+		expect(archived).toEqual({
+			ok: true,
+			value: {
+				...created.value,
+				archivePeriods: [{ archived: localStamp('2026-06-10T00:01:00.000Z'), unarchived: null }],
+			},
+		})
+		await expect(core.commands.archiveSecret({ secretId: created.value.id }, context)).resolves.toEqual({
+			ok: false,
+			error: { type: 'already-archived', resource: 'secret', id: created.value.id },
+		})
+
+		const unarchived = await core.commands.unarchiveSecret({ secretId: created.value.id }, context)
+		expect(unarchived).toEqual({
+			ok: true,
+			value: {
+				...created.value,
+				archivePeriods: [
+					{
+						archived: localStamp('2026-06-10T00:01:00.000Z'),
+						unarchived: localStamp('2026-06-10T00:03:00.000Z'),
+					},
+				],
+			},
+		})
+		await expect(core.commands.unarchiveSecret({ secretId: created.value.id }, context)).resolves.toEqual({
+			ok: false,
+			error: { type: 'not-archived', resource: 'secret', id: created.value.id },
+		})
+		await expect(
+			core.commands.replaceSecret({ secretId: 'missing-secret' as never, valueRef: 'protected-ref' }, context),
+		).resolves.toEqual({
+			ok: false,
+			error: { type: 'not-found', resource: 'secret', id: 'missing-secret' },
+		})
+	})
+
+	it('creates Secret Bindings only for existing active Secrets and rejects archived Secret usage', async () => {
+		const { core } = openSecretCommandCore()
+
+		await expect(
+			core.commands.bindSecret({ secretId: 'missing-secret' as never, scope: { type: 'portfolio' }, envName: 'TOKEN' }, context),
+		).resolves.toEqual({ ok: false, error: { type: 'not-found', resource: 'secret', id: 'missing-secret' } })
+
+		const created = await core.commands.createSecret({ name: 'Token', valueRef: 'protected-ref-1' }, context)
+		expect(created.ok).toBe(true)
+		if (!created.ok) return
+
+		const bound = await core.commands.bindSecret(
+			{ secretId: created.value.id, scope: { type: 'portfolio' }, envName: 'TOKEN' },
+			context,
+		)
+		expect(bound.ok).toBe(true)
+		if (!bound.ok) return
+		expect(typeof bound.value.id).toBe('string')
+		expect(bound.value).toMatchObject({ secretId: created.value.id, archivePeriods: [] })
+		await expect(core.commands.archiveSecret({ secretId: created.value.id }, context)).resolves.toMatchObject({ ok: true })
+		await expect(
+			core.commands.bindSecret(
+				{ secretId: created.value.id, scope: { type: 'project', projectId: 'project-1' as never }, envName: 'PROJECT_TOKEN' },
+				context,
+			),
+		).resolves.toEqual({ ok: false, error: { type: 'archived-secret-reference', secretId: created.value.id } })
+	})
+
+	it('rejects duplicate Secret Binding exact scope and env name across archived and active bindings', async () => {
+		const { core } = openSecretCommandCore()
+		const created = await core.commands.createSecret({ name: 'Token', valueRef: 'protected-ref-1' }, context)
+		expect(created.ok).toBe(true)
+		if (!created.ok) return
+
+		const scope = { type: 'project', projectId: 'project-1' as never } as const
+		const first = await core.commands.bindSecret({ secretId: created.value.id, scope, envName: 'TOKEN' }, context)
+		expect(first.ok).toBe(true)
+		if (!first.ok) return
+		await expect(core.commands.archiveSecretBinding({ secretBindingId: first.value.id }, context)).resolves.toMatchObject({ ok: true })
+
+		await expect(core.commands.bindSecret({ secretId: created.value.id, scope, envName: 'TOKEN' }, context)).resolves.toEqual({
+			ok: false,
+			error: {
+				type: 'duplicate-secret-binding',
+				existingSecretBindingId: first.value.id,
+				scope,
+				envName: 'TOKEN',
+			},
+		})
+		await expect(
+			core.commands.bindSecret(
+				{ secretId: created.value.id, scope: { type: 'project', projectId: 'project-2' as never }, envName: 'TOKEN' },
+				context,
+			),
+		).resolves.toMatchObject({ ok: true })
+	})
+
+	it('archives and unarchives Secret Bindings while preserving history without cascading Secret archives', async () => {
+		const { core, records } = openSecretCommandCore([
+			'2026-06-10T00:00:00.000Z',
+			'2026-06-10T00:01:00.000Z',
+			'2026-06-10T00:02:00.000Z',
+			'2026-06-10T00:03:00.000Z',
+			'2026-06-10T00:04:00.000Z',
+		])
+		const created = await core.commands.createSecret({ name: 'Token', valueRef: 'protected-ref-1' }, context)
+		expect(created.ok).toBe(true)
+		if (!created.ok) return
+		const bound = await core.commands.bindSecret(
+			{ secretId: created.value.id, scope: { type: 'portfolio' }, envName: 'TOKEN' },
+			context,
+		)
+		expect(bound.ok).toBe(true)
+		if (!bound.ok) return
+
+		const archived = await core.commands.archiveSecretBinding({ secretBindingId: bound.value.id }, context)
+		expect(archived).toEqual({
+			ok: true,
+			value: {
+				...bound.value,
+				archivePeriods: [{ archived: localStamp('2026-06-10T00:02:00.000Z'), unarchived: null }],
+			},
+		})
+		await expect(core.commands.archiveSecretBinding({ secretBindingId: bound.value.id }, context)).resolves.toEqual({
+			ok: false,
+			error: { type: 'already-archived', resource: 'secret-binding', id: bound.value.id },
+		})
+
+		const unarchived = await core.commands.unarchiveSecretBinding({ secretBindingId: bound.value.id }, context)
+		expect(unarchived.ok).toBe(true)
+		if (!unarchived.ok) return
+		expect(unarchived.value.archivePeriods).toEqual([
+			{
+				archived: localStamp('2026-06-10T00:02:00.000Z'),
+				unarchived: localStamp('2026-06-10T00:04:00.000Z'),
+			},
+		])
+		await expect(core.commands.unarchiveSecretBinding({ secretBindingId: bound.value.id }, context)).resolves.toEqual({
+			ok: false,
+			error: { type: 'not-archived', resource: 'secret-binding', id: bound.value.id },
+		})
+
+		await expect(core.commands.archiveSecret({ secretId: created.value.id }, context)).resolves.toMatchObject({ ok: true })
+		expect(records.secretBindings.get(bound.value.id)?.archivePeriods).toEqual(unarchived.value.archivePeriods)
 	})
 
 	it('prunes raw record queries and exposes only work-state query stubs', async () => {
@@ -635,6 +910,16 @@ describe('core runtime stub', () => {
 		expectTypeOf<Result<unknown>>().toEqualTypeOf<Result<unknown, never>>()
 
 		expectTypeOf<ReturnType<CoreCommands['queueDelivery']>>().toEqualTypeOf<Promise<Result<QueueDeliveryResult, QueueDeliveryError>>>()
+		expectTypeOf<ReturnType<CoreCommands['createSecret']>>().toEqualTypeOf<Promise<Result<Secret, CreateSecretError>>>()
+		expectTypeOf<ReturnType<CoreCommands['archiveSecret']>>().toEqualTypeOf<Promise<Result<Secret, ArchiveSecretError>>>()
+		expectTypeOf<ReturnType<CoreCommands['unarchiveSecret']>>().toEqualTypeOf<Promise<Result<Secret, UnarchiveSecretError>>>()
+		expectTypeOf<ReturnType<CoreCommands['bindSecret']>>().toEqualTypeOf<Promise<Result<SecretBinding, BindSecretError>>>()
+		expectTypeOf<ReturnType<CoreCommands['archiveSecretBinding']>>().toEqualTypeOf<
+			Promise<Result<SecretBinding, ArchiveSecretBindingError>>
+		>()
+		expectTypeOf<ReturnType<CoreCommands['unarchiveSecretBinding']>>().toEqualTypeOf<
+			Promise<Result<SecretBinding, UnarchiveSecretBindingError>>
+		>()
 		expectTypeOf<OpenCoreOptions>().toEqualTypeOf<PipeOutput<typeof openCoreOptionsPipe>>()
 		expectTypeOf<CoreServicePreflightOutput>().toEqualTypeOf<PipeOutput<typeof coreServicePreflightOutputPipe>>()
 		expectTypeOf<CoreStorageService>().toEqualTypeOf<PipeOutput<typeof storagePipe>>()
@@ -647,11 +932,23 @@ describe('core runtime stub', () => {
 			Promise<Result<SliceWorkState, GetSliceWorkStateError>>
 		>()
 
+		type ExpectedCreateSecretError = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
+		type ExpectedReplaceSecretError = ExpectedCreateSecretError | ResourceNotFoundError
+		type ExpectedArchiveSecretError = ExpectedReplaceSecretError | AlreadyArchivedError
+		type ExpectedUnarchiveSecretError = ExpectedReplaceSecretError | NotArchivedError
+		type ExpectedBindSecretError = ExpectedReplaceSecretError | DuplicateSecretBindingError | ArchivedSecretReferenceError
 		type QueueDeliveryDoesNotUseUmbrella = CoreError extends QueueDeliveryError ? false : true
 		type DeliveryWorkStateDoesNotUseUmbrella = CoreError extends GetDeliveryWorkStateError ? false : true
+		type BindSecretDoesNotUseUmbrella = CoreError extends BindSecretError ? false : true
 
+		expectTypeOf<CreateSecretError>().toEqualTypeOf<ExpectedCreateSecretError>()
+		expectTypeOf<ReplaceSecretError>().toEqualTypeOf<ExpectedReplaceSecretError>()
+		expectTypeOf<ArchiveSecretError>().toEqualTypeOf<ExpectedArchiveSecretError>()
+		expectTypeOf<UnarchiveSecretError>().toEqualTypeOf<ExpectedUnarchiveSecretError>()
+		expectTypeOf<BindSecretError>().toEqualTypeOf<ExpectedBindSecretError>()
 		expectTypeOf<QueueDeliveryDoesNotUseUmbrella>().toEqualTypeOf<true>()
 		expectTypeOf<DeliveryWorkStateDoesNotUseUmbrella>().toEqualTypeOf<true>()
+		expectTypeOf<BindSecretDoesNotUseUmbrella>().toEqualTypeOf<true>()
 	})
 
 	it('types archivable records with archive period history', () => {
@@ -768,11 +1065,14 @@ describe('core runtime stub', () => {
 		type AlreadyArchivedLifecycleErrors = [
 			Extract<ArchiveModelProviderError, { type: 'already-archived' }>,
 			Extract<ArchiveModelError, { type: 'already-archived' }>,
+			Extract<ArchiveSecretError, { type: 'already-archived' }>,
 			Extract<ArchiveSecretBindingError, { type: 'already-archived' }>,
 		]
 		type NotArchivedLifecycleErrors = [
 			Extract<UnarchiveModelProviderError, { type: 'not-archived' }>,
 			Extract<UnarchiveModelError, { type: 'not-archived' }>,
+			Extract<UnarchiveSecretError, { type: 'not-archived' }>,
+			Extract<UnarchiveSecretBindingError, { type: 'not-archived' }>,
 		]
 		type ExpectedCoreError =
 			| InvalidInputError
@@ -782,6 +1082,8 @@ describe('core runtime stub', () => {
 			| AlreadyArchivedError
 			| NotArchivedError
 			| StorageOperationFailedError
+			| DuplicateSecretBindingError
+			| ArchivedSecretReferenceError
 			| InvariantViolationError
 			| ModelPreflightFailedError
 			| DeliveryWorkStateMismatchError
@@ -801,8 +1103,10 @@ describe('core runtime stub', () => {
 		expectTypeOf<Extract<CoreError, { type: 'not-archived' }>['resource']>().toEqualTypeOf<ArchivableCoreResource>()
 		expectTypeOf<Extract<CoreError, { type: 'storage-operation-failed' }>['operation']>().toEqualTypeOf<CoreStorageOperation>()
 		expect(archivableResources.length).toBe(5)
-		expectTypeOf<AlreadyArchivedLifecycleErrors>().toEqualTypeOf<[AlreadyArchivedError, AlreadyArchivedError, AlreadyArchivedError]>()
-		expectTypeOf<NotArchivedLifecycleErrors>().toEqualTypeOf<[NotArchivedError, NotArchivedError]>()
+		expectTypeOf<AlreadyArchivedLifecycleErrors>().toEqualTypeOf<
+			[AlreadyArchivedError, AlreadyArchivedError, AlreadyArchivedError, AlreadyArchivedError]
+		>()
+		expectTypeOf<NotArchivedLifecycleErrors>().toEqualTypeOf<[NotArchivedError, NotArchivedError, NotArchivedError, NotArchivedError]>()
 		expectTypeOf<CoreErrorMatchesExpected>().toEqualTypeOf<true>()
 	})
 

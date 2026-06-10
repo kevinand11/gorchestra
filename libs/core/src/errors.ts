@@ -7,6 +7,9 @@ import type {
 	ExternalOperationEvidence,
 	ModelId,
 	RevisionGateId,
+	SecretBindingId,
+	SecretBindingScope,
+	SecretId,
 	ValidationEvidence,
 } from './model'
 
@@ -88,6 +91,18 @@ export interface StorageOperationFailedError {
 	operation: CoreStorageOperation
 }
 
+export interface DuplicateSecretBindingError {
+	type: 'duplicate-secret-binding'
+	scope: SecretBindingScope
+	envName: string
+	existingSecretBindingId: SecretBindingId
+}
+
+export interface ArchivedSecretReferenceError {
+	type: 'archived-secret-reference'
+	secretId: SecretId
+}
+
 export interface InvariantViolationError {
 	type: 'invariant-violation'
 	message: string
@@ -133,6 +148,8 @@ export type CoreError =
 	| AlreadyArchivedError
 	| NotArchivedError
 	| StorageOperationFailedError
+	| DuplicateSecretBindingError
+	| ArchivedSecretReferenceError
 	| InvariantViolationError
 	| ModelPreflightFailedError
 	| DeliveryWorkStateMismatchError
