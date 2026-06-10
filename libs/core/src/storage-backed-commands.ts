@@ -4,7 +4,6 @@ import {
 	createPlanInputPipe,
 	createProjectInputPipe,
 	createRepositoryInputPipe,
-	operationContextPipe,
 	setPortfolioConfigInputPipe,
 	setProjectConfigInputPipe,
 	updateRepositoryConfigInputPipe,
@@ -101,15 +100,6 @@ type CommandBoundary<TInput> = {
 	input: TInput
 	context: OperationContext
 }
-
-const implementedCommandPipes = {
-	setPortfolioConfig: setPortfolioConfigInputPipe,
-	createProject: createProjectInputPipe,
-	setProjectConfig: setProjectConfigInputPipe,
-	createRepository: createRepositoryInputPipe,
-	updateRepositoryConfig: updateRepositoryConfigInputPipe,
-	createPlan: createPlanInputPipe,
-} satisfies Record<ImplementedCommandName, Pipe<unknown, unknown>>
 
 const storageStringPipe = v.string()
 const storageNonEmptyStringPipe = storageStringPipe.pipe(v.asTrimmed()).pipe(v.min(1, 'Expected a non-empty string.'))
@@ -223,44 +213,48 @@ const secretStoragePipe = v.object({
 export function createStorageBackedCommands(options: OpenCoreOptions): ImplementedCommands {
 	return {
 		setPortfolioConfig(input, context) {
-			return runCommand('setPortfolioConfig', input, context, (validated) => setPortfolioConfig(options, validated))
+			return runCommand('setPortfolioConfig', setPortfolioConfigInputPipe, input, context, (validated) =>
+				setPortfolioConfig(options, validated),
+			)
 		},
 		createProject(input, context) {
-			return runCommand('createProject', input, context, (validated) => createProject(options, validated))
+			return runCommand('createProject', createProjectInputPipe, input, context, (validated) => createProject(options, validated))
 		},
 		setProjectConfig(input, context) {
-			return runCommand('setProjectConfig', input, context, (validated) => setProjectConfig(options, validated))
+			return runCommand('setProjectConfig', setProjectConfigInputPipe, input, context, (validated) =>
+				setProjectConfig(options, validated),
+			)
 		},
 		createRepository(input, context) {
-			return runCommand('createRepository', input, context, (validated) => createRepository(options, validated))
+			return runCommand('createRepository', createRepositoryInputPipe, input, context, (validated) =>
+				createRepository(options, validated),
+			)
 		},
 		updateRepositoryConfig(input, context) {
-			return runCommand('updateRepositoryConfig', input, context, (validated) => updateRepositoryConfig(options, validated))
+			return runCommand('updateRepositoryConfig', updateRepositoryConfigInputPipe, input, context, (validated) =>
+				updateRepositoryConfig(options, validated),
+			)
 		},
 		createPlan(input, context) {
-			return runCommand('createPlan', input, context, (validated) => createPlan(options, validated))
+			return runCommand('createPlan', createPlanInputPipe, input, context, (validated) => createPlan(options, validated))
 		},
 	}
 }
 
-async function runCommand<TInput, TValue, TError extends StorageBackedCommandError>(
+async function runCommand<TPipe extends Pipe<unknown, unknown>, TValue, TError extends StorageBackedCommandError>(
 	operation: ImplementedCommandName,
-	input: TInput,
+	inputPipe: TPipe,
+	input: unknown,
 	context: OperationContext,
-	run: (boundary: CommandBoundary<TInput>) => Promise<Result<TValue, TError>>,
+	run: (boundary: CommandBoundary<PipeOutput<TPipe>>) => Promise<Result<TValue, TError>>,
 ): Promise<Result<TValue, TError | InvalidInputError>> {
-	const validation = validateCoreInput(
-		v.object({ input: implementedCommandPipes[operation], context: operationContextPipe }),
-		{ input, context },
-		'command',
-		operation,
-	)
+	const validation = validateCoreInput(v.object({ input: inputPipe }), { input }, 'command', operation)
 
 	if (!validation.ok) {
 		return validation
 	}
 
-	return run(validation.value as CommandBoundary<TInput>)
+	return run({ input: validation.value.input, context })
 }
 
 async function setPortfolioConfig(
