@@ -1,28 +1,16 @@
-import { v, type Pipe, type PipeOutput } from 'valleyed'
+import { v, type PipeOutput } from 'valleyed'
 
 import type {
-	DeliveryConfig,
 	DeliveryId,
 	MemoryId,
 	ModelId,
-	ModelProviderAuth,
-	ModelProviderHeader,
 	ModelProviderId,
-	ModelProviderProtocol,
-	PlanConfig,
 	PlanId,
-	PlanOutputProposal,
-	PortfolioConfig,
-	ProjectConfig,
 	ProjectId,
-	ProjectSource,
-	RepositoryConfig,
 	RepositoryId,
 	ReviewSurfaceId,
 	RevisionGateId,
-	RevisionOutputProposal,
 	SecretBindingId,
-	SecretBindingScope,
 	SecretId,
 	SliceId,
 } from './model'
@@ -86,16 +74,11 @@ export type ImportSnapshotInput = PipeOutput<typeof importSnapshotInputPipe>
 
 export const importSnapshotBoundaryPipe = v.object({ input: importSnapshotInputPipe, context: operationContextPipe })
 
-const modelProviderProtocolPipe = enumStringPipe([
-	'anthropic-messages',
-	'openai-responses',
-	'openai-completions',
-	'google-generative-ai',
-]) as Pipe<unknown, ModelProviderProtocol>
+const modelProviderProtocolPipe = enumStringPipe(['anthropic-messages', 'openai-responses', 'openai-completions', 'google-generative-ai'])
 const modelProviderAuthPipe = v.discriminate(discriminator, {
 	apiKey: v.object({ type: v.eq('apiKey'), secretId: secretIdPipe }),
-}) as Pipe<unknown, ModelProviderAuth>
-const modelProviderHeaderPipe = v.object({ name: headerNamePipe, valueSecretId: secretIdPipe }) as Pipe<unknown, ModelProviderHeader>
+})
+const modelProviderHeaderPipe = v.object({ name: headerNamePipe, valueSecretId: secretIdPipe })
 const deliveryWorkConfigPipe = v.object({
 	maxActiveSliceSlots: positiveIntegerPipe,
 	maxCorrectionRetriesPerFailure: nonNegativeIntegerPipe,
@@ -120,23 +103,20 @@ const deliveryModelConfigPipe = v.object({
 	executionModelId: v.nullable(modelIdPipe),
 	revisionExecutionModelId: v.nullable(modelIdPipe),
 })
-const portfolioConfigPipe = v.object({ model: portfolioModelConfigPipe, work: v.nullable(deliveryWorkConfigPipe) }) as Pipe<
-	unknown,
-	PortfolioConfig
->
+const portfolioConfigPipe = v.object({ model: portfolioModelConfigPipe, work: v.nullable(deliveryWorkConfigPipe) })
 const projectConfigPipe = v.object({
 	model: v.nullable(projectModelConfigPipe),
 	work: v.nullable(deliveryWorkConfigPipe),
-}) as Pipe<unknown, ProjectConfig>
-const planConfigPipe = v.object({ model: v.nullable(planModelConfigPipe) }) as Pipe<unknown, PlanConfig>
+})
+const planConfigPipe = v.object({ model: v.nullable(planModelConfigPipe) })
 const deliveryConfigPipe = v.object({
 	model: v.nullable(deliveryModelConfigPipe),
 	work: v.nullable(deliveryWorkConfigPipe),
-}) as Pipe<unknown, DeliveryConfig>
+})
 
 const projectSourcePipe = v.discriminate(discriminator, {
 	'source-control': v.object({ type: v.eq('source-control') }),
-}) as Pipe<unknown, ProjectSource>
+})
 const repositoryConfigPipe = v.discriminate(discriminatorFrom('provider'), {
 	github: v.object({
 		provider: v.eq('github'),
@@ -144,7 +124,7 @@ const repositoryConfigPipe = v.discriminate(discriminatorFrom('provider'), {
 		name: nonEmptyTrimmedStringPipe,
 		secretId: secretIdPipe,
 	}),
-}) as Pipe<unknown, RepositoryConfig>
+})
 const proposedDeliveryTargetPipe = v.discriminate(discriminator, {
 	'source-control': v.object({
 		type: v.eq('source-control'),
@@ -192,17 +172,17 @@ const planOutputProposalPipe = v.object({
 	proposedDeliveries: v.array(proposedDeliveryPipe),
 	proposedMemories: v.array(proposedMemoryPipe),
 	proposedLinks: v.array(proposedLinkPipe),
-}) as Pipe<unknown, PlanOutputProposal>
+})
 const revisionDispositionPipe = v.object({ body: freeFormStringPipe })
 const revisionOutputProposalPipe = v.object({
 	instruction: instructionSourcePipe,
 	disposition: revisionDispositionPipe,
-}) as Pipe<unknown, RevisionOutputProposal>
+})
 const secretBindingScopePipe = v.discriminate(discriminator, {
 	portfolio: v.object({ type: v.eq('portfolio') }),
 	project: v.object({ type: v.eq('project'), projectId: projectIdPipe }),
 	delivery: v.object({ type: v.eq('delivery'), deliveryId: deliveryIdPipe }),
-}) as Pipe<unknown, SecretBindingScope>
+})
 
 export const setPortfolioConfigInputPipe = v.object({ config: portfolioConfigPipe })
 export type SetPortfolioConfigInput = PipeOutput<typeof setPortfolioConfigInputPipe>
@@ -324,22 +304,20 @@ export type ArchiveSecretBindingInput = PipeOutput<typeof archiveSecretBindingIn
 export const exportSnapshotInputPipe = v.object({ passphrase: nonEmptyRawStringPipe })
 export type ExportSnapshotInput = PipeOutput<typeof exportSnapshotInputPipe>
 
-export const getDeliveryWorkStateArgumentsPipe = argumentTuplePipe([deliveryIdPipe]) as Pipe<unknown, [DeliveryId]>
-export const getSliceWorkStateArgumentsPipe = argumentTuplePipe([sliceIdPipe]) as Pipe<unknown, [SliceId]>
+export const getDeliveryWorkStateArgumentsPipe = v.tuple([deliveryIdPipe] as const, 'Expected exactly 1 query argument(s).')
+export const getSliceWorkStateArgumentsPipe = v.tuple([sliceIdPipe] as const, 'Expected exactly 1 query argument(s).')
 
-function argumentTuplePipe(branches: Pipe<unknown, unknown>[]): Pipe<unknown, unknown> {
+function enumStringPipe<const Values extends readonly [string, ...string[]]>(values: Values) {
+	const validValues = new Set<string>(values)
+
 	return v
-		.array(v.any<unknown>())
-		.pipe(v.has(branches.length, `Expected exactly ${branches.length} query argument(s).`))
-		.pipe(v.tuple(branches))
+		.string()
+		.pipe(v.custom((value) => validValues.has(value), `Expected one of: ${values.join(', ')}.`))
+		.pipe(v.define<string, Values[number]>((value) => value as Values[number]))
 }
 
-function enumStringPipe<const Values extends readonly [string, ...string[]]>(values: Values): Pipe<unknown, Values[number]> {
-	return v.string().pipe(v.in(values, `Expected one of: ${values.join(', ')}.`))
-}
-
-function brandedIdPipe<Id extends string>(): Pipe<unknown, Id> {
-	return nonEmptyTrimmedStringPipe as Pipe<unknown, Id>
+function brandedIdPipe<Id extends string>() {
+	return nonEmptyTrimmedStringPipe.pipe(v.define<string, Id>((value) => value as Id))
 }
 
 function discriminator(value: unknown): PropertyKey {

@@ -1,4 +1,4 @@
-import { v, type Pipe, type PipeOutput } from 'valleyed'
+import { v, type PipeOutput } from 'valleyed'
 
 import type {
 	Action,
@@ -45,11 +45,8 @@ type AnyFunction = (...args: never[]) => unknown
 type CoreServicePreflightOutputShape = { ok: true } | { ok: false; message: string | null }
 
 export const coreServicePreflightOutputPipe = v
-	.any<unknown>()
-	.pipe(v.custom<unknown>(isCoreServicePreflightOutputValue, 'Expected a Core Service preflight output.')) as Pipe<
-	unknown,
-	CoreServicePreflightOutputShape
->
+	.any<CoreServicePreflightOutputShape>()
+	.pipe(v.custom<CoreServicePreflightOutputShape>(isCoreServicePreflightOutputValue, 'Expected a Core Service preflight output.'))
 export type CoreServicePreflightOutput = PipeOutput<typeof coreServicePreflightOutputPipe>
 
 export interface CorePreflightReport {
@@ -172,59 +169,68 @@ type CoreIdGeneratorServiceShape = {
 }
 
 export const functionDependencyPipe = v
-	.any<unknown>()
-	.pipe(v.custom<unknown>((value) => typeof value === 'function', 'Expected a function dependency.')) as Pipe<unknown, AnyFunction>
+	.any<AnyFunction>()
+	.pipe(v.custom((value) => typeof value === 'function', 'Expected a function dependency.'))
 
-export const storagePipe = v.object({ preflight: functionDependencyPipe, transaction: functionDependencyPipe }) as Pipe<
-	unknown,
-	CoreStorageServiceShape
->
+const storagePreflightPipe = typedFunctionDependencyPipe<CoreStorageServiceShape['preflight']>()
+const storageTransactionPipe = typedFunctionDependencyPipe<CoreStorageServiceShape['transaction']>()
+const secretsPreflightPipe = typedFunctionDependencyPipe<CoreSecretsServiceShape['preflight']>()
+const resolveSecretsPipe = typedFunctionDependencyPipe<CoreSecretsServiceShape['resolveSecrets']>()
+const resolveSecretValuesPipe = typedFunctionDependencyPipe<CoreSecretsServiceShape['resolveSecretValues']>()
+const sandboxPreflightPipe = typedFunctionDependencyPipe<CoreSandboxServiceShape['preflight']>()
+const clockNowPipe = typedFunctionDependencyPipe<CoreClockServiceShape['now']>()
+const idGeneratorNextPipe = typedFunctionDependencyPipe<CoreIdGeneratorServiceShape['next']>()
+const eventSinkPublishPipe = typedFunctionDependencyPipe<CoreEventSinkShape['publish']>()
+const loggerDebugPipe = typedFunctionDependencyPipe<CoreLoggerShape['debug']>()
+const loggerInfoPipe = typedFunctionDependencyPipe<CoreLoggerShape['info']>()
+const loggerWarnPipe = typedFunctionDependencyPipe<CoreLoggerShape['warn']>()
+const loggerErrorPipe = typedFunctionDependencyPipe<CoreLoggerShape['error']>()
+
+export const storagePipe = v.object({ preflight: storagePreflightPipe, transaction: storageTransactionPipe })
 export type CoreStorageService = PipeOutput<typeof storagePipe>
 export type CoreStorage = CoreStorageService
 
 export const coreSecretsServicePipe = v.object({
-	preflight: functionDependencyPipe,
-	resolveSecrets: functionDependencyPipe,
-	resolveSecretValues: functionDependencyPipe,
-}) as Pipe<unknown, CoreSecretsServiceShape>
+	preflight: secretsPreflightPipe,
+	resolveSecrets: resolveSecretsPipe,
+	resolveSecretValues: resolveSecretValuesPipe,
+})
 export type CoreSecretsService = PipeOutput<typeof coreSecretsServicePipe>
 
-export const coreSandboxServicePipe = v.object({ preflight: functionDependencyPipe }) as Pipe<unknown, CoreSandboxServiceShape>
+const coreSandboxServiceObjectPipe = v.object({ preflight: sandboxPreflightPipe })
+export const coreSandboxServicePipe = coreSandboxServiceObjectPipe.pipe(
+	v.define<PipeOutput<typeof coreSandboxServiceObjectPipe>, CoreSandboxServiceShape>((value) => value),
+)
 export type CoreSandboxService = PipeOutput<typeof coreSandboxServicePipe>
 
-const coreClockServicePipe = v.object({ now: functionDependencyPipe }) as Pipe<unknown, CoreClockServiceShape>
+const coreClockServicePipe = v.object({ now: clockNowPipe })
 export type CoreClockService = PipeOutput<typeof coreClockServicePipe>
 
-const coreIdGeneratorServicePipe = v.object({ next: functionDependencyPipe }) as Pipe<unknown, CoreIdGeneratorServiceShape>
+const coreIdGeneratorServicePipe = v.object({ next: idGeneratorNextPipe })
 export type CoreIdGeneratorService = PipeOutput<typeof coreIdGeneratorServicePipe>
 
-const coreEventSinkPipe = v.object({ publish: functionDependencyPipe }) as Pipe<unknown, CoreEventSinkShape>
+const coreEventSinkPipe = v.object({ publish: eventSinkPublishPipe })
 export type CoreEventSink = PipeOutput<typeof coreEventSinkPipe>
 
 const coreLoggerPipe = v.object({
-	debug: functionDependencyPipe,
-	info: functionDependencyPipe,
-	warn: functionDependencyPipe,
-	error: functionDependencyPipe,
-}) as Pipe<unknown, CoreLoggerShape>
+	debug: loggerDebugPipe,
+	info: loggerInfoPipe,
+	warn: loggerWarnPipe,
+	error: loggerErrorPipe,
+})
 export type CoreLogger = PipeOutput<typeof coreLoggerPipe>
 
 const optionalCoreEventSinkPipe = v
-	.any<unknown>()
+	.any<CoreEventSink | undefined>()
 	.pipe(
-		v.custom<unknown>(
+		v.custom(
 			(value) => value === undefined || acceptsPipe(coreEventSinkPipe, value),
 			'Expected a Core Event Sink service when provided.',
 		),
-	) as Pipe<unknown, CoreEventSink | undefined>
+	)
 const optionalCoreLoggerPipe = v
-	.any<unknown>()
-	.pipe(
-		v.custom<unknown>(
-			(value) => value === undefined || acceptsPipe(coreLoggerPipe, value),
-			'Expected a Core Logger service when provided.',
-		),
-	) as Pipe<unknown, CoreLogger | undefined>
+	.any<CoreLogger | undefined>()
+	.pipe(v.custom((value) => value === undefined || acceptsPipe(coreLoggerPipe, value), 'Expected a Core Logger service when provided.'))
 
 type OpenCoreOptionsShape = {
 	storage: CoreStorageService
@@ -236,7 +242,7 @@ type OpenCoreOptionsShape = {
 	eventSink?: CoreEventSink
 }
 
-export const openCoreOptionsPipe = v.object({
+const openCoreOptionsObjectPipe = v.object({
 	storage: storagePipe,
 	secrets: coreSecretsServicePipe,
 	sandbox: coreSandboxServicePipe,
@@ -244,7 +250,29 @@ export const openCoreOptionsPipe = v.object({
 	idGenerator: coreIdGeneratorServicePipe,
 	logger: optionalCoreLoggerPipe,
 	eventSink: optionalCoreEventSinkPipe,
-}) as Pipe<unknown, OpenCoreOptionsShape>
+})
+
+export const openCoreOptionsPipe = openCoreOptionsObjectPipe.pipe(
+	v.define<PipeOutput<typeof openCoreOptionsObjectPipe>, OpenCoreOptionsShape>((value) => {
+		const options: OpenCoreOptionsShape = {
+			storage: value.storage,
+			secrets: value.secrets,
+			sandbox: value.sandbox,
+			clock: value.clock,
+			idGenerator: value.idGenerator,
+		}
+
+		if (value.logger !== undefined) {
+			options.logger = value.logger
+		}
+
+		if (value.eventSink !== undefined) {
+			options.eventSink = value.eventSink
+		}
+
+		return options
+	}),
+)
 export type OpenCoreOptions = PipeOutput<typeof openCoreOptionsPipe>
 
 export const coreClockOutputPipe = v
@@ -252,8 +280,12 @@ export const coreClockOutputPipe = v
 	.pipe(v.custom<Date>((value) => !Number.isNaN(value.getTime()), 'Expected a valid Date.'))
 export const coreIdOutputPipe = v.string().pipe(v.asTrimmed()).pipe(v.min(1, 'Expected a non-empty string.'))
 
-function acceptsPipe(pipe: Pipe<unknown, unknown>, value: unknown): boolean {
+function acceptsPipe(pipe: typeof coreEventSinkPipe | typeof coreLoggerPipe, value: unknown): boolean {
 	return v.validate(pipe, value).valid
+}
+
+function typedFunctionDependencyPipe<Fn>() {
+	return v.any<Fn>().pipe(v.custom((value) => typeof value === 'function', 'Expected a function dependency.'))
 }
 
 function isCoreServicePreflightOutputValue(value: unknown): boolean {
