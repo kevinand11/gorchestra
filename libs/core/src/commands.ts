@@ -67,7 +67,7 @@ import {
 	type UpdateModelProviderInput,
 	type UpdateRepositoryConfigInput,
 } from './boundary-pipes'
-import type { CommandStubError } from './errors'
+import type { AlreadyArchivedError, CommandStubError, NotArchivedError } from './errors'
 import type {
 	Action,
 	ActionId,
@@ -301,12 +301,12 @@ export interface AbandonDeliveryResult {
 export type SetPortfolioConfigError = CommandStubError
 export type CreateModelProviderError = CommandStubError
 export type UpdateModelProviderError = CommandStubError
-export type ArchiveModelProviderError = CommandStubError
-export type UnarchiveModelProviderError = CommandStubError
+export type ArchiveModelProviderError = CommandStubError | AlreadyArchivedError
+export type UnarchiveModelProviderError = CommandStubError | NotArchivedError
 export type CreateModelError = CommandStubError
 export type UpdateModelError = CommandStubError
-export type ArchiveModelError = CommandStubError
-export type UnarchiveModelError = CommandStubError
+export type ArchiveModelError = CommandStubError | AlreadyArchivedError
+export type UnarchiveModelError = CommandStubError | NotArchivedError
 export type PreflightModelError = CommandStubError
 export type PreflightRepositoryError = CommandStubError
 export type CreatePlanError = CommandStubError
@@ -328,7 +328,7 @@ export type UpdateRepositoryConfigError = CommandStubError
 export type CreateSecretError = CommandStubError
 export type ReplaceSecretError = CommandStubError
 export type BindSecretError = CommandStubError
-export type ArchiveSecretBindingError = CommandStubError
+export type ArchiveSecretBindingError = CommandStubError | AlreadyArchivedError
 export type ExportSnapshotError = CommandStubError
 
 export const commandInputPipes = {

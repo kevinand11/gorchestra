@@ -5,8 +5,11 @@ import {
 	importSnapshot,
 	openCore,
 	type AgentRunModelUnresolvedError,
-	type ArchivedModelError,
-	type ArchivedModelProviderError,
+	type AlreadyArchivedError,
+	type ArchivableCoreResource,
+	type ArchiveModelError,
+	type ArchiveModelProviderError,
+	type ArchiveSecretBindingError,
 	type CoreCommands,
 	type CoreError,
 	type CoreQueries,
@@ -26,6 +29,7 @@ import {
 	type InvalidInputError,
 	type InvariantViolationError,
 	type ModelPreflightFailedError,
+	type NotArchivedError,
 	type NotImplementedError,
 	type OpenCoreOptions,
 	type OperationContext,
@@ -35,9 +39,21 @@ import {
 	type Result,
 	type RevisionGateClosedError,
 	type StorageOperationFailedError,
+	type UnarchiveModelError,
+	type UnarchiveModelProviderError,
 } from './api'
 import type { createRepositoryInputPipe, operationContextPipe } from './boundary-pipes'
-import type { DeliveryWorkState, SliceWorkState } from './model'
+import type {
+	ArchivePeriod,
+	AuditStamp,
+	DeliveryWorkState,
+	Link,
+	Model,
+	ModelProvider,
+	Secret,
+	SecretBinding,
+	SliceWorkState,
+} from './model'
 import type { coreServicePreflightOutputPipe, openCoreOptionsPipe, storagePipe } from './services'
 
 const context: OperationContext = {
@@ -638,50 +654,156 @@ describe('core runtime stub', () => {
 		expectTypeOf<DeliveryWorkStateDoesNotUseUmbrella>().toEqualTypeOf<true>()
 	})
 
-	it('types generic resource and storage errors with closed discriminated shapes', () => {
-		expectTypeOf<CoreResource>().toEqualTypeOf<
-			| 'portfolio-config'
-			| 'project'
-			| 'repository'
-			| 'model-provider'
-			| 'model'
-			| 'plan'
-			| 'delivery'
-			| 'slice'
-			| 'link'
-			| 'memory'
-			| 'delivery-artifact'
-			| 'slice-artifact'
-			| 'action'
-			| 'agent-run'
-			| 'review-surface'
-			| 'revision-gate'
-			| 'revision'
-			| 'secret'
-			| 'secret-binding'
+	it('types archivable records with archive period history', () => {
+		const stamp: AuditStamp = { origin: 'imported', at: '2026-06-10T00:00:00.000Z' }
+		const archivePeriod: ArchivePeriod = { archived: stamp, unarchived: null }
+		const modelProvider: ModelProvider = {
+			id: 'model-provider-1' as never,
+			name: 'Anthropic',
+			protocol: 'anthropic-messages',
+			baseUrl: 'https://api.anthropic.com',
+			auth: null,
+			headers: [],
+			created: stamp,
+			updated: null,
+			archivePeriods: [],
+		}
+		const model: Model = {
+			id: 'model-1' as never,
+			providerId: modelProvider.id,
+			name: 'Claude',
+			providerModelId: 'claude-sonnet-4-5',
+			created: stamp,
+			updated: null,
+			archivePeriods: [],
+		}
+		const secret: Secret = {
+			id: 'secret-1' as never,
+			name: 'GitHub PAT',
+			valueRef: 'protected-ref-1',
+			created: stamp,
+			replaced: null,
+			archivePeriods: [],
+		}
+		const secretBinding: SecretBinding = {
+			id: 'secret-binding-1' as never,
+			secretId: secret.id,
+			scope: { type: 'portfolio' },
+			envName: 'GITHUB_TOKEN',
+			created: stamp,
+			archivePeriods: [],
+		}
+		const link: Link = {
+			id: 'link-1' as never,
+			type: 'references',
+			from: { type: 'project', id: 'project-1' as never },
+			to: { type: 'memory', id: 'memory-1' as never },
+			created: stamp,
+			archivePeriods: [],
+		}
+
+		const newlyCreatedRecords = [modelProvider, model, secret, secretBinding, link] satisfies Array<{
+			archivePeriods: ArchivePeriod[]
+		}>
+		type ArchivePeriodFields = { archived: AuditStamp; unarchived: AuditStamp | null }
+		type ArchivePeriodCollections = [
+			ModelProvider['archivePeriods'],
+			Model['archivePeriods'],
+			Secret['archivePeriods'],
+			SecretBinding['archivePeriods'],
+			Link['archivePeriods'],
+		]
+		type RemovedArchivedFields = [
+			'archived' extends keyof ModelProvider ? true : false,
+			'archived' extends keyof Model ? true : false,
+			'archived' extends keyof Secret ? true : false,
+			'archived' extends keyof SecretBinding ? true : false,
+			'archived' extends keyof Link ? true : false,
+		]
+
+		expect(archivePeriod).toEqual({ archived: stamp, unarchived: null })
+		expect(newlyCreatedRecords.map((record) => record.archivePeriods)).toEqual([[], [], [], [], []])
+		expectTypeOf<ArchivePeriod>().toEqualTypeOf<ArchivePeriodFields>()
+		expectTypeOf<ArchivePeriodCollections>().toEqualTypeOf<
+			[ArchivePeriod[], ArchivePeriod[], ArchivePeriod[], ArchivePeriod[], ArchivePeriod[]]
 		>()
-		expectTypeOf<CoreStorageOperation>().toEqualTypeOf<
+		expectTypeOf<RemovedArchivedFields>().toEqualTypeOf<[false, false, false, false, false]>()
+	})
+
+	it('types generic resource and storage errors with closed discriminated shapes', () => {
+		const coreResources = [
+			'portfolio-config',
+			'project',
+			'repository',
+			'model-provider',
+			'model',
+			'plan',
+			'delivery',
+			'slice',
+			'link',
+			'memory',
+			'delivery-artifact',
+			'slice-artifact',
+			'action',
+			'agent-run',
+			'review-surface',
+			'revision-gate',
+			'revision',
+			'secret',
+			'secret-binding',
+		] as const satisfies readonly CoreResource[]
+		const archivableResources = [
+			'model-provider',
+			'model',
+			'link',
+			'secret',
+			'secret-binding',
+		] as const satisfies readonly ArchivableCoreResource[]
+		type CoreResourceLiteral = (typeof coreResources)[number]
+		type ArchivableResourceLiteral = (typeof archivableResources)[number]
+		type CoreStorageOperations =
 			| { type: 'get'; resource: CoreResource; id: string | null }
 			| { type: 'put'; resource: CoreResource; id: string | null }
 			| { type: 'list'; resource: CoreResource }
-		>()
-		expectTypeOf<Extract<CoreError, { type: 'not-found' }>['resource']>().toEqualTypeOf<CoreResource>()
-		expectTypeOf<Extract<CoreError, { type: 'storage-operation-failed' }>['operation']>().toEqualTypeOf<CoreStorageOperation>()
-		expectTypeOf<CoreError>().toEqualTypeOf<
+		type AlreadyArchivedLifecycleErrors = [
+			Extract<ArchiveModelProviderError, { type: 'already-archived' }>,
+			Extract<ArchiveModelError, { type: 'already-archived' }>,
+			Extract<ArchiveSecretBindingError, { type: 'already-archived' }>,
+		]
+		type NotArchivedLifecycleErrors = [
+			Extract<UnarchiveModelProviderError, { type: 'not-archived' }>,
+			Extract<UnarchiveModelError, { type: 'not-archived' }>,
+		]
+		type ExpectedCoreError =
 			| InvalidInputError
 			| InvalidCoreServiceOutputError
 			| NotImplementedError
 			| ResourceNotFoundError
+			| AlreadyArchivedError
+			| NotArchivedError
 			| StorageOperationFailedError
 			| InvariantViolationError
 			| ModelPreflightFailedError
 			| DeliveryWorkStateMismatchError
 			| RevisionGateClosedError
 			| AgentRunModelUnresolvedError
-			| ArchivedModelError
-			| ArchivedModelProviderError
 			| ExternalOperationFailedError
-		>()
+		type CoreErrorMatchesExpected = CoreError extends ExpectedCoreError ? (ExpectedCoreError extends CoreError ? true : false) : false
+
+		expect(coreResources).toContain('secret')
+		expect(archivableResources).toEqual(['model-provider', 'model', 'link', 'secret', 'secret-binding'])
+		expectTypeOf<CoreResourceLiteral>().toEqualTypeOf<CoreResource>()
+		expectTypeOf<ArchivableResourceLiteral>().toEqualTypeOf<ArchivableCoreResource>()
+		expectTypeOf<CoreStorageOperation>().toEqualTypeOf<CoreStorageOperations>()
+		expect(coreResources.length).toBe(19)
+		expectTypeOf<Extract<CoreError, { type: 'not-found' }>['resource']>().toEqualTypeOf<CoreResource>()
+		expectTypeOf<Extract<CoreError, { type: 'already-archived' }>['resource']>().toEqualTypeOf<ArchivableCoreResource>()
+		expectTypeOf<Extract<CoreError, { type: 'not-archived' }>['resource']>().toEqualTypeOf<ArchivableCoreResource>()
+		expectTypeOf<Extract<CoreError, { type: 'storage-operation-failed' }>['operation']>().toEqualTypeOf<CoreStorageOperation>()
+		expect(archivableResources.length).toBe(5)
+		expectTypeOf<AlreadyArchivedLifecycleErrors>().toEqualTypeOf<[AlreadyArchivedError, AlreadyArchivedError, AlreadyArchivedError]>()
+		expectTypeOf<NotArchivedLifecycleErrors>().toEqualTypeOf<[NotArchivedError, NotArchivedError]>()
+		expectTypeOf<CoreErrorMatchesExpected>().toEqualTypeOf<true>()
 	})
 
 	it('validates snapshot import input and context before returning not-implemented', async () => {

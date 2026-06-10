@@ -6,7 +6,6 @@ import type {
 	DeliveryWorkState,
 	ExternalOperationEvidence,
 	ModelId,
-	ModelProviderId,
 	RevisionGateId,
 	ValidationEvidence,
 } from './model'
@@ -59,9 +58,23 @@ export type CoreResource =
 	| 'secret'
 	| 'secret-binding'
 
+export type ArchivableCoreResource = Extract<CoreResource, 'model-provider' | 'model' | 'link' | 'secret' | 'secret-binding'>
+
 export interface ResourceNotFoundError {
 	type: 'not-found'
 	resource: CoreResource
+	id: string
+}
+
+export interface AlreadyArchivedError {
+	type: 'already-archived'
+	resource: ArchivableCoreResource
+	id: string
+}
+
+export interface NotArchivedError {
+	type: 'not-archived'
+	resource: ArchivableCoreResource
 	id: string
 }
 
@@ -103,16 +116,6 @@ export interface AgentRunModelUnresolvedError {
 	purpose: AgentRunPurpose
 }
 
-export interface ArchivedModelError {
-	type: 'archived-model'
-	modelId: ModelId
-}
-
-export interface ArchivedModelProviderError {
-	type: 'archived-model-provider'
-	modelProviderId: ModelProviderId
-}
-
 export interface ExternalOperationFailedError {
 	type: 'external-operation-failed'
 	evidence: ExternalOperationEvidence
@@ -127,14 +130,14 @@ export type CoreError =
 	| InvalidCoreServiceOutputError
 	| NotImplementedError
 	| ResourceNotFoundError
+	| AlreadyArchivedError
+	| NotArchivedError
 	| StorageOperationFailedError
 	| InvariantViolationError
 	| ModelPreflightFailedError
 	| DeliveryWorkStateMismatchError
 	| RevisionGateClosedError
 	| AgentRunModelUnresolvedError
-	| ArchivedModelError
-	| ArchivedModelProviderError
 	| ExternalOperationFailedError
 
 export type CommandStubError = InvalidInputError | NotImplementedError
