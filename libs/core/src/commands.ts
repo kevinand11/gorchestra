@@ -7,6 +7,7 @@ import {
 	archiveModelInputPipe,
 	archiveModelProviderInputPipe,
 	archiveSecretBindingInputPipe,
+	archiveSecretInputPipe,
 	bindSecretInputPipe,
 	closeRevisionGateInputPipe,
 	configureDeliveryInputPipe,
@@ -30,6 +31,8 @@ import {
 	shipDeliveryInputPipe,
 	unarchiveModelInputPipe,
 	unarchiveModelProviderInputPipe,
+	unarchiveSecretBindingInputPipe,
+	unarchiveSecretInputPipe,
 	updateModelInputPipe,
 	updateModelProviderInputPipe,
 	updateRepositoryConfigInputPipe,
@@ -39,6 +42,7 @@ import {
 	type ArchiveModelInput,
 	type ArchiveModelProviderInput,
 	type ArchiveSecretBindingInput,
+	type ArchiveSecretInput,
 	type BindSecretInput,
 	type CloseRevisionGateInput,
 	type ConfigureDeliveryInput,
@@ -63,14 +67,18 @@ import {
 	type ShipDeliveryInput,
 	type UnarchiveModelInput,
 	type UnarchiveModelProviderInput,
+	type UnarchiveSecretBindingInput,
+	type UnarchiveSecretInput,
 	type UpdateModelInput,
 	type UpdateModelProviderInput,
 	type UpdateRepositoryConfigInput,
 } from './boundary-pipes'
 import type {
 	AlreadyArchivedError,
+	ArchivedSecretReferenceError,
 	CommandStubError,
 	DuplicateRepositoryTargetError,
+	DuplicateSecretBindingError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	ModelNotSelectableError,
@@ -249,8 +257,17 @@ export interface CoreCommands {
 	// Secrets
 	createSecret(input: CreateSecretInput, context: OperationContext): Promise<Result<Secret, CreateSecretError>>
 	replaceSecret(input: ReplaceSecretInput, context: OperationContext): Promise<Result<Secret, ReplaceSecretError>>
+	archiveSecret(input: ArchiveSecretInput, context: OperationContext): Promise<Result<Secret, ArchiveSecretError>>
+	unarchiveSecret(input: UnarchiveSecretInput, context: OperationContext): Promise<Result<Secret, UnarchiveSecretError>>
 	bindSecret(input: BindSecretInput, context: OperationContext): Promise<Result<SecretBinding, BindSecretError>>
-	archiveSecretBinding(input: ArchiveSecretBindingInput, context: OperationContext): Promise<Result<void, ArchiveSecretBindingError>>
+	archiveSecretBinding(
+		input: ArchiveSecretBindingInput,
+		context: OperationContext,
+	): Promise<Result<SecretBinding, ArchiveSecretBindingError>>
+	unarchiveSecretBinding(
+		input: UnarchiveSecretBindingInput,
+		context: OperationContext,
+	): Promise<Result<SecretBinding, UnarchiveSecretBindingError>>
 
 	// Snapshot
 	exportSnapshot(input: ExportSnapshotInput, context: OperationContext): Promise<Result<PortfolioSnapshotManifest, ExportSnapshotError>>
@@ -351,10 +368,39 @@ export type UpdateRepositoryConfigError =
 	| DuplicateRepositoryTargetError
 	| StorageOperationFailedError
 	| InvalidCoreServiceOutputError
-export type CreateSecretError = CommandStubError
-export type ReplaceSecretError = CommandStubError
-export type BindSecretError = CommandStubError
-export type ArchiveSecretBindingError = CommandStubError | AlreadyArchivedError
+export type CreateSecretError = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
+export type ReplaceSecretError = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError | ResourceNotFoundError
+export type ArchiveSecretError =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| StorageOperationFailedError
+	| ResourceNotFoundError
+	| AlreadyArchivedError
+export type UnarchiveSecretError =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| StorageOperationFailedError
+	| ResourceNotFoundError
+	| NotArchivedError
+export type BindSecretError =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| StorageOperationFailedError
+	| ResourceNotFoundError
+	| DuplicateSecretBindingError
+	| ArchivedSecretReferenceError
+export type ArchiveSecretBindingError =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| StorageOperationFailedError
+	| ResourceNotFoundError
+	| AlreadyArchivedError
+export type UnarchiveSecretBindingError =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| StorageOperationFailedError
+	| ResourceNotFoundError
+	| NotArchivedError
 export type ExportSnapshotError = CommandStubError
 
 export const commandInputPipes = {
@@ -387,7 +433,10 @@ export const commandInputPipes = {
 	updateRepositoryConfig: updateRepositoryConfigInputPipe,
 	createSecret: createSecretInputPipe,
 	replaceSecret: replaceSecretInputPipe,
+	archiveSecret: archiveSecretInputPipe,
+	unarchiveSecret: unarchiveSecretInputPipe,
 	bindSecret: bindSecretInputPipe,
 	archiveSecretBinding: archiveSecretBindingInputPipe,
+	unarchiveSecretBinding: unarchiveSecretBindingInputPipe,
 	exportSnapshot: exportSnapshotInputPipe,
 } satisfies Record<keyof CoreCommands, Pipe<unknown, unknown>>

@@ -857,8 +857,8 @@ export interface SecretBinding {
 
 /**
  * Secret Binding environment resolution is derived, not stored separately.
- * Active bindings with the same envName are unique per exact
- * scope. Inner scopes override outer scopes by environment variable name.
+ * Bindings with the same envName are unique per exact scope, including archived
+ * bindings. Inner scopes override outer scopes by environment variable name.
  *
  * planning:
  *   Portfolio -> Project
