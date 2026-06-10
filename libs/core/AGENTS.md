@@ -8,7 +8,7 @@ The `libs/core/` package is the private Core package source surface for reusable
 
 - `src/model.ts` owns the current Core package domain model types.
 - `src/api.ts` owns the public Core API barrel.
-- `src/commands.ts`, `src/storage-backed-commands.ts`, `src/queries.ts`, `src/core.ts`, `src/services.ts`, `src/errors.ts`, `src/boundary-pipes.ts`, `src/validation.ts`, and `src/result.ts` own the split Core API concerns, storage-backed setup commands, Core Services/runtime boundary direction, validation, implemented Secret commands, and remaining stubs.
+- `src/commands.ts`, `src/storage-backed-commands.ts`, `src/queries.ts`, `src/core.ts`, `src/services.ts`, `src/errors.ts`, `src/boundary-pipes.ts`, `src/validation.ts`, and `src/result.ts` own the split Core API concerns, storage-backed setup commands, Core Services/runtime boundary direction, validation, implemented Secret, Model Provider, Model, Portfolio Config, Project, Repository, and Plan commands, and remaining stubs.
 - `src/index.ts` owns package exports.
 - `vitest.config.ts` owns package-local test discovery, including source tests through `import.meta.vitest`.
 

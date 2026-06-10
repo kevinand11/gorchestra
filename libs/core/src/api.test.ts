@@ -6,6 +6,8 @@ import {
 	openCore,
 	type AgentRunModelUnresolvedError,
 	type AlreadyArchivedError,
+	type ArchivedModelProviderReferenceError,
+	type ArchivedModelReferenceError,
 	type ArchivedSecretReferenceError,
 	type ArchivableCoreResource,
 	type ArchiveModelError,
@@ -24,6 +26,8 @@ import {
 	type CoreStorageOperation,
 	type CoreStorageService,
 	type CoreStorageTransaction,
+	type CreateModelError,
+	type CreateModelProviderError,
 	type CreateSecretError,
 	type DeliveryWorkStateMismatchError,
 	type DuplicateRepositoryTargetError,
@@ -44,12 +48,15 @@ import {
 	type QueueDeliveryError,
 	type QueueDeliveryResult,
 	type ReplaceSecretError,
+	type SetPortfolioConfigError,
 	type RepositoryTable,
 	type ResourceNotFoundError,
 	type Result,
 	type RevisionGateClosedError,
 	type SecretNotActiveError,
 	type StorageOperationFailedError,
+	type UpdateModelError,
+	type UpdateModelProviderError,
 	type UnarchiveModelError,
 	type UnarchiveModelProviderError,
 	type UnarchiveSecretBindingError,
@@ -63,6 +70,7 @@ import type {
 	Link,
 	Model,
 	ModelProvider,
+	PortfolioConfigRecord,
 	Secret,
 	SecretBinding,
 	SliceWorkState,
@@ -115,14 +123,38 @@ function memoryTable<T extends { id: Id }, Id extends string>(records = new Map<
 }
 
 function openSecretCommandCore(times: string[] = []) {
+	const opened = openModelCommandCore(times)
+
+	return {
+		core: opened.core,
+		records: {
+			secrets: opened.records.secrets,
+			secretBindings: opened.records.secretBindings,
+		},
+	}
+}
+
+function openModelCommandCore(times: string[] = []) {
 	const secretRecords = new Map<Secret['id'], Secret>()
 	const secretBindingRecords = new Map<SecretBinding['id'], SecretBinding>()
+	const modelProviderRecords = new Map<ModelProvider['id'], ModelProvider>()
+	const modelRecords = new Map<Model['id'], Model>()
+	let portfolioConfigRecord: PortfolioConfigRecord | null = null
 	const counters = new Map<string, number>()
 	const nextTime = () => times.shift() ?? '2026-06-09T00:00:00.000Z'
 	const storageService: CoreStorageService = {
 		preflight: () => Promise.resolve({ ok: true }),
 		transaction: <T>(fn: (tx: CoreStorageTransaction) => Promise<T>): Promise<T> =>
 			fn({
+				portfolioConfig: {
+					get: () => Promise.resolve(portfolioConfigRecord),
+					put: (record) => {
+						portfolioConfigRecord = record
+						return Promise.resolve()
+					},
+				},
+				modelProviders: memoryTable(modelProviderRecords),
+				models: memoryTable(modelRecords),
 				secrets: memoryTable(secretRecords),
 				secretBindings: memoryTable(secretBindingRecords),
 			} as CoreStorageTransaction),
@@ -147,8 +179,13 @@ function openSecretCommandCore(times: string[] = []) {
 	return {
 		core: opened.value,
 		records: {
+			get portfolioConfig() {
+				return portfolioConfigRecord
+			},
 			secrets: secretRecords,
 			secretBindings: secretBindingRecords,
+			modelProviders: modelProviderRecords,
+			models: modelRecords,
 		},
 	}
 }
@@ -551,6 +588,14 @@ describe('core runtime stub', () => {
 		]
 		const implementedCommandNames = new Set([
 			'setPortfolioConfig',
+			'createModelProvider',
+			'updateModelProvider',
+			'archiveModelProvider',
+			'unarchiveModelProvider',
+			'createModel',
+			'updateModel',
+			'archiveModel',
+			'unarchiveModel',
 			'createPlan',
 			'createProject',
 			'setProjectConfig',
@@ -579,6 +624,392 @@ describe('core runtime stub', () => {
 					})
 				}),
 		)
+	})
+
+	it('creates and updates Model Providers with normalized config while protocol stays immutable', async () => {
+		const { core, records } = openModelCommandCore([
+			'2026-06-10T00:00:00.000Z',
+			'2026-06-10T00:01:00.000Z',
+			'2026-06-10T00:02:00.000Z',
+			'2026-06-10T00:03:00.000Z',
+		])
+		const secretOne = await core.commands.createSecret({ name: 'API Key', valueRef: 'protected-ref-1' }, context)
+		const secretTwo = await core.commands.createSecret({ name: 'Header Key', valueRef: 'protected-ref-2' }, context)
+		expect(secretOne.ok).toBe(true)
+		expect(secretTwo.ok).toBe(true)
+		if (!secretOne.ok || !secretTwo.ok) return
+
+		const created = await core.commands.createModelProvider(
+			{
+				name: ' Anthropic ',
+				protocol: 'anthropic-messages',
+				baseUrl: 'https://api.anthropic.com///',
+				auth: { type: 'apiKey', secretId: secretOne.value.id },
+				headers: [
+					{ name: ' X-Alpha ', valueSecretId: secretOne.value.id },
+					{ name: 'x-Beta', valueSecretId: secretTwo.value.id },
+				],
+			},
+			context,
+		)
+
+		expect(created).toEqual({
+			ok: true,
+			value: {
+				id: 'model-provider-1',
+				name: 'Anthropic',
+				protocol: 'anthropic-messages',
+				baseUrl: 'https://api.anthropic.com',
+				auth: { type: 'apiKey', secretId: secretOne.value.id },
+				headers: [
+					{ name: 'X-Alpha', valueSecretId: secretOne.value.id },
+					{ name: 'x-Beta', valueSecretId: secretTwo.value.id },
+				],
+				created: localStamp('2026-06-10T00:02:00.000Z'),
+				updated: null,
+				archivePeriods: [],
+			},
+		})
+		if (!created.ok) return
+
+		const updated = await core.commands.updateModelProvider(
+			{
+				modelProviderId: created.value.id,
+				name: ' Local OpenAI ',
+				protocol: 'openai-responses',
+				baseUrl: 'http://localhost:3000/',
+				auth: null,
+				headers: [{ name: 'X-Local', valueSecretId: secretTwo.value.id }],
+			} as never,
+			context,
+		)
+
+		expect(updated).toEqual({
+			ok: true,
+			value: {
+				...created.value,
+				name: 'Local OpenAI',
+				protocol: 'anthropic-messages',
+				baseUrl: 'http://localhost:3000',
+				auth: null,
+				headers: [{ name: 'X-Local', valueSecretId: secretTwo.value.id }],
+				updated: localStamp('2026-06-10T00:03:00.000Z'),
+			},
+		})
+		expect(records.modelProviders.get(created.value.id)).toEqual(updated.ok ? updated.value : null)
+	})
+
+	it('rejects invalid and duplicate Model Provider header names before storage writes', async () => {
+		const { core, records } = openModelCommandCore()
+
+		await expect(
+			core.commands.createModelProvider(
+				{
+					name: 'Provider',
+					protocol: 'anthropic-messages',
+					baseUrl: 'https://api.example.com',
+					auth: null,
+					headers: [{ name: 'X API Key', valueSecretId: 'secret-1' as never }],
+				},
+				context,
+			),
+		).resolves.toMatchObject({
+			ok: false,
+			error: {
+				type: 'invalid-input',
+				boundary: 'command',
+				operation: 'createModelProvider',
+				pipeError: { messages: [expect.objectContaining({ path: 'input.headers.0.name' })] },
+			},
+		})
+		await expect(
+			core.commands.createModelProvider(
+				{
+					name: 'Provider',
+					protocol: 'anthropic-messages',
+					baseUrl: 'https://api.example.com',
+					auth: null,
+					headers: [
+						{ name: 'X-API-Key', valueSecretId: 'secret-1' as never },
+						{ name: 'x-api-key', valueSecretId: 'secret-2' as never },
+					],
+				},
+				context,
+			),
+		).resolves.toMatchObject({ ok: false, error: { type: 'invalid-input', operation: 'createModelProvider' } })
+		expect(records.modelProviders.size).toBe(0)
+	})
+
+	it('requires Model Provider auth and header Secret references to point to active Secrets', async () => {
+		const { core } = openModelCommandCore()
+
+		await expect(
+			core.commands.createModelProvider(
+				{
+					name: 'Provider',
+					protocol: 'anthropic-messages',
+					baseUrl: 'https://api.example.com',
+					auth: { type: 'apiKey', secretId: 'missing-secret' as never },
+					headers: [],
+				},
+				context,
+			),
+		).resolves.toEqual({ ok: false, error: { type: 'not-found', resource: 'secret', id: 'missing-secret' } })
+
+		const secret = await core.commands.createSecret({ name: 'Token', valueRef: 'protected-ref-1' }, context)
+		expect(secret.ok).toBe(true)
+		if (!secret.ok) return
+		await expect(core.commands.archiveSecret({ secretId: secret.value.id }, context)).resolves.toMatchObject({ ok: true })
+		await expect(
+			core.commands.createModelProvider(
+				{
+					name: 'Provider',
+					protocol: 'anthropic-messages',
+					baseUrl: 'https://api.example.com',
+					auth: null,
+					headers: [{ name: 'X-Token', valueSecretId: secret.value.id }],
+				},
+				context,
+			),
+		).resolves.toEqual({ ok: false, error: { type: 'archived-secret-reference', secretId: secret.value.id } })
+	})
+
+	it('archives and unarchives Model Providers while preserving Archive Period history', async () => {
+		const { core } = openModelCommandCore([
+			'2026-06-10T00:00:00.000Z',
+			'2026-06-10T00:01:00.000Z',
+			'2026-06-10T00:02:00.000Z',
+			'2026-06-10T00:03:00.000Z',
+		])
+		const created = await core.commands.createModelProvider(
+			{
+				name: 'Provider',
+				protocol: 'anthropic-messages',
+				baseUrl: 'https://api.example.com',
+				auth: null,
+				headers: [],
+			},
+			context,
+		)
+		expect(created.ok).toBe(true)
+		if (!created.ok) return
+
+		const archived = await core.commands.archiveModelProvider({ modelProviderId: created.value.id }, context)
+		expect(archived).toEqual({
+			ok: true,
+			value: {
+				...created.value,
+				archivePeriods: [{ archived: localStamp('2026-06-10T00:01:00.000Z'), unarchived: null }],
+			},
+		})
+		await expect(core.commands.archiveModelProvider({ modelProviderId: created.value.id }, context)).resolves.toEqual({
+			ok: false,
+			error: { type: 'already-archived', resource: 'model-provider', id: created.value.id },
+		})
+
+		const unarchived = await core.commands.unarchiveModelProvider({ modelProviderId: created.value.id }, context)
+		expect(unarchived).toEqual({
+			ok: true,
+			value: {
+				...created.value,
+				archivePeriods: [
+					{
+						archived: localStamp('2026-06-10T00:01:00.000Z'),
+						unarchived: localStamp('2026-06-10T00:03:00.000Z'),
+					},
+				],
+			},
+		})
+		await expect(core.commands.unarchiveModelProvider({ modelProviderId: created.value.id }, context)).resolves.toEqual({
+			ok: false,
+			error: { type: 'not-archived', resource: 'model-provider', id: created.value.id },
+		})
+	})
+
+	it('creates duplicate Models under active Providers and updates only human-readable names', async () => {
+		const { core } = openModelCommandCore([
+			'2026-06-10T00:00:00.000Z',
+			'2026-06-10T00:01:00.000Z',
+			'2026-06-10T00:02:00.000Z',
+			'2026-06-10T00:03:00.000Z',
+			'2026-06-10T00:04:00.000Z',
+			'2026-06-10T00:05:00.000Z',
+			'2026-06-10T00:06:00.000Z',
+		])
+		await expect(
+			core.commands.createModel({ providerId: 'missing-provider' as never, name: 'Claude', providerModelId: 'claude' }, context),
+		).resolves.toEqual({ ok: false, error: { type: 'not-found', resource: 'model-provider', id: 'missing-provider' } })
+
+		const provider = await core.commands.createModelProvider(
+			{
+				name: 'Provider',
+				protocol: 'anthropic-messages',
+				baseUrl: 'https://api.example.com',
+				auth: null,
+				headers: [],
+			},
+			context,
+		)
+		expect(provider.ok).toBe(true)
+		if (!provider.ok) return
+
+		const first = await core.commands.createModel(
+			{ providerId: provider.value.id, name: ' Claude ', providerModelId: ' claude-sonnet ' },
+			context,
+		)
+		const second = await core.commands.createModel(
+			{ providerId: provider.value.id, name: 'Claude', providerModelId: 'claude-sonnet' },
+			context,
+		)
+		expect(first.ok).toBe(true)
+		expect(second.ok).toBe(true)
+		if (!first.ok || !second.ok) return
+		expect(first.value).toMatchObject({ id: 'model-2', name: 'Claude', providerModelId: 'claude-sonnet' })
+		expect(second.value).toMatchObject({ id: 'model-3', name: 'Claude', providerModelId: 'claude-sonnet' })
+
+		const updated = await core.commands.updateModel(
+			{ modelId: first.value.id, name: ' Claude Sonnet ', providerId: 'other-provider', providerModelId: 'other' } as never,
+			context,
+		)
+		expect(updated).toEqual({
+			ok: true,
+			value: {
+				...first.value,
+				name: 'Claude Sonnet',
+				updated: localStamp('2026-06-10T00:04:00.000Z'),
+			},
+		})
+		await expect(core.commands.archiveModelProvider({ modelProviderId: provider.value.id }, context)).resolves.toMatchObject({
+			ok: true,
+		})
+		await expect(
+			core.commands.createModel({ providerId: provider.value.id, name: 'Claude Opus', providerModelId: 'claude-opus' }, context),
+		).resolves.toEqual({ ok: false, error: { type: 'archived-model-provider-reference', modelProviderId: provider.value.id } })
+	})
+
+	it('archives and unarchives Models while preserving Archive Period history', async () => {
+		const { core } = openModelCommandCore([
+			'2026-06-10T00:00:00.000Z',
+			'2026-06-10T00:01:00.000Z',
+			'2026-06-10T00:02:00.000Z',
+			'2026-06-10T00:03:00.000Z',
+			'2026-06-10T00:04:00.000Z',
+		])
+		const provider = await core.commands.createModelProvider(
+			{
+				name: 'Provider',
+				protocol: 'anthropic-messages',
+				baseUrl: 'https://api.example.com',
+				auth: null,
+				headers: [],
+			},
+			context,
+		)
+		expect(provider.ok).toBe(true)
+		if (!provider.ok) return
+		const model = await core.commands.createModel({ providerId: provider.value.id, name: 'Claude', providerModelId: 'claude' }, context)
+		expect(model.ok).toBe(true)
+		if (!model.ok) return
+
+		const archived = await core.commands.archiveModel({ modelId: model.value.id }, context)
+		expect(archived).toEqual({
+			ok: true,
+			value: {
+				...model.value,
+				archivePeriods: [{ archived: localStamp('2026-06-10T00:02:00.000Z'), unarchived: null }],
+			},
+		})
+		await expect(core.commands.archiveModel({ modelId: model.value.id }, context)).resolves.toEqual({
+			ok: false,
+			error: { type: 'already-archived', resource: 'model', id: model.value.id },
+		})
+
+		const unarchived = await core.commands.unarchiveModel({ modelId: model.value.id }, context)
+		expect(unarchived).toEqual({
+			ok: true,
+			value: {
+				...model.value,
+				archivePeriods: [
+					{
+						archived: localStamp('2026-06-10T00:02:00.000Z'),
+						unarchived: localStamp('2026-06-10T00:04:00.000Z'),
+					},
+				],
+			},
+		})
+		await expect(core.commands.unarchiveModel({ modelId: model.value.id }, context)).resolves.toEqual({
+			ok: false,
+			error: { type: 'not-archived', resource: 'model', id: model.value.id },
+		})
+	})
+
+	it('validates selectable Models for portfolio config writes', async () => {
+		const { core, records } = openModelCommandCore([
+			'2026-06-10T00:00:00.000Z',
+			'2026-06-10T00:01:00.000Z',
+			'2026-06-10T00:02:00.000Z',
+			'2026-06-10T00:03:00.000Z',
+			'2026-06-10T00:04:00.000Z',
+			'2026-06-10T00:05:00.000Z',
+			'2026-06-10T00:06:00.000Z',
+			'2026-06-10T00:07:00.000Z',
+			'2026-06-10T00:08:00.000Z',
+			'2026-06-10T00:09:00.000Z',
+		])
+		const configFor = (modelId: Model['id']) => ({
+			model: {
+				defaultModelId: modelId,
+				planningModelId: modelId,
+				revisionPlanningModelId: null,
+				executionModelId: null,
+				revisionExecutionModelId: null,
+			},
+			work: null,
+		})
+
+		await expect(core.commands.setPortfolioConfig({ config: configFor('missing-model' as never) }, context)).resolves.toEqual({
+			ok: false,
+			error: { type: 'not-found', resource: 'model', id: 'missing-model' },
+		})
+		const provider = await core.commands.createModelProvider(
+			{
+				name: 'Provider',
+				protocol: 'anthropic-messages',
+				baseUrl: 'https://api.example.com',
+				auth: null,
+				headers: [],
+			},
+			context,
+		)
+		expect(provider.ok).toBe(true)
+		if (!provider.ok) return
+		const model = await core.commands.createModel({ providerId: provider.value.id, name: 'Claude', providerModelId: 'claude' }, context)
+		expect(model.ok).toBe(true)
+		if (!model.ok) return
+
+		await expect(core.commands.archiveModel({ modelId: model.value.id }, context)).resolves.toMatchObject({ ok: true })
+		await expect(core.commands.setPortfolioConfig({ config: configFor(model.value.id) }, context)).resolves.toEqual({
+			ok: false,
+			error: { type: 'archived-model-reference', modelId: model.value.id },
+		})
+		await expect(core.commands.unarchiveModel({ modelId: model.value.id }, context)).resolves.toMatchObject({ ok: true })
+		await expect(core.commands.archiveModelProvider({ modelProviderId: provider.value.id }, context)).resolves.toMatchObject({
+			ok: true,
+		})
+		await expect(core.commands.setPortfolioConfig({ config: configFor(model.value.id) }, context)).resolves.toEqual({
+			ok: false,
+			error: { type: 'archived-model-provider-reference', modelProviderId: provider.value.id },
+		})
+		await expect(core.commands.unarchiveModelProvider({ modelProviderId: provider.value.id }, context)).resolves.toMatchObject({
+			ok: true,
+		})
+
+		const configured = await core.commands.setPortfolioConfig({ config: configFor(model.value.id) }, context)
+		expect(configured).toEqual({
+			ok: true,
+			value: { configured: localStamp('2026-06-10T00:09:00.000Z'), value: configFor(model.value.id) },
+		})
+		expect(records.portfolioConfig).toEqual(configured.ok ? configured.value : null)
 	})
 
 	it('creates Secrets with protected value references and empty Archive Periods', async () => {
@@ -920,6 +1351,17 @@ describe('core runtime stub', () => {
 		expectTypeOf<Result<unknown>>().toEqualTypeOf<Result<unknown, never>>()
 
 		expectTypeOf<ReturnType<CoreCommands['queueDelivery']>>().toEqualTypeOf<Promise<Result<QueueDeliveryResult, QueueDeliveryError>>>()
+		expectTypeOf<ReturnType<CoreCommands['setPortfolioConfig']>>().toEqualTypeOf<
+			Promise<Result<PortfolioConfigRecord, SetPortfolioConfigError>>
+		>()
+		expectTypeOf<ReturnType<CoreCommands['createModelProvider']>>().toEqualTypeOf<
+			Promise<Result<ModelProvider, CreateModelProviderError>>
+		>()
+		expectTypeOf<ReturnType<CoreCommands['updateModelProvider']>>().toEqualTypeOf<
+			Promise<Result<ModelProvider, UpdateModelProviderError>>
+		>()
+		expectTypeOf<ReturnType<CoreCommands['createModel']>>().toEqualTypeOf<Promise<Result<Model, CreateModelError>>>()
+		expectTypeOf<ReturnType<CoreCommands['updateModel']>>().toEqualTypeOf<Promise<Result<Model, UpdateModelError>>>()
 		expectTypeOf<ReturnType<CoreCommands['createSecret']>>().toEqualTypeOf<Promise<Result<Secret, CreateSecretError>>>()
 		expectTypeOf<ReturnType<CoreCommands['archiveSecret']>>().toEqualTypeOf<Promise<Result<Secret, ArchiveSecretError>>>()
 		expectTypeOf<ReturnType<CoreCommands['unarchiveSecret']>>().toEqualTypeOf<Promise<Result<Secret, UnarchiveSecretError>>>()
@@ -942,7 +1384,13 @@ describe('core runtime stub', () => {
 			Promise<Result<SliceWorkState, GetSliceWorkStateError>>
 		>()
 
-		type ExpectedCreateSecretError = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
+		type ExpectedCoreMutationError = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
+		type ExpectedSelectableModelError = ResourceNotFoundError | ArchivedModelReferenceError | ArchivedModelProviderReferenceError
+		type ExpectedSetPortfolioConfigError = ExpectedCoreMutationError | ExpectedSelectableModelError
+		type ExpectedCreateModelProviderError = ExpectedCoreMutationError | ResourceNotFoundError | ArchivedSecretReferenceError
+		type ExpectedCreateModelError = ExpectedCoreMutationError | ResourceNotFoundError | ArchivedModelProviderReferenceError
+		type ExpectedUpdateModelError = ExpectedCoreMutationError | ResourceNotFoundError
+		type ExpectedCreateSecretError = ExpectedCoreMutationError
 		type ExpectedReplaceSecretError = ExpectedCreateSecretError | ResourceNotFoundError
 		type ExpectedArchiveSecretError = ExpectedReplaceSecretError | AlreadyArchivedError
 		type ExpectedUnarchiveSecretError = ExpectedReplaceSecretError | NotArchivedError
@@ -951,6 +1399,11 @@ describe('core runtime stub', () => {
 		type DeliveryWorkStateDoesNotUseUmbrella = CoreError extends GetDeliveryWorkStateError ? false : true
 		type BindSecretDoesNotUseUmbrella = CoreError extends BindSecretError ? false : true
 
+		expectTypeOf<SetPortfolioConfigError>().toEqualTypeOf<ExpectedSetPortfolioConfigError>()
+		expectTypeOf<CreateModelProviderError>().toEqualTypeOf<ExpectedCreateModelProviderError>()
+		expectTypeOf<UpdateModelProviderError>().toEqualTypeOf<ExpectedCreateModelProviderError>()
+		expectTypeOf<CreateModelError>().toEqualTypeOf<ExpectedCreateModelError>()
+		expectTypeOf<UpdateModelError>().toEqualTypeOf<ExpectedUpdateModelError>()
 		expectTypeOf<CreateSecretError>().toEqualTypeOf<ExpectedCreateSecretError>()
 		expectTypeOf<ReplaceSecretError>().toEqualTypeOf<ExpectedReplaceSecretError>()
 		expectTypeOf<ArchiveSecretError>().toEqualTypeOf<ExpectedArchiveSecretError>()
@@ -1095,6 +1548,8 @@ describe('core runtime stub', () => {
 			| StorageOperationFailedError
 			| DuplicateSecretBindingError
 			| ArchivedSecretReferenceError
+			| ArchivedModelReferenceError
+			| ArchivedModelProviderReferenceError
 			| InvariantViolationError
 			| ModelPreflightFailedError
 			| ModelNotSelectableError

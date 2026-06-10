@@ -122,7 +122,7 @@ describe('storage-backed setup commands', () => {
 			context,
 		)
 
-		expect(result).toEqual({ ok: false, error: { type: 'model-not-selectable', modelId: 'model-1', reason: 'model-archived' } })
+		expect(result).toEqual({ ok: false, error: { type: 'archived-model-reference', modelId: 'model-1' } })
 		expect(storage.tx.portfolioConfig.record).toBeNull()
 	})
 
@@ -306,7 +306,10 @@ describe('storage-backed setup commands', () => {
 			},
 			context,
 		)
-		expect(rejected).toEqual({ ok: false, error: { type: 'model-not-selectable', modelId: 'model-1', reason: 'provider-archived' } })
+		expect(rejected).toEqual({
+			ok: false,
+			error: { type: 'archived-model-provider-reference', modelProviderId: 'model-1-provider' },
+		})
 	})
 
 	it('returns storage-operation-failed when storage reads or writes fail', async () => {

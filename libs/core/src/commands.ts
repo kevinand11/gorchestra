@@ -75,13 +75,14 @@ import {
 } from './boundary-pipes'
 import type {
 	AlreadyArchivedError,
+	ArchivedModelProviderReferenceError,
+	ArchivedModelReferenceError,
 	ArchivedSecretReferenceError,
 	CommandStubError,
 	DuplicateRepositoryTargetError,
 	DuplicateSecretBindingError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
-	ModelNotSelectableError,
 	NotArchivedError,
 	ProjectSourceTypeMismatchError,
 	ResourceNotFoundError,
@@ -327,19 +328,54 @@ export interface AbandonDeliveryResult {
 	action: Action
 }
 
-export type ConfigCommandReferenceError = ResourceNotFoundError | ModelNotSelectableError
+export type ConfigCommandReferenceError = ResourceNotFoundError | ArchivedModelReferenceError | ArchivedModelProviderReferenceError
 export type ConfigCommandStorageError = StorageOperationFailedError | InvalidCoreServiceOutputError
 export type RepositoryCommandReferenceError = ResourceNotFoundError | SecretNotActiveError | ProjectSourceTypeMismatchError
 
 export type SetPortfolioConfigError = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
-export type CreateModelProviderError = CommandStubError
-export type UpdateModelProviderError = CommandStubError
-export type ArchiveModelProviderError = CommandStubError | AlreadyArchivedError
-export type UnarchiveModelProviderError = CommandStubError | NotArchivedError
-export type CreateModelError = CommandStubError
-export type UpdateModelError = CommandStubError
-export type ArchiveModelError = CommandStubError | AlreadyArchivedError
-export type UnarchiveModelError = CommandStubError | NotArchivedError
+export type CreateModelProviderError =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| StorageOperationFailedError
+	| ResourceNotFoundError
+	| ArchivedSecretReferenceError
+export type UpdateModelProviderError =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| StorageOperationFailedError
+	| ResourceNotFoundError
+	| ArchivedSecretReferenceError
+export type ArchiveModelProviderError =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| StorageOperationFailedError
+	| ResourceNotFoundError
+	| AlreadyArchivedError
+export type UnarchiveModelProviderError =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| StorageOperationFailedError
+	| ResourceNotFoundError
+	| NotArchivedError
+export type CreateModelError =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| StorageOperationFailedError
+	| ResourceNotFoundError
+	| ArchivedModelProviderReferenceError
+export type UpdateModelError = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError | ResourceNotFoundError
+export type ArchiveModelError =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| StorageOperationFailedError
+	| ResourceNotFoundError
+	| AlreadyArchivedError
+export type UnarchiveModelError =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| StorageOperationFailedError
+	| ResourceNotFoundError
+	| NotArchivedError
 export type PreflightModelError = CommandStubError
 export type PreflightRepositoryError = CommandStubError
 export type CreatePlanError = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError

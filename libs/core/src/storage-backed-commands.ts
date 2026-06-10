@@ -27,12 +27,13 @@ import type {
 	UpdateRepositoryConfigError,
 } from './commands'
 import type {
+	ArchivedModelProviderReferenceError,
+	ArchivedModelReferenceError,
 	CoreResource,
 	CoreStorageOperation,
 	DuplicateRepositoryTargetError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
-	ModelNotSelectableError,
 	ProjectSourceTypeMismatchError,
 	ResourceNotFoundError,
 	SecretNotActiveError,
@@ -87,7 +88,8 @@ type StorageBackedCommandError =
 	| InvalidCoreServiceOutputError
 	| ResourceNotFoundError
 	| StorageOperationFailedError
-	| ModelNotSelectableError
+	| ArchivedModelReferenceError
+	| ArchivedModelProviderReferenceError
 	| SecretNotActiveError
 	| DuplicateRepositoryTargetError
 	| ProjectSourceTypeMismatchError
@@ -539,24 +541,24 @@ async function validateSelectableModels(
 		)
 		if (!providerResult.ok) return providerResult
 
-		const providerSelectability = validateActiveModelProvider(modelId, providerResult.value)
+		const providerSelectability = validateActiveModelProvider(providerResult.value)
 		if (!providerSelectability.ok) return providerSelectability
 	}
 
 	return { ok: true, value: undefined }
 }
 
-function validateActiveModel(model: Model): Result<void, ModelNotSelectableError> {
+function validateActiveModel(model: Model): Result<void, ArchivedModelReferenceError> {
 	if (isArchived(model.archivePeriods)) {
-		return { ok: false, error: { type: 'model-not-selectable', modelId: model.id, reason: 'model-archived' } }
+		return { ok: false, error: { type: 'archived-model-reference', modelId: model.id } }
 	}
 
 	return { ok: true, value: undefined }
 }
 
-function validateActiveModelProvider(modelId: ModelId, provider: ModelProvider): Result<void, ModelNotSelectableError> {
+function validateActiveModelProvider(provider: ModelProvider): Result<void, ArchivedModelProviderReferenceError> {
 	if (isArchived(provider.archivePeriods)) {
-		return { ok: false, error: { type: 'model-not-selectable', modelId, reason: 'provider-archived' } }
+		return { ok: false, error: { type: 'archived-model-provider-reference', modelProviderId: provider.id } }
 	}
 
 	return { ok: true, value: undefined }
