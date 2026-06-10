@@ -22,22 +22,26 @@ import {
 	type CoreStorageService,
 	type CoreStorageTransaction,
 	type DeliveryWorkStateMismatchError,
+	type DuplicateRepositoryTargetError,
 	type ExternalOperationFailedError,
 	type GetDeliveryWorkStateError,
 	type GetSliceWorkStateError,
 	type InvalidCoreServiceOutputError,
 	type InvalidInputError,
 	type InvariantViolationError,
+	type ModelNotSelectableError,
 	type ModelPreflightFailedError,
 	type NotArchivedError,
 	type NotImplementedError,
 	type OpenCoreOptions,
 	type OperationContext,
+	type ProjectSourceTypeMismatchError,
 	type QueueDeliveryError,
 	type QueueDeliveryResult,
 	type ResourceNotFoundError,
 	type Result,
 	type RevisionGateClosedError,
+	type SecretNotActiveError,
 	type StorageOperationFailedError,
 	type UnarchiveModelError,
 	type UnarchiveModelProviderError,
@@ -433,7 +437,7 @@ describe('core runtime stub', () => {
 		})
 	})
 
-	it('exposes every documented command and returns not-implemented for valid calls', async () => {
+	it('exposes every documented command and returns not-implemented for valid stub calls', async () => {
 		const result = openTestCore()
 		expect(result.ok).toBe(true)
 		if (!result.ok) return
@@ -442,8 +446,15 @@ describe('core runtime stub', () => {
 			string,
 			(input: Record<string, unknown>, operationContext: OperationContext) => Promise<Result<unknown, unknown>>
 		>
-		const commandNames = [
+		const implementedCommandNames = [
 			'setPortfolioConfig',
+			'createPlan',
+			'createProject',
+			'setProjectConfig',
+			'createRepository',
+			'updateRepositoryConfig',
+		]
+		const commandNames = [
 			'createModelProvider',
 			'updateModelProvider',
 			'archiveModelProvider',
@@ -454,7 +465,6 @@ describe('core runtime stub', () => {
 			'unarchiveModel',
 			'preflightModel',
 			'preflightRepository',
-			'createPlan',
 			'acceptPlanOutput',
 			'rejectPlanOutput',
 			'configureDelivery',
@@ -466,10 +476,6 @@ describe('core runtime stub', () => {
 			'closeRevisionGate',
 			'shipDelivery',
 			'abandonDelivery',
-			'createProject',
-			'setProjectConfig',
-			'createRepository',
-			'updateRepositoryConfig',
 			'createSecret',
 			'replaceSecret',
 			'bindSecret',
@@ -479,6 +485,7 @@ describe('core runtime stub', () => {
 
 		const inputs = validCommandInputs()
 
+		expect(implementedCommandNames.map((name) => typeof commands[name])).toEqual(implementedCommandNames.map(() => 'function'))
 		await Promise.all(
 			commandNames.map(async (name) => {
 				expect(typeof commands[name]).toBe('function')
@@ -762,6 +769,7 @@ describe('core runtime stub', () => {
 		type CoreResourceLiteral = (typeof coreResources)[number]
 		type ArchivableResourceLiteral = (typeof archivableResources)[number]
 		type CoreStorageOperations =
+			| { type: 'transaction' }
 			| { type: 'get'; resource: CoreResource; id: string | null }
 			| { type: 'put'; resource: CoreResource; id: string | null }
 			| { type: 'list'; resource: CoreResource }
@@ -784,6 +792,10 @@ describe('core runtime stub', () => {
 			| StorageOperationFailedError
 			| InvariantViolationError
 			| ModelPreflightFailedError
+			| ModelNotSelectableError
+			| SecretNotActiveError
+			| DuplicateRepositoryTargetError
+			| ProjectSourceTypeMismatchError
 			| DeliveryWorkStateMismatchError
 			| RevisionGateClosedError
 			| AgentRunModelUnresolvedError

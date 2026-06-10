@@ -67,7 +67,19 @@ import {
 	type UpdateModelProviderInput,
 	type UpdateRepositoryConfigInput,
 } from './boundary-pipes'
-import type { AlreadyArchivedError, CommandStubError, NotArchivedError } from './errors'
+import type {
+	AlreadyArchivedError,
+	CommandStubError,
+	DuplicateRepositoryTargetError,
+	InvalidCoreServiceOutputError,
+	InvalidInputError,
+	ModelNotSelectableError,
+	NotArchivedError,
+	ProjectSourceTypeMismatchError,
+	ResourceNotFoundError,
+	SecretNotActiveError,
+	StorageOperationFailedError,
+} from './errors'
 import type {
 	Action,
 	ActionId,
@@ -226,9 +238,9 @@ export interface CoreCommands {
 	// Project / Repository config
 	createProject(input: CreateProjectInput, context: OperationContext): Promise<Result<Project, CreateProjectError>>
 	setProjectConfig(input: SetProjectConfigInput, context: OperationContext): Promise<Result<Project, SetProjectConfigError>>
-	/** Validates the Project and referenced Secret exist in Portfolio storage, then writes Repository config without calling GitHub. */
+	/** Validates the Source Control Project and referenced active Secret exist in Portfolio storage, then writes Repository config without calling GitHub. */
 	createRepository(input: CreateRepositoryInput, context: OperationContext): Promise<Result<Repository, CreateRepositoryError>>
-	/** Validates the Repository and referenced Secret exist in Portfolio storage, then writes Repository config without calling GitHub. */
+	/** Validates the Repository and referenced active Secret exist in Portfolio storage, then writes Repository config without calling GitHub. */
 	updateRepositoryConfig(
 		input: UpdateRepositoryConfigInput,
 		context: OperationContext,
@@ -298,7 +310,11 @@ export interface AbandonDeliveryResult {
 	action: Action
 }
 
-export type SetPortfolioConfigError = CommandStubError
+export type ConfigCommandReferenceError = ResourceNotFoundError | ModelNotSelectableError
+export type ConfigCommandStorageError = StorageOperationFailedError | InvalidCoreServiceOutputError
+export type RepositoryCommandReferenceError = ResourceNotFoundError | SecretNotActiveError | ProjectSourceTypeMismatchError
+
+export type SetPortfolioConfigError = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
 export type CreateModelProviderError = CommandStubError
 export type UpdateModelProviderError = CommandStubError
 export type ArchiveModelProviderError = CommandStubError | AlreadyArchivedError
@@ -309,7 +325,7 @@ export type ArchiveModelError = CommandStubError | AlreadyArchivedError
 export type UnarchiveModelError = CommandStubError | NotArchivedError
 export type PreflightModelError = CommandStubError
 export type PreflightRepositoryError = CommandStubError
-export type CreatePlanError = CommandStubError
+export type CreatePlanError = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
 export type AcceptPlanOutputError = CommandStubError
 export type RejectPlanOutputError = CommandStubError
 export type ConfigureDeliveryError = CommandStubError
@@ -321,10 +337,19 @@ export type AcceptRevisionOutputError = CommandStubError
 export type CloseRevisionGateError = CommandStubError
 export type ShipDeliveryError = CommandStubError
 export type AbandonDeliveryError = CommandStubError
-export type CreateProjectError = CommandStubError
-export type SetProjectConfigError = CommandStubError
-export type CreateRepositoryError = CommandStubError
-export type UpdateRepositoryConfigError = CommandStubError
+export type CreateProjectError = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
+export type SetProjectConfigError = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
+export type CreateRepositoryError =
+	| InvalidInputError
+	| RepositoryCommandReferenceError
+	| DuplicateRepositoryTargetError
+	| StorageOperationFailedError
+	| InvalidCoreServiceOutputError
+export type UpdateRepositoryConfigError =
+	| InvalidInputError
+	| RepositoryCommandReferenceError
+	| DuplicateRepositoryTargetError
+	| StorageOperationFailedError
 export type CreateSecretError = CommandStubError
 export type ReplaceSecretError = CommandStubError
 export type BindSecretError = CommandStubError

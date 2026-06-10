@@ -26,11 +26,7 @@ import type {
 	DeliveryWorkState,
 	Model,
 	ModelProvider,
-	Plan,
-	PortfolioConfigRecord,
 	PortfolioSnapshotManifest,
-	Project,
-	Repository,
 	Secret,
 	SecretBinding,
 	SliceWorkState,
@@ -48,6 +44,7 @@ import {
 	type CoreServicePreflightOutput,
 	type OpenCoreOptions,
 } from './services'
+import { createStorageBackedCommands } from './storage-backed-commands'
 import { validateCoreInput, validateCoreServiceOutput } from './validation'
 
 export interface GorchestraCore {
@@ -73,7 +70,7 @@ export function openCore(options: OpenCoreOptions): Result<GorchestraCore, OpenC
 		ok: true,
 		value: {
 			preflight: () => preflightCore(coreServices),
-			commands: createCoreCommands(),
+			commands: createCoreCommands(coreServices),
 			queries: createCoreQueries(),
 		},
 	}
@@ -176,11 +173,9 @@ function failedProbeCheck(): CorePreflightCheck {
 	return { ok: false, reason: 'probe-failed', message: null }
 }
 
-function createCoreCommands(): CoreCommands {
+function createCoreCommands(options: OpenCoreOptions): CoreCommands {
 	return {
-		setPortfolioConfig(input, context) {
-			return commandStub<PortfolioConfigRecord>('setPortfolioConfig', input, context)
-		},
+		...createStorageBackedCommands(options),
 		createModelProvider(input, context) {
 			return commandStub<ModelProvider>('createModelProvider', input, context)
 		},
@@ -210,9 +205,6 @@ function createCoreCommands(): CoreCommands {
 		},
 		preflightRepository(input, context) {
 			return commandStub<ValidationEvidence>('preflightRepository', input, context)
-		},
-		createPlan(input, context) {
-			return commandStub<Plan>('createPlan', input, context)
 		},
 		acceptPlanOutput(input, context) {
 			return commandStub<AcceptPlanOutputResult>('acceptPlanOutput', input, context)
@@ -246,18 +238,6 @@ function createCoreCommands(): CoreCommands {
 		},
 		abandonDelivery(input, context) {
 			return commandStub<AbandonDeliveryResult>('abandonDelivery', input, context)
-		},
-		createProject(input, context) {
-			return commandStub<Project>('createProject', input, context)
-		},
-		setProjectConfig(input, context) {
-			return commandStub<Project>('setProjectConfig', input, context)
-		},
-		createRepository(input, context) {
-			return commandStub<Repository>('createRepository', input, context)
-		},
-		updateRepositoryConfig(input, context) {
-			return commandStub<Repository>('updateRepositoryConfig', input, context)
 		},
 		createSecret(input, context) {
 			return commandStub<Secret>('createSecret', input, context)
