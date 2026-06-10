@@ -83,6 +83,7 @@ export interface NotArchivedError {
 }
 
 export type CoreStorageOperation =
+	| { type: 'transaction' }
 	| { type: 'get'; resource: CoreResource; id: string | null }
 	| { type: 'put'; resource: CoreResource; id: string | null }
 	| { type: 'list'; resource: CoreResource }
@@ -125,6 +126,34 @@ export interface ModelPreflightFailedError {
 	evidence: ValidationEvidence
 }
 
+export type ModelNotSelectableReason = 'model-archived' | 'provider-archived'
+
+export interface ModelNotSelectableError {
+	type: 'model-not-selectable'
+	modelId: ModelId
+	reason: ModelNotSelectableReason
+}
+
+export interface SecretNotActiveError {
+	type: 'secret-not-active'
+	secretId: string
+}
+
+export interface DuplicateRepositoryTargetError {
+	type: 'duplicate-repository-target'
+	projectId: string
+	provider: 'github'
+	owner: string
+	name: string
+}
+
+export interface ProjectSourceTypeMismatchError {
+	type: 'project-source-type-mismatch'
+	projectId: string
+	expected: 'source-control'
+	actual: string
+}
+
 export interface DeliveryWorkStateMismatchError {
 	type: 'delivery-work-state-mismatch'
 	deliveryId: DeliveryId
@@ -165,6 +194,10 @@ export type CoreError =
 	| ArchivedModelProviderReferenceError
 	| InvariantViolationError
 	| ModelPreflightFailedError
+	| ModelNotSelectableError
+	| SecretNotActiveError
+	| DuplicateRepositoryTargetError
+	| ProjectSourceTypeMismatchError
 	| DeliveryWorkStateMismatchError
 	| RevisionGateClosedError
 	| AgentRunModelUnresolvedError

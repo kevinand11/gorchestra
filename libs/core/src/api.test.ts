@@ -30,6 +30,7 @@ import {
 	type CreateModelProviderError,
 	type CreateSecretError,
 	type DeliveryWorkStateMismatchError,
+	type DuplicateRepositoryTargetError,
 	type DuplicateSecretBindingError,
 	type ExternalOperationFailedError,
 	type GetDeliveryWorkStateError,
@@ -37,11 +38,13 @@ import {
 	type InvalidCoreServiceOutputError,
 	type InvalidInputError,
 	type InvariantViolationError,
+	type ModelNotSelectableError,
 	type ModelPreflightFailedError,
 	type NotArchivedError,
 	type NotImplementedError,
 	type OpenCoreOptions,
 	type OperationContext,
+	type ProjectSourceTypeMismatchError,
 	type QueueDeliveryError,
 	type QueueDeliveryResult,
 	type ReplaceSecretError,
@@ -50,6 +53,7 @@ import {
 	type ResourceNotFoundError,
 	type Result,
 	type RevisionGateClosedError,
+	type SecretNotActiveError,
 	type StorageOperationFailedError,
 	type UpdateModelError,
 	type UpdateModelProviderError,
@@ -592,6 +596,11 @@ describe('core runtime stub', () => {
 			'updateModel',
 			'archiveModel',
 			'unarchiveModel',
+			'createPlan',
+			'createProject',
+			'setProjectConfig',
+			'createRepository',
+			'updateRepositoryConfig',
 			'createSecret',
 			'replaceSecret',
 			'archiveSecret',
@@ -1513,6 +1522,7 @@ describe('core runtime stub', () => {
 		type CoreResourceLiteral = (typeof coreResources)[number]
 		type ArchivableResourceLiteral = (typeof archivableResources)[number]
 		type CoreStorageOperations =
+			| { type: 'transaction' }
 			| { type: 'get'; resource: CoreResource; id: string | null }
 			| { type: 'put'; resource: CoreResource; id: string | null }
 			| { type: 'list'; resource: CoreResource }
@@ -1542,6 +1552,10 @@ describe('core runtime stub', () => {
 			| ArchivedModelProviderReferenceError
 			| InvariantViolationError
 			| ModelPreflightFailedError
+			| ModelNotSelectableError
+			| SecretNotActiveError
+			| DuplicateRepositoryTargetError
+			| ProjectSourceTypeMismatchError
 			| DeliveryWorkStateMismatchError
 			| RevisionGateClosedError
 			| AgentRunModelUnresolvedError

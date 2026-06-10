@@ -16,10 +16,11 @@ import {
 import type {
 	AlreadyArchivedError,
 	ArchivedModelProviderReferenceError,
-	ArchivedModelReferenceError,
 	ArchivedSecretReferenceError,
 	CommandStubError,
 	CorePreflightError,
+	CoreResource,
+	CoreStorageOperation,
 	DuplicateSecretBindingError,
 	ImportSnapshotError,
 	InvalidCoreServiceOutputError,
@@ -30,7 +31,6 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 	WorkStateQueryError,
-	CoreStorageOperation,
 } from './errors'
 import type {
 	ArchivePeriod,
@@ -43,11 +43,7 @@ import type {
 	ModelProviderAuth,
 	ModelProviderHeader,
 	ModelProviderId,
-	Plan,
-	PortfolioConfigRecord,
 	PortfolioSnapshotManifest,
-	Project,
-	Repository,
 	Secret,
 	SecretBinding,
 	SecretBindingId,
@@ -70,6 +66,7 @@ import {
 	type OpenCoreOptions,
 	type RepositoryTable,
 } from './services'
+import { createStorageBackedCommands } from './storage-backed-commands'
 import { validateCoreInput, validateCoreServiceOutput } from './validation'
 
 export interface GorchestraCore {
@@ -200,9 +197,7 @@ function failedProbeCheck(): CorePreflightCheck {
 
 function createCoreCommands(options: OpenCoreOptions): CoreCommands {
 	return {
-		setPortfolioConfig(input, context) {
-			return setPortfolioConfigCommand(options, input, context)
-		},
+		...createStorageBackedCommands(options),
 		createModelProvider(input, context) {
 			return createModelProviderCommand(options, input, context)
 		},
@@ -232,9 +227,6 @@ function createCoreCommands(options: OpenCoreOptions): CoreCommands {
 		},
 		preflightRepository(input, context) {
 			return commandStub<ValidationEvidence>('preflightRepository', input, context)
-		},
-		createPlan(input, context) {
-			return commandStub<Plan>('createPlan', input, context)
 		},
 		acceptPlanOutput(input, context) {
 			return commandStub<AcceptPlanOutputResult>('acceptPlanOutput', input, context)
@@ -269,18 +261,6 @@ function createCoreCommands(options: OpenCoreOptions): CoreCommands {
 		abandonDelivery(input, context) {
 			return commandStub<AbandonDeliveryResult>('abandonDelivery', input, context)
 		},
-		createProject(input, context) {
-			return commandStub<Project>('createProject', input, context)
-		},
-		setProjectConfig(input, context) {
-			return commandStub<Project>('setProjectConfig', input, context)
-		},
-		createRepository(input, context) {
-			return commandStub<Repository>('createRepository', input, context)
-		},
-		updateRepositoryConfig(input, context) {
-			return commandStub<Repository>('updateRepositoryConfig', input, context)
-		},
 		createSecret(input, context) {
 			return createSecretCommand(options, input, context)
 		},
@@ -306,41 +286,6 @@ function createCoreCommands(options: OpenCoreOptions): CoreCommands {
 			return commandStub<PortfolioSnapshotManifest>('exportSnapshot', input, context)
 		},
 	}
-}
-
-async function setPortfolioConfigCommand(
-	options: OpenCoreOptions,
-	input: unknown,
-	context: unknown,
-): ReturnType<CoreCommands['setPortfolioConfig']> {
-	const validation = validateCommand('setPortfolioConfig', commandInputPipes.setPortfolioConfig, input, context)
-
-	if (!validation.ok) {
-		return validation
-	}
-
-	const stamp = localAuditStamp(options, validation.value.context, 'setPortfolioConfig')
-	if (!stamp.ok) return stamp
-
-	return withStorageTransaction<
-		PortfolioConfigRecord,
-		ResourceNotFoundError | ArchivedModelReferenceError | ArchivedModelProviderReferenceError | StorageOperationFailedError
-	>(options, { type: 'put', resource: 'portfolio-config', id: null }, async (tx) => {
-		const modelIds = selectableModelIdsFromPortfolioConfig(validation.value.input.config)
-		for (const modelId of modelIds) {
-			const selectable = await validateSelectableModel(tx, modelId)
-			if (!selectable.ok) return selectable
-		}
-
-		const record: PortfolioConfigRecord = { configured: stamp.value, value: validation.value.input.config }
-
-		try {
-			await tx.portfolioConfig.put(record)
-			return { ok: true, value: record }
-		} catch {
-			return storageOperationFailed({ type: 'put', resource: 'portfolio-config', id: null })
-		}
-	})
 }
 
 async function createModelProviderCommand(
@@ -872,12 +817,7 @@ function createCoreQueries(): CoreQueries {
 }
 
 type ArchivableRecord = { archivePeriods: ArchivePeriod[] }
-type CoreStorageResource = CoreStorageOperation['resource']
-type SelectableModelValidationError =
-	| ResourceNotFoundError
-	| ArchivedModelReferenceError
-	| ArchivedModelProviderReferenceError
-	| StorageOperationFailedError
+type CoreStorageResource = CoreResource
 
 function validateCommand<TPipe extends Pipe<unknown, unknown>>(
 	operation: keyof CoreCommands,
@@ -1014,16 +954,6 @@ function unarchiveRecord<T extends ArchivableRecord>(
 	return { ok: true, value: { ...record, archivePeriods } }
 }
 
-function selectableModelIdsFromPortfolioConfig(config: PortfolioConfigRecord['value']): ModelId[] {
-	return [
-		config.model.defaultModelId,
-		config.model.planningModelId,
-		config.model.revisionPlanningModelId,
-		config.model.executionModelId,
-		config.model.revisionExecutionModelId,
-	].filter((modelId): modelId is ModelId => modelId !== null)
-}
-
 function secretReferencesFromModelProviderConfig(auth: ModelProviderAuth | null, headers: ModelProviderHeader[]): SecretId[] {
 	const references: SecretId[] = []
 
@@ -1050,23 +980,6 @@ async function validateActiveSecretReferences(
 	}
 
 	return { ok: true, value: undefined }
-}
-
-async function validateSelectableModel(
-	tx: CoreStorageTransaction,
-	modelId: ModelId,
-): Promise<Result<Model, SelectableModelValidationError>> {
-	const model = await getRecord(tx.models, 'model', modelId)
-	if (!model.ok) return model
-	if (model.value === null) return notFound('model', modelId)
-	if (isArchived(model.value)) return archivedModelReference(modelId)
-
-	const provider = await getRecord(tx.modelProviders, 'model-provider', model.value.providerId)
-	if (!provider.ok) return provider
-	if (provider.value === null) return notFound('model-provider', model.value.providerId)
-	if (isArchived(provider.value)) return archivedModelProviderReference(model.value.providerId)
-
-	return { ok: true, value: model.value }
 }
 
 function scopesEqual(left: SecretBindingScope, right: SecretBindingScope): boolean {
@@ -1099,10 +1012,6 @@ function duplicateSecretBinding(
 
 function archivedSecretReference(secretId: SecretId): Result<never, ArchivedSecretReferenceError> {
 	return { ok: false, error: { type: 'archived-secret-reference', secretId } }
-}
-
-function archivedModelReference(modelId: ModelId): Result<never, ArchivedModelReferenceError> {
-	return { ok: false, error: { type: 'archived-model-reference', modelId } }
 }
 
 function archivedModelProviderReference(modelProviderId: ModelProviderId): Result<never, ArchivedModelProviderReferenceError> {

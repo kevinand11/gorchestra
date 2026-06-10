@@ -79,11 +79,14 @@ import type {
 	ArchivedModelReferenceError,
 	ArchivedSecretReferenceError,
 	CommandStubError,
+	DuplicateRepositoryTargetError,
 	DuplicateSecretBindingError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	NotArchivedError,
+	ProjectSourceTypeMismatchError,
 	ResourceNotFoundError,
+	SecretNotActiveError,
 	StorageOperationFailedError,
 } from './errors'
 import type {
@@ -244,9 +247,9 @@ export interface CoreCommands {
 	// Project / Repository config
 	createProject(input: CreateProjectInput, context: OperationContext): Promise<Result<Project, CreateProjectError>>
 	setProjectConfig(input: SetProjectConfigInput, context: OperationContext): Promise<Result<Project, SetProjectConfigError>>
-	/** Validates the Project and referenced Secret exist in Portfolio storage, then writes Repository config without calling GitHub. */
+	/** Validates the Source Control Project and referenced active Secret exist in Portfolio storage, then writes Repository config without calling GitHub. */
 	createRepository(input: CreateRepositoryInput, context: OperationContext): Promise<Result<Repository, CreateRepositoryError>>
-	/** Validates the Repository and referenced Secret exist in Portfolio storage, then writes Repository config without calling GitHub. */
+	/** Validates the Repository and referenced active Secret exist in Portfolio storage, then writes Repository config without calling GitHub. */
 	updateRepositoryConfig(
 		input: UpdateRepositoryConfigInput,
 		context: OperationContext,
@@ -325,13 +328,11 @@ export interface AbandonDeliveryResult {
 	action: Action
 }
 
-export type SetPortfolioConfigError =
-	| InvalidInputError
-	| InvalidCoreServiceOutputError
-	| StorageOperationFailedError
-	| ResourceNotFoundError
-	| ArchivedModelReferenceError
-	| ArchivedModelProviderReferenceError
+export type ConfigCommandReferenceError = ResourceNotFoundError | ArchivedModelReferenceError | ArchivedModelProviderReferenceError
+export type ConfigCommandStorageError = StorageOperationFailedError | InvalidCoreServiceOutputError
+export type RepositoryCommandReferenceError = ResourceNotFoundError | SecretNotActiveError | ProjectSourceTypeMismatchError
+
+export type SetPortfolioConfigError = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
 export type CreateModelProviderError =
 	| InvalidInputError
 	| InvalidCoreServiceOutputError
@@ -377,7 +378,7 @@ export type UnarchiveModelError =
 	| NotArchivedError
 export type PreflightModelError = CommandStubError
 export type PreflightRepositoryError = CommandStubError
-export type CreatePlanError = CommandStubError
+export type CreatePlanError = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
 export type AcceptPlanOutputError = CommandStubError
 export type RejectPlanOutputError = CommandStubError
 export type ConfigureDeliveryError = CommandStubError
@@ -389,10 +390,20 @@ export type AcceptRevisionOutputError = CommandStubError
 export type CloseRevisionGateError = CommandStubError
 export type ShipDeliveryError = CommandStubError
 export type AbandonDeliveryError = CommandStubError
-export type CreateProjectError = CommandStubError
-export type SetProjectConfigError = CommandStubError
-export type CreateRepositoryError = CommandStubError
-export type UpdateRepositoryConfigError = CommandStubError
+export type CreateProjectError = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
+export type SetProjectConfigError = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
+export type CreateRepositoryError =
+	| InvalidInputError
+	| RepositoryCommandReferenceError
+	| DuplicateRepositoryTargetError
+	| StorageOperationFailedError
+	| InvalidCoreServiceOutputError
+export type UpdateRepositoryConfigError =
+	| InvalidInputError
+	| RepositoryCommandReferenceError
+	| DuplicateRepositoryTargetError
+	| StorageOperationFailedError
+	| InvalidCoreServiceOutputError
 export type CreateSecretError = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
 export type ReplaceSecretError = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError | ResourceNotFoundError
 export type ArchiveSecretError =
