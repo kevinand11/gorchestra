@@ -1,4 +1,4 @@
-import { v, type Pipe } from 'valleyed'
+import { v, type Pipe, type PipeOutput } from 'valleyed'
 
 import {
 	createPlanInputPipe,
@@ -93,7 +93,9 @@ type StorageBackedCommandError =
 	| DuplicateRepositoryTargetError
 	| ProjectSourceTypeMismatchError
 
-type StorageResult<T> = Result<T, StorageOperationFailedError>
+type StorageBoundaryError = StorageOperationFailedError | InvalidCoreServiceOutputError
+
+type StorageResult<T> = Result<T, StorageBoundaryError>
 
 type CommandBoundary<TInput> = {
 	input: TInput
@@ -108,6 +110,115 @@ const implementedCommandPipes = {
 	updateRepositoryConfig: updateRepositoryConfigInputPipe,
 	createPlan: createPlanInputPipe,
 } satisfies Record<ImplementedCommandName, Pipe<unknown, unknown>>
+
+const storageStringPipe = v.string()
+const storageNonEmptyStringPipe = storageStringPipe.pipe(v.asTrimmed()).pipe(v.min(1, 'Expected a non-empty string.'))
+const storageProjectIdPipe = storageNonEmptyStringPipe.pipe(v.define<string, ProjectId>((value) => value as ProjectId))
+const storageRepositoryIdPipe = storageNonEmptyStringPipe.pipe(v.define<string, RepositoryId>((value) => value as RepositoryId))
+const storageSecretIdPipe = storageNonEmptyStringPipe.pipe(v.define<string, SecretId>((value) => value as SecretId))
+const storageModelProviderIdPipe = storageNonEmptyStringPipe.pipe(
+	v.define<string, ModelProvider['id']>((value) => value as ModelProvider['id']),
+)
+const storageModelIdPipe = storageNonEmptyStringPipe.pipe(v.define<string, ModelId>((value) => value as ModelId))
+const storageIsoDateTimePipe = storageStringPipe.pipe(v.define<string, IsoDateTime>((value) => value))
+const localActorRefStoragePipe = v.object({ type: storageStringPipe, id: storageStringPipe })
+const auditStampStoragePipe = v.discriminate(storageDiscriminator('origin'), {
+	local: v.object({
+		origin: v.eq('local'),
+		at: storageIsoDateTimePipe,
+		actor: localActorRefStoragePipe,
+		correlationId: v.nullable(storageStringPipe),
+	}),
+	imported: v.object({ origin: v.eq('imported'), at: storageIsoDateTimePipe }),
+}) as Pipe<unknown, AuditStamp>
+const archivePeriodStoragePipe = v.object({ archived: auditStampStoragePipe, unarchived: v.nullable(auditStampStoragePipe) }) as Pipe<
+	unknown,
+	ArchivePeriod
+>
+const deliveryWorkConfigStoragePipe = v.object({
+	maxActiveSliceSlots: v.number().pipe(v.int('Expected an integer.')).pipe(v.gte(1, 'Expected a number greater than or equal to 1.')),
+	maxCorrectionRetriesPerFailure: v
+		.number()
+		.pipe(v.int('Expected an integer.'))
+		.pipe(v.gte(0, 'Expected a number greater than or equal to 0.')),
+	modelTimeoutMs: v.number().pipe(v.int('Expected an integer.')).pipe(v.gte(1, 'Expected a number greater than or equal to 1.')),
+})
+const projectModelConfigStoragePipe = v.object({
+	planningModelId: v.nullable(storageModelIdPipe),
+	revisionPlanningModelId: v.nullable(storageModelIdPipe),
+	executionModelId: v.nullable(storageModelIdPipe),
+	revisionExecutionModelId: v.nullable(storageModelIdPipe),
+})
+const projectConfigStoragePipe = v.object({
+	model: v.nullable(projectModelConfigStoragePipe),
+	work: v.nullable(deliveryWorkConfigStoragePipe),
+})
+const projectConfigRecordStoragePipe = v.object({ configured: auditStampStoragePipe, value: v.nullable(projectConfigStoragePipe) }) as Pipe<
+	unknown,
+	ProjectConfigRecord
+>
+const projectSourceStoragePipe = v.discriminate(storageDiscriminator('type'), {
+	'source-control': v.object({ type: v.eq('source-control') }),
+}) as Pipe<unknown, Project['source']>
+const projectStoragePipe = v.object({
+	id: storageProjectIdPipe,
+	title: storageNonEmptyStringPipe,
+	source: projectSourceStoragePipe,
+	config: v.nullable(projectConfigRecordStoragePipe),
+	created: auditStampStoragePipe,
+}) as Pipe<unknown, Project>
+const repositoryConfigStoragePipe = v.discriminate(storageDiscriminator('provider'), {
+	github: v.object({
+		provider: v.eq('github'),
+		owner: storageNonEmptyStringPipe,
+		name: storageNonEmptyStringPipe,
+		secretId: storageSecretIdPipe,
+	}),
+}) as Pipe<unknown, RepositoryConfig>
+const repositoryStoragePipe = v.object({
+	id: storageRepositoryIdPipe,
+	projectId: storageProjectIdPipe,
+	config: repositoryConfigStoragePipe,
+	created: auditStampStoragePipe,
+}) as Pipe<unknown, Repository>
+const modelProviderProtocolStoragePipe = enumStorageStringPipe([
+	'anthropic-messages',
+	'openai-responses',
+	'openai-completions',
+	'google-generative-ai',
+] as const)
+const modelProviderAuthStoragePipe = v.discriminate(storageDiscriminator('type'), {
+	apiKey: v.object({ type: v.eq('apiKey'), secretId: storageSecretIdPipe }),
+})
+const modelProviderHeaderStoragePipe = v.object({ name: storageNonEmptyStringPipe, valueSecretId: storageSecretIdPipe })
+const modelProviderStoragePipe = v.object({
+	id: storageModelProviderIdPipe,
+	name: storageNonEmptyStringPipe,
+	protocol: modelProviderProtocolStoragePipe,
+	baseUrl: storageNonEmptyStringPipe,
+	auth: v.nullable(modelProviderAuthStoragePipe),
+	headers: v.array(modelProviderHeaderStoragePipe),
+	created: auditStampStoragePipe,
+	updated: v.nullable(auditStampStoragePipe),
+	archivePeriods: v.array(archivePeriodStoragePipe),
+}) as Pipe<unknown, ModelProvider>
+const modelStoragePipe = v.object({
+	id: storageModelIdPipe,
+	providerId: storageModelProviderIdPipe,
+	name: storageNonEmptyStringPipe,
+	providerModelId: storageNonEmptyStringPipe,
+	created: auditStampStoragePipe,
+	updated: v.nullable(auditStampStoragePipe),
+	archivePeriods: v.array(archivePeriodStoragePipe),
+}) as Pipe<unknown, Model>
+const secretStoragePipe = v.object({
+	id: storageSecretIdPipe,
+	name: storageNonEmptyStringPipe,
+	valueRef: storageNonEmptyStringPipe,
+	created: auditStampStoragePipe,
+	replaced: v.nullable(auditStampStoragePipe),
+	archivePeriods: v.array(archivePeriodStoragePipe),
+}) as Pipe<unknown, Secret>
 
 export function createStorageBackedCommands(options: OpenCoreOptions): ImplementedCommands {
 	return {
@@ -211,7 +322,7 @@ async function setProjectConfig(
 	if (!stampResult.ok) return stampResult
 
 	return withTransaction(options, async (tx) => {
-		const projectResult = await getRequired(tx, 'project', tx.projects, boundary.input.projectId)
+		const projectResult = await getRequired(tx, 'project', tx.projects, boundary.input.projectId, projectStoragePipe)
 		if (!projectResult.ok) return projectResult
 
 		const config = normalizeProjectConfigRecord(boundary.input.config, stampResult.value)
@@ -236,31 +347,28 @@ async function createRepository(
 	const idResult = nextId<RepositoryId>(options, 'repository')
 	if (!idResult.ok) return idResult
 
-	return withTransaction(
-		options,
-		async (tx): Promise<Result<Repository, Exclude<CreateRepositoryError, InvalidInputError | InvalidCoreServiceOutputError>>> => {
-			const projectValidation = await validateSourceControlProject(tx, boundary.input.projectId)
-			if (!projectValidation.ok) return projectValidation
+	return withTransaction(options, async (tx): Promise<Result<Repository, Exclude<CreateRepositoryError, InvalidInputError>>> => {
+		const projectValidation = await validateSourceControlProject(tx, boundary.input.projectId)
+		if (!projectValidation.ok) return projectValidation
 
-			const config = boundary.input.config as RepositoryConfig
-			const secretValidation = await validateActiveSecret(tx, config.secretId)
-			if (!secretValidation.ok) return secretValidation
+		const config = boundary.input.config as RepositoryConfig
+		const secretValidation = await validateActiveSecret(tx, config.secretId)
+		if (!secretValidation.ok) return secretValidation
 
-			const duplicateValidation = await validateUniqueRepositoryTarget(tx, boundary.input.projectId, config, null)
-			if (!duplicateValidation.ok) return duplicateValidation
+		const duplicateValidation = await validateUniqueRepositoryTarget(tx, boundary.input.projectId, config, null)
+		if (!duplicateValidation.ok) return duplicateValidation
 
-			const repository: Repository = {
-				id: idResult.value,
-				projectId: boundary.input.projectId,
-				config: normalizeRepositoryConfig(config),
-				created: stampResult.value,
-			}
-			const putResult = await putRecord(tx, 'repository', tx.repositories, repository.id, repository)
-			if (!putResult.ok) return putResult
+		const repository: Repository = {
+			id: idResult.value,
+			projectId: boundary.input.projectId,
+			config: normalizeRepositoryConfig(config),
+			created: stampResult.value,
+		}
+		const putResult = await putRecord(tx, 'repository', tx.repositories, repository.id, repository)
+		if (!putResult.ok) return putResult
 
-			return { ok: true, value: repository }
-		},
-	)
+		return { ok: true, value: repository }
+	})
 }
 
 async function updateRepositoryConfig(
@@ -268,7 +376,7 @@ async function updateRepositoryConfig(
 	boundary: CommandBoundary<UpdateRepositoryConfigInput>,
 ): Promise<Result<Repository, UpdateRepositoryConfigError>> {
 	return withTransaction(options, async (tx): Promise<Result<Repository, Exclude<UpdateRepositoryConfigError, InvalidInputError>>> => {
-		const repositoryResult = await getRequired(tx, 'repository', tx.repositories, boundary.input.repositoryId)
+		const repositoryResult = await getRequired(tx, 'repository', tx.repositories, boundary.input.repositoryId, repositoryStoragePipe)
 		if (!repositoryResult.ok) return repositoryResult
 
 		const projectValidation = await validateSourceControlProject(tx, repositoryResult.value.projectId)
@@ -302,7 +410,7 @@ async function createPlan(options: OpenCoreOptions, boundary: CommandBoundary<Cr
 	if (!idResult.ok) return idResult
 
 	return withTransaction(options, async (tx) => {
-		const projectResult = await getRequired(tx, 'project', tx.projects, boundary.input.projectId)
+		const projectResult = await getRequired(tx, 'project', tx.projects, boundary.input.projectId, projectStoragePipe)
 		if (!projectResult.ok) return projectResult
 
 		const config = normalizePlanConfigRecord(boundary.input.config, stampResult.value)
@@ -354,9 +462,19 @@ async function getRecord<TRecord, TId extends string>(
 	resource: CoreResource,
 	repository: RepositoryTable<TRecord, TId>,
 	id: TId,
+	recordPipe: Pipe<unknown, TRecord>,
 ): Promise<StorageResult<TRecord | null>> {
 	try {
-		return { ok: true, value: await repository.get(id) }
+		const record = await repository.get(id)
+		if (record === null) return { ok: true, value: null }
+
+		const validation = validateStorageOutput(recordPipe, record, `get:${resource}`)
+		if (!validation.ok) return validation
+
+		const idValidation = validateStorageOutput(v.object({ id: v.eq(id) }), validation.value, `get:${resource}`)
+		if (!idValidation.ok) return idValidation
+
+		return { ok: true, value: validation.value }
 	} catch {
 		return { ok: false, error: storageFailure({ type: 'get', resource, id }) }
 	}
@@ -367,8 +485,9 @@ async function getRequired<TRecord, TId extends string>(
 	resource: CoreResource,
 	repository: RepositoryTable<TRecord, TId>,
 	id: TId,
-): Promise<Result<TRecord, StorageOperationFailedError | ResourceNotFoundError>> {
-	const recordResult = await getRecord(resource, repository, id)
+	recordPipe: Pipe<unknown, TRecord>,
+): Promise<Result<TRecord, StorageBoundaryError | ResourceNotFoundError>> {
+	const recordResult = await getRecord(resource, repository, id, recordPipe)
 	if (!recordResult.ok) return recordResult
 	if (recordResult.value === null) return { ok: false, error: { type: 'not-found', resource, id } }
 
@@ -393,9 +512,14 @@ async function putRecord<TRecord, TId extends string>(
 async function listRecords<TRecord>(
 	resource: CoreResource,
 	repository: RepositoryTable<TRecord, string>,
+	recordPipe: Pipe<unknown, TRecord>,
 ): Promise<StorageResult<TRecord[]>> {
 	try {
-		return { ok: true, value: await repository.list() }
+		const records = await repository.list()
+		const validation = validateStorageOutput(v.array(recordPipe), records, `list:${resource}`)
+		if (!validation.ok) return validation
+
+		return { ok: true, value: validation.value }
 	} catch {
 		return { ok: false, error: storageFailure({ type: 'list', resource }) }
 	}
@@ -406,13 +530,19 @@ async function validateSelectableModels(
 	modelIds: ModelId[],
 ): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError>> {
 	for (const modelId of uniqueIds(modelIds)) {
-		const modelResult = await getRequired(tx, 'model', tx.models, modelId)
+		const modelResult = await getRequired(tx, 'model', tx.models, modelId, modelStoragePipe)
 		if (!modelResult.ok) return modelResult
 
 		const modelSelectability = validateActiveModel(modelResult.value)
 		if (!modelSelectability.ok) return modelSelectability
 
-		const providerResult = await getRequired(tx, 'model-provider', tx.modelProviders, modelResult.value.providerId)
+		const providerResult = await getRequired(
+			tx,
+			'model-provider',
+			tx.modelProviders,
+			modelResult.value.providerId,
+			modelProviderStoragePipe,
+		)
 		if (!providerResult.ok) return providerResult
 
 		const providerSelectability = validateActiveModelProvider(modelId, providerResult.value)
@@ -441,8 +571,8 @@ function validateActiveModelProvider(modelId: ModelId, provider: ModelProvider):
 async function validateSourceControlProject(
 	tx: CoreStorageTransaction,
 	projectId: ProjectId,
-): Promise<Result<Project, StorageOperationFailedError | ResourceNotFoundError | ProjectSourceTypeMismatchError>> {
-	const projectResult = await getRequired(tx, 'project', tx.projects, projectId)
+): Promise<Result<Project, StorageBoundaryError | ResourceNotFoundError | ProjectSourceTypeMismatchError>> {
+	const projectResult = await getRequired(tx, 'project', tx.projects, projectId, projectStoragePipe)
 	if (!projectResult.ok) return projectResult
 	if (projectResult.value.source.type !== 'source-control') {
 		return {
@@ -462,8 +592,8 @@ async function validateSourceControlProject(
 async function validateActiveSecret(
 	tx: CoreStorageTransaction,
 	secretId: SecretId,
-): Promise<Result<Secret, StorageOperationFailedError | ResourceNotFoundError | SecretNotActiveError>> {
-	const secretResult = await getRequired(tx, 'secret', tx.secrets, secretId)
+): Promise<Result<Secret, StorageBoundaryError | ResourceNotFoundError | SecretNotActiveError>> {
+	const secretResult = await getRequired(tx, 'secret', tx.secrets, secretId, secretStoragePipe)
 	if (!secretResult.ok) return secretResult
 	if (isArchived(secretResult.value.archivePeriods)) {
 		return { ok: false, error: { type: 'secret-not-active', secretId } }
@@ -477,8 +607,8 @@ async function validateUniqueRepositoryTarget(
 	projectId: ProjectId,
 	config: RepositoryConfig,
 	excludeRepositoryId: RepositoryId | null,
-): Promise<Result<void, StorageOperationFailedError | DuplicateRepositoryTargetError>> {
-	const repositoriesResult = await listRecords('repository', tx.repositories)
+): Promise<Result<void, StorageBoundaryError | DuplicateRepositoryTargetError>> {
+	const repositoriesResult = await listRecords('repository', tx.repositories, repositoryStoragePipe)
 	if (!repositoriesResult.ok) return repositoriesResult
 
 	const target = repositoryTargetKey(config)
@@ -629,7 +759,13 @@ function auditStamp(options: OpenCoreOptions, context: OperationContext): Result
 }
 
 function nowIso(options: OpenCoreOptions): Result<IsoDateTime, InvalidCoreServiceOutputError> {
-	const output = options.clock.now()
+	let output: unknown
+	try {
+		output = options.clock.now()
+	} catch {
+		output = undefined
+	}
+
 	const validation = validateCoreServiceOutput(coreClockOutputPipe, output, 'clock', 'now')
 	if (!validation.ok) return validation
 
@@ -637,7 +773,13 @@ function nowIso(options: OpenCoreOptions): Result<IsoDateTime, InvalidCoreServic
 }
 
 function nextId<TId extends string>(options: OpenCoreOptions, brand: string): Result<TId, InvalidCoreServiceOutputError> {
-	const output = options.idGenerator.next(brand)
+	let output: unknown
+	try {
+		output = options.idGenerator.next(brand)
+	} catch {
+		output = undefined
+	}
+
 	const validation = validateCoreServiceOutput(coreIdOutputPipe, output, 'idGenerator', 'next')
 	if (!validation.ok) return validation
 
@@ -652,6 +794,27 @@ function isArchived(archivePeriods: ArchivePeriod[]): boolean {
 
 function uniqueIds(ids: ModelId[]): ModelId[] {
 	return [...new Set(ids)]
+}
+
+function validateStorageOutput<TPipe extends Pipe<unknown, unknown>>(
+	pipe: TPipe,
+	value: unknown,
+	operation: string,
+): Result<PipeOutput<TPipe>, InvalidCoreServiceOutputError> {
+	return validateCoreServiceOutput(pipe, value, 'storage', operation)
+}
+
+function enumStorageStringPipe<const Values extends readonly [string, ...string[]]>(values: Values): Pipe<unknown, Values[number]> {
+	const validValues = new Set<string>(values)
+
+	return v
+		.string()
+		.pipe(v.custom((value) => validValues.has(value), `Expected one of: ${values.join(', ')}.`))
+		.pipe(v.define<string, Values[number]>((value) => value as Values[number]))
+}
+
+function storageDiscriminator(field: string): (value: Record<string, unknown> | null | undefined) => PropertyKey {
+	return (value) => value?.[field] as PropertyKey
 }
 
 function storageFailure(operation: CoreStorageOperation): StorageOperationFailedError {

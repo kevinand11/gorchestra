@@ -350,6 +350,7 @@ export type UpdateRepositoryConfigError =
 	| RepositoryCommandReferenceError
 	| DuplicateRepositoryTargetError
 	| StorageOperationFailedError
+	| InvalidCoreServiceOutputError
 export type CreateSecretError = CommandStubError
 export type ReplaceSecretError = CommandStubError
 export type BindSecretError = CommandStubError

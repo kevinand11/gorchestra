@@ -321,6 +321,109 @@ describe('storage-backed setup commands', () => {
 			error: { type: 'storage-operation-failed', operation: { type: 'get', resource: 'project', id: 'project-1' } },
 		})
 	})
+
+	it('returns invalid-core-service-output when command runtime services fail', async () => {
+		const clockStorage = createMemoryStorage()
+		const clockCore = openCore({
+			storage: clockStorage.service,
+			secrets,
+			sandbox,
+			clock: {
+				now: () => {
+					throw new Error('clock failed')
+				},
+			},
+			idGenerator: { next: (brand: string) => `${brand}-1` },
+		})
+		if (!clockCore.ok) throw new Error('Expected clock core to open')
+
+		const clockResult = await clockCore.value.commands.createProject(
+			{ title: 'Project', source: { type: 'source-control' }, config: null },
+			context,
+		)
+		expect(clockResult).toMatchObject({
+			ok: false,
+			error: { type: 'invalid-core-service-output', service: 'clock', operation: 'now' },
+		})
+		expect(clockStorage.transactionCalls).toBe(0)
+
+		const idStorage = createMemoryStorage()
+		const idCore = openCore({
+			storage: idStorage.service,
+			secrets,
+			sandbox,
+			clock: { now: () => new Date('2026-06-10T12:00:00.000Z') },
+			idGenerator: {
+				next: () => {
+					throw new Error('id failed')
+				},
+			},
+		})
+		if (!idCore.ok) throw new Error('Expected id core to open')
+
+		const idResult = await idCore.value.commands.createProject(
+			{ title: 'Project', source: { type: 'source-control' }, config: null },
+			context,
+		)
+		expect(idResult).toMatchObject({
+			ok: false,
+			error: { type: 'invalid-core-service-output', service: 'idGenerator', operation: 'next' },
+		})
+		expect(idStorage.transactionCalls).toBe(0)
+	})
+
+	it('returns invalid-core-service-output for malformed storage records read through get', async () => {
+		const storage = createMemoryStorage()
+		storage.tx.projects.records.set('project-1', { id: 'project-1' } as Project)
+		const core = openTestCore(storage.service)
+
+		const result = await core.commands.createPlan({ projectId: 'project-1' as ProjectId, title: 'Plan', config: null }, context)
+
+		expect(result).toMatchObject({
+			ok: false,
+			error: { type: 'invalid-core-service-output', service: 'storage', operation: 'get:project' },
+		})
+		expect(storage.tx.plans.records.size).toBe(0)
+	})
+
+	it('returns invalid-core-service-output when storage get returns a record with a mismatched id', async () => {
+		const storage = createMemoryStorage()
+		seedProject(storage.tx, 'project-1')
+		const project = storage.tx.projects.records.get('project-1')
+		if (project === undefined) throw new Error('Expected seeded project')
+		storage.tx.projects.records.set('project-1', { ...project, id: 'project-2' as ProjectId })
+		const core = openTestCore(storage.service)
+
+		const result = await core.commands.createPlan({ projectId: 'project-1' as ProjectId, title: 'Plan', config: null }, context)
+
+		expect(result).toMatchObject({
+			ok: false,
+			error: { type: 'invalid-core-service-output', service: 'storage', operation: 'get:project' },
+		})
+		expect(storage.tx.plans.records.size).toBe(0)
+	})
+
+	it('returns invalid-core-service-output for malformed storage records read through list', async () => {
+		const storage = createMemoryStorage()
+		seedProject(storage.tx, 'project-1')
+		seedSecret(storage.tx, 'secret-1')
+		storage.tx.repositories.records.set('repository-malformed', { id: 'repository-malformed' } as Repository)
+		const core = openTestCore(storage.service)
+
+		const result = await core.commands.createRepository(
+			{
+				projectId: 'project-1' as ProjectId,
+				config: { provider: 'github', owner: 'octo', name: 'repo', secretId: 'secret-1' as SecretId },
+			},
+			context,
+		)
+
+		expect(result).toMatchObject({
+			ok: false,
+			error: { type: 'invalid-core-service-output', service: 'storage', operation: 'list:repository' },
+		})
+		expect(storage.tx.repositories.records.has('repository-1')).toBe(false)
+	})
 })
 
 function openTestCore(storage: CoreStorageService) {
