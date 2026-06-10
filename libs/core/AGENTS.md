@@ -8,7 +8,7 @@ The `libs/core/` package is the private Core package source surface for reusable
 
 - `src/model.ts` owns the current Core package domain model types.
 - `src/api.ts` owns the public Core API barrel.
-- `src/commands.ts`, `src/queries.ts`, `src/core.ts`, `src/services.ts`, `src/errors.ts`, `src/boundary-pipes.ts`, `src/validation.ts`, and `src/result.ts` own the split Core API concerns, Core Services/runtime boundary direction, validation, and stubs.
+- `src/commands.ts`, `src/queries.ts`, `src/core.ts`, `src/services.ts`, `src/errors.ts`, `src/boundary-pipes.ts`, `src/validation.ts`, and `src/result.ts` own the split Core API concerns, Core Services/runtime boundary direction, validation, implemented Secret commands, and remaining stubs.
 - `src/index.ts` owns package exports.
 - `vitest.config.ts` owns package-local test discovery, including source tests through `import.meta.vitest`.
 
@@ -21,6 +21,7 @@ The `libs/core/` package is the private Core package source surface for reusable
 - Durable Core docs/ADRs define Core-owned provider behavior and consumer-provided Core Services; do not add new consumer-owned behavior ports.
 - Core-owned provider/runtime behavior and Core Service calls that perform external actions should receive resolved values needed to perform the action so service/provider code does not infer authoritative context itself.
 - Opened Core exposes top-level `preflight()` for required Core Service readiness; keep it separate from command/query APIs and do not include optional logger/event checks.
+- Storage-backed Secret and Secret Binding mutations must preserve Archive Period history and enforce duplicate exact binding scope/environment names across archived and active bindings.
 
 ## Work Guidance
 
