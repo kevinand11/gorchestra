@@ -27,7 +27,6 @@ import type {
 	DeliveryWorkState,
 	ExternalOperationEvidence,
 	FetchedFeedback,
-	IsoDateTime,
 	Link,
 	LinkId,
 	LocalActorRef,
@@ -56,13 +55,11 @@ import type {
 	RepositoryId,
 	ReviewSurface,
 	ReviewSurfaceId,
-	ReviewSurfaceScope,
 	Revision,
 	RevisionGate,
 	RevisionGateId,
 	RevisionId,
 	RevisionOutputProposal,
-	RevisionScope,
 	Secret,
 	SecretBinding,
 	SecretBindingId,
@@ -70,6 +67,7 @@ import type {
 	SecretId,
 	Slice,
 	SliceArtifact,
+	SliceWorkState,
 	SliceArtifactId,
 	SliceId,
 	ValidationEvidence,
@@ -159,7 +157,7 @@ export interface OperationContext {
 // Result / errors
 // -----------------------------------------------------------------------------
 
-export type Result<T, E = CoreError> = { ok: true; value: T } | { ok: false; error: E }
+export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E }
 
 export type CoreInputBoundary = 'construction' | 'snapshot-import' | 'command' | 'query'
 
@@ -179,27 +177,142 @@ export type OpenCoreError = InvalidInputError
 
 export type DeliveryWorkStateType = DeliveryWorkState['type']
 
+export type CoreResource =
+	| 'portfolio-config'
+	| 'project'
+	| 'repository'
+	| 'model-provider'
+	| 'model'
+	| 'plan'
+	| 'delivery'
+	| 'slice'
+	| 'link'
+	| 'memory'
+	| 'delivery-artifact'
+	| 'slice-artifact'
+	| 'action'
+	| 'agent-run'
+	| 'review-surface'
+	| 'revision-gate'
+	| 'revision'
+	| 'secret'
+	| 'secret-binding'
+
+export interface ResourceNotFoundError {
+	type: 'not-found'
+	resource: CoreResource
+	id: string
+}
+
+export type CoreStorageOperation =
+	| { type: 'get'; resource: CoreResource; id: string | null }
+	| { type: 'put'; resource: CoreResource; id: string | null }
+	| { type: 'list'; resource: CoreResource }
+
+export interface StorageOperationFailedError {
+	type: 'storage-operation-failed'
+	operation: CoreStorageOperation
+}
+
+export interface InvariantViolationError {
+	type: 'invariant-violation'
+	message: string
+}
+
+export interface ModelPreflightFailedError {
+	type: 'model-preflight-failed'
+	modelId: ModelId
+	evidence: ValidationEvidence
+}
+
+export interface DeliveryWorkStateMismatchError {
+	type: 'delivery-work-state-mismatch'
+	deliveryId: DeliveryId
+	expected: DeliveryWorkStateType[]
+	actual: DeliveryWorkState
+}
+
+export interface RevisionGateClosedError {
+	type: 'revision-gate-closed'
+	revisionGateId: RevisionGateId
+}
+
+export interface AgentRunModelUnresolvedError {
+	type: 'agent-run-model-unresolved'
+	purpose: AgentRunPurpose
+}
+
+export interface ArchivedModelError {
+	type: 'archived-model'
+	modelId: ModelId
+}
+
+export interface ArchivedModelProviderError {
+	type: 'archived-model-provider'
+	modelProviderId: ModelProviderId
+}
+
+export interface ExternalOperationFailedError {
+	type: 'external-operation-failed'
+	evidence: ExternalOperationEvidence
+}
+
 /**
  * invariant-violation is reserved for impossible/corrupt states.
- * Expected domain failures should use specific CoreError variants.
+ * Expected domain failures should use specific operation error unions.
  */
 export type CoreError =
 	| InvalidInputError
+	| InvalidCoreServiceOutputError
 	| NotImplementedError
-	| { type: 'not-found'; resource: string; id: string }
-	| { type: 'invariant-violation'; message: string }
-	| { type: 'model-preflight-failed'; modelId: ModelId; evidence: ValidationEvidence }
-	| {
-			type: 'delivery-work-state-mismatch'
-			deliveryId: DeliveryId
-			expected: DeliveryWorkStateType[]
-			actual: DeliveryWorkState
-	  }
-	| { type: 'revision-gate-closed'; revisionGateId: RevisionGateId }
-	| { type: 'agent-run-model-unresolved'; purpose: AgentRunPurpose }
-	| { type: 'archived-model'; modelId: ModelId }
-	| { type: 'archived-model-provider'; modelProviderId: ModelProviderId }
-	| { type: 'external-operation-failed'; evidence: ExternalOperationEvidence }
+	| ResourceNotFoundError
+	| StorageOperationFailedError
+	| InvariantViolationError
+	| ModelPreflightFailedError
+	| DeliveryWorkStateMismatchError
+	| RevisionGateClosedError
+	| AgentRunModelUnresolvedError
+	| ArchivedModelError
+	| ArchivedModelProviderError
+	| ExternalOperationFailedError
+
+export type CommandStubError = InvalidInputError | NotImplementedError
+export type WorkStateQueryError = InvalidInputError | NotImplementedError
+
+export type SetPortfolioConfigError = CommandStubError
+export type CreateModelProviderError = CommandStubError
+export type UpdateModelProviderError = CommandStubError
+export type ArchiveModelProviderError = CommandStubError
+export type UnarchiveModelProviderError = CommandStubError
+export type CreateModelError = CommandStubError
+export type UpdateModelError = CommandStubError
+export type ArchiveModelError = CommandStubError
+export type UnarchiveModelError = CommandStubError
+export type PreflightModelError = CommandStubError
+export type PreflightRepositoryError = CommandStubError
+export type CreatePlanError = CommandStubError
+export type AcceptPlanOutputError = CommandStubError
+export type RejectPlanOutputError = CommandStubError
+export type ConfigureDeliveryError = CommandStubError
+export type QueueDeliveryError = CommandStubError
+export type RunDeliveryWorkError = CommandStubError
+export type RetryDeliveryPreflightError = CommandStubError
+export type OpenRevisionGateError = CommandStubError
+export type AcceptRevisionOutputError = CommandStubError
+export type CloseRevisionGateError = CommandStubError
+export type ShipDeliveryError = CommandStubError
+export type AbandonDeliveryError = CommandStubError
+export type CreateProjectError = CommandStubError
+export type SetProjectConfigError = CommandStubError
+export type CreateRepositoryError = CommandStubError
+export type UpdateRepositoryConfigError = CommandStubError
+export type CreateSecretError = CommandStubError
+export type ReplaceSecretError = CommandStubError
+export type BindSecretError = CommandStubError
+export type ArchiveSecretBindingError = CommandStubError
+export type ExportSnapshotError = CommandStubError
+export type GetDeliveryWorkStateError = WorkStateQueryError
+export type GetSliceWorkStateError = WorkStateQueryError
 
 // -----------------------------------------------------------------------------
 // Consumer -> core commands
@@ -207,24 +320,45 @@ export type CoreError =
 
 export interface CoreCommands {
 	// Portfolio config
-	setPortfolioConfig(input: SetPortfolioConfigInput, context: OperationContext): Promise<Result<PortfolioConfigRecord>>
+	setPortfolioConfig(
+		input: SetPortfolioConfigInput,
+		context: OperationContext,
+	): Promise<Result<PortfolioConfigRecord, SetPortfolioConfigError>>
 
 	// Model Providers / Models
-	createModelProvider(input: CreateModelProviderInput, context: OperationContext): Promise<Result<ModelProvider>>
-	updateModelProvider(input: UpdateModelProviderInput, context: OperationContext): Promise<Result<ModelProvider>>
-	archiveModelProvider(input: ArchiveModelProviderInput, context: OperationContext): Promise<Result<ModelProvider>>
-	unarchiveModelProvider(input: UnarchiveModelProviderInput, context: OperationContext): Promise<Result<ModelProvider>>
-	createModel(input: CreateModelInput, context: OperationContext): Promise<Result<Model>>
-	updateModel(input: UpdateModelInput, context: OperationContext): Promise<Result<Model>>
-	archiveModel(input: ArchiveModelInput, context: OperationContext): Promise<Result<Model>>
-	unarchiveModel(input: UnarchiveModelInput, context: OperationContext): Promise<Result<Model>>
-	preflightModel(input: PreflightModelInput, context: OperationContext): Promise<Result<ValidationEvidence>>
-	preflightRepository(input: PreflightRepositoryInput, context: OperationContext): Promise<Result<ValidationEvidence>>
+	createModelProvider(
+		input: CreateModelProviderInput,
+		context: OperationContext,
+	): Promise<Result<ModelProvider, CreateModelProviderError>>
+	updateModelProvider(
+		input: UpdateModelProviderInput,
+		context: OperationContext,
+	): Promise<Result<ModelProvider, UpdateModelProviderError>>
+	archiveModelProvider(
+		input: ArchiveModelProviderInput,
+		context: OperationContext,
+	): Promise<Result<ModelProvider, ArchiveModelProviderError>>
+	unarchiveModelProvider(
+		input: UnarchiveModelProviderInput,
+		context: OperationContext,
+	): Promise<Result<ModelProvider, UnarchiveModelProviderError>>
+	createModel(input: CreateModelInput, context: OperationContext): Promise<Result<Model, CreateModelError>>
+	updateModel(input: UpdateModelInput, context: OperationContext): Promise<Result<Model, UpdateModelError>>
+	archiveModel(input: ArchiveModelInput, context: OperationContext): Promise<Result<Model, ArchiveModelError>>
+	unarchiveModel(input: UnarchiveModelInput, context: OperationContext): Promise<Result<Model, UnarchiveModelError>>
+	preflightModel(input: PreflightModelInput, context: OperationContext): Promise<Result<ValidationEvidence, PreflightModelError>>
+	preflightRepository(
+		input: PreflightRepositoryInput,
+		context: OperationContext,
+	): Promise<Result<ValidationEvidence, PreflightRepositoryError>>
 
 	// Planning
-	createPlan(input: CreatePlanInput, context: OperationContext): Promise<Result<Plan>>
-	acceptPlanOutput(input: AcceptPlanOutputInput, context: OperationContext): Promise<Result<AcceptPlanOutputResult>>
-	rejectPlanOutput(input: RejectPlanOutputInput, context: OperationContext): Promise<Result<void>>
+	createPlan(input: CreatePlanInput, context: OperationContext): Promise<Result<Plan, CreatePlanError>>
+	acceptPlanOutput(
+		input: AcceptPlanOutputInput,
+		context: OperationContext,
+	): Promise<Result<AcceptPlanOutputResult, AcceptPlanOutputError>>
+	rejectPlanOutput(input: RejectPlanOutputInput, context: OperationContext): Promise<Result<void, RejectPlanOutputError>>
 
 	// Delivery execution
 	/**
@@ -234,10 +368,10 @@ export interface CoreCommands {
 	 * - other consumer-authorized lifecycle/config operations record domain-named AuditStamp fields instead of Actions.
 	 */
 	/** Requires Delivery Work State not closed. Does not clear preflight-failed. */
-	configureDelivery(input: ConfigureDeliveryInput, context: OperationContext): Promise<Result<Delivery>>
+	configureDelivery(input: ConfigureDeliveryInput, context: OperationContext): Promise<Result<Delivery, ConfigureDeliveryError>>
 
 	/** Requires Delivery Work State unqueued; records exactly one queue-delivery Action; duplicate calls fail with delivery-work-state-mismatch. */
-	queueDelivery(input: QueueDeliveryInput, context: OperationContext): Promise<Result<QueueDeliveryResult>>
+	queueDelivery(input: QueueDeliveryInput, context: OperationContext): Promise<Result<QueueDeliveryResult, QueueDeliveryError>>
 
 	/**
 	 * Performs one bounded scheduler step for one available processing slot:
@@ -281,7 +415,7 @@ export interface CoreCommands {
 	 * scheduling loops should skip non-schedulable Deliveries. delivery-operation-failed, delivery-validation-failed, and delivery-review-failed are not schedulable until explicit recovery behavior exists. Artifact validation
 	 * failures are recorded as validate-* Actions with passed false.
 	 */
-	runDeliveryWork(input: RunDeliveryWorkInput, context: OperationContext): Promise<Result<RunDeliveryWorkResult>>
+	runDeliveryWork(input: RunDeliveryWorkInput, context: OperationContext): Promise<Result<RunDeliveryWorkResult, RunDeliveryWorkError>>
 
 	/**
 	 * Explicitly retries Delivery preflight for a Delivery whose Delivery Work
@@ -291,35 +425,47 @@ export interface CoreCommands {
 	 * ordering. Returns delivery-work-state-mismatch if the Delivery Work State is not
 	 * preflight-failed.
 	 */
-	retryDeliveryPreflight(input: RetryDeliveryPreflightInput, context: OperationContext): Promise<Result<RetryDeliveryPreflightResult>>
+	retryDeliveryPreflight(
+		input: RetryDeliveryPreflightInput,
+		context: OperationContext,
+	): Promise<Result<RetryDeliveryPreflightResult, RetryDeliveryPreflightError>>
 
 	// Revision
-	openRevisionGate(input: OpenRevisionGateInput, context: OperationContext): Promise<Result<OpenRevisionGateResult>>
-	acceptRevisionOutput(input: AcceptRevisionOutputInput, context: OperationContext): Promise<Result<AcceptRevisionOutputResult>>
-	closeRevisionGate(input: CloseRevisionGateInput, context: OperationContext): Promise<Result<void>>
+	openRevisionGate(
+		input: OpenRevisionGateInput,
+		context: OperationContext,
+	): Promise<Result<OpenRevisionGateResult, OpenRevisionGateError>>
+	acceptRevisionOutput(
+		input: AcceptRevisionOutputInput,
+		context: OperationContext,
+	): Promise<Result<AcceptRevisionOutputResult, AcceptRevisionOutputError>>
+	closeRevisionGate(input: CloseRevisionGateInput, context: OperationContext): Promise<Result<void, CloseRevisionGateError>>
 
 	// Delivery close operations
 	/** Requires Delivery Work State ready-to-ship; records exactly one ship-delivery Action without post-merge validation in v1; duplicate calls fail with delivery-work-state-mismatch. */
-	shipDelivery(input: ShipDeliveryInput, context: OperationContext): Promise<Result<ShipDeliveryResult>>
+	shipDelivery(input: ShipDeliveryInput, context: OperationContext): Promise<Result<ShipDeliveryResult, ShipDeliveryError>>
 	/** Requires Delivery Work State not closed; records exactly one abandon-delivery Action after required cleanup evidence is embedded; duplicate calls fail with delivery-work-state-mismatch. */
-	abandonDelivery(input: AbandonDeliveryInput, context: OperationContext): Promise<Result<AbandonDeliveryResult>>
+	abandonDelivery(input: AbandonDeliveryInput, context: OperationContext): Promise<Result<AbandonDeliveryResult, AbandonDeliveryError>>
 
 	// Project / Repository config
-	createProject(input: CreateProjectInput, context: OperationContext): Promise<Result<Project>>
-	setProjectConfig(input: SetProjectConfigInput, context: OperationContext): Promise<Result<Project>>
+	createProject(input: CreateProjectInput, context: OperationContext): Promise<Result<Project, CreateProjectError>>
+	setProjectConfig(input: SetProjectConfigInput, context: OperationContext): Promise<Result<Project, SetProjectConfigError>>
 	/** Validates the Project and referenced Secret exist in Portfolio storage, then writes Repository config without calling GitHub. */
-	createRepository(input: CreateRepositoryInput, context: OperationContext): Promise<Result<Repository>>
+	createRepository(input: CreateRepositoryInput, context: OperationContext): Promise<Result<Repository, CreateRepositoryError>>
 	/** Validates the Repository and referenced Secret exist in Portfolio storage, then writes Repository config without calling GitHub. */
-	updateRepositoryConfig(input: UpdateRepositoryConfigInput, context: OperationContext): Promise<Result<Repository>>
+	updateRepositoryConfig(
+		input: UpdateRepositoryConfigInput,
+		context: OperationContext,
+	): Promise<Result<Repository, UpdateRepositoryConfigError>>
 
 	// Secrets
-	createSecret(input: CreateSecretInput, context: OperationContext): Promise<Result<Secret>>
-	replaceSecret(input: ReplaceSecretInput, context: OperationContext): Promise<Result<Secret>>
-	bindSecret(input: BindSecretInput, context: OperationContext): Promise<Result<SecretBinding>>
-	archiveSecretBinding(input: ArchiveSecretBindingInput, context: OperationContext): Promise<Result<void>>
+	createSecret(input: CreateSecretInput, context: OperationContext): Promise<Result<Secret, CreateSecretError>>
+	replaceSecret(input: ReplaceSecretInput, context: OperationContext): Promise<Result<Secret, ReplaceSecretError>>
+	bindSecret(input: BindSecretInput, context: OperationContext): Promise<Result<SecretBinding, BindSecretError>>
+	archiveSecretBinding(input: ArchiveSecretBindingInput, context: OperationContext): Promise<Result<void, ArchiveSecretBindingError>>
 
 	// Snapshot
-	exportSnapshot(input: ExportSnapshotInput, context: OperationContext): Promise<Result<PortfolioSnapshotManifest>>
+	exportSnapshot(input: ExportSnapshotInput, context: OperationContext): Promise<Result<PortfolioSnapshotManifest, ExportSnapshotError>>
 }
 
 export interface SetPortfolioConfigInput {
@@ -579,72 +725,8 @@ export async function importSnapshot(
 // -----------------------------------------------------------------------------
 
 export interface CoreQueries {
-	getPortfolioConfig(): Promise<Result<PortfolioConfigRecord | null>>
-
-	getProject(id: ProjectId): Promise<Result<Project | null>>
-	listProjects(): Promise<Result<Project[]>>
-
-	getRepository(id: RepositoryId): Promise<Result<Repository | null>>
-	listRepositories(filter: RepositoryFilter | null): Promise<Result<Repository[]>>
-
-	getModelProvider(id: ModelProviderId): Promise<Result<ModelProvider | null>>
-	listModelProviders(filter: ModelProviderFilter | null): Promise<Result<ModelProvider[]>>
-
-	getModel(id: ModelId): Promise<Result<Model | null>>
-	listModels(filter: ModelFilter | null): Promise<Result<Model[]>>
-
-	getPlan(id: PlanId): Promise<Result<Plan | null>>
-	listPlans(filter: PlanFilter | null): Promise<Result<Plan[]>>
-
-	getDelivery(id: DeliveryId): Promise<Result<Delivery | null>>
-	listDeliveries(filter: DeliveryFilter | null): Promise<Result<Delivery[]>>
-
-	getSlice(id: SliceId): Promise<Result<Slice | null>>
-	listSlices(deliveryId: DeliveryId): Promise<Result<Slice[]>>
-
-	getReviewSurface(id: ReviewSurfaceId): Promise<Result<ReviewSurface | null>>
-	listReviewSurfaces(scope: ReviewSurfaceScope): Promise<Result<ReviewSurface[]>>
-	getCurrentReviewSurface(scope: ReviewSurfaceScope): Promise<Result<ReviewSurface | null>>
-
-	getRevision(id: RevisionId): Promise<Result<Revision | null>>
-	listRevisions(scope: RevisionScope): Promise<Result<Revision[]>>
-
-	getTimeline(filter: TimelineFilter | null): Promise<Result<TimelineEvent[]>>
-}
-
-export interface RepositoryFilter {
-	projectId: ProjectId | null
-}
-
-export interface ModelProviderFilter {
-	archived: boolean | null
-}
-
-export interface ModelFilter {
-	providerId: ModelProviderId | null
-	selectable: boolean | null
-}
-
-export interface PlanFilter {
-	projectId: ProjectId | null
-}
-
-export interface DeliveryFilter {
-	projectId: ProjectId | null
-	closed: 'open' | 'shipped' | 'abandoned' | null
-}
-
-export interface TimelineFilter {
-	deliveryId: DeliveryId | null
-	sliceId: SliceId | null
-	since: IsoDateTime | null
-	until: IsoDateTime | null
-}
-
-export interface TimelineEvent {
-	occurredAt: IsoDateTime
-	eventType: string
-	summary: string
+	getDeliveryWorkState(deliveryId: DeliveryId): Promise<Result<DeliveryWorkState, GetDeliveryWorkStateError>>
+	getSliceWorkState(sliceId: SliceId): Promise<Result<SliceWorkState, GetSliceWorkStateError>>
 }
 
 // -----------------------------------------------------------------------------
@@ -961,32 +1043,6 @@ const secretBindingScopePipe = v.discriminate(discriminator, {
 	project: v.object({ type: v.eq('project'), projectId: brandedIdPipe }),
 	delivery: v.object({ type: v.eq('delivery'), deliveryId: brandedIdPipe }),
 })
-const reviewSurfaceScopePipe = v.discriminate(discriminator, {
-	slice: v.object({ type: v.eq('slice'), sliceId: brandedIdPipe, sliceArtifactId: brandedIdPipe }),
-	delivery: v.object({ type: v.eq('delivery'), deliveryId: brandedIdPipe, deliveryArtifactId: brandedIdPipe }),
-})
-const revisionScopePipe = v.discriminate(discriminator, {
-	'slice-artifact': v.object({ type: v.eq('slice-artifact'), sliceId: brandedIdPipe, sliceArtifactId: brandedIdPipe }),
-	'delivery-artifact': v.object({
-		type: v.eq('delivery-artifact'),
-		deliveryId: brandedIdPipe,
-		deliveryArtifactId: brandedIdPipe,
-	}),
-})
-const repositoryFilterPipe = v.object({ projectId: nullableBrandedIdPipe })
-const modelProviderFilterPipe = v.object({ archived: v.nullable(v.boolean()) })
-const modelFilterPipe = v.object({ providerId: nullableBrandedIdPipe, selectable: v.nullable(v.boolean()) })
-const planFilterPipe = v.object({ projectId: nullableBrandedIdPipe })
-const deliveryFilterPipe = v.object({
-	projectId: nullableBrandedIdPipe,
-	closed: v.nullable(enumStringPipe(['open', 'shipped', 'abandoned'])),
-})
-const timelineFilterPipe = v.object({
-	deliveryId: nullableBrandedIdPipe,
-	sliceId: nullableBrandedIdPipe,
-	since: v.nullable(rawStringPipe),
-	until: v.nullable(rawStringPipe),
-})
 const coreServicePreflightOutputPipe = v
 	.any<unknown>()
 	.pipe(v.custom<unknown>(isCoreServicePreflightOutput, 'Expected a Core Service preflight output.')) as Pipe<
@@ -1058,27 +1114,8 @@ const commandInputPipes = {
 } satisfies Record<keyof CoreCommands, Pipe<unknown, unknown>>
 
 const queryArgumentPipes = {
-	getPortfolioConfig: argumentTuplePipe([]),
-	getProject: argumentTuplePipe([brandedIdPipe]),
-	listProjects: argumentTuplePipe([]),
-	getRepository: argumentTuplePipe([brandedIdPipe]),
-	listRepositories: argumentTuplePipe([v.nullable(repositoryFilterPipe)]),
-	getModelProvider: argumentTuplePipe([brandedIdPipe]),
-	listModelProviders: argumentTuplePipe([v.nullable(modelProviderFilterPipe)]),
-	getModel: argumentTuplePipe([brandedIdPipe]),
-	listModels: argumentTuplePipe([v.nullable(modelFilterPipe)]),
-	getPlan: argumentTuplePipe([brandedIdPipe]),
-	listPlans: argumentTuplePipe([v.nullable(planFilterPipe)]),
-	getDelivery: argumentTuplePipe([brandedIdPipe]),
-	listDeliveries: argumentTuplePipe([v.nullable(deliveryFilterPipe)]),
-	getSlice: argumentTuplePipe([brandedIdPipe]),
-	listSlices: argumentTuplePipe([brandedIdPipe]),
-	getReviewSurface: argumentTuplePipe([brandedIdPipe]),
-	listReviewSurfaces: argumentTuplePipe([reviewSurfaceScopePipe]),
-	getCurrentReviewSurface: argumentTuplePipe([reviewSurfaceScopePipe]),
-	getRevision: argumentTuplePipe([brandedIdPipe]),
-	listRevisions: argumentTuplePipe([revisionScopePipe]),
-	getTimeline: argumentTuplePipe([v.nullable(timelineFilterPipe)]),
+	getDeliveryWorkState: argumentTuplePipe([brandedIdPipe]),
+	getSliceWorkState: argumentTuplePipe([brandedIdPipe]),
 } satisfies Record<keyof CoreQueries, Pipe<unknown, unknown>>
 
 function acceptsPipe(pipe: Pipe<unknown, unknown>, value: unknown): boolean {
@@ -1306,31 +1343,12 @@ function createCoreCommands(): CoreCommands {
 
 function createCoreQueries(): CoreQueries {
 	return {
-		getPortfolioConfig: (...args: unknown[]) => queryStub<PortfolioConfigRecord | null>('getPortfolioConfig', args),
-		getProject: (...args: unknown[]) => queryStub<Project | null>('getProject', args),
-		listProjects: (...args: unknown[]) => queryStub<Project[]>('listProjects', args),
-		getRepository: (...args: unknown[]) => queryStub<Repository | null>('getRepository', args),
-		listRepositories: (...args: unknown[]) => queryStub<Repository[]>('listRepositories', args),
-		getModelProvider: (...args: unknown[]) => queryStub<ModelProvider | null>('getModelProvider', args),
-		listModelProviders: (...args: unknown[]) => queryStub<ModelProvider[]>('listModelProviders', args),
-		getModel: (...args: unknown[]) => queryStub<Model | null>('getModel', args),
-		listModels: (...args: unknown[]) => queryStub<Model[]>('listModels', args),
-		getPlan: (...args: unknown[]) => queryStub<Plan | null>('getPlan', args),
-		listPlans: (...args: unknown[]) => queryStub<Plan[]>('listPlans', args),
-		getDelivery: (...args: unknown[]) => queryStub<Delivery | null>('getDelivery', args),
-		listDeliveries: (...args: unknown[]) => queryStub<Delivery[]>('listDeliveries', args),
-		getSlice: (...args: unknown[]) => queryStub<Slice | null>('getSlice', args),
-		listSlices: (...args: unknown[]) => queryStub<Slice[]>('listSlices', args),
-		getReviewSurface: (...args: unknown[]) => queryStub<ReviewSurface | null>('getReviewSurface', args),
-		listReviewSurfaces: (...args: unknown[]) => queryStub<ReviewSurface[]>('listReviewSurfaces', args),
-		getCurrentReviewSurface: (...args: unknown[]) => queryStub<ReviewSurface | null>('getCurrentReviewSurface', args),
-		getRevision: (...args: unknown[]) => queryStub<Revision | null>('getRevision', args),
-		listRevisions: (...args: unknown[]) => queryStub<Revision[]>('listRevisions', args),
-		getTimeline: (...args: unknown[]) => queryStub<TimelineEvent[]>('getTimeline', args),
+		getDeliveryWorkState: (...args: unknown[]) => queryStub<DeliveryWorkState>('getDeliveryWorkState', args),
+		getSliceWorkState: (...args: unknown[]) => queryStub<SliceWorkState>('getSliceWorkState', args),
 	}
 }
 
-function commandStub<T>(operation: keyof CoreCommands, input: unknown, context: unknown): Promise<Result<T>> {
+function commandStub<T>(operation: keyof CoreCommands, input: unknown, context: unknown): Promise<Result<T, CommandStubError>> {
 	const validation = validateCoreInput(
 		v.object({ input: commandInputPipes[operation], context: operationContextPipe }),
 		{ input, context },
@@ -1345,7 +1363,7 @@ function commandStub<T>(operation: keyof CoreCommands, input: unknown, context: 
 	return Promise.resolve(notImplemented<T>(operation))
 }
 
-function queryStub<T>(operation: keyof CoreQueries, args: unknown[]): Promise<Result<T>> {
+function queryStub<T>(operation: keyof CoreQueries, args: unknown[]): Promise<Result<T, WorkStateQueryError>> {
 	const validation = validateCoreInput(v.object({ args: queryArgumentPipes[operation] }), { args }, 'query', operation)
 
 	if (!validation.ok) {
@@ -1370,7 +1388,7 @@ function validateCoreInput<TPipe extends Pipe<unknown, unknown>>(
 	return { ok: true, value: result.value }
 }
 
-function notImplemented<T>(operation: string): Result<T> {
+function notImplemented<T>(operation: string): Result<T, NotImplementedError> {
 	return { ok: false, error: { type: 'not-implemented', operation } }
 }
 
