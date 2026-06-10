@@ -15,6 +15,8 @@ import {
 } from './commands'
 import type {
 	AlreadyArchivedError,
+	ArchivedModelProviderReferenceError,
+	ArchivedModelReferenceError,
 	ArchivedSecretReferenceError,
 	CommandStubError,
 	CorePreflightError,
@@ -36,7 +38,11 @@ import type {
 	Delivery,
 	DeliveryWorkState,
 	Model,
+	ModelId,
 	ModelProvider,
+	ModelProviderAuth,
+	ModelProviderHeader,
+	ModelProviderId,
 	Plan,
 	PortfolioConfigRecord,
 	PortfolioSnapshotManifest,
@@ -195,31 +201,31 @@ function failedProbeCheck(): CorePreflightCheck {
 function createCoreCommands(options: OpenCoreOptions): CoreCommands {
 	return {
 		setPortfolioConfig(input, context) {
-			return commandStub<PortfolioConfigRecord>('setPortfolioConfig', input, context)
+			return setPortfolioConfigCommand(options, input, context)
 		},
 		createModelProvider(input, context) {
-			return commandStub<ModelProvider>('createModelProvider', input, context)
+			return createModelProviderCommand(options, input, context)
 		},
 		updateModelProvider(input, context) {
-			return commandStub<ModelProvider>('updateModelProvider', input, context)
+			return updateModelProviderCommand(options, input, context)
 		},
 		archiveModelProvider(input, context) {
-			return commandStub<ModelProvider>('archiveModelProvider', input, context)
+			return archiveModelProviderCommand(options, input, context)
 		},
 		unarchiveModelProvider(input, context) {
-			return commandStub<ModelProvider>('unarchiveModelProvider', input, context)
+			return unarchiveModelProviderCommand(options, input, context)
 		},
 		createModel(input, context) {
-			return commandStub<Model>('createModel', input, context)
+			return createModelCommand(options, input, context)
 		},
 		updateModel(input, context) {
-			return commandStub<Model>('updateModel', input, context)
+			return updateModelCommand(options, input, context)
 		},
 		archiveModel(input, context) {
-			return commandStub<Model>('archiveModel', input, context)
+			return archiveModelCommand(options, input, context)
 		},
 		unarchiveModel(input, context) {
-			return commandStub<Model>('unarchiveModel', input, context)
+			return unarchiveModelCommand(options, input, context)
 		},
 		preflightModel(input, context) {
 			return commandStub<ValidationEvidence>('preflightModel', input, context)
@@ -300,6 +306,324 @@ function createCoreCommands(options: OpenCoreOptions): CoreCommands {
 			return commandStub<PortfolioSnapshotManifest>('exportSnapshot', input, context)
 		},
 	}
+}
+
+async function setPortfolioConfigCommand(
+	options: OpenCoreOptions,
+	input: unknown,
+	context: unknown,
+): ReturnType<CoreCommands['setPortfolioConfig']> {
+	const validation = validateCommand('setPortfolioConfig', commandInputPipes.setPortfolioConfig, input, context)
+
+	if (!validation.ok) {
+		return validation
+	}
+
+	const stamp = localAuditStamp(options, validation.value.context, 'setPortfolioConfig')
+	if (!stamp.ok) return stamp
+
+	return withStorageTransaction<
+		PortfolioConfigRecord,
+		ResourceNotFoundError | ArchivedModelReferenceError | ArchivedModelProviderReferenceError | StorageOperationFailedError
+	>(options, { type: 'put', resource: 'portfolio-config', id: null }, async (tx) => {
+		const modelIds = selectableModelIdsFromPortfolioConfig(validation.value.input.config)
+		for (const modelId of modelIds) {
+			const selectable = await validateSelectableModel(tx, modelId)
+			if (!selectable.ok) return selectable
+		}
+
+		const record: PortfolioConfigRecord = { configured: stamp.value, value: validation.value.input.config }
+
+		try {
+			await tx.portfolioConfig.put(record)
+			return { ok: true, value: record }
+		} catch {
+			return storageOperationFailed({ type: 'put', resource: 'portfolio-config', id: null })
+		}
+	})
+}
+
+async function createModelProviderCommand(
+	options: OpenCoreOptions,
+	input: unknown,
+	context: unknown,
+): ReturnType<CoreCommands['createModelProvider']> {
+	const validation = validateCommand('createModelProvider', commandInputPipes.createModelProvider, input, context)
+
+	if (!validation.ok) {
+		return validation
+	}
+
+	const stamp = localAuditStamp(options, validation.value.context, 'createModelProvider')
+	if (!stamp.ok) return stamp
+
+	const id = nextCoreId<ModelProviderId>(options, 'model-provider')
+	if (!id.ok) return id
+
+	return withStorageTransaction<ModelProvider, ResourceNotFoundError | ArchivedSecretReferenceError | StorageOperationFailedError>(
+		options,
+		{ type: 'put', resource: 'model-provider', id: id.value },
+		async (tx) => {
+			const auth = validation.value.input.auth as ModelProviderAuth | null
+			const references = secretReferencesFromModelProviderConfig(auth, validation.value.input.headers)
+			const validReferences = await validateActiveSecretReferences(tx, references)
+			if (!validReferences.ok) return validReferences
+
+			const provider: ModelProvider = {
+				id: id.value,
+				name: validation.value.input.name,
+				protocol: validation.value.input.protocol,
+				baseUrl: validation.value.input.baseUrl,
+				auth,
+				headers: validation.value.input.headers,
+				created: stamp.value,
+				updated: null,
+				archivePeriods: [],
+			}
+
+			const stored = await putRecord(tx.modelProviders, 'model-provider', provider.id, provider)
+			if (!stored.ok) return stored
+
+			return { ok: true, value: provider }
+		},
+	)
+}
+
+async function updateModelProviderCommand(
+	options: OpenCoreOptions,
+	input: unknown,
+	context: unknown,
+): ReturnType<CoreCommands['updateModelProvider']> {
+	const validation = validateCommand('updateModelProvider', commandInputPipes.updateModelProvider, input, context)
+
+	if (!validation.ok) {
+		return validation
+	}
+
+	const stamp = localAuditStamp(options, validation.value.context, 'updateModelProvider')
+	if (!stamp.ok) return stamp
+
+	return withStorageTransaction<ModelProvider, ResourceNotFoundError | ArchivedSecretReferenceError | StorageOperationFailedError>(
+		options,
+		{ type: 'put', resource: 'model-provider', id: validation.value.input.modelProviderId },
+		async (tx) => {
+			const existing = await getRecord(tx.modelProviders, 'model-provider', validation.value.input.modelProviderId)
+			if (!existing.ok) return existing
+			if (existing.value === null) return notFound('model-provider', validation.value.input.modelProviderId)
+
+			const auth = validation.value.input.auth as ModelProviderAuth | null
+			const references = secretReferencesFromModelProviderConfig(auth, validation.value.input.headers)
+			const validReferences = await validateActiveSecretReferences(tx, references)
+			if (!validReferences.ok) return validReferences
+
+			const provider: ModelProvider = {
+				...existing.value,
+				name: validation.value.input.name,
+				baseUrl: validation.value.input.baseUrl,
+				auth,
+				headers: validation.value.input.headers,
+				updated: stamp.value,
+			}
+			const stored = await putRecord(tx.modelProviders, 'model-provider', provider.id, provider)
+			if (!stored.ok) return stored
+
+			return { ok: true, value: provider }
+		},
+	)
+}
+
+async function archiveModelProviderCommand(
+	options: OpenCoreOptions,
+	input: unknown,
+	context: unknown,
+): ReturnType<CoreCommands['archiveModelProvider']> {
+	const validation = validateCommand('archiveModelProvider', commandInputPipes.archiveModelProvider, input, context)
+
+	if (!validation.ok) {
+		return validation
+	}
+
+	const stamp = localAuditStamp(options, validation.value.context, 'archiveModelProvider')
+	if (!stamp.ok) return stamp
+
+	return withStorageTransaction<ModelProvider, ResourceNotFoundError | AlreadyArchivedError | StorageOperationFailedError>(
+		options,
+		{ type: 'put', resource: 'model-provider', id: validation.value.input.modelProviderId },
+		async (tx) => {
+			const existing = await getRecord(tx.modelProviders, 'model-provider', validation.value.input.modelProviderId)
+			if (!existing.ok) return existing
+			if (existing.value === null) return notFound('model-provider', validation.value.input.modelProviderId)
+
+			const archived = archiveRecord(existing.value, stamp.value, 'model-provider', validation.value.input.modelProviderId)
+			if (!archived.ok) return archived
+
+			const stored = await putRecord(tx.modelProviders, 'model-provider', archived.value.id, archived.value)
+			if (!stored.ok) return stored
+
+			return archived
+		},
+	)
+}
+
+async function unarchiveModelProviderCommand(
+	options: OpenCoreOptions,
+	input: unknown,
+	context: unknown,
+): ReturnType<CoreCommands['unarchiveModelProvider']> {
+	const validation = validateCommand('unarchiveModelProvider', commandInputPipes.unarchiveModelProvider, input, context)
+
+	if (!validation.ok) {
+		return validation
+	}
+
+	const stamp = localAuditStamp(options, validation.value.context, 'unarchiveModelProvider')
+	if (!stamp.ok) return stamp
+
+	return withStorageTransaction<ModelProvider, ResourceNotFoundError | NotArchivedError | StorageOperationFailedError>(
+		options,
+		{ type: 'put', resource: 'model-provider', id: validation.value.input.modelProviderId },
+		async (tx) => {
+			const existing = await getRecord(tx.modelProviders, 'model-provider', validation.value.input.modelProviderId)
+			if (!existing.ok) return existing
+			if (existing.value === null) return notFound('model-provider', validation.value.input.modelProviderId)
+
+			const unarchived = unarchiveRecord(existing.value, stamp.value, 'model-provider', validation.value.input.modelProviderId)
+			if (!unarchived.ok) return unarchived
+
+			const stored = await putRecord(tx.modelProviders, 'model-provider', unarchived.value.id, unarchived.value)
+			if (!stored.ok) return stored
+
+			return unarchived
+		},
+	)
+}
+
+async function createModelCommand(options: OpenCoreOptions, input: unknown, context: unknown): ReturnType<CoreCommands['createModel']> {
+	const validation = validateCommand('createModel', commandInputPipes.createModel, input, context)
+
+	if (!validation.ok) {
+		return validation
+	}
+
+	const stamp = localAuditStamp(options, validation.value.context, 'createModel')
+	if (!stamp.ok) return stamp
+
+	const id = nextCoreId<ModelId>(options, 'model')
+	if (!id.ok) return id
+
+	return withStorageTransaction<Model, ResourceNotFoundError | ArchivedModelProviderReferenceError | StorageOperationFailedError>(
+		options,
+		{ type: 'put', resource: 'model', id: id.value },
+		async (tx) => {
+			const provider = await getRecord(tx.modelProviders, 'model-provider', validation.value.input.providerId)
+			if (!provider.ok) return provider
+			if (provider.value === null) return notFound('model-provider', validation.value.input.providerId)
+			if (isArchived(provider.value)) return archivedModelProviderReference(validation.value.input.providerId)
+
+			const model: Model = {
+				id: id.value,
+				providerId: validation.value.input.providerId,
+				name: validation.value.input.name,
+				providerModelId: validation.value.input.providerModelId,
+				created: stamp.value,
+				updated: null,
+				archivePeriods: [],
+			}
+			const stored = await putRecord(tx.models, 'model', model.id, model)
+			if (!stored.ok) return stored
+
+			return { ok: true, value: model }
+		},
+	)
+}
+
+async function updateModelCommand(options: OpenCoreOptions, input: unknown, context: unknown): ReturnType<CoreCommands['updateModel']> {
+	const validation = validateCommand('updateModel', commandInputPipes.updateModel, input, context)
+
+	if (!validation.ok) {
+		return validation
+	}
+
+	const stamp = localAuditStamp(options, validation.value.context, 'updateModel')
+	if (!stamp.ok) return stamp
+
+	return withStorageTransaction<Model, ResourceNotFoundError | StorageOperationFailedError>(
+		options,
+		{ type: 'put', resource: 'model', id: validation.value.input.modelId },
+		async (tx) => {
+			const existing = await getRecord(tx.models, 'model', validation.value.input.modelId)
+			if (!existing.ok) return existing
+			if (existing.value === null) return notFound('model', validation.value.input.modelId)
+
+			const model: Model = { ...existing.value, name: validation.value.input.name, updated: stamp.value }
+			const stored = await putRecord(tx.models, 'model', model.id, model)
+			if (!stored.ok) return stored
+
+			return { ok: true, value: model }
+		},
+	)
+}
+
+async function archiveModelCommand(options: OpenCoreOptions, input: unknown, context: unknown): ReturnType<CoreCommands['archiveModel']> {
+	const validation = validateCommand('archiveModel', commandInputPipes.archiveModel, input, context)
+
+	if (!validation.ok) {
+		return validation
+	}
+
+	const stamp = localAuditStamp(options, validation.value.context, 'archiveModel')
+	if (!stamp.ok) return stamp
+
+	return withStorageTransaction<Model, ResourceNotFoundError | AlreadyArchivedError | StorageOperationFailedError>(
+		options,
+		{ type: 'put', resource: 'model', id: validation.value.input.modelId },
+		async (tx) => {
+			const existing = await getRecord(tx.models, 'model', validation.value.input.modelId)
+			if (!existing.ok) return existing
+			if (existing.value === null) return notFound('model', validation.value.input.modelId)
+
+			const archived = archiveRecord(existing.value, stamp.value, 'model', validation.value.input.modelId)
+			if (!archived.ok) return archived
+
+			const stored = await putRecord(tx.models, 'model', archived.value.id, archived.value)
+			if (!stored.ok) return stored
+
+			return archived
+		},
+	)
+}
+
+async function unarchiveModelCommand(
+	options: OpenCoreOptions,
+	input: unknown,
+	context: unknown,
+): ReturnType<CoreCommands['unarchiveModel']> {
+	const validation = validateCommand('unarchiveModel', commandInputPipes.unarchiveModel, input, context)
+
+	if (!validation.ok) {
+		return validation
+	}
+
+	const stamp = localAuditStamp(options, validation.value.context, 'unarchiveModel')
+	if (!stamp.ok) return stamp
+
+	return withStorageTransaction<Model, ResourceNotFoundError | NotArchivedError | StorageOperationFailedError>(
+		options,
+		{ type: 'put', resource: 'model', id: validation.value.input.modelId },
+		async (tx) => {
+			const existing = await getRecord(tx.models, 'model', validation.value.input.modelId)
+			if (!existing.ok) return existing
+			if (existing.value === null) return notFound('model', validation.value.input.modelId)
+
+			const unarchived = unarchiveRecord(existing.value, stamp.value, 'model', validation.value.input.modelId)
+			if (!unarchived.ok) return unarchived
+
+			const stored = await putRecord(tx.models, 'model', unarchived.value.id, unarchived.value)
+			if (!stored.ok) return stored
+
+			return unarchived
+		},
+	)
 }
 
 async function createSecretCommand(options: OpenCoreOptions, input: unknown, context: unknown): ReturnType<CoreCommands['createSecret']> {
@@ -549,6 +873,11 @@ function createCoreQueries(): CoreQueries {
 
 type ArchivableRecord = { archivePeriods: ArchivePeriod[] }
 type CoreStorageResource = CoreStorageOperation['resource']
+type SelectableModelValidationError =
+	| ResourceNotFoundError
+	| ArchivedModelReferenceError
+	| ArchivedModelProviderReferenceError
+	| StorageOperationFailedError
 
 function validateCommand<TPipe extends Pipe<unknown, unknown>>(
 	operation: keyof CoreCommands,
@@ -583,7 +912,7 @@ function localAuditStamp(
 
 function nextCoreId<Id extends string>(
 	options: OpenCoreOptions,
-	brand: 'secret' | 'secret-binding',
+	brand: 'model-provider' | 'model' | 'secret' | 'secret-binding',
 ): Result<Id, InvalidCoreServiceOutputError> {
 	const validation = validateCoreServiceOutput(coreIdOutputPipe, options.idGenerator.next(brand), 'idGenerator', `next:${brand}`)
 
@@ -652,7 +981,7 @@ function isArchived(record: ArchivableRecord): boolean {
 function archiveRecord<T extends ArchivableRecord>(
 	record: T,
 	stamp: AuditStamp,
-	resource: 'secret' | 'secret-binding',
+	resource: 'model-provider' | 'model' | 'secret' | 'secret-binding',
 	id: string,
 ): Result<T, AlreadyArchivedError> {
 	if (isArchived(record)) {
@@ -668,7 +997,7 @@ function archiveRecord<T extends ArchivableRecord>(
 function unarchiveRecord<T extends ArchivableRecord>(
 	record: T,
 	stamp: AuditStamp,
-	resource: 'secret' | 'secret-binding',
+	resource: 'model-provider' | 'model' | 'secret' | 'secret-binding',
 	id: string,
 ): Result<T, NotArchivedError> {
 	const latestPeriodIndex = record.archivePeriods.length - 1
@@ -683,6 +1012,61 @@ function unarchiveRecord<T extends ArchivableRecord>(
 	)
 
 	return { ok: true, value: { ...record, archivePeriods } }
+}
+
+function selectableModelIdsFromPortfolioConfig(config: PortfolioConfigRecord['value']): ModelId[] {
+	return [
+		config.model.defaultModelId,
+		config.model.planningModelId,
+		config.model.revisionPlanningModelId,
+		config.model.executionModelId,
+		config.model.revisionExecutionModelId,
+	].filter((modelId): modelId is ModelId => modelId !== null)
+}
+
+function secretReferencesFromModelProviderConfig(auth: ModelProviderAuth | null, headers: ModelProviderHeader[]): SecretId[] {
+	const references: SecretId[] = []
+
+	if (auth !== null) {
+		references.push(auth.secretId)
+	}
+
+	for (const header of headers) {
+		references.push(header.valueSecretId)
+	}
+
+	return references
+}
+
+async function validateActiveSecretReferences(
+	tx: CoreStorageTransaction,
+	secretIds: SecretId[],
+): Promise<Result<void, ResourceNotFoundError | ArchivedSecretReferenceError | StorageOperationFailedError>> {
+	for (const secretId of secretIds) {
+		const secret = await getRecord(tx.secrets, 'secret', secretId)
+		if (!secret.ok) return secret
+		if (secret.value === null) return notFound('secret', secretId)
+		if (isArchived(secret.value)) return archivedSecretReference(secretId)
+	}
+
+	return { ok: true, value: undefined }
+}
+
+async function validateSelectableModel(
+	tx: CoreStorageTransaction,
+	modelId: ModelId,
+): Promise<Result<Model, SelectableModelValidationError>> {
+	const model = await getRecord(tx.models, 'model', modelId)
+	if (!model.ok) return model
+	if (model.value === null) return notFound('model', modelId)
+	if (isArchived(model.value)) return archivedModelReference(modelId)
+
+	const provider = await getRecord(tx.modelProviders, 'model-provider', model.value.providerId)
+	if (!provider.ok) return provider
+	if (provider.value === null) return notFound('model-provider', model.value.providerId)
+	if (isArchived(provider.value)) return archivedModelProviderReference(model.value.providerId)
+
+	return { ok: true, value: model.value }
 }
 
 function scopesEqual(left: SecretBindingScope, right: SecretBindingScope): boolean {
@@ -715,6 +1099,14 @@ function duplicateSecretBinding(
 
 function archivedSecretReference(secretId: SecretId): Result<never, ArchivedSecretReferenceError> {
 	return { ok: false, error: { type: 'archived-secret-reference', secretId } }
+}
+
+function archivedModelReference(modelId: ModelId): Result<never, ArchivedModelReferenceError> {
+	return { ok: false, error: { type: 'archived-model-reference', modelId } }
+}
+
+function archivedModelProviderReference(modelProviderId: ModelProviderId): Result<never, ArchivedModelProviderReferenceError> {
+	return { ok: false, error: { type: 'archived-model-provider-reference', modelProviderId } }
 }
 
 function storageOperationFailed(operation: CoreStorageOperation): Result<never, StorageOperationFailedError> {

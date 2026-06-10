@@ -79,6 +79,21 @@ const modelProviderAuthPipe = v.discriminate(discriminator('type'), {
 	apiKey: v.object({ type: v.eq('apiKey'), secretId: secretIdPipe }),
 })
 const modelProviderHeaderPipe = v.object({ name: headerNamePipe, valueSecretId: secretIdPipe })
+const modelProviderHeadersPipe = v.array(modelProviderHeaderPipe).pipe(
+	v.custom((headers) => {
+		const seen = new Set<string>()
+
+		for (const header of headers) {
+			const normalized = header.name.toLowerCase()
+			if (seen.has(normalized)) {
+				return false
+			}
+			seen.add(normalized)
+		}
+
+		return true
+	}, 'Expected Model Provider header names to be unique case-insensitively.'),
+)
 const deliveryWorkConfigPipe = v.object({
 	maxActiveSliceSlots: positiveIntegerPipe,
 	maxCorrectionRetriesPerFailure: nonNegativeIntegerPipe,
@@ -192,7 +207,7 @@ export const createModelProviderInputPipe = v.object({
 	protocol: modelProviderProtocolPipe,
 	baseUrl: modelProviderBaseUrlPipe,
 	auth: v.nullable(modelProviderAuthPipe),
-	headers: v.array(modelProviderHeaderPipe),
+	headers: modelProviderHeadersPipe,
 })
 export type CreateModelProviderInput = PipeOutput<typeof createModelProviderInputPipe>
 
@@ -201,7 +216,7 @@ export const updateModelProviderInputPipe = v.object({
 	name: nonEmptyTrimmedStringPipe,
 	baseUrl: modelProviderBaseUrlPipe,
 	auth: v.nullable(modelProviderAuthPipe),
-	headers: v.array(modelProviderHeaderPipe),
+	headers: modelProviderHeadersPipe,
 })
 export type UpdateModelProviderInput = PipeOutput<typeof updateModelProviderInputPipe>
 
