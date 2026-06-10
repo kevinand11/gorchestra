@@ -75,7 +75,7 @@ export type ImportSnapshotInput = PipeOutput<typeof importSnapshotInputPipe>
 export const importSnapshotBoundaryPipe = v.object({ input: importSnapshotInputPipe, context: operationContextPipe })
 
 const modelProviderProtocolPipe = enumStringPipe(['anthropic-messages', 'openai-responses', 'openai-completions', 'google-generative-ai'])
-const modelProviderAuthPipe = v.discriminate(discriminator, {
+const modelProviderAuthPipe = v.discriminate(discriminator('type'), {
 	apiKey: v.object({ type: v.eq('apiKey'), secretId: secretIdPipe }),
 })
 const modelProviderHeaderPipe = v.object({ name: headerNamePipe, valueSecretId: secretIdPipe })
@@ -114,10 +114,10 @@ const deliveryConfigPipe = v.object({
 	work: v.nullable(deliveryWorkConfigPipe),
 })
 
-const projectSourcePipe = v.discriminate(discriminator, {
+const projectSourcePipe = v.discriminate(discriminator('type'), {
 	'source-control': v.object({ type: v.eq('source-control') }),
 })
-const repositoryConfigPipe = v.discriminate(discriminatorFrom('provider'), {
+const repositoryConfigPipe = v.discriminate(discriminator('provider'), {
 	github: v.object({
 		provider: v.eq('github'),
 		owner: nonEmptyTrimmedStringPipe,
@@ -125,7 +125,7 @@ const repositoryConfigPipe = v.discriminate(discriminatorFrom('provider'), {
 		secretId: secretIdPipe,
 	}),
 })
-const proposedDeliveryTargetPipe = v.discriminate(discriminator, {
+const proposedDeliveryTargetPipe = v.discriminate(discriminator('type'), {
 	'source-control': v.object({
 		type: v.eq('source-control'),
 		repositoryId: repositoryIdPipe,
@@ -153,14 +153,14 @@ const proposedMemoryPipe = v.object({
 	body: freeFormStringPipe,
 	type: v.nullable(memoryTypePipe),
 })
-const graphNodeRefPipe = v.discriminate(discriminator, {
+const graphNodeRefPipe = v.discriminate(discriminator('type'), {
 	plan: v.object({ type: v.eq('plan'), id: planIdPipe }),
 	project: v.object({ type: v.eq('project'), id: projectIdPipe }),
 	delivery: v.object({ type: v.eq('delivery'), id: deliveryIdPipe }),
 	slice: v.object({ type: v.eq('slice'), id: sliceIdPipe }),
 	memory: v.object({ type: v.eq('memory'), id: brandedIdPipe<MemoryId>() }),
 })
-const proposedGraphRefPipe = v.discriminate(discriminator, {
+const proposedGraphRefPipe = v.discriminate(discriminator('type'), {
 	existing: v.object({ type: v.eq('existing'), node: graphNodeRefPipe }),
 	'proposed-delivery': v.object({ type: v.eq('proposed-delivery'), proposedDeliveryKey: nonEmptyTrimmedStringPipe }),
 	'proposed-slice': v.object({ type: v.eq('proposed-slice'), proposedSliceKey: nonEmptyTrimmedStringPipe }),
@@ -178,7 +178,7 @@ const revisionOutputProposalPipe = v.object({
 	instruction: instructionSourcePipe,
 	disposition: revisionDispositionPipe,
 })
-const secretBindingScopePipe = v.discriminate(discriminator, {
+const secretBindingScopePipe = v.discriminate(discriminator('type'), {
 	portfolio: v.object({ type: v.eq('portfolio') }),
 	project: v.object({ type: v.eq('project'), projectId: projectIdPipe }),
 	delivery: v.object({ type: v.eq('delivery'), deliveryId: deliveryIdPipe }),
@@ -320,14 +320,6 @@ function brandedIdPipe<Id extends string>() {
 	return nonEmptyTrimmedStringPipe.pipe(v.define<string, Id>((value) => value as Id))
 }
 
-function discriminator(value: unknown): PropertyKey {
-	return isRecord(value) ? (value['type'] as PropertyKey) : ''
-}
-
-function discriminatorFrom(field: string): (value: unknown) => PropertyKey {
-	return (value) => (isRecord(value) ? (value[field] as PropertyKey) : '')
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value)
+function discriminator(field: string): (value: Record<string, unknown> | null | undefined) => PropertyKey {
+	return (value) => value?.[field] as PropertyKey
 }
