@@ -17,14 +17,7 @@ import type {
 } from '../errors'
 import type { OpenCoreOptions } from '../services'
 import { buildCommandHandler } from '../utils/command'
-import {
-	auditStamp,
-	getRequired,
-	putRecord,
-	secretReferencesFromModelProviderConfig,
-	validateActiveSecretReferences,
-	withTransaction,
-} from '../utils/command-storage'
+import { auditStamp, getRequired, putValidModelProvider, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const updateModelProviderInputPipe = v.object({
@@ -56,10 +49,6 @@ export function createUpdateModelProviderCommand(options: OpenCoreOptions): Oper
 			const existing = await getRequired('model-provider', tx.modelProviders, input.modelProviderId, modelProviderPipe)
 			if (!existing.ok) return existing
 
-			const references = secretReferencesFromModelProviderConfig(input.auth, input.headers)
-			const validReferences = await validateActiveSecretReferences(tx, references)
-			if (!validReferences.ok) return validReferences
-
 			const provider: ModelProvider = {
 				...existing.value,
 				name: input.name,
@@ -68,10 +57,7 @@ export function createUpdateModelProviderCommand(options: OpenCoreOptions): Oper
 				headers: input.headers,
 				updated: stamp.value,
 			}
-			const stored = await putRecord('model-provider', tx.modelProviders, provider.id, provider)
-			if (!stored.ok) return stored
-
-			return { ok: true, value: provider }
+			return putValidModelProvider(tx, provider)
 		})
 	})
 }

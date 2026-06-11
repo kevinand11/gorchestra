@@ -9,9 +9,9 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { OpenCoreOptions } from '../services'
+import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
 import { buildCommandHandler } from '../utils/command'
-import { archiveRecord, auditStamp, getRequired, putRecord, withTransaction } from '../utils/command-storage'
+import { archiveStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const archiveSecretBindingInputPipe = v.object({ secretBindingId: idPipe })
@@ -28,24 +28,12 @@ export type Error =
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
+const selectSecretBindings = (tx: CoreStorageTransaction) => tx.secretBindings
+
 export function createArchiveSecretBindingCommand(options: OpenCoreOptions): Operation {
-	return buildCommandHandler('archiveSecretBinding', archiveSecretBindingInputPipe, (input, context) => {
-		const stamp = auditStamp(options, context)
-		if (!stamp.ok) return Promise.resolve(stamp)
-
-		return withTransaction(options, async (tx): Promise<CoreResult<SecretBinding, Exclude<Error, InvalidInputError>>> => {
-			const existing = await getRequired('secret-binding', tx.secretBindings, input.secretBindingId, secretBindingPipe)
-			if (!existing.ok) return existing
-
-			const archived = archiveRecord(existing.value, stamp.value, 'secret-binding', input.secretBindingId)
-			if (!archived.ok) return archived
-
-			const stored = await putRecord('secret-binding', tx.secretBindings, archived.value.id, archived.value)
-			if (!stored.ok) return stored
-
-			return archived
-		})
-	})
+	return buildCommandHandler('archiveSecretBinding', archiveSecretBindingInputPipe, (input, context) =>
+		archiveStoredRecordWithAudit(options, context, 'secret-binding', selectSecretBindings, input.secretBindingId, secretBindingPipe),
+	)
 }
 
 if (import.meta.vitest) {

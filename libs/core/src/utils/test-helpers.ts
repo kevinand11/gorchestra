@@ -103,14 +103,9 @@ function nextSliceOrder(tx: MemoryStorageTransaction, deliveryId: string): numbe
 	return [...tx.slices.records.values()].filter((slice) => slice.deliveryId === deliveryId).length
 }
 
-export function seedSelectableModel(
-	tx: MemoryStorageTransaction,
-	id: string,
-	options: { modelArchived?: boolean; providerArchived?: boolean } = {},
-) {
-	const providerId = `${id}-provider`
-	tx.modelProviders.records.set(providerId, {
-		id: providerId,
+export function seedModelProvider(tx: MemoryStorageTransaction, id: string, archived = false) {
+	tx.modelProviders.records.set(id, {
+		id,
 		name: 'Provider',
 		protocol: 'anthropic-messages',
 		baseUrl: 'https://api.example.com',
@@ -118,8 +113,17 @@ export function seedSelectableModel(
 		headers: [],
 		created: stamp,
 		updated: null,
-		archivePeriods: options.providerArchived ? [{ archived: stamp, unarchived: null }] : [],
+		archivePeriods: archived ? [{ archived: stamp, unarchived: null }] : [],
 	})
+}
+
+export function seedSelectableModel(
+	tx: MemoryStorageTransaction,
+	id: string,
+	options: { modelArchived?: boolean; providerArchived?: boolean } = {},
+) {
+	const providerId = `${id}-provider`
+	seedModelProvider(tx, providerId, options.providerArchived)
 	tx.models.records.set(id, {
 		id,
 		providerId,

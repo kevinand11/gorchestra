@@ -9,9 +9,9 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { OpenCoreOptions } from '../services'
+import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
 import { buildCommandHandler } from '../utils/command'
-import { auditStamp, getRequired, putRecord, unarchiveRecord, withTransaction } from '../utils/command-storage'
+import { unarchiveStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const unarchiveModelInputPipe = v.object({ modelId: idPipe })
@@ -28,24 +28,12 @@ export type Error =
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
+const selectModels = (tx: CoreStorageTransaction) => tx.models
+
 export function createUnarchiveModelCommand(options: OpenCoreOptions): Operation {
-	return buildCommandHandler('unarchiveModel', unarchiveModelInputPipe, (input, context) => {
-		const stamp = auditStamp(options, context)
-		if (!stamp.ok) return Promise.resolve(stamp)
-
-		return withTransaction(options, async (tx): Promise<CoreResult<Model, Exclude<Error, InvalidInputError>>> => {
-			const existing = await getRequired('model', tx.models, input.modelId, modelPipe)
-			if (!existing.ok) return existing
-
-			const unarchived = unarchiveRecord(existing.value, stamp.value, 'model', input.modelId)
-			if (!unarchived.ok) return unarchived
-
-			const stored = await putRecord('model', tx.models, unarchived.value.id, unarchived.value)
-			if (!stored.ok) return stored
-
-			return unarchived
-		})
-	})
+	return buildCommandHandler('unarchiveModel', unarchiveModelInputPipe, (input, context) =>
+		unarchiveStoredRecordWithAudit(options, context, 'model', selectModels, input.modelId, modelPipe),
+	)
 }
 
 if (import.meta.vitest) {

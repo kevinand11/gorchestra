@@ -12,7 +12,7 @@ import {
 	modelIdsFromProjectConfigRecord,
 	nextId,
 	normalizeProjectConfigRecordForCreate,
-	putRecord,
+	putRecordValue,
 	validateSelectableModels,
 	withTransaction,
 } from '../utils/command-storage'
@@ -53,10 +53,7 @@ export function createCreateProjectCommand(options: OpenCoreOptions): Operation 
 				config,
 				created: stampResult.value,
 			}
-			const putResult = await putRecord('project', tx.projects, project.id, project)
-			if (!putResult.ok) return putResult
-
-			return { ok: true, value: project }
+			return putRecordValue('project', tx.projects, project)
 		})
 	})
 }

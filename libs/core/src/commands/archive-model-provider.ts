@@ -9,9 +9,9 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { OpenCoreOptions } from '../services'
+import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
 import { buildCommandHandler } from '../utils/command'
-import { archiveRecord, auditStamp, getRequired, putRecord, withTransaction } from '../utils/command-storage'
+import { archiveStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const archiveModelProviderInputPipe = v.object({ modelProviderId: idPipe })
@@ -28,44 +28,22 @@ export type Error =
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
+const selectModelProviders = (tx: CoreStorageTransaction) => tx.modelProviders
+
 export function createArchiveModelProviderCommand(options: OpenCoreOptions): Operation {
-	return buildCommandHandler('archiveModelProvider', archiveModelProviderInputPipe, (input, context) => {
-		const stamp = auditStamp(options, context)
-		if (!stamp.ok) return Promise.resolve(stamp)
-
-		return withTransaction(options, async (tx): Promise<CoreResult<ModelProvider, Exclude<Error, InvalidInputError>>> => {
-			const existing = await getRequired('model-provider', tx.modelProviders, input.modelProviderId, modelProviderPipe)
-			if (!existing.ok) return existing
-
-			const archived = archiveRecord(existing.value, stamp.value, 'model-provider', input.modelProviderId)
-			if (!archived.ok) return archived
-
-			const stored = await putRecord('model-provider', tx.modelProviders, archived.value.id, archived.value)
-			if (!stored.ok) return stored
-
-			return archived
-		})
-	})
+	return buildCommandHandler('archiveModelProvider', archiveModelProviderInputPipe, (input, context) =>
+		archiveStoredRecordWithAudit(options, context, 'model-provider', selectModelProviders, input.modelProviderId, modelProviderPipe),
+	)
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp } = await import('../utils/test-helpers')
+	const { context, createTestOpenCoreOptions, localStamp, seedModelProvider } = await import('../utils/test-helpers')
 
 	describe('archiveModelProvider command', () => {
 		it('archives Model Providers while preserving Archive Period history', async () => {
 			const options = createTestOpenCoreOptions()
-			options.tx.modelProviders.records.set('provider-1', {
-				id: 'provider-1',
-				name: 'Provider',
-				protocol: 'anthropic-messages',
-				baseUrl: 'https://api.example.com',
-				auth: null,
-				headers: [],
-				created: localStamp(),
-				updated: null,
-				archivePeriods: [],
-			})
+			seedModelProvider(options.tx, 'provider-1')
 			const command = createArchiveModelProviderCommand(options)
 
 			const result = await command({ modelProviderId: 'provider-1' }, context)

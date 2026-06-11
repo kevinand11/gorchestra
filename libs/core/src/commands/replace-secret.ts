@@ -3,9 +3,9 @@ import { v, type PipeOutput } from 'valleyed'
 import { idPipe, type OperationContext } from '../domain/commons'
 import { secretPipe, secretValueRefPipe, type Secret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { OpenCoreOptions } from '../services'
+import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
 import { buildCommandHandler } from '../utils/command'
-import { auditStamp, getRequired, putRecord, withTransaction } from '../utils/command-storage'
+import { updateStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const replaceSecretInputPipe = v.object({ secretId: idPipe, valueRef: secretValueRefPipe })
@@ -17,22 +17,16 @@ export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageO
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
+const selectSecrets = (tx: CoreStorageTransaction) => tx.secrets
+
 export function createReplaceSecretCommand(options: OpenCoreOptions): Operation {
-	return buildCommandHandler('replaceSecret', replaceSecretInputPipe, (input, context) => {
-		const stamp = auditStamp(options, context)
-		if (!stamp.ok) return Promise.resolve(stamp)
-
-		return withTransaction(options, async (tx): Promise<CoreResult<Secret, Exclude<Error, InvalidInputError>>> => {
-			const existing = await getRequired('secret', tx.secrets, input.secretId, secretPipe)
-			if (!existing.ok) return existing
-
-			const secret: Secret = { ...existing.value, valueRef: input.valueRef, replaced: stamp.value }
-			const stored = await putRecord('secret', tx.secrets, secret.id, secret)
-			if (!stored.ok) return stored
-
-			return { ok: true, value: secret }
-		})
-	})
+	return buildCommandHandler('replaceSecret', replaceSecretInputPipe, (input, context) =>
+		updateStoredRecordWithAudit(options, context, 'secret', selectSecrets, input.secretId, secretPipe, (secret, stamp) => ({
+			...secret,
+			valueRef: input.valueRef,
+			replaced: stamp,
+		})),
+	)
 }
 
 if (import.meta.vitest) {

@@ -1,23 +1,18 @@
-import { loadWorkStateFacts } from './facts'
 import {
 	actionAffectsSlice,
-	blockedDependencyIds,
 	compareActions,
-	currentScopedReviewSurface,
-	firstState,
-	firstSyncState,
 	getKnownAgentRun,
-	invariant,
 	latestAction,
-	latestFailureChainBefore,
 	latestPassedSlicePromotion,
 	latestSliceDeliveryValidationAfter,
-	ok,
-	singleSliceArtifact,
 	sortedActions,
-	stateOrElse,
-	stateOrElseSync,
-} from './shared'
+} from './actions'
+import { singleSliceArtifact } from './artifacts'
+import { blockedDependencyIds } from './dependencies'
+import { loadWorkStateFacts } from './facts'
+import { latestFailureChainBefore } from './failure-chains'
+import { firstState, firstSyncState, invariant, ok, stateOrElse, stateOrElseSync } from './result'
+import { currentScopedReviewSurface } from './review-surfaces'
 import type { SliceDependencyLink, WorkStateDerivationError, WorkStateFacts, WorkStateResult } from './types'
 import type { Action } from '../../domain/action'
 import { deliveryPipe, type Delivery } from '../../domain/delivery'

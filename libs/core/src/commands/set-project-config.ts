@@ -8,13 +8,12 @@ import type { OpenCoreOptions } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import {
-	auditStamp,
 	getRequired,
 	modelIdsFromProjectConfigRecord,
 	normalizeProjectConfigRecord,
-	putRecord,
+	putRecordValue,
 	validateSelectableModels,
-	withTransaction,
+	withAuditStampTransaction,
 } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -28,25 +27,19 @@ export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigComm
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createSetProjectConfigCommand(options: OpenCoreOptions): Operation {
-	return buildCommandHandler('setProjectConfig', setProjectConfigInputPipe, (input, context) => {
-		const stampResult = auditStamp(options, context)
-		if (!stampResult.ok) return Promise.resolve(stampResult)
-
-		return withTransaction(options, async (tx): Promise<CoreResult<Project, Exclude<Error, InvalidInputError>>> => {
+	return buildCommandHandler('setProjectConfig', setProjectConfigInputPipe, (input, context) =>
+		withAuditStampTransaction(options, context, async (tx, stamp): Promise<CoreResult<Project, Exclude<Error, InvalidInputError>>> => {
 			const projectResult = await getRequired('project', tx.projects, input.projectId, projectPipe)
 			if (!projectResult.ok) return projectResult
 
-			const config = normalizeProjectConfigRecord(input.config, stampResult.value)
+			const config = normalizeProjectConfigRecord(input.config, stamp)
 			const referenceValidation = await validateSelectableModels(tx, modelIdsFromProjectConfigRecord(config))
 			if (!referenceValidation.ok) return referenceValidation
 
 			const project: Project = { ...projectResult.value, config }
-			const putResult = await putRecord('project', tx.projects, project.id, project)
-			if (!putResult.ok) return putResult
-
-			return { ok: true, value: project }
-		})
-	})
+			return putRecordValue('project', tx.projects, project)
+		}),
+	)
 }
 
 if (import.meta.vitest) {

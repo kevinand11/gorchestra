@@ -3,9 +3,9 @@ import { v, type PipeOutput } from 'valleyed'
 import { idPipe, nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
 import { modelPipe, type Model } from '../domain/model'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { OpenCoreOptions } from '../services'
+import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
 import { buildCommandHandler } from '../utils/command'
-import { auditStamp, getRequired, putRecord, withTransaction } from '../utils/command-storage'
+import { updateStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const updateModelInputPipe = v.object({ modelId: idPipe, name: nonEmptyTrimmedStringPipe })
@@ -17,22 +17,16 @@ export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageO
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
+const selectModels = (tx: CoreStorageTransaction) => tx.models
+
 export function createUpdateModelCommand(options: OpenCoreOptions): Operation {
-	return buildCommandHandler('updateModel', updateModelInputPipe, (input, context) => {
-		const stamp = auditStamp(options, context)
-		if (!stamp.ok) return Promise.resolve(stamp)
-
-		return withTransaction(options, async (tx): Promise<CoreResult<Model, Exclude<Error, InvalidInputError>>> => {
-			const existing = await getRequired('model', tx.models, input.modelId, modelPipe)
-			if (!existing.ok) return existing
-
-			const model: Model = { ...existing.value, name: input.name, updated: stamp.value }
-			const stored = await putRecord('model', tx.models, model.id, model)
-			if (!stored.ok) return stored
-
-			return { ok: true, value: model }
-		})
-	})
+	return buildCommandHandler('updateModel', updateModelInputPipe, (input, context) =>
+		updateStoredRecordWithAudit(options, context, 'model', selectModels, input.modelId, modelPipe, (model, stamp) => ({
+			...model,
+			name: input.name,
+			updated: stamp,
+		})),
+	)
 }
 
 if (import.meta.vitest) {

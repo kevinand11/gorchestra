@@ -1,4 +1,4 @@
-import { resultValue } from './shared'
+import { resultValue } from './result'
 import type { WorkStateFacts } from './types'
 import { actionPipe } from '../../domain/action'
 import { agentRunPipe } from '../../domain/agent-run'

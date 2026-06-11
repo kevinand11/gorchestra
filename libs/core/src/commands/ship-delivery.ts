@@ -3,17 +3,12 @@ import { v, type PipeOutput } from 'valleyed'
 import type { Action } from '../domain/action'
 import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
 import type { Delivery, DeliveryIntegration, DeliveryWorkState } from '../domain/delivery'
-import type {
-	DeliveryWorkStateMismatchError,
-	InvalidCoreServiceOutputError,
-	InvalidInputError,
-	InvariantViolationError,
-	ResourceNotFoundError,
-	StorageOperationFailedError,
-} from '../errors'
+import type { InvalidInputError } from '../errors'
 import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
 import { buildCommandHandler } from '../utils/command'
+import type { DeliveryActionCommandError } from '../utils/command-errors'
 import {
+	type DeliveryActionCommandResult,
 	deliveryWorkStateMismatch,
 	prepareAuthorizedAction,
 	putRecord,
@@ -25,18 +20,9 @@ import type { Result as CoreResult } from '../utils/types'
 const shipDeliveryInputPipe = v.object({ deliveryId: idPipe })
 export type Input = PipeOutput<typeof shipDeliveryInputPipe>
 
-export interface Result {
-	delivery: Delivery
-	action: Action
-}
+export type Result = DeliveryActionCommandResult
 
-export type Error =
-	| InvalidInputError
-	| InvalidCoreServiceOutputError
-	| ResourceNotFoundError
-	| StorageOperationFailedError
-	| DeliveryWorkStateMismatchError
-	| InvariantViolationError
+export type Error = DeliveryActionCommandError
 
 /** Requires Delivery Work State ready-to-ship; records exactly one ship-delivery Action without post-merge validation in v1; duplicate calls fail with delivery-work-state-mismatch. */
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
@@ -84,7 +70,7 @@ async function requireReadyToShipDelivery(
 		: deliveryWorkStateMismatch(deliveryId, ['ready-to-ship'], deliveryState.value.state)
 }
 
-function shipDeliveryAction(deliveryId: Id, integration: DeliveryIntegration, stamp: AuditStamp, actionId: Id): Action {
+function shipDeliveryAction(deliveryId: Id, integration: DeliveryIntegration, stamp: AuditStamp, actionId: Id): Result['action'] {
 	return {
 		id: actionId,
 		deliveryId,

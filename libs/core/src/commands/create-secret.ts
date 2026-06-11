@@ -5,7 +5,7 @@ import { secretValueRefPipe, type Secret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
 import type { OpenCoreOptions } from '../services'
 import { buildCommandHandler } from '../utils/command'
-import { auditStamp, nextId, putRecord, withTransaction } from '../utils/command-storage'
+import { auditStamp, nextId, putRecordValue, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const createSecretInputPipe = v.object({ name: nonEmptyTrimmedStringPipe, valueRef: secretValueRefPipe })
@@ -34,12 +34,10 @@ export function createCreateSecretCommand(options: OpenCoreOptions): Operation {
 			archivePeriods: [],
 		}
 
-		return withTransaction(options, async (tx): Promise<CoreResult<Secret, Exclude<Error, InvalidInputError>>> => {
-			const stored = await putRecord('secret', tx.secrets, id.value, secret)
-			if (!stored.ok) return stored
-
-			return { ok: true, value: secret }
-		})
+		return withTransaction(
+			options,
+			(tx): Promise<CoreResult<Secret, Exclude<Error, InvalidInputError>>> => putRecordValue('secret', tx.secrets, secret),
+		)
 	})
 }
 

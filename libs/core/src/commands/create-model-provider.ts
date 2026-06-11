@@ -17,14 +17,7 @@ import type {
 } from '../errors'
 import type { OpenCoreOptions } from '../services'
 import { buildCommandHandler } from '../utils/command'
-import {
-	auditStamp,
-	nextId,
-	putRecord,
-	secretReferencesFromModelProviderConfig,
-	validateActiveSecretReferences,
-	withTransaction,
-} from '../utils/command-storage'
+import { auditStamp, nextId, putValidModelProvider, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const createModelProviderInputPipe = v.object({
@@ -55,11 +48,7 @@ export function createCreateModelProviderCommand(options: OpenCoreOptions): Oper
 		const id = nextId(options, 'model-provider')
 		if (!id.ok) return Promise.resolve(id)
 
-		return withTransaction(options, async (tx): Promise<CoreResult<ModelProvider, Exclude<Error, InvalidInputError>>> => {
-			const references = secretReferencesFromModelProviderConfig(input.auth, input.headers)
-			const validReferences = await validateActiveSecretReferences(tx, references)
-			if (!validReferences.ok) return validReferences
-
+		return withTransaction(options, (tx): Promise<CoreResult<ModelProvider, Exclude<Error, InvalidInputError>>> => {
 			const provider: ModelProvider = {
 				id: id.value,
 				name: input.name,
@@ -72,10 +61,7 @@ export function createCreateModelProviderCommand(options: OpenCoreOptions): Oper
 				archivePeriods: [],
 			}
 
-			const stored = await putRecord('model-provider', tx.modelProviders, provider.id, provider)
-			if (!stored.ok) return stored
-
-			return { ok: true, value: provider }
+			return putValidModelProvider(tx, provider)
 		})
 	})
 }

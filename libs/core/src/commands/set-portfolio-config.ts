@@ -7,12 +7,11 @@ import type { OpenCoreOptions } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import {
-	auditStamp,
 	modelIdsFromPortfolioConfig,
 	normalizePortfolioConfig,
-	putSingleton,
+	putSingletonValue,
 	validateSelectableModels,
-	withTransaction,
+	withAuditStampTransaction,
 } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -26,22 +25,20 @@ export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigComm
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createSetPortfolioConfigCommand(options: OpenCoreOptions): Operation {
-	return buildCommandHandler('setPortfolioConfig', setPortfolioConfigInputPipe, (input, context) => {
-		const stampResult = auditStamp(options, context)
-		if (!stampResult.ok) return Promise.resolve(stampResult)
+	return buildCommandHandler('setPortfolioConfig', setPortfolioConfigInputPipe, (input, context) =>
+		withAuditStampTransaction(
+			options,
+			context,
+			async (tx, stamp): Promise<CoreResult<PortfolioConfigRecord, Exclude<Error, InvalidInputError>>> => {
+				const config = normalizePortfolioConfig(input.config)
+				const referenceValidation = await validateSelectableModels(tx, modelIdsFromPortfolioConfig(config))
+				if (!referenceValidation.ok) return referenceValidation
 
-		return withTransaction(options, async (tx): Promise<CoreResult<PortfolioConfigRecord, Exclude<Error, InvalidInputError>>> => {
-			const config = normalizePortfolioConfig(input.config)
-			const referenceValidation = await validateSelectableModels(tx, modelIdsFromPortfolioConfig(config))
-			if (!referenceValidation.ok) return referenceValidation
-
-			const record: PortfolioConfigRecord = { configured: stampResult.value, value: config }
-			const putResult = await putSingleton('portfolio-config', tx.portfolioConfig, record)
-			if (!putResult.ok) return putResult
-
-			return { ok: true, value: record }
-		})
-	})
+				const record: PortfolioConfigRecord = { configured: stamp, value: config }
+				return putSingletonValue('portfolio-config', tx.portfolioConfig, record)
+			},
+		),
+	)
 }
 
 if (import.meta.vitest) {

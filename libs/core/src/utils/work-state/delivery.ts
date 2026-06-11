@@ -1,16 +1,9 @@
+import { compareActions, latestAction, latestKnownAction } from './actions'
+import { singleDeliveryArtifact } from './artifacts'
+import { blockedDependencyIds } from './dependencies'
 import { loadWorkStateFacts } from './facts'
-import {
-	blockedDependencyIds,
-	compareActions,
-	currentScopedReviewSurface,
-	firstState,
-	invariant,
-	latestAction,
-	latestKnownAction,
-	ok,
-	singleDeliveryArtifact,
-	stateOrElse,
-} from './shared'
+import { firstState, invariant, ok, stateOrElse } from './result'
+import { currentScopedReviewSurface } from './review-surfaces'
 import { deriveSliceWorkStateFromFacts } from './slice'
 import type { DeliveryDependencyLink, WorkStateDerivationError, WorkStateFacts, WorkStateResult } from './types'
 import type { Action } from '../../domain/action'

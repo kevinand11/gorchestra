@@ -1,7 +1,10 @@
 import type {
 	ArchivedModelProviderReferenceError,
 	ArchivedModelReferenceError,
+	DeliveryWorkStateMismatchError,
 	InvalidCoreServiceOutputError,
+	InvalidInputError,
+	InvariantViolationError,
 	ProjectSourceTypeMismatchError,
 	ResourceNotFoundError,
 	SecretNotActiveError,
@@ -11,3 +14,10 @@ import type {
 export type ConfigCommandReferenceError = ResourceNotFoundError | ArchivedModelReferenceError | ArchivedModelProviderReferenceError
 export type ConfigCommandStorageError = StorageOperationFailedError | InvalidCoreServiceOutputError
 export type RepositoryCommandReferenceError = ResourceNotFoundError | SecretNotActiveError | ProjectSourceTypeMismatchError
+export type DeliveryActionCommandError =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| ResourceNotFoundError
+	| StorageOperationFailedError
+	| DeliveryWorkStateMismatchError
+	| InvariantViolationError

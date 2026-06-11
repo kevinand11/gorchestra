@@ -18,7 +18,7 @@ import {
 	getRequired,
 	isArchived,
 	nextId,
-	putRecord,
+	putRecordValue,
 	withTransaction,
 } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -63,32 +63,19 @@ export function createCreateModelCommand(options: OpenCoreOptions): Operation {
 				updated: null,
 				archivePeriods: [],
 			}
-			const stored = await putRecord('model', tx.models, model.id, model)
-			if (!stored.ok) return stored
-
-			return { ok: true, value: model }
+			return putRecordValue('model', tx.models, model)
 		})
 	})
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp } = await import('../utils/test-helpers')
+	const { context, createTestOpenCoreOptions, seedModelProvider } = await import('../utils/test-helpers')
 
 	describe('createModel command', () => {
 		it('creates Models under active Providers', async () => {
 			const options = createTestOpenCoreOptions()
-			options.tx.modelProviders.records.set('provider-1', {
-				id: 'provider-1',
-				name: 'Provider',
-				protocol: 'anthropic-messages',
-				baseUrl: 'https://api.example.com',
-				auth: null,
-				headers: [],
-				created: localStamp(),
-				updated: null,
-				archivePeriods: [],
-			})
+			seedModelProvider(options.tx, 'provider-1')
 			const command = createCreateModelCommand(options)
 
 			const result = await command({ providerId: 'provider-1', name: ' Sonnet ', providerModelId: ' claude-sonnet ' }, context)
