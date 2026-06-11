@@ -23,11 +23,11 @@ export function createGetDeliveryWorkStateQuery(options: CoreServices): Operatio
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestOpenCoreOptions, seedDelivery } = await import('../utils/test-helpers')
+	const { createTestCoreServices, seedDelivery } = await import('../utils/test-helpers')
 
 	describe('getDeliveryWorkState query', () => {
 		it('validates input before reading storage', async () => {
-			const query = createGetDeliveryWorkStateQuery(createTestOpenCoreOptions())
+			const query = createGetDeliveryWorkStateQuery(createTestCoreServices())
 
 			const result = await query({ deliveryId: '   ' })
 
@@ -38,7 +38,7 @@ if (import.meta.vitest) {
 		})
 
 		it('derives unqueued for an existing Delivery without queue Action', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedDelivery(options.tx, 'delivery-1')
 			const query = createGetDeliveryWorkStateQuery(options)
 

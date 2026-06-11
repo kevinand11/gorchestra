@@ -4,7 +4,7 @@ import { idPipe, type OperationContext } from '../domain/commons'
 import { projectConfigPipe } from '../domain/config'
 import { projectPipe, type Project } from '../domain/project'
 import type { InvalidInputError } from '../errors'
-import type { CoreServices } from '../services'
+import type { CoreRuntime } from '../runtime'
 import { buildCommandHandler } from '../utils/command'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import {
@@ -26,7 +26,8 @@ export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigComm
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createSetProjectConfigCommand(options: CoreServices): Operation {
+export function createSetProjectConfigCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('setProjectConfig', setProjectConfigInputPipe, (input, context) =>
 		withAuditStampTransaction(options, context, async (tx, stamp): Promise<CoreResult<Project, Exclude<Error, InvalidInputError>>> => {
 			const projectResult = await getRequired('project', tx.projects, input.projectId, projectPipe)
@@ -44,13 +45,13 @@ export function createSetProjectConfigCommand(options: CoreServices): Operation 
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedProject, stamp } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedProject, stamp } = await import('../utils/test-helpers')
 
 	describe('setProjectConfig command', () => {
 		it('sets Project config as a retained config record that can fold to null', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedProject(options.tx, 'project-1')
-			const command = createSetProjectConfigCommand(options)
+			const command = createSetProjectConfigCommand(createTestCoreRuntime(options))
 
 			const result = await command({ projectId: 'project-1', config: { model: null, work: null } }, context)
 

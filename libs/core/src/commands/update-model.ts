@@ -3,7 +3,8 @@ import { v, type PipeOutput } from 'valleyed'
 import { idPipe, nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
 import { modelPipe, type Model } from '../domain/model'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices, CoreStorageTransaction } from '../services'
+import type { CoreRuntime } from '../runtime'
+import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { updateStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -19,7 +20,8 @@ export type Operation = (input: Input, context: OperationContext) => Promise<Cor
 
 const selectModels = (tx: CoreStorageTransaction) => tx.models
 
-export function createUpdateModelCommand(options: CoreServices): Operation {
+export function createUpdateModelCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('updateModel', updateModelInputPipe, (input, context) =>
 		updateStoredRecordWithAudit(options, context, 'model', selectModels, input.modelId, modelPipe, (model, stamp) => ({
 			...model,
@@ -31,13 +33,14 @@ export function createUpdateModelCommand(options: CoreServices): Operation {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedSelectableModel } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedSelectableModel } =
+		await import('../utils/test-helpers')
 
 	describe('updateModel command', () => {
 		it('updates only human-readable Model names', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedSelectableModel(options.tx, 'model-1')
-			const command = createUpdateModelCommand(options)
+			const command = createUpdateModelCommand(createTestCoreRuntime(options))
 
 			const result = await command({ modelId: 'model-1', name: ' Updated ' }, context)
 

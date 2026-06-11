@@ -15,7 +15,7 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreServices } from '../services'
+import type { CoreRuntime } from '../runtime'
 import { buildCommandHandler } from '../utils/command'
 import { auditStamp, nextId, putValidModelProvider, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -40,7 +40,8 @@ export type Error =
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createCreateModelProviderCommand(options: CoreServices): Operation {
+export function createCreateModelProviderCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('createModelProvider', createModelProviderInputPipe, (input, context) => {
 		const stamp = auditStamp(options, context)
 		if (!stamp.ok) return Promise.resolve(stamp)
@@ -68,12 +69,12 @@ export function createCreateModelProviderCommand(options: CoreServices): Operati
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp } = await import('../utils/test-helpers')
 
 	describe('createModelProvider command', () => {
 		it('creates Model Providers with normalized config', async () => {
-			const options = createTestOpenCoreOptions()
-			const command = createCreateModelProviderCommand(options)
+			const options = createTestCoreServices()
+			const command = createCreateModelProviderCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{ name: '  Anthropic  ', protocol: 'anthropic-messages', baseUrl: ' https://api.example.com ', auth: null, headers: [] },

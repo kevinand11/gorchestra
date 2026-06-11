@@ -5,6 +5,7 @@ import { idPipe, type AuditStamp, type OperationContext } from '../domain/common
 import { deliveryConfigPipe, type DeliveryConfigRecord } from '../domain/config'
 import type { Delivery, DeliveryWorkState } from '../domain/delivery'
 import type { DeliveryWorkStateMismatchError, InvalidInputError, InvariantViolationError } from '../errors'
+import type { CoreRuntime } from '../runtime'
 import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
@@ -35,7 +36,8 @@ export type Error =
 /** Requires Delivery Work State not closed. Does not clear preflight-failed. */
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createConfigureDeliveryCommand(options: CoreServices): Operation {
+export function createConfigureDeliveryCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('configureDelivery', configureDeliveryInputPipe, (input, context) =>
 		handleConfigureDelivery(options, input, context),
 	)
@@ -112,12 +114,12 @@ const openDeliveryStateTypes: Exclude<DeliveryWorkState['type'], 'closed'>[] = [
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedDelivery, seedSelectableModel, validationEvidence } =
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedDelivery, seedSelectableModel, validationEvidence } =
 		await import('../utils/test-helpers')
 
 	describe('configureDelivery command', () => {
 		it('validates input before reading storage', async () => {
-			const command = createConfigureDeliveryCommand(createTestOpenCoreOptions())
+			const command = createConfigureDeliveryCommand(createTestCoreRuntime())
 
 			const result = await command({} as never, context)
 
@@ -128,7 +130,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the Delivery does not exist', async () => {
-			const command = createConfigureDeliveryCommand(createTestOpenCoreOptions())
+			const command = createConfigureDeliveryCommand(createTestCoreRuntime())
 
 			const result = await command({ deliveryId: 'missing-delivery', config: allNullConfig() }, context)
 
@@ -136,10 +138,10 @@ if (import.meta.vitest) {
 		})
 
 		it('sets Delivery config and validates referenced Models are selectable', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedDelivery(options.tx, 'delivery-1')
 			seedSelectableModel(options.tx, 'execution-model')
-			const command = createConfigureDeliveryCommand(options)
+			const command = createConfigureDeliveryCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{
@@ -207,13 +209,13 @@ if (import.meta.vitest) {
 		})
 
 		it('rejects closed Deliveries', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedDelivery(options.tx, 'delivery-1')
 			seedAction(options.tx, 'ship-existing', '2026-06-10T00:00:00.000Z', {
 				type: 'ship-delivery',
 				integration: { type: 'observed-artifact-integration', actionId: 'observe-integration' },
 			})
-			const command = createConfigureDeliveryCommand(options)
+			const command = createConfigureDeliveryCommand(createTestCoreRuntime(options))
 
 			const result = await command({ deliveryId: 'delivery-1', config: allNullConfig() }, context)
 
@@ -248,10 +250,10 @@ if (import.meta.vitest) {
 	}
 
 	function configureFixture() {
-		const options = createTestOpenCoreOptions()
+		const options = createTestCoreServices()
 		seedDelivery(options.tx, 'delivery-1')
 
-		return { options, command: createConfigureDeliveryCommand(options) }
+		return { options, command: createConfigureDeliveryCommand(createTestCoreRuntime(options)) }
 	}
 
 	function allNullConfig(): Input['config'] {
@@ -263,7 +265,7 @@ if (import.meta.vitest) {
 	}
 
 	function seedAction(
-		tx: ReturnType<typeof createTestOpenCoreOptions>['tx'],
+		tx: ReturnType<typeof createTestCoreServices>['tx'],
 		id: string,
 		at: string,
 		result: Action['result'],

@@ -16,6 +16,8 @@ import type { ReviewSurface } from '../domain/review-surface'
 import type { Revision, RevisionGate } from '../domain/revision'
 import type { Secret, SecretBinding } from '../domain/secret'
 import type { Slice } from '../domain/slice'
+import { createCoreProviders } from '../providers'
+import type { CoreRuntime } from '../runtime'
 import type { CoreServices, CoreStorageService, CoreStorageTransaction, RepositoryTable, SingletonRepository } from '../services'
 
 export const stamp: AuditStamp = { origin: 'imported', at: '2026-06-01T00:00:00.000Z' }
@@ -40,7 +42,11 @@ export function externalOperationEvidence(
 	return { type: 'external-operation', operation: { type: operation }, passed, summary }
 }
 
-export function createTestOpenCoreOptions(): CoreServices & { tx: MemoryStorageTransaction; transactionCalls: () => number } {
+export function createTestCoreRuntime(services = createTestCoreServices()): CoreRuntime {
+	return { services, providers: createCoreProviders() }
+}
+
+export function createTestCoreServices(): CoreServices & { tx: MemoryStorageTransaction; transactionCalls: () => number } {
 	const storage = createMemoryStorage()
 	const idCounters = new Map<string, number>()
 

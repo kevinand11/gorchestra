@@ -229,7 +229,7 @@ function correctionRetriesFor(root: Action, sliceActions: Action[]): number {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestOpenCoreOptions, externalOperationEvidence, seedDelivery, seedSlice, stamp, validationEvidence } =
+	const { createTestCoreServices, externalOperationEvidence, seedDelivery, seedSlice, stamp, validationEvidence } =
 		await import('../test-helpers')
 	const passedValidation = validationEvidence('slice-branch-validation', true, 'Valid.')
 	const failedValidation = validationEvidence('slice-branch-validation', false, 'Invalid.')
@@ -412,7 +412,7 @@ if (import.meta.vitest) {
 	})
 
 	function sliceFixture(options: { withSliceArtifact?: boolean } = {}) {
-		const core = createTestOpenCoreOptions()
+		const core = createTestCoreServices()
 		seedDelivery(core.tx, 'delivery-1')
 		seedSlice(core.tx, 'slice-1', 'delivery-1')
 		if (options.withSliceArtifact === true) {

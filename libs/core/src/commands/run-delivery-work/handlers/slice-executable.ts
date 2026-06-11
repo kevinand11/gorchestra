@@ -87,7 +87,7 @@ function executionAgentRun(agentRunId: string, modelId: string, actionId: string
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestOpenCoreOptions, seedDelivery, seedSlice, seedSelectableModel } = await import('../../../utils/test-helpers')
+	const { createTestCoreServices, seedDelivery, seedSlice, seedSelectableModel } = await import('../../../utils/test-helpers')
 
 	describe('handleSliceExecutable', () => {
 		it('claims initial executable Slice work with an Agent Run and start-slice-execution Action', async () => {
@@ -145,7 +145,7 @@ if (import.meta.vitest) {
 	}
 
 	function executableHandlerContext() {
-		const options = createTestOpenCoreOptions()
+		const options = createTestCoreServices()
 		seedSelectableModel(options.tx, 'model-1')
 		seedDelivery(options.tx, 'delivery-1')
 		seedSlice(options.tx, 'slice-1', 'delivery-1')

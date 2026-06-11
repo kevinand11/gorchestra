@@ -3,7 +3,8 @@ import { v, type PipeOutput } from 'valleyed'
 import { idPipe, type OperationContext } from '../domain/commons'
 import { secretPipe, secretValueRefPipe, type Secret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices, CoreStorageTransaction } from '../services'
+import type { CoreRuntime } from '../runtime'
+import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { updateStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -19,7 +20,8 @@ export type Operation = (input: Input, context: OperationContext) => Promise<Cor
 
 const selectSecrets = (tx: CoreStorageTransaction) => tx.secrets
 
-export function createReplaceSecretCommand(options: CoreServices): Operation {
+export function createReplaceSecretCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('replaceSecret', replaceSecretInputPipe, (input, context) =>
 		updateStoredRecordWithAudit(options, context, 'secret', selectSecrets, input.secretId, secretPipe, (secret, stamp) => ({
 			...secret,
@@ -31,13 +33,13 @@ export function createReplaceSecretCommand(options: CoreServices): Operation {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedSecret } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedSecret } = await import('../utils/test-helpers')
 
 	describe('replaceSecret command', () => {
 		it('replaces Secret protected value references and replacement Audit Stamps', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedSecret(options.tx, 'secret-1')
-			const command = createReplaceSecretCommand(options)
+			const command = createReplaceSecretCommand(createTestCoreRuntime(options))
 
 			const result = await command({ secretId: 'secret-1', valueRef: ' protected-ref-2 ' }, context)
 

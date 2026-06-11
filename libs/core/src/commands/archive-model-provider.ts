@@ -9,7 +9,8 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreServices, CoreStorageTransaction } from '../services'
+import type { CoreRuntime } from '../runtime'
+import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { archiveStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -30,7 +31,8 @@ export type Operation = (input: Input, context: OperationContext) => Promise<Cor
 
 const selectModelProviders = (tx: CoreStorageTransaction) => tx.modelProviders
 
-export function createArchiveModelProviderCommand(options: CoreServices): Operation {
+export function createArchiveModelProviderCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('archiveModelProvider', archiveModelProviderInputPipe, (input, context) =>
 		archiveStoredRecordWithAudit(options, context, 'model-provider', selectModelProviders, input.modelProviderId, modelProviderPipe),
 	)
@@ -38,13 +40,13 @@ export function createArchiveModelProviderCommand(options: CoreServices): Operat
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedModelProvider } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedModelProvider } = await import('../utils/test-helpers')
 
 	describe('archiveModelProvider command', () => {
 		it('archives Model Providers while preserving Archive Period history', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedModelProvider(options.tx, 'provider-1')
-			const command = createArchiveModelProviderCommand(options)
+			const command = createArchiveModelProviderCommand(createTestCoreRuntime(options))
 
 			const result = await command({ modelProviderId: 'provider-1' }, context)
 

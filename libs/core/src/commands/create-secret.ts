@@ -3,7 +3,7 @@ import { v, type PipeOutput } from 'valleyed'
 import { nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
 import { secretValueRefPipe, type Secret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
+import type { CoreRuntime } from '../runtime'
 import { buildCommandHandler } from '../utils/command'
 import { auditStamp, nextId, putRecordValue, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -17,7 +17,8 @@ export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageO
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createCreateSecretCommand(options: CoreServices): Operation {
+export function createCreateSecretCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('createSecret', createSecretInputPipe, (input, context) => {
 		const stamp = auditStamp(options, context)
 		if (!stamp.ok) return Promise.resolve(stamp)
@@ -43,12 +44,12 @@ export function createCreateSecretCommand(options: CoreServices): Operation {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp } = await import('../utils/test-helpers')
 
 	describe('createSecret command', () => {
 		it('creates Secrets with protected value references and empty Archive Periods', async () => {
-			const options = createTestOpenCoreOptions()
-			const command = createCreateSecretCommand(options)
+			const options = createTestCoreServices()
+			const command = createCreateSecretCommand(createTestCoreRuntime(options))
 
 			const result = await command({ name: '  GitHub token  ', valueRef: ' protected-ref ' }, context)
 

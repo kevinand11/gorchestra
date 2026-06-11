@@ -3,6 +3,7 @@ import { v, type PipeOutput } from 'valleyed'
 import { idPipe, type OperationContext } from '../domain/commons'
 import type { ValidationEvidence } from '../domain/evidence'
 import type { CommandStubError } from '../errors'
+import type { CoreRuntime } from '../runtime'
 import { buildStubCommand } from '../utils/command'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -15,17 +16,17 @@ export type Error = CommandStubError
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createPreflightRepositoryCommand(): Operation {
+export function createPreflightRepositoryCommand(_runtime: CoreRuntime): Operation {
 	return buildStubCommand<ValidationEvidence>('preflightRepository', preflightRepositoryInputPipe)
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime } = await import('../utils/test-helpers')
 
 	describe('preflightRepository command', () => {
 		it('validates input before returning not implemented', async () => {
-			const command = createPreflightRepositoryCommand()
+			const command = createPreflightRepositoryCommand(createTestCoreRuntime())
 
 			const result = await command({} as never, context)
 

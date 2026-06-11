@@ -1,5 +1,10 @@
 {
 	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
 	"entry": ["libs/*/src/index.ts"],
-	"ignorePatterns": [".trowel/**", "node_modules/**", "dist/**", "coverage/**"]
+	"ignorePatterns": [".trowel/**", "node_modules/**", "dist/**", "coverage/**"],
+	"duplicates": {
+		"minTokens": 90,
+		"minLines": 8,
+		"ignoreImports": true
+	}
 }

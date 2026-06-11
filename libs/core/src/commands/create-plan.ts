@@ -5,6 +5,7 @@ import { planConfigPipe } from '../domain/config'
 import { type Plan } from '../domain/plan'
 import { projectPipe } from '../domain/project'
 import type { InvalidInputError } from '../errors'
+import type { CoreRuntime } from '../runtime'
 import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
@@ -33,7 +34,8 @@ export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigComm
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createCreatePlanCommand(options: CoreServices): Operation {
+export function createCreatePlanCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('createPlan', createPlanInputPipe, (input, context) => handleCreatePlan(options, input, context))
 }
 
@@ -76,13 +78,13 @@ async function validatePlanConfigReferences(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedProject } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedProject } = await import('../utils/test-helpers')
 
 	describe('createPlan command', () => {
 		it('creates Plans for existing Projects without Repository setup', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedProject(options.tx, 'project-1')
-			const command = createCreatePlanCommand(options)
+			const command = createCreatePlanCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{ projectId: 'project-1', title: '  Plan setup  ', config: { model: { planningModelId: null } } },

@@ -1,4 +1,3 @@
-import type { CoreServices } from '../services'
 import { createAbandonDeliveryCommand } from './abandon-delivery'
 import { createAcceptPlanOutputCommand } from './accept-plan-output'
 import { createAcceptRevisionOutputCommand } from './accept-revision-output'
@@ -33,6 +32,7 @@ import { createUnarchiveSecretBindingCommand } from './unarchive-secret-binding'
 import { createUpdateModelCommand } from './update-model'
 import { createUpdateModelProviderCommand } from './update-model-provider'
 import { createUpdateRepositoryConfigCommand } from './update-repository-config'
+import type { CoreRuntime } from '../runtime'
 
 export type * as AbandonDelivery from './abandon-delivery'
 export type * as AcceptPlanOutput from './accept-plan-output'
@@ -69,42 +69,42 @@ export type * as UpdateModel from './update-model'
 export type * as UpdateModelProvider from './update-model-provider'
 export type * as UpdateRepositoryConfig from './update-repository-config'
 
-export function createCoreCommands(options: CoreServices) {
+export function createCoreCommands(runtime: CoreRuntime) {
 	return {
-		setPortfolioConfig: createSetPortfolioConfigCommand(options),
-		createModelProvider: createCreateModelProviderCommand(options),
-		updateModelProvider: createUpdateModelProviderCommand(options),
-		archiveModelProvider: createArchiveModelProviderCommand(options),
-		unarchiveModelProvider: createUnarchiveModelProviderCommand(options),
-		createModel: createCreateModelCommand(options),
-		updateModel: createUpdateModelCommand(options),
-		archiveModel: createArchiveModelCommand(options),
-		unarchiveModel: createUnarchiveModelCommand(options),
-		preflightModel: createPreflightModelCommand(),
-		preflightRepository: createPreflightRepositoryCommand(),
-		createPlan: createCreatePlanCommand(options),
-		acceptPlanOutput: createAcceptPlanOutputCommand(options),
-		rejectPlanOutput: createRejectPlanOutputCommand(),
-		configureDelivery: createConfigureDeliveryCommand(options),
-		queueDelivery: createQueueDeliveryCommand(options),
-		runDeliveryWork: createRunDeliveryWorkCommand(options),
-		retryDeliveryPreflight: createRetryDeliveryPreflightCommand(options),
-		openRevisionGate: createOpenRevisionGateCommand(),
-		acceptRevisionOutput: createAcceptRevisionOutputCommand(),
-		closeRevisionGate: createCloseRevisionGateCommand(),
-		shipDelivery: createShipDeliveryCommand(options),
-		abandonDelivery: createAbandonDeliveryCommand(),
-		createProject: createCreateProjectCommand(options),
-		setProjectConfig: createSetProjectConfigCommand(options),
-		createRepository: createCreateRepositoryCommand(options),
-		updateRepositoryConfig: createUpdateRepositoryConfigCommand(options),
-		createSecret: createCreateSecretCommand(options),
-		replaceSecret: createReplaceSecretCommand(options),
-		archiveSecret: createArchiveSecretCommand(options),
-		unarchiveSecret: createUnarchiveSecretCommand(options),
-		bindSecret: createBindSecretCommand(options),
-		archiveSecretBinding: createArchiveSecretBindingCommand(options),
-		unarchiveSecretBinding: createUnarchiveSecretBindingCommand(options),
+		setPortfolioConfig: createSetPortfolioConfigCommand(runtime),
+		createModelProvider: createCreateModelProviderCommand(runtime),
+		updateModelProvider: createUpdateModelProviderCommand(runtime),
+		archiveModelProvider: createArchiveModelProviderCommand(runtime),
+		unarchiveModelProvider: createUnarchiveModelProviderCommand(runtime),
+		createModel: createCreateModelCommand(runtime),
+		updateModel: createUpdateModelCommand(runtime),
+		archiveModel: createArchiveModelCommand(runtime),
+		unarchiveModel: createUnarchiveModelCommand(runtime),
+		preflightModel: createPreflightModelCommand(runtime),
+		preflightRepository: createPreflightRepositoryCommand(runtime),
+		createPlan: createCreatePlanCommand(runtime),
+		acceptPlanOutput: createAcceptPlanOutputCommand(runtime),
+		rejectPlanOutput: createRejectPlanOutputCommand(runtime),
+		configureDelivery: createConfigureDeliveryCommand(runtime),
+		queueDelivery: createQueueDeliveryCommand(runtime),
+		runDeliveryWork: createRunDeliveryWorkCommand(runtime),
+		retryDeliveryPreflight: createRetryDeliveryPreflightCommand(runtime),
+		openRevisionGate: createOpenRevisionGateCommand(runtime),
+		acceptRevisionOutput: createAcceptRevisionOutputCommand(runtime),
+		closeRevisionGate: createCloseRevisionGateCommand(runtime),
+		shipDelivery: createShipDeliveryCommand(runtime),
+		abandonDelivery: createAbandonDeliveryCommand(runtime),
+		createProject: createCreateProjectCommand(runtime),
+		setProjectConfig: createSetProjectConfigCommand(runtime),
+		createRepository: createCreateRepositoryCommand(runtime),
+		updateRepositoryConfig: createUpdateRepositoryConfigCommand(runtime),
+		createSecret: createCreateSecretCommand(runtime),
+		replaceSecret: createReplaceSecretCommand(runtime),
+		archiveSecret: createArchiveSecretCommand(runtime),
+		unarchiveSecret: createUnarchiveSecretCommand(runtime),
+		bindSecret: createBindSecretCommand(runtime),
+		archiveSecretBinding: createArchiveSecretBindingCommand(runtime),
+		unarchiveSecretBinding: createUnarchiveSecretBindingCommand(runtime),
 	}
 }
 
@@ -112,11 +112,12 @@ export type Core = ReturnType<typeof createCoreCommands>
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestOpenCoreOptions } = await import('../utils/test-helpers')
+	const { createCoreRuntime } = await import('../runtime')
+	const { createTestCoreServices } = await import('../utils/test-helpers')
 
 	describe('Core commands', () => {
 		it('returns an object with the expected command keys', () => {
-			const commands = createCoreCommands(createTestOpenCoreOptions()) as unknown as Record<string, unknown>
+			const commands = createCoreCommands(createCoreRuntime(createTestCoreServices())) as unknown as Record<string, unknown>
 			const commandNames = [
 				'setPortfolioConfig',
 				'createModelProvider',

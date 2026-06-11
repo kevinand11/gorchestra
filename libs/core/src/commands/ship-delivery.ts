@@ -4,6 +4,7 @@ import type { Action } from '../domain/action'
 import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
 import type { Delivery, DeliveryIntegration, DeliveryWorkState } from '../domain/delivery'
 import type { InvalidInputError } from '../errors'
+import type { CoreRuntime } from '../runtime'
 import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { DeliveryActionCommandError } from '../utils/command-errors'
@@ -27,7 +28,8 @@ export type Error = DeliveryActionCommandError
 /** Requires Delivery Work State ready-to-ship; records exactly one ship-delivery Action without post-merge validation in v1; duplicate calls fail with delivery-work-state-mismatch. */
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createShipDeliveryCommand(options: CoreServices): Operation {
+export function createShipDeliveryCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('shipDelivery', shipDeliveryInputPipe, (input, context) => handleShipDelivery(options, input, context))
 }
 
@@ -84,7 +86,8 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const {
 		context,
-		createTestOpenCoreOptions,
+		createTestCoreRuntime,
+		createTestCoreServices,
 		externalOperationEvidence,
 		localStamp,
 		seedDelivery,
@@ -99,7 +102,7 @@ if (import.meta.vitest) {
 
 	describe('shipDelivery command', () => {
 		it('validates input before reading storage', async () => {
-			const command = createShipDeliveryCommand(createTestOpenCoreOptions())
+			const command = createShipDeliveryCommand(createTestCoreRuntime())
 
 			const result = await command({} as never, context)
 
@@ -107,7 +110,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the Delivery does not exist', async () => {
-			const command = createShipDeliveryCommand(createTestOpenCoreOptions())
+			const command = createShipDeliveryCommand(createTestCoreRuntime())
 
 			const result = await command({ deliveryId: 'missing-delivery' }, context)
 
@@ -115,9 +118,9 @@ if (import.meta.vitest) {
 		})
 
 		it('records an authorized ship-delivery Action when a Delivery Review Surface was merged', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedReadyToShipDelivery(options.tx, { integration: 'review-surface-merged' })
-			const command = createShipDeliveryCommand(options)
+			const command = createShipDeliveryCommand(createTestCoreRuntime(options))
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
@@ -141,9 +144,9 @@ if (import.meta.vitest) {
 		})
 
 		it('records observed artifact integration when no Delivery Review Surface is needed', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedReadyToShipDelivery(options.tx, { integration: 'observed-artifact-integration' })
-			const command = createShipDeliveryCommand(options)
+			const command = createShipDeliveryCommand(createTestCoreRuntime(options))
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
@@ -161,9 +164,9 @@ if (import.meta.vitest) {
 		})
 
 		it('rejects shipping unless Delivery Work State is ready-to-ship', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedDelivery(options.tx, 'delivery-1')
-			const command = createShipDeliveryCommand(options)
+			const command = createShipDeliveryCommand(createTestCoreRuntime(options))
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
@@ -171,7 +174,7 @@ if (import.meta.vitest) {
 		})
 
 		it('rejects duplicate shipping because closed Deliveries are not ready-to-ship', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedReadyToShipDelivery(options.tx, { integration: 'observed-artifact-integration' })
 			options.tx.actions.records.set('ship-existing', {
 				id: 'ship-existing',
@@ -180,7 +183,7 @@ if (import.meta.vitest) {
 				authorized: localStamp(),
 				result: { type: 'ship-delivery', integration: { type: 'observed-artifact-integration', actionId: 'observe-integration' } },
 			})
-			const command = createShipDeliveryCommand(options)
+			const command = createShipDeliveryCommand(createTestCoreRuntime(options))
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
@@ -201,7 +204,7 @@ if (import.meta.vitest) {
 	}
 
 	function seedReadyToShipDelivery(
-		tx: ReturnType<typeof createTestOpenCoreOptions>['tx'],
+		tx: ReturnType<typeof createTestCoreServices>['tx'],
 		options: { integration: 'review-surface-merged' | 'observed-artifact-integration' },
 	) {
 		seedDelivery(tx, 'delivery-1')
@@ -236,7 +239,7 @@ if (import.meta.vitest) {
 		}
 	}
 
-	function seedMergedDeliveryReviewSurface(tx: ReturnType<typeof createTestOpenCoreOptions>['tx']) {
+	function seedMergedDeliveryReviewSurface(tx: ReturnType<typeof createTestCoreServices>['tx']) {
 		tx.reviewSurfaces.records.set('delivery-review', {
 			id: 'delivery-review',
 			scope: { type: 'delivery', deliveryId: 'delivery-1', deliveryArtifactId: 'delivery-artifact-1' },
@@ -258,7 +261,7 @@ if (import.meta.vitest) {
 		})
 	}
 
-	function seedAction(tx: ReturnType<typeof createTestOpenCoreOptions>['tx'], id: string, at: string, result: Action['result']) {
+	function seedAction(tx: ReturnType<typeof createTestCoreServices>['tx'], id: string, at: string, result: Action['result']) {
 		tx.actions.records.set(id, { id, deliveryId: 'delivery-1', performed: { at }, authorized: null, result })
 	}
 }

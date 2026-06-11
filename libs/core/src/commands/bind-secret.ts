@@ -10,6 +10,7 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
+import type { CoreRuntime } from '../runtime'
 import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import {
@@ -41,7 +42,8 @@ export type Error =
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createBindSecretCommand(options: CoreServices): Operation {
+export function createBindSecretCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('bindSecret', bindSecretInputPipe, (input, context) => handleBindSecret(options, input, context))
 }
 
@@ -102,13 +104,13 @@ async function validateSecretBindingUnique(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedSecret } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedSecret } = await import('../utils/test-helpers')
 
 	describe('bindSecret command', () => {
 		it('creates Secret Bindings only for existing active Secrets', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedSecret(options.tx, 'secret-1')
-			const command = createBindSecretCommand(options)
+			const command = createBindSecretCommand(createTestCoreRuntime(options))
 
 			const result = await command({ secretId: 'secret-1', scope: { type: 'portfolio' }, envName: ' GITHUB_TOKEN ' }, context)
 

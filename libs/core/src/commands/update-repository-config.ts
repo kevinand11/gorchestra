@@ -8,7 +8,8 @@ import type {
 	InvalidInputError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreServices, CoreStorageTransaction } from '../services'
+import type { CoreRuntime } from '../runtime'
+import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { RepositoryCommandReferenceError } from '../utils/command-errors'
 import {
@@ -36,7 +37,8 @@ export type Error =
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createUpdateRepositoryConfigCommand(options: CoreServices): Operation {
+export function createUpdateRepositoryConfigCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('updateRepositoryConfig', updateRepositoryConfigInputPipe, (input) =>
 		withTransaction(options, (tx) => updateRepositoryConfig(tx, input)),
 	)
@@ -83,11 +85,12 @@ async function validateRepositoryConfigUpdate(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedProject, seedSecret } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedProject, seedSecret } =
+		await import('../utils/test-helpers')
 
 	describe('updateRepositoryConfig command', () => {
 		it('updates Repository config after validating active Secret references', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedProject(options.tx, 'project-1')
 			seedSecret(options.tx, 'secret-1')
 			seedSecret(options.tx, 'secret-2')
@@ -97,7 +100,7 @@ if (import.meta.vitest) {
 				config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
 				created: localStamp(),
 			})
-			const command = createUpdateRepositoryConfigCommand(options)
+			const command = createUpdateRepositoryConfigCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{ repositoryId: 'repository-1', config: { provider: 'github', owner: 'Octo', name: 'Renamed', secretId: 'secret-2' } },

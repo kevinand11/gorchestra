@@ -9,7 +9,8 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreServices, CoreStorageTransaction } from '../services'
+import type { CoreRuntime } from '../runtime'
+import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { unarchiveStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -30,7 +31,8 @@ export type Operation = (input: Input, context: OperationContext) => Promise<Cor
 
 const selectSecretBindings = (tx: CoreStorageTransaction) => tx.secretBindings
 
-export function createUnarchiveSecretBindingCommand(options: CoreServices): Operation {
+export function createUnarchiveSecretBindingCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('unarchiveSecretBinding', unarchiveSecretBindingInputPipe, (input, context) =>
 		unarchiveStoredRecordWithAudit(options, context, 'secret-binding', selectSecretBindings, input.secretBindingId, secretBindingPipe),
 	)
@@ -38,11 +40,11 @@ export function createUnarchiveSecretBindingCommand(options: CoreServices): Oper
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedSecret, stamp } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedSecret, stamp } = await import('../utils/test-helpers')
 
 	describe('unarchiveSecretBinding command', () => {
 		it('unarchives Secret Bindings while preserving history', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedSecret(options.tx, 'secret-1')
 			options.tx.secretBindings.records.set('binding-1', {
 				id: 'binding-1',
@@ -52,7 +54,7 @@ if (import.meta.vitest) {
 				created: stamp,
 				archivePeriods: [{ archived: stamp, unarchived: null }],
 			})
-			const command = createUnarchiveSecretBindingCommand(options)
+			const command = createUnarchiveSecretBindingCommand(createTestCoreRuntime(options))
 
 			const result = await command({ secretBindingId: 'binding-1' }, context)
 

@@ -74,7 +74,7 @@ function handleFirstExecutableSlice(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestOpenCoreOptions, localStamp, seedDelivery, seedProject, seedSelectableModel, seedSlice, stamp } =
+	const { createTestCoreServices, localStamp, seedDelivery, seedProject, seedSelectableModel, seedSlice, stamp } =
 		await import('../../../utils/test-helpers')
 
 	describe('handleDeliverySlicesIncomplete', () => {
@@ -158,7 +158,7 @@ if (import.meta.vitest) {
 	}
 
 	function executableDeliveryFixture(options: { portfolioConfig?: boolean; workConfig?: boolean } = {}) {
-		const core = createTestOpenCoreOptions()
+		const core = createTestCoreServices()
 		seedSelectableModel(core.tx, 'model-1')
 		seedProject(core.tx, 'project-1')
 		seedDelivery(core.tx, 'delivery-1')

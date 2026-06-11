@@ -17,6 +17,7 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../../errors'
+import type { CoreRuntime } from '../../runtime'
 import type { CoreServices, CoreStorageTransaction } from '../../services'
 import { buildCommandHandler } from '../../utils/command'
 import { auditStamp, getRequired, listRecords, putRecord, withTransaction } from '../../utils/command-storage'
@@ -41,7 +42,8 @@ export type Error =
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createAcceptPlanOutputCommand(options: CoreServices): Operation {
+export function createAcceptPlanOutputCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('acceptPlanOutput', acceptPlanOutputInputPipe, (input, context) =>
 		handleAcceptPlanOutput(options, input, context),
 	)
@@ -170,13 +172,14 @@ function resultValue<TValue>(result: CoreResult<TValue, unknown>): TValue {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedProject, seedSecret } = await import('../../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedProject, seedSecret } =
+		await import('../../utils/test-helpers')
 	const { createCreatePlanCommand } = await import('../create-plan')
 	const { createCreateRepositoryCommand } = await import('../create-repository')
 
 	describe('acceptPlanOutput command', () => {
 		it('validates input before reading storage', async () => {
-			const command = createAcceptPlanOutputCommand(createTestOpenCoreOptions())
+			const command = createAcceptPlanOutputCommand(createTestCoreRuntime())
 
 			const result = await command({} as never, context)
 
@@ -187,15 +190,15 @@ if (import.meta.vitest) {
 		})
 
 		it('materializes deliveries, ordered slices, memories, dependencies, and Plan-produced Memory links', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedProject(options.tx, 'project-1')
 			seedSecret(options.tx, 'secret-1')
-			await createCreatePlanCommand(options)({ projectId: 'project-1', title: 'Plan', config: null }, context)
-			await createCreateRepositoryCommand(options)(
+			await createCreatePlanCommand(createTestCoreRuntime(options))({ projectId: 'project-1', title: 'Plan', config: null }, context)
+			await createCreateRepositoryCommand(createTestCoreRuntime(options))(
 				{ projectId: 'project-1', config: { provider: 'github', owner: 'Org', name: 'Repo', secretId: 'secret-1' } },
 				context,
 			)
-			const command = createAcceptPlanOutputCommand(options)
+			const command = createAcceptPlanOutputCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{

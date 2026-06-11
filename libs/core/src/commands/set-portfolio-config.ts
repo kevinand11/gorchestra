@@ -3,7 +3,7 @@ import { v, type PipeOutput } from 'valleyed'
 import type { OperationContext } from '../domain/commons'
 import { portfolioConfigPipe, type PortfolioConfigRecord } from '../domain/config'
 import type { InvalidInputError } from '../errors'
-import type { CoreServices } from '../services'
+import type { CoreRuntime } from '../runtime'
 import { buildCommandHandler } from '../utils/command'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import {
@@ -24,7 +24,8 @@ export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigComm
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createSetPortfolioConfigCommand(options: CoreServices): Operation {
+export function createSetPortfolioConfigCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('setPortfolioConfig', setPortfolioConfigInputPipe, (input, context) =>
 		withAuditStampTransaction(
 			options,
@@ -43,13 +44,14 @@ export function createSetPortfolioConfigCommand(options: CoreServices): Operatio
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedSelectableModel } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedSelectableModel } =
+		await import('../utils/test-helpers')
 
 	describe('setPortfolioConfig command', () => {
 		it('sets Portfolio config with normalized config and selectable Model validation', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedSelectableModel(options.tx, 'model-1')
-			const command = createSetPortfolioConfigCommand(options)
+			const command = createSetPortfolioConfigCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{

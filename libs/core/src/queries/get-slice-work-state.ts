@@ -23,11 +23,11 @@ export function createGetSliceWorkStateQuery(options: CoreServices): Operation {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestOpenCoreOptions, seedDelivery, seedSlice } = await import('../utils/test-helpers')
+	const { createTestCoreServices, seedDelivery, seedSlice } = await import('../utils/test-helpers')
 
 	describe('getSliceWorkState query', () => {
 		it('validates input before reading storage', async () => {
-			const query = createGetSliceWorkStateQuery(createTestOpenCoreOptions())
+			const query = createGetSliceWorkStateQuery(createTestCoreServices())
 
 			const result = await query({ sliceId: '   ' })
 
@@ -38,7 +38,7 @@ if (import.meta.vitest) {
 		})
 
 		it('derives needs-artifact-creation for an unblocked Slice without a Slice Artifact', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedDelivery(options.tx, 'delivery-1')
 			seedSlice(options.tx, 'slice-1', 'delivery-1')
 			const query = createGetSliceWorkStateQuery(options)

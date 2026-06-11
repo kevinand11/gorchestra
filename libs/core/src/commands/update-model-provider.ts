@@ -15,7 +15,7 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreServices } from '../services'
+import type { CoreRuntime } from '../runtime'
 import { buildCommandHandler } from '../utils/command'
 import { auditStamp, getRequired, putValidModelProvider, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -40,7 +40,8 @@ export type Error =
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createUpdateModelProviderCommand(options: CoreServices): Operation {
+export function createUpdateModelProviderCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('updateModelProvider', updateModelProviderInputPipe, (input, context) => {
 		const stamp = auditStamp(options, context)
 		if (!stamp.ok) return Promise.resolve(stamp)
@@ -64,11 +65,11 @@ export function createUpdateModelProviderCommand(options: CoreServices): Operati
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp } = await import('../utils/test-helpers')
 
 	describe('updateModelProvider command', () => {
 		it('updates Model Provider mutable config while preserving protocol', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			options.tx.modelProviders.records.set('provider-1', {
 				id: 'provider-1',
 				name: 'Provider',
@@ -80,7 +81,7 @@ if (import.meta.vitest) {
 				updated: null,
 				archivePeriods: [],
 			})
-			const command = createUpdateModelProviderCommand(options)
+			const command = createUpdateModelProviderCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{ modelProviderId: 'provider-1', name: 'Updated', baseUrl: 'https://new.example.com', auth: null, headers: [] },

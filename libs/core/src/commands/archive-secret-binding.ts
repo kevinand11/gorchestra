@@ -9,7 +9,8 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreServices, CoreStorageTransaction } from '../services'
+import type { CoreRuntime } from '../runtime'
+import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { archiveStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -30,7 +31,8 @@ export type Operation = (input: Input, context: OperationContext) => Promise<Cor
 
 const selectSecretBindings = (tx: CoreStorageTransaction) => tx.secretBindings
 
-export function createArchiveSecretBindingCommand(options: CoreServices): Operation {
+export function createArchiveSecretBindingCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('archiveSecretBinding', archiveSecretBindingInputPipe, (input, context) =>
 		archiveStoredRecordWithAudit(options, context, 'secret-binding', selectSecretBindings, input.secretBindingId, secretBindingPipe),
 	)
@@ -38,11 +40,11 @@ export function createArchiveSecretBindingCommand(options: CoreServices): Operat
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedSecret } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedSecret } = await import('../utils/test-helpers')
 
 	describe('archiveSecretBinding command', () => {
 		it('archives Secret Bindings while preserving history without cascading Secret archives', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedSecret(options.tx, 'secret-1')
 			options.tx.secretBindings.records.set('binding-1', {
 				id: 'binding-1',
@@ -52,7 +54,7 @@ if (import.meta.vitest) {
 				created: localStamp(),
 				archivePeriods: [],
 			})
-			const command = createArchiveSecretBindingCommand(options)
+			const command = createArchiveSecretBindingCommand(createTestCoreRuntime(options))
 
 			const result = await command({ secretBindingId: 'binding-1' }, context)
 

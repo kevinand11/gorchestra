@@ -9,7 +9,8 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreServices, CoreStorageTransaction } from '../services'
+import type { CoreRuntime } from '../runtime'
+import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { archiveStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -30,7 +31,8 @@ export type Operation = (input: Input, context: OperationContext) => Promise<Cor
 
 const selectSecrets = (tx: CoreStorageTransaction) => tx.secrets
 
-export function createArchiveSecretCommand(options: CoreServices): Operation {
+export function createArchiveSecretCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('archiveSecret', archiveSecretInputPipe, (input, context) =>
 		archiveStoredRecordWithAudit(options, context, 'secret', selectSecrets, input.secretId, secretPipe),
 	)
@@ -38,13 +40,13 @@ export function createArchiveSecretCommand(options: CoreServices): Operation {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedSecret } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedSecret } = await import('../utils/test-helpers')
 
 	describe('archiveSecret command', () => {
 		it('archives Secrets while preserving Archive Period history', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedSecret(options.tx, 'secret-1')
-			const command = createArchiveSecretCommand(options)
+			const command = createArchiveSecretCommand(createTestCoreRuntime(options))
 
 			const result = await command({ secretId: 'secret-1' }, context)
 

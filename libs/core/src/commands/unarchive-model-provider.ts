@@ -9,7 +9,8 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreServices, CoreStorageTransaction } from '../services'
+import type { CoreRuntime } from '../runtime'
+import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { unarchiveStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -30,7 +31,8 @@ export type Operation = (input: Input, context: OperationContext) => Promise<Cor
 
 const selectModelProviders = (tx: CoreStorageTransaction) => tx.modelProviders
 
-export function createUnarchiveModelProviderCommand(options: CoreServices): Operation {
+export function createUnarchiveModelProviderCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('unarchiveModelProvider', unarchiveModelProviderInputPipe, (input, context) =>
 		unarchiveStoredRecordWithAudit(options, context, 'model-provider', selectModelProviders, input.modelProviderId, modelProviderPipe),
 	)
@@ -38,13 +40,14 @@ export function createUnarchiveModelProviderCommand(options: CoreServices): Oper
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedModelProvider, stamp } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedModelProvider, stamp } =
+		await import('../utils/test-helpers')
 
 	describe('unarchiveModelProvider command', () => {
 		it('unarchives Model Providers while preserving Archive Period history', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedModelProvider(options.tx, 'provider-1', true)
-			const command = createUnarchiveModelProviderCommand(options)
+			const command = createUnarchiveModelProviderCommand(createTestCoreRuntime(options))
 
 			const result = await command({ modelProviderId: 'provider-1' }, context)
 

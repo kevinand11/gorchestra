@@ -8,6 +8,7 @@ import type {
 	InvalidInputError,
 	StorageOperationFailedError,
 } from '../errors'
+import type { CoreRuntime } from '../runtime'
 import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { RepositoryCommandReferenceError } from '../utils/command-errors'
@@ -37,7 +38,8 @@ export type Error =
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createCreateRepositoryCommand(options: CoreServices): Operation {
+export function createCreateRepositoryCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('createRepository', createRepositoryInputPipe, (input, context) =>
 		handleCreateRepository(options, input, context),
 	)
@@ -93,14 +95,15 @@ async function validateRepositoryCreate(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedProject, seedSecret } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedProject, seedSecret } =
+		await import('../utils/test-helpers')
 
 	describe('createRepository command', () => {
 		it('creates Repositories only for Source Control Projects with active Secret references', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedProject(options.tx, 'project-1')
 			seedSecret(options.tx, 'secret-1')
-			const command = createCreateRepositoryCommand(options)
+			const command = createCreateRepositoryCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{ projectId: 'project-1', config: { provider: 'github', owner: ' Octo ', name: ' Repo ', secretId: 'secret-1' } },

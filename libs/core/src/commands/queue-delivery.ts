@@ -2,6 +2,7 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
 import type { InvalidInputError } from '../errors'
+import type { CoreRuntime } from '../runtime'
 import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { DeliveryActionCommandError } from '../utils/command-errors'
@@ -25,7 +26,8 @@ export type Error = DeliveryActionCommandError
 /** Requires Delivery Work State unqueued; records exactly one queue-delivery Action; duplicate calls fail with delivery-work-state-mismatch. */
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createQueueDeliveryCommand(options: CoreServices): Operation {
+export function createQueueDeliveryCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('queueDelivery', queueDeliveryInputPipe, (input, context) => handleQueueDelivery(options, input, context))
 }
 
@@ -80,11 +82,11 @@ function queueDeliveryAction(deliveryId: Id, stamp: AuditStamp, actionId: Id): R
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedDelivery } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedDelivery } = await import('../utils/test-helpers')
 
 	describe('queueDelivery command', () => {
 		it('validates input before reading storage', async () => {
-			const command = createQueueDeliveryCommand(createTestOpenCoreOptions())
+			const command = createQueueDeliveryCommand(createTestCoreRuntime())
 
 			const result = await command({} as never, context)
 
@@ -92,9 +94,9 @@ if (import.meta.vitest) {
 		})
 
 		it('records an authorized queue-delivery Action when Delivery Work State is unqueued', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedDelivery(options.tx, 'delivery-1')
-			const command = createQueueDeliveryCommand(options)
+			const command = createQueueDeliveryCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{ deliveryId: ' delivery-1 ', unknown: 'stripped' } as never,
@@ -122,7 +124,7 @@ if (import.meta.vitest) {
 		})
 
 		it('rejects queueing unless Delivery Work State is unqueued', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedDelivery(options.tx, 'delivery-1')
 			options.tx.actions.records.set('action-existing', {
 				id: 'action-existing',
@@ -131,7 +133,7 @@ if (import.meta.vitest) {
 				authorized: localStamp(),
 				result: { type: 'queue-delivery' },
 			})
-			const command = createQueueDeliveryCommand(options)
+			const command = createQueueDeliveryCommand(createTestCoreRuntime(options))
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 

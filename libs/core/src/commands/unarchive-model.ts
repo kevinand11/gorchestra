@@ -9,7 +9,8 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreServices, CoreStorageTransaction } from '../services'
+import type { CoreRuntime } from '../runtime'
+import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { unarchiveStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -30,7 +31,8 @@ export type Operation = (input: Input, context: OperationContext) => Promise<Cor
 
 const selectModels = (tx: CoreStorageTransaction) => tx.models
 
-export function createUnarchiveModelCommand(options: CoreServices): Operation {
+export function createUnarchiveModelCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('unarchiveModel', unarchiveModelInputPipe, (input, context) =>
 		unarchiveStoredRecordWithAudit(options, context, 'model', selectModels, input.modelId, modelPipe),
 	)
@@ -38,13 +40,14 @@ export function createUnarchiveModelCommand(options: CoreServices): Operation {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedSelectableModel, stamp } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedSelectableModel, stamp } =
+		await import('../utils/test-helpers')
 
 	describe('unarchiveModel command', () => {
 		it('unarchives Models while preserving Archive Period history', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedSelectableModel(options.tx, 'model-1', { modelArchived: true })
-			const command = createUnarchiveModelCommand(options)
+			const command = createUnarchiveModelCommand(createTestCoreRuntime(options))
 
 			const result = await command({ modelId: 'model-1' }, context)
 

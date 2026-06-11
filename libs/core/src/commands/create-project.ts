@@ -4,7 +4,7 @@ import { nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/comm
 import { projectConfigPipe } from '../domain/config'
 import { projectSourcePipe, type Project } from '../domain/project'
 import type { InvalidInputError } from '../errors'
-import type { CoreServices } from '../services'
+import type { CoreRuntime } from '../runtime'
 import { buildCommandHandler } from '../utils/command'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import {
@@ -31,7 +31,8 @@ export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigComm
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createCreateProjectCommand(options: CoreServices): Operation {
+export function createCreateProjectCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('createProject', createProjectInputPipe, (input, context) => {
 		const stampResult = auditStamp(options, context)
 		if (!stampResult.ok) return Promise.resolve(stampResult)
@@ -60,12 +61,12 @@ export function createCreateProjectCommand(options: CoreServices): Operation {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp } = await import('../utils/test-helpers')
 
 	describe('createProject command', () => {
 		it('creates Projects with normalized titles, immutable source, folded create config, and Audit Stamps', async () => {
-			const options = createTestOpenCoreOptions()
-			const command = createCreateProjectCommand(options)
+			const options = createTestCoreServices()
+			const command = createCreateProjectCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{

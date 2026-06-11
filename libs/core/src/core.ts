@@ -4,6 +4,7 @@ import * as Commands from './commands'
 import { idPipe, isoDateTimePipe } from './domain/commons'
 import type { CorePreflightError, OpenCoreError } from './errors'
 import * as Queries from './queries'
+import { createCoreRuntime } from './runtime'
 import {
 	coreServicePreflightOutputPipe,
 	coreServicesPipe,
@@ -29,15 +30,15 @@ export function openCore(services: CoreServices): Result<GorchestraCore, OpenCor
 
 	if (!validation.ok) return validation
 
-	const coreServices = validation.value
+	const runtime = createCoreRuntime(validation.value)
 
 	return {
 		ok: true,
 		value: {
-			preflight: () => preflightCore(coreServices),
-			commands: Commands.createCoreCommands(coreServices),
-			queries: Queries.createCoreQueries(coreServices),
-			snapshots: Snapshots.createCoreSnapshots(),
+			preflight: () => preflightCore(runtime.services),
+			commands: Commands.createCoreCommands(runtime),
+			queries: Queries.createCoreQueries(runtime),
+			snapshots: Snapshots.createCoreSnapshots(runtime),
 		},
 	}
 }
@@ -152,7 +153,7 @@ if (import.meta.vitest) {
 
 	const sandbox: CoreServices['sandbox'] = { preflight: () => Promise.resolve({ ok: true }) }
 
-	function openCoreOptions(): CoreServices {
+	function coreServices(): CoreServices {
 		return {
 			storage,
 			secrets,
@@ -164,7 +165,7 @@ if (import.meta.vitest) {
 
 	describe('openCore', () => {
 		it('opens synchronously with valid Core Services and composes public runtime namespaces', () => {
-			const result = openCore(openCoreOptions())
+			const result = openCore(coreServices())
 
 			expect(result).toMatchObject({ ok: true })
 			if (!result.ok) return
@@ -254,15 +255,15 @@ if (import.meta.vitest) {
 		})
 
 		it('treats logger and event sink as optional-only Core Services', () => {
-			expect(openCore(openCoreOptions())).toMatchObject({ ok: true })
+			expect(openCore(coreServices())).toMatchObject({ ok: true })
 			expect(
 				openCore({
-					...openCoreOptions(),
+					...coreServices(),
 					logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
 					eventSink: { publish: () => {} },
 				}),
 			).toMatchObject({ ok: true })
-			expect(openCore({ ...openCoreOptions(), logger: null as never })).toMatchObject({
+			expect(openCore({ ...coreServices(), logger: null as never })).toMatchObject({
 				ok: false,
 				error: {
 					type: 'invalid-input',
@@ -271,7 +272,7 @@ if (import.meta.vitest) {
 					pipeError: { messages: [expect.objectContaining({ path: 'logger' })] },
 				},
 			})
-			expect(openCore({ ...openCoreOptions(), eventSink: null as never })).toMatchObject({
+			expect(openCore({ ...coreServices(), eventSink: null as never })).toMatchObject({
 				ok: false,
 				error: {
 					type: 'invalid-input',
@@ -360,7 +361,7 @@ if (import.meta.vitest) {
 
 		it('returns failed checks for failed and thrown readiness probes', async () => {
 			const opened = openCore({
-				...openCoreOptions(),
+				...coreServices(),
 				storage: { ...storage, preflight: () => Promise.resolve({ ok: false, message: 'storage is offline' }) },
 				secrets: { ...secrets, preflight: () => Promise.reject(new Error('raw secret resolver failure')) },
 				clock: {
@@ -394,7 +395,7 @@ if (import.meta.vitest) {
 
 		it('returns invalid-core-service-output for malformed readiness outputs', async () => {
 			const malformedStorage = openCore({
-				...openCoreOptions(),
+				...coreServices(),
 				storage: { ...storage, preflight: () => Promise.resolve({ ok: 'yes' }) as never },
 			})
 			expect(malformedStorage).toMatchObject({ ok: true })
@@ -404,7 +405,7 @@ if (import.meta.vitest) {
 				error: { type: 'invalid-core-service-output', service: 'storage', operation: 'preflight' },
 			})
 
-			const malformedClock = openCore({ ...openCoreOptions(), clock: { now: () => new Date('not a date') } })
+			const malformedClock = openCore({ ...coreServices(), clock: { now: () => new Date('not a date') } })
 			expect(malformedClock).toMatchObject({ ok: true })
 			if (!malformedClock.ok) return
 			await expect(malformedClock.value.preflight()).resolves.toMatchObject({
@@ -412,7 +413,7 @@ if (import.meta.vitest) {
 				error: { type: 'invalid-core-service-output', service: 'clock', operation: 'now' },
 			})
 
-			const malformedId = openCore({ ...openCoreOptions(), idGenerator: { next: () => '   ' } })
+			const malformedId = openCore({ ...coreServices(), idGenerator: { next: () => '   ' } })
 			expect(malformedId).toMatchObject({ ok: true })
 			if (!malformedId.ok) return
 			await expect(malformedId.value.preflight()).resolves.toMatchObject({

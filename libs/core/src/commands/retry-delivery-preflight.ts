@@ -13,6 +13,7 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
+import type { CoreRuntime } from '../runtime'
 import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import {
@@ -48,7 +49,8 @@ export type Error =
  */
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createRetryDeliveryPreflightCommand(options: CoreServices): Operation {
+export function createRetryDeliveryPreflightCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('retryDeliveryPreflight', retryDeliveryPreflightInputPipe, (input, context) =>
 		handleRetryDeliveryPreflight(options, input, context),
 	)
@@ -137,23 +139,31 @@ function deliveryPreflightEvidence(passed: boolean, summary: string): Validation
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedDelivery, seedProject, seedSelectableModel, validationEvidence } =
-		await import('../utils/test-helpers')
+	const {
+		context,
+		createTestCoreRuntime,
+		createTestCoreServices,
+		localStamp,
+		seedDelivery,
+		seedProject,
+		seedSelectableModel,
+		validationEvidence,
+	} = await import('../utils/test-helpers')
 	const { deriveDeliveryWorkState } = await import('../utils/work-state')
 
 	describe('retryDeliveryPreflight command', () => {
 		it('validates input before reading storage', async () => {
-			await expectInvalidInput(createRetryDeliveryPreflightCommand(createTestOpenCoreOptions())({} as never, context))
+			await expectInvalidInput(createRetryDeliveryPreflightCommand(createTestCoreRuntime())({} as never, context))
 		})
 
 		it('returns not-found when the target Delivery does not exist', async () => {
-			await expectMissingDelivery(createRetryDeliveryPreflightCommand(createTestOpenCoreOptions()))
+			await expectMissingDelivery(createRetryDeliveryPreflightCommand(createTestCoreRuntime()))
 		})
 
 		it('rejects retry unless Delivery Work State is preflight-failed', async () => {
-			const options = createTestOpenCoreOptions()
+			const options = createTestCoreServices()
 			seedDelivery(options.tx, 'delivery-1')
-			const command = createRetryDeliveryPreflightCommand(options)
+			const command = createRetryDeliveryPreflightCommand(createTestCoreRuntime(options))
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
@@ -173,7 +183,7 @@ if (import.meta.vitest) {
 			seedProject(options.tx, 'project-1')
 			seedPassingPortfolioConfig(options)
 			seedSelectableModel(options.tx, 'model-1')
-			const command = createRetryDeliveryPreflightCommand(options)
+			const command = createRetryDeliveryPreflightCommand(createTestCoreRuntime(options))
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
@@ -267,7 +277,7 @@ if (import.meta.vitest) {
 	}
 
 	function preflightFailedFixture() {
-		const options = createTestOpenCoreOptions()
+		const options = createTestCoreServices()
 		seedDelivery(options.tx, 'delivery-1')
 		options.tx.actions.records.set('queue-delivery', {
 			id: 'queue-delivery',
@@ -288,7 +298,7 @@ if (import.meta.vitest) {
 	}
 
 	async function retry(options: ReturnType<typeof preflightFailedFixture>) {
-		return createRetryDeliveryPreflightCommand(options)({ deliveryId: 'delivery-1' }, context)
+		return createRetryDeliveryPreflightCommand(createTestCoreRuntime(options))({ deliveryId: 'delivery-1' }, context)
 	}
 
 	function seedPassingPortfolioConfig(options: ReturnType<typeof preflightFailedFixture>) {

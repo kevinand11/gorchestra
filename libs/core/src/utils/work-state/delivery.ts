@@ -347,7 +347,7 @@ function isDeliveryClosed(deliveryId: Delivery['id'], actions: Action[]): boolea
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestOpenCoreOptions, externalOperationEvidence, seedDelivery, seedSlice, stamp, validationEvidence } =
+	const { createTestCoreServices, externalOperationEvidence, seedDelivery, seedSlice, stamp, validationEvidence } =
 		await import('../test-helpers')
 	const passedValidation = validationEvidence('delivery-branch-validation', true, 'Valid.')
 	const failedValidation = validationEvidence('delivery-branch-validation', false, 'Invalid.')
@@ -506,7 +506,7 @@ if (import.meta.vitest) {
 	})
 
 	function deliveryFixture(options: { queued?: boolean; withDeliveryArtifact?: boolean; withSlice?: boolean } = {}) {
-		const core = createTestOpenCoreOptions()
+		const core = createTestCoreServices()
 		seedDelivery(core.tx, 'delivery-1')
 		if (options.withSlice === true) seedSlice(core.tx, 'slice-1', 'delivery-1')
 		if (options.queued === true) seedAction(core.tx, { id: 'queue-delivery', result: { type: 'queue-delivery' } })

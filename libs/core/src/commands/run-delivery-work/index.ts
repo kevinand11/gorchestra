@@ -5,6 +5,7 @@ import type { Error, Result } from './types'
 import { idPipe, type OperationContext } from '../../domain/commons'
 import { deliveryPipe } from '../../domain/delivery'
 import type { InvalidInputError } from '../../errors'
+import type { CoreRuntime } from '../../runtime'
 import type { CoreServices } from '../../services'
 import { buildCommandHandler } from '../../utils/command'
 import { getRequired, withTransaction } from '../../utils/storage'
@@ -33,7 +34,8 @@ export type Input = PipeOutput<typeof runDeliveryWorkInputPipe>
  */
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createRunDeliveryWorkCommand(options: CoreServices): Operation {
+export function createRunDeliveryWorkCommand(runtime: CoreRuntime): Operation {
+	const options = runtime.services
 	return buildCommandHandler('runDeliveryWork', runDeliveryWorkInputPipe, (input) => handleRunDeliveryWork(options, input))
 }
 
@@ -51,12 +53,12 @@ async function handleRunDeliveryWork(options: CoreServices, input: Input): Promi
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions } = await import('../../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices } = await import('../../utils/test-helpers')
 
 	describe('runDeliveryWork command', () => {
 		it('validates input before reading storage', async () => {
-			const options = createTestOpenCoreOptions()
-			const command = createRunDeliveryWorkCommand(options)
+			const options = createTestCoreServices()
+			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options))
 
 			const result = await command({} as never, context)
 
