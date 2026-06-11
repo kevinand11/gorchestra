@@ -1,11 +1,13 @@
 import { v, type Pipe, type PipeOutput } from 'valleyed'
 
-import { type AuditStamp, type Id, type IsoDateTime, type OperationContext } from '../domain/commons'
+import { type AuditStamp, type Id, type IsoDateTime, type OperationContext, type RuntimeRecord } from '../domain/commons'
 import type {
-	CoreResource,
+	CoreIdResource,
+	CoreSingletonResource,
 	CoreStorageOperation,
 	InvalidCoreServiceOutputError,
 	ResourceNotFoundError,
+	SingletonNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
 import {
@@ -34,8 +36,23 @@ export async function withTransaction<TValue, TError>(
 	}
 }
 
+export async function getRequiredSingleton<TRecord>(
+	resource: CoreSingletonResource,
+	repository: SingletonRepository<TRecord>,
+	recordPipe: Pipe<unknown, TRecord>,
+): Promise<Result<TRecord, StorageBoundaryError | SingletonNotFoundError>> {
+	try {
+		const record = await repository.get()
+		if (record === null) return singletonNotFound(resource)
+
+		return validateStorageOutput(recordPipe, record, `get-singleton:${resource}`)
+	} catch {
+		return { ok: false, error: storageFailure({ type: 'get-singleton', resource }) }
+	}
+}
+
 export async function putSingleton<TRecord>(
-	resource: 'portfolio-config',
+	resource: CoreSingletonResource,
 	repository: SingletonRepository<TRecord>,
 	record: TRecord,
 ): Promise<StorageResult<void>> {
@@ -48,7 +65,7 @@ export async function putSingleton<TRecord>(
 }
 
 export async function getRecord<TRecord>(
-	resource: CoreResource,
+	resource: CoreIdResource,
 	repository: RepositoryTable<TRecord>,
 	id: Id,
 	recordPipe: Pipe<unknown, TRecord>,
@@ -62,7 +79,7 @@ export async function getRecord<TRecord>(
 }
 
 function validateStoredRecord<TRecord>(
-	resource: CoreResource,
+	resource: CoreIdResource,
 	id: Id,
 	recordPipe: Pipe<unknown, TRecord>,
 	record: unknown,
@@ -75,7 +92,7 @@ function validateStoredRecord<TRecord>(
 }
 
 export async function getRequired<TRecord>(
-	resource: CoreResource,
+	resource: CoreIdResource,
 	repository: RepositoryTable<TRecord>,
 	id: Id,
 	recordPipe: Pipe<unknown, TRecord>,
@@ -88,7 +105,7 @@ export async function getRequired<TRecord>(
 }
 
 export async function putRecord<TRecord extends { id: Id }>(
-	resource: CoreResource,
+	resource: CoreIdResource,
 	repository: RepositoryTable<TRecord>,
 	id: Id,
 	record: TRecord,
@@ -102,7 +119,7 @@ export async function putRecord<TRecord extends { id: Id }>(
 }
 
 export async function listRecords<TRecord>(
-	resource: CoreResource,
+	resource: CoreIdResource,
 	repository: RepositoryTable<TRecord>,
 	recordPipe: Pipe<unknown, TRecord>,
 ): Promise<StorageResult<TRecord[]>> {
@@ -132,6 +149,13 @@ export function auditStamp(options: OpenCoreOptions, context: OperationContext):
 	}
 }
 
+export function runtimeRecord(options: OpenCoreOptions): Result<RuntimeRecord, InvalidCoreServiceOutputError> {
+	const nowResult = nowIso(options)
+	if (!nowResult.ok) return nowResult
+
+	return { ok: true, value: { at: nowResult.value } }
+}
+
 export function nextId(options: OpenCoreOptions, brand: string): Result<Id, InvalidCoreServiceOutputError> {
 	let output: unknown
 	try {
@@ -146,8 +170,12 @@ export function nextId(options: OpenCoreOptions, brand: string): Result<Id, Inva
 	return { ok: true, value: validation.value }
 }
 
-export function notFound(resource: CoreResource, id: Id): Result<never, ResourceNotFoundError> {
+export function notFound(resource: CoreIdResource, id: Id): Result<never, ResourceNotFoundError> {
 	return { ok: false, error: { type: 'not-found', resource, id } }
+}
+
+function singletonNotFound(resource: CoreSingletonResource): Result<never, SingletonNotFoundError> {
+	return { ok: false, error: { type: 'not-found-singleton', resource } }
 }
 
 function nowIso(options: OpenCoreOptions): Result<IsoDateTime, InvalidCoreServiceOutputError> {

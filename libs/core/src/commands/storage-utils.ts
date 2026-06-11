@@ -26,7 +26,18 @@ import { getRecord, getRequired, listRecords, notFound } from '../utils/storage'
 import type { StorageBoundaryError } from '../utils/storage'
 import type { Result } from '../utils/types'
 
-export { auditStamp, getRequired, listRecords, nextId, notFound, putRecord, putSingleton, withTransaction } from '../utils/storage'
+export {
+	auditStamp,
+	getRequired,
+	getRequiredSingleton,
+	listRecords,
+	nextId,
+	notFound,
+	putRecord,
+	putSingleton,
+	runtimeRecord,
+	withTransaction,
+} from '../utils/storage'
 
 export type CommandBoundary<TInput> = {
 	input: TInput

@@ -33,8 +33,9 @@ export type OpenCoreError = InvalidInputError
 
 export type DeliveryWorkStateType = DeliveryWorkState['type']
 
-export type CoreResource =
-	| 'portfolio-config'
+export type CoreSingletonResource = 'portfolio-config'
+
+export type CoreIdResource =
 	| 'project'
 	| 'repository'
 	| 'model-provider'
@@ -54,12 +55,19 @@ export type CoreResource =
 	| 'secret'
 	| 'secret-binding'
 
-export type ArchivableCoreResource = Extract<CoreResource, 'model-provider' | 'model' | 'link' | 'secret' | 'secret-binding'>
+export type CoreResource = CoreSingletonResource | CoreIdResource
+
+export type ArchivableCoreResource = Extract<CoreIdResource, 'model-provider' | 'model' | 'link' | 'secret' | 'secret-binding'>
 
 export interface ResourceNotFoundError {
 	type: 'not-found'
-	resource: CoreResource
+	resource: CoreIdResource
 	id: Id
+}
+
+export interface SingletonNotFoundError {
+	type: 'not-found-singleton'
+	resource: CoreSingletonResource
 }
 
 export interface AlreadyArchivedError {
@@ -76,10 +84,11 @@ export interface NotArchivedError {
 
 export type CoreStorageOperation =
 	| { type: 'transaction' }
-	| { type: 'get'; resource: CoreResource; id: Id }
-	| { type: 'put'; resource: CoreResource; id: Id }
-	| { type: 'put-singleton'; resource: CoreResource }
-	| { type: 'list'; resource: CoreResource }
+	| { type: 'get'; resource: CoreIdResource; id: Id }
+	| { type: 'put'; resource: CoreIdResource; id: Id }
+	| { type: 'get-singleton'; resource: CoreSingletonResource }
+	| { type: 'put-singleton'; resource: CoreSingletonResource }
+	| { type: 'list'; resource: CoreIdResource }
 
 export interface StorageOperationFailedError {
 	type: 'storage-operation-failed'
@@ -178,6 +187,7 @@ export type CoreError =
 	| InvalidCoreServiceOutputError
 	| NotImplementedError
 	| ResourceNotFoundError
+	| SingletonNotFoundError
 	| AlreadyArchivedError
 	| NotArchivedError
 	| StorageOperationFailedError

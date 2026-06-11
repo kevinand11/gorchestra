@@ -87,7 +87,7 @@ export function createCoreCommands(options: OpenCoreOptions) {
 		rejectPlanOutput: createRejectPlanOutputCommand(),
 		configureDelivery: createConfigureDeliveryCommand(),
 		queueDelivery: createQueueDeliveryCommand(options),
-		runDeliveryWork: createRunDeliveryWorkCommand(),
+		runDeliveryWork: createRunDeliveryWorkCommand(options),
 		retryDeliveryPreflight: createRetryDeliveryPreflightCommand(),
 		openRevisionGate: createOpenRevisionGateCommand(),
 		acceptRevisionOutput: createAcceptRevisionOutputCommand(),
