@@ -13,7 +13,7 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { OpenCoreOptions } from '../services'
-import type { Result as CoreResult } from '../types'
+import type { Result as CoreResult } from '../utils/types'
 
 const createModelInputPipe = v.object({
 	providerId: idPipe,

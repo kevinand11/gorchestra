@@ -6,7 +6,7 @@ import { nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/comm
 import { secretValueRefPipe, type Secret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
 import type { OpenCoreOptions } from '../services'
-import type { Result as CoreResult } from '../types'
+import type { Result as CoreResult } from '../utils/types'
 
 const createSecretInputPipe = v.object({ name: nonEmptyTrimmedStringPipe, valueRef: secretValueRefPipe })
 export type Input = PipeOutput<typeof createSecretInputPipe>

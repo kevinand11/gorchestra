@@ -16,7 +16,7 @@ import { projectConfigPipe } from '../domain/config'
 import { projectSourcePipe, type Project } from '../domain/project'
 import type { InvalidInputError } from '../errors'
 import type { OpenCoreOptions } from '../services'
-import type { Result as CoreResult } from '../types'
+import type { Result as CoreResult } from '../utils/types'
 
 const createProjectInputPipe = v.object({
 	title: nonEmptyTrimmedStringPipe,

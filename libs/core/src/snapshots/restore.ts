@@ -4,7 +4,7 @@ import { buildSnapshotStub } from './utils'
 import { nonEmptyRawStringPipe } from '../domain/commons'
 import type { PortfolioSnapshotManifest } from '../domain/snapshot'
 import type { InvalidInputError, NotImplementedError } from '../errors'
-import type { Result as CoreResult } from '../types'
+import type { Result as CoreResult } from '../utils/types'
 
 const encryptedSnapshotPayloadPipe = v
 	.instanceOf(Uint8Array, 'Expected a Uint8Array encrypted snapshot payload.')

@@ -8,7 +8,7 @@ import type { Memory } from '../domain/memory'
 import { planOutputProposalPipe } from '../domain/plan'
 import type { Slice } from '../domain/slice'
 import type { CommandStubError } from '../errors'
-import type { Result as CoreResult } from '../types'
+import type { Result as CoreResult } from '../utils/types'
 
 const acceptPlanOutputInputPipe = v.object({ planId: idPipe, output: planOutputProposalPipe })
 export type Input = PipeOutput<typeof acceptPlanOutputInputPipe>

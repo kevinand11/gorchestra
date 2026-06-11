@@ -26,6 +26,11 @@ export const actionResultPipe = v.discriminate((value) => value.type, {
 	'create-slice-review-surface': v.object({ type: v.eq('create-slice-review-surface'), sliceId: idPipe, reviewSurfaceId: idPipe }),
 	'observe-slice-review-surface': v.object({ type: v.eq('observe-slice-review-surface'), sliceId: idPipe, reviewSurfaceId: idPipe }),
 	'promote-slice-artifact': v.object({ type: v.eq('promote-slice-artifact'), sliceId: idPipe, evidence: externalOperationEvidencePipe }),
+	'validate-slice-delivery-artifact': v.object({
+		type: v.eq('validate-slice-delivery-artifact'),
+		sliceId: idPipe,
+		evidence: validationEvidencePipe,
+	}),
 	'validate-delivery-artifact': v.object({ type: v.eq('validate-delivery-artifact'), evidence: validationEvidencePipe }),
 	'observe-delivery-artifact-integration': v.object({
 		type: v.eq('observe-delivery-artifact-integration'),

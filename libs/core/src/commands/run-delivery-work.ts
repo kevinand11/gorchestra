@@ -3,7 +3,7 @@ import { v, type PipeOutput } from 'valleyed'
 import { buildStubCommand } from './utils'
 import { idPipe, type Id, type OperationContext } from '../domain/commons'
 import type { CommandStubError } from '../errors'
-import type { Result as CoreResult } from '../types'
+import type { Result as CoreResult } from '../utils/types'
 
 const runDeliveryWorkInputPipe = v.object({ deliveryId: idPipe })
 export type Input = PipeOutput<typeof runDeliveryWorkInputPipe>

@@ -1,11 +1,21 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { buildStubCommand } from './utils'
+import { auditStamp, getRequired, nextId, putRecord, withTransaction } from './storage-utils'
+import { buildCommandHandler } from './utils'
 import type { Action } from '../domain/action'
-import { idPipe, type OperationContext } from '../domain/commons'
-import type { Delivery } from '../domain/delivery'
-import type { CommandStubError } from '../errors'
-import type { Result as CoreResult } from '../types'
+import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
+import { deliveryPipe, type Delivery, type DeliveryWorkState } from '../domain/delivery'
+import type {
+	DeliveryWorkStateMismatchError,
+	InvalidCoreServiceOutputError,
+	InvalidInputError,
+	InvariantViolationError,
+	ResourceNotFoundError,
+	StorageOperationFailedError,
+} from '../errors'
+import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import type { Result as CoreResult } from '../utils/types'
+import { deriveDeliveryWorkState } from '../utils/work-state'
 
 const queueDeliveryInputPipe = v.object({ deliveryId: idPipe })
 export type Input = PipeOutput<typeof queueDeliveryInputPipe>
@@ -15,41 +25,152 @@ export interface Result {
 	action: Action
 }
 
-export type Error = CommandStubError
+export type Error =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| ResourceNotFoundError
+	| StorageOperationFailedError
+	| DeliveryWorkStateMismatchError
+	| InvariantViolationError
 
 /** Requires Delivery Work State unqueued; records exactly one queue-delivery Action; duplicate calls fail with delivery-work-state-mismatch. */
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createQueueDeliveryCommand(): Operation {
-	return buildStubCommand<Result>('queueDelivery', queueDeliveryInputPipe)
+export function createQueueDeliveryCommand(options: OpenCoreOptions): Operation {
+	return buildCommandHandler('queueDelivery', queueDeliveryInputPipe, (input, context) => handleQueueDelivery(options, input, context))
+}
+
+async function handleQueueDelivery(
+	options: OpenCoreOptions,
+	input: Input,
+	context: OperationContext,
+): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+	const stampResult = auditStamp(options, context)
+	if (!stampResult.ok) return stampResult
+
+	const actionId = nextId(options, 'action')
+	if (!actionId.ok) return actionId
+
+	return withTransaction(options, (tx) => writeQueueDelivery(tx, input, stampResult.value, actionId.value))
+}
+
+async function writeQueueDelivery(
+	tx: CoreStorageTransaction,
+	input: Input,
+	stamp: AuditStamp,
+	actionId: Id,
+): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+	const deliveryResult = await requireUnqueuedDelivery(tx, input.deliveryId)
+	if (!deliveryResult.ok) return deliveryResult
+
+	const action = queueDeliveryAction(input.deliveryId, stamp, actionId)
+	const putResult = await putRecord('action', tx.actions, action.id, action)
+	if (!putResult.ok) return putResult
+
+	return { ok: true, value: { delivery: deliveryResult.value, action } }
+}
+
+async function requireUnqueuedDelivery(
+	tx: CoreStorageTransaction,
+	deliveryId: Id,
+): Promise<CoreResult<Delivery, Exclude<Error, InvalidInputError>>> {
+	const deliveryResult = await getRequired('delivery', tx.deliveries, deliveryId, deliveryPipe)
+	if (!deliveryResult.ok) return deliveryResult
+
+	const state = await deriveDeliveryWorkState(tx, deliveryId)
+	if (!state.ok) return state
+
+	return state.value.type === 'unqueued' ? { ok: true, value: deliveryResult.value } : deliveryStateMismatch(deliveryId, state.value)
+}
+
+function deliveryStateMismatch(deliveryId: Id, actual: DeliveryWorkState): CoreResult<never, DeliveryWorkStateMismatchError> {
+	return {
+		ok: false,
+		error: {
+			type: 'delivery-work-state-mismatch',
+			deliveryId,
+			expected: ['unqueued'],
+			actual,
+		},
+	}
+}
+
+function queueDeliveryAction(deliveryId: Id, stamp: AuditStamp, actionId: Id): Action {
+	return {
+		id: actionId,
+		deliveryId,
+		performed: { at: stamp.at },
+		authorized: stamp,
+		result: { type: 'queue-delivery' },
+	}
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context } = await import('./test-utils')
+	const { context, createTestOpenCoreOptions, localStamp, seedDelivery } = await import('./test-utils')
 
 	describe('queueDelivery command', () => {
-		it('validates input before returning not implemented', async () => {
-			const command = createQueueDeliveryCommand()
+		it('validates input before reading storage', async () => {
+			const command = createQueueDeliveryCommand(createTestOpenCoreOptions())
 
 			const result = await command({} as never, context)
 
 			expect(result).toMatchObject({ ok: false, error: { type: 'invalid-input', boundary: 'command', operation: 'queueDelivery' } })
 		})
 
-		it('accepts unknown input and context fields before returning not implemented', async () => {
-			const command = createQueueDeliveryCommand()
+		it('records an authorized queue-delivery Action when Delivery Work State is unqueued', async () => {
+			const options = createTestOpenCoreOptions()
+			seedDelivery(options.tx, 'delivery-1')
+			const command = createQueueDeliveryCommand(options)
 
 			const result = await command(
 				{ deliveryId: ' delivery-1 ', unknown: 'stripped' } as never,
 				{
 					actor: { type: 'local-user', id: 'actor-1', unknown: 'stripped' },
-					correlationId: null,
+					correlationId: 'correlation-1',
 					unknown: 'stripped',
 				} as never,
 			)
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-implemented', operation: 'queueDelivery' } })
+			expect(result).toEqual({
+				ok: true,
+				value: {
+					delivery: options.tx.deliveries.records.get('delivery-1'),
+					action: {
+						id: 'action-1',
+						deliveryId: 'delivery-1',
+						performed: { at: '2026-06-10T12:00:00.000Z' },
+						authorized: localStamp(),
+						result: { type: 'queue-delivery' },
+					},
+				},
+			})
+			expect(options.tx.actions.records.get('action-1')).toEqual(result.ok ? result.value.action : null)
+		})
+
+		it('rejects queueing unless Delivery Work State is unqueued', async () => {
+			const options = createTestOpenCoreOptions()
+			seedDelivery(options.tx, 'delivery-1')
+			options.tx.actions.records.set('action-existing', {
+				id: 'action-existing',
+				deliveryId: 'delivery-1',
+				performed: { at: '2026-06-10T11:00:00.000Z' },
+				authorized: localStamp(),
+				result: { type: 'queue-delivery' },
+			})
+			const command = createQueueDeliveryCommand(options)
+
+			const result = await command({ deliveryId: 'delivery-1' }, context)
+
+			expect(result).toEqual({
+				ok: false,
+				error: {
+					type: 'delivery-work-state-mismatch',
+					deliveryId: 'delivery-1',
+					expected: ['unqueued'],
+					actual: { type: 'needs-artifact-creation' },
+				},
+			})
 		})
 	})
 }

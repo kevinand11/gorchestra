@@ -6,7 +6,7 @@ import { idPipe, nonEmptyTrimmedStringPipe, type OperationContext } from '../dom
 import { modelPipe, type Model } from '../domain/model'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { OpenCoreOptions } from '../services'
-import type { Result as CoreResult } from '../types'
+import type { Result as CoreResult } from '../utils/types'
 
 const updateModelInputPipe = v.object({ modelId: idPipe, name: nonEmptyTrimmedStringPipe })
 export type Input = PipeOutput<typeof updateModelInputPipe>

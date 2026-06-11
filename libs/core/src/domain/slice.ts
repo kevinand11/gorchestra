@@ -27,7 +27,7 @@ export interface FailureChain {
 }
 
 export type SliceWorkState =
-	/** actionId points to the passed validate-delivery-artifact Action that completed the Slice. */
+	/** actionId points to the passed validate-slice-delivery-artifact Action that completed the Slice. */
 	| { type: 'complete'; actionId: Id }
 	/** Slice Artifact was promoted into the Delivery Artifact and the resulting Delivery Artifact still needs validation. */
 	| { type: 'needs-delivery-validation'; actionId: Id }

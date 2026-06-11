@@ -1,0 +1,177 @@
+import { v, type Pipe, type PipeOutput } from 'valleyed'
+
+import { type AuditStamp, type Id, type IsoDateTime, type OperationContext } from '../domain/commons'
+import type {
+	CoreResource,
+	CoreStorageOperation,
+	InvalidCoreServiceOutputError,
+	ResourceNotFoundError,
+	StorageOperationFailedError,
+} from '../errors'
+import {
+	coreClockOutputPipe,
+	coreIdOutputPipe,
+	type CoreStorageTransaction,
+	type OpenCoreOptions,
+	type RepositoryTable,
+	type SingletonRepository,
+} from '../services'
+import { validateCoreServiceOutput } from '../validation'
+import type { Result } from './types'
+
+export type StorageBoundaryError = StorageOperationFailedError | InvalidCoreServiceOutputError
+
+type StorageResult<T> = Result<T, StorageBoundaryError>
+
+export async function withTransaction<TValue, TError>(
+	options: OpenCoreOptions,
+	run: (tx: CoreStorageTransaction) => Promise<Result<TValue, TError>>,
+): Promise<Result<TValue, TError | StorageOperationFailedError>> {
+	try {
+		return await options.storage.transaction(run)
+	} catch {
+		return { ok: false, error: storageFailure({ type: 'transaction' }) }
+	}
+}
+
+export async function putSingleton<TRecord>(
+	resource: 'portfolio-config',
+	repository: SingletonRepository<TRecord>,
+	record: TRecord,
+): Promise<StorageResult<void>> {
+	try {
+		await repository.put(record)
+		return { ok: true, value: undefined }
+	} catch {
+		return { ok: false, error: storageFailure({ type: 'put-singleton', resource }) }
+	}
+}
+
+export async function getRecord<TRecord>(
+	resource: CoreResource,
+	repository: RepositoryTable<TRecord>,
+	id: Id,
+	recordPipe: Pipe<unknown, TRecord>,
+): Promise<StorageResult<TRecord | null>> {
+	try {
+		const record = await repository.get(id)
+		return record === null ? { ok: true, value: null } : validateStoredRecord(resource, id, recordPipe, record)
+	} catch {
+		return { ok: false, error: storageFailure({ type: 'get', resource, id }) }
+	}
+}
+
+function validateStoredRecord<TRecord>(
+	resource: CoreResource,
+	id: Id,
+	recordPipe: Pipe<unknown, TRecord>,
+	record: unknown,
+): StorageResult<TRecord> {
+	const validation = validateStorageOutput(recordPipe, record, `get:${resource}`)
+	if (!validation.ok) return validation
+
+	const idValidation = validateStorageOutput(v.object({ id: v.eq(id) }), validation.value, `get:${resource}`)
+	return idValidation.ok ? { ok: true, value: validation.value } : idValidation
+}
+
+export async function getRequired<TRecord>(
+	resource: CoreResource,
+	repository: RepositoryTable<TRecord>,
+	id: Id,
+	recordPipe: Pipe<unknown, TRecord>,
+): Promise<Result<TRecord, StorageBoundaryError | ResourceNotFoundError>> {
+	const recordResult = await getRecord(resource, repository, id, recordPipe)
+	if (!recordResult.ok) return recordResult
+	if (recordResult.value === null) return notFound(resource, id)
+
+	return { ok: true, value: recordResult.value }
+}
+
+export async function putRecord<TRecord extends { id: Id }>(
+	resource: CoreResource,
+	repository: RepositoryTable<TRecord>,
+	id: Id,
+	record: TRecord,
+): Promise<StorageResult<void>> {
+	try {
+		await repository.put(record)
+		return { ok: true, value: undefined }
+	} catch {
+		return { ok: false, error: storageFailure({ type: 'put', resource, id }) }
+	}
+}
+
+export async function listRecords<TRecord>(
+	resource: CoreResource,
+	repository: RepositoryTable<TRecord>,
+	recordPipe: Pipe<unknown, TRecord>,
+): Promise<StorageResult<TRecord[]>> {
+	try {
+		const records = await repository.list()
+		const validation = validateStorageOutput(v.array(recordPipe), records, `list:${resource}`)
+		if (!validation.ok) return validation
+
+		return { ok: true, value: validation.value }
+	} catch {
+		return { ok: false, error: storageFailure({ type: 'list', resource }) }
+	}
+}
+
+export function auditStamp(options: OpenCoreOptions, context: OperationContext): Result<AuditStamp, InvalidCoreServiceOutputError> {
+	const nowResult = nowIso(options)
+	if (!nowResult.ok) return nowResult
+
+	return {
+		ok: true,
+		value: {
+			origin: 'local',
+			at: nowResult.value,
+			actor: context.actor,
+			correlationId: context.correlationId,
+		},
+	}
+}
+
+export function nextId(options: OpenCoreOptions, brand: string): Result<Id, InvalidCoreServiceOutputError> {
+	let output: unknown
+	try {
+		output = options.idGenerator.next(brand)
+	} catch {
+		output = undefined
+	}
+
+	const validation = validateCoreServiceOutput(coreIdOutputPipe, output, 'idGenerator', 'next')
+	if (!validation.ok) return validation
+
+	return { ok: true, value: validation.value }
+}
+
+export function notFound(resource: CoreResource, id: Id): Result<never, ResourceNotFoundError> {
+	return { ok: false, error: { type: 'not-found', resource, id } }
+}
+
+function nowIso(options: OpenCoreOptions): Result<IsoDateTime, InvalidCoreServiceOutputError> {
+	let output: unknown
+	try {
+		output = options.clock.now()
+	} catch {
+		output = undefined
+	}
+
+	const validation = validateCoreServiceOutput(coreClockOutputPipe, output, 'clock', 'now')
+	if (!validation.ok) return validation
+
+	return { ok: true, value: validation.value.toISOString() }
+}
+
+function validateStorageOutput<TPipe extends Pipe<unknown, unknown>>(
+	pipe: TPipe,
+	value: unknown,
+	operation: string,
+): Result<PipeOutput<TPipe>, InvalidCoreServiceOutputError> {
+	return validateCoreServiceOutput(pipe, value, 'storage', operation)
+}
+
+function storageFailure(operation: CoreStorageOperation): StorageOperationFailedError {
+	return { type: 'storage-operation-failed', operation }
+}

@@ -12,7 +12,7 @@ import {
 	withTransaction,
 } from './storage-utils'
 import { buildCommandHandler } from './utils'
-import { idPipe, type OperationContext } from '../domain/commons'
+import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
 import { repositoryConfigPipe, type Repository } from '../domain/repository'
 import type {
 	DuplicateRepositoryTargetError,
@@ -20,8 +20,8 @@ import type {
 	InvalidInputError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { OpenCoreOptions } from '../services'
-import type { Result as CoreResult } from '../types'
+import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import type { Result as CoreResult } from '../utils/types'
 
 const createRepositoryInputPipe = v.object({ projectId: idPipe, config: repositoryConfigPipe })
 export type Input = PipeOutput<typeof createRepositoryInputPipe>
@@ -38,37 +38,57 @@ export type Error =
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreateRepositoryCommand(options: OpenCoreOptions): Operation {
-	return buildCommandHandler('createRepository', createRepositoryInputPipe, (input, context) => {
-		const stampResult = auditStamp(options, context)
-		if (!stampResult.ok) return Promise.resolve(stampResult)
+	return buildCommandHandler('createRepository', createRepositoryInputPipe, (input, context) =>
+		handleCreateRepository(options, input, context),
+	)
+}
 
-		const idResult = nextId(options, 'repository')
-		if (!idResult.ok) return Promise.resolve(idResult)
+async function handleCreateRepository(
+	options: OpenCoreOptions,
+	input: Input,
+	context: OperationContext,
+): Promise<CoreResult<Repository, Error>> {
+	const stampResult = auditStamp(options, context)
+	if (!stampResult.ok) return stampResult
 
-		// fallow-ignore-next-line complexity
-		return withTransaction(options, async (tx): Promise<CoreResult<Repository, Exclude<Error, InvalidInputError>>> => {
-			const projectValidation = await validateSourceControlProject(tx, input.projectId)
-			if (!projectValidation.ok) return projectValidation
+	const idResult = nextId(options, 'repository')
+	if (!idResult.ok) return idResult
 
-			const config = input.config
-			const secretValidation = await validateActiveSecret(tx, config.secretId)
-			if (!secretValidation.ok) return secretValidation
+	return withTransaction(options, (tx) => writeRepository(tx, input, stampResult.value, idResult.value))
+}
 
-			const duplicateValidation = await validateUniqueRepositoryTarget(tx, input.projectId, config, null)
-			if (!duplicateValidation.ok) return duplicateValidation
+async function writeRepository(
+	tx: CoreStorageTransaction,
+	input: Input,
+	stamp: AuditStamp,
+	repositoryId: Id,
+): Promise<CoreResult<Repository, Exclude<Error, InvalidInputError>>> {
+	const validation = await validateRepositoryCreate(tx, input)
+	if (!validation.ok) return validation
 
-			const repository: Repository = {
-				id: idResult.value,
-				projectId: input.projectId,
-				config: normalizeRepositoryConfig(config),
-				created: stampResult.value,
-			}
-			const putResult = await putRecord('repository', tx.repositories, repository.id, repository)
-			if (!putResult.ok) return putResult
+	const repository: Repository = {
+		id: repositoryId,
+		projectId: input.projectId,
+		config: normalizeRepositoryConfig(input.config),
+		created: stamp,
+	}
+	const putResult = await putRecord('repository', tx.repositories, repository.id, repository)
+	if (!putResult.ok) return putResult
 
-			return { ok: true, value: repository }
-		})
-	})
+	return { ok: true, value: repository }
+}
+
+async function validateRepositoryCreate(
+	tx: CoreStorageTransaction,
+	input: Input,
+): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
+	const projectValidation = await validateSourceControlProject(tx, input.projectId)
+	if (!projectValidation.ok) return projectValidation
+
+	const secretValidation = await validateActiveSecret(tx, input.config.secretId)
+	if (!secretValidation.ok) return secretValidation
+
+	return validateUniqueRepositoryTarget(tx, input.projectId, input.config, null)
 }
 
 if (import.meta.vitest) {

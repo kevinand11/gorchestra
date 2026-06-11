@@ -14,7 +14,7 @@ import type { OperationContext } from '../domain/commons'
 import { portfolioConfigPipe, type PortfolioConfigRecord } from '../domain/config'
 import type { InvalidInputError } from '../errors'
 import type { OpenCoreOptions } from '../services'
-import type { Result as CoreResult } from '../types'
+import type { Result as CoreResult } from '../utils/types'
 
 const setPortfolioConfigInputPipe = v.object({ config: portfolioConfigPipe })
 export type Input = PipeOutput<typeof setPortfolioConfigInputPipe>

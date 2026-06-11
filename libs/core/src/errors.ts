@@ -197,5 +197,10 @@ export type CoreError =
 	| ExternalOperationFailedError
 
 export type CommandStubError = InvalidInputError | NotImplementedError
-export type WorkStateQueryError = InvalidInputError | NotImplementedError
+export type WorkStateQueryError =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| ResourceNotFoundError
+	| StorageOperationFailedError
+	| InvariantViolationError
 export type CorePreflightError = InvalidCoreServiceOutputError

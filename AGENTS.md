@@ -12,6 +12,7 @@ This root AGENTS.md is the project-wide DOX rail: it gives repo-wide instruction
 - Child AGENTS.md files own local contracts for their subtrees.
 - The closer AGENTS.md controls local work details, but child docs must not weaken root-level contracts.
 - Do not scan or treat `.trowel/` as project source.
+- Never add `fallow-ignore` suppressions; resolve Fallow findings by improving code or adjusting the underlying design instead of hiding them.
 
 ## Local Contracts
 

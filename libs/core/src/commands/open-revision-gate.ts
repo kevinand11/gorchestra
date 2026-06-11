@@ -5,7 +5,7 @@ import { idPipe, type OperationContext } from '../domain/commons'
 import type { FetchedFeedback } from '../domain/review-surface'
 import type { RevisionGate } from '../domain/revision'
 import type { CommandStubError } from '../errors'
-import type { Result as CoreResult } from '../types'
+import type { Result as CoreResult } from '../utils/types'
 
 const openRevisionGateInputPipe = v.object({ reviewSurfaceId: idPipe })
 export type Input = PipeOutput<typeof openRevisionGateInputPipe>

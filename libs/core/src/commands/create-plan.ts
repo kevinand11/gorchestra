@@ -12,13 +12,13 @@ import {
 	withTransaction,
 } from './storage-utils'
 import { buildCommandHandler } from './utils'
-import { idPipe, nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
+import { idPipe, nonEmptyTrimmedStringPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
 import { planConfigPipe } from '../domain/config'
 import { type Plan } from '../domain/plan'
 import { projectPipe } from '../domain/project'
 import type { InvalidInputError } from '../errors'
-import type { OpenCoreOptions } from '../services'
-import type { Result as CoreResult } from '../types'
+import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import type { Result as CoreResult } from '../utils/types'
 
 const createPlanInputPipe = v.object({
 	projectId: idPipe,
@@ -34,37 +34,44 @@ export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigComm
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreatePlanCommand(options: OpenCoreOptions): Operation {
-	return buildCommandHandler('createPlan', createPlanInputPipe, (input, context) => {
-		const stampResult = auditStamp(options, context)
-		if (!stampResult.ok) return Promise.resolve(stampResult)
+	return buildCommandHandler('createPlan', createPlanInputPipe, (input, context) => handleCreatePlan(options, input, context))
+}
 
-		const idResult = nextId(options, 'plan')
-		if (!idResult.ok) return Promise.resolve(idResult)
+async function handleCreatePlan(options: OpenCoreOptions, input: Input, context: OperationContext): Promise<CoreResult<Plan, Error>> {
+	const stampResult = auditStamp(options, context)
+	if (!stampResult.ok) return stampResult
 
-		// fallow-ignore-next-line complexity
-		return withTransaction(options, async (tx): Promise<CoreResult<Plan, Exclude<Error, InvalidInputError>>> => {
-			const projectResult = await getRequired('project', tx.projects, input.projectId, projectPipe)
-			if (!projectResult.ok) return projectResult
+	const idResult = nextId(options, 'plan')
+	if (!idResult.ok) return idResult
 
-			const config = normalizePlanConfigRecord(input.config, stampResult.value)
-			if (config !== null) {
-				const referenceValidation = await validateSelectableModels(tx, modelIdsFromPlanConfigRecord(config))
-				if (!referenceValidation.ok) return referenceValidation
-			}
+	return withTransaction(options, (tx) => writePlan(tx, input, stampResult.value, idResult.value))
+}
 
-			const plan: Plan = {
-				id: idResult.value,
-				projectId: projectResult.value.id,
-				title: input.title,
-				config,
-				created: stampResult.value,
-			}
-			const putResult = await putRecord('plan', tx.plans, plan.id, plan)
-			if (!putResult.ok) return putResult
+async function writePlan(
+	tx: CoreStorageTransaction,
+	input: Input,
+	stamp: AuditStamp,
+	planId: Id,
+): Promise<CoreResult<Plan, Exclude<Error, InvalidInputError>>> {
+	const projectResult = await getRequired('project', tx.projects, input.projectId, projectPipe)
+	if (!projectResult.ok) return projectResult
 
-			return { ok: true, value: plan }
-		})
-	})
+	const config = normalizePlanConfigRecord(input.config, stamp)
+	const configValidation = await validatePlanConfigReferences(tx, config)
+	if (!configValidation.ok) return configValidation
+
+	const plan: Plan = { id: planId, projectId: projectResult.value.id, title: input.title, config, created: stamp }
+	const putResult = await putRecord('plan', tx.plans, plan.id, plan)
+	if (!putResult.ok) return putResult
+
+	return { ok: true, value: plan }
+}
+
+async function validatePlanConfigReferences(
+	tx: CoreStorageTransaction,
+	config: ReturnType<typeof normalizePlanConfigRecord>,
+): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
+	return config === null ? { ok: true, value: undefined } : validateSelectableModels(tx, modelIdsFromPlanConfigRecord(config))
 }
 
 if (import.meta.vitest) {

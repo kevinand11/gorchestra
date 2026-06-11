@@ -1,7 +1,5 @@
-import { v, type Pipe, type PipeOutput } from 'valleyed'
-
-import type { ConfigCommandReferenceError, ConfigCommandStorageError, RepositoryCommandReferenceError } from './errors'
-import type { ArchivePeriod, AuditStamp, Id, IsoDateTime, OperationContext } from '../domain/commons'
+import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './errors'
+import type { ArchivePeriod, AuditStamp, Id, OperationContext } from '../domain/commons'
 import type { PlanConfig, PlanConfigRecord, PortfolioConfig, ProjectConfig, ProjectConfigRecord } from '../domain/config'
 import { modelPipe, type Model } from '../domain/model'
 import { modelProviderPipe, type ModelProvider, type ModelProviderAuth, type ModelProviderHeader } from '../domain/model-provider'
@@ -14,167 +12,62 @@ import type {
 	ArchivedModelProviderReferenceError,
 	ArchivedModelReferenceError,
 	ArchivedSecretReferenceError,
-	CoreResource,
-	CoreStorageOperation,
 	DuplicateRepositoryTargetError,
 	DuplicateSecretBindingError,
 	InvalidCoreServiceOutputError,
-	InvalidInputError,
 	NotArchivedError,
 	ProjectSourceTypeMismatchError,
 	ResourceNotFoundError,
 	SecretNotActiveError,
 	StorageOperationFailedError,
 } from '../errors'
-import {
-	coreClockOutputPipe,
-	coreIdOutputPipe,
-	type CoreStorageTransaction,
-	type OpenCoreOptions,
-	type RepositoryTable,
-	type SingletonRepository,
-} from '../services'
-import type { Result } from '../types'
-import { validateCoreServiceOutput } from '../validation'
+import type { CoreStorageTransaction } from '../services'
+import { getRecord, getRequired, listRecords, notFound } from '../utils/storage'
+import type { StorageBoundaryError } from '../utils/storage'
+import type { Result } from '../utils/types'
+
+export { auditStamp, getRequired, listRecords, nextId, notFound, putRecord, putSingleton, withTransaction } from '../utils/storage'
 
 export type CommandBoundary<TInput> = {
 	input: TInput
 	context: OperationContext
 }
 
-type StorageBackedCommandError =
-	| InvalidInputError
-	| InvalidCoreServiceOutputError
-	| ResourceNotFoundError
-	| StorageOperationFailedError
-	| ArchivedModelProviderReferenceError
-	| ArchivedSecretReferenceError
-	| SecretNotActiveError
-	| DuplicateRepositoryTargetError
-	| ProjectSourceTypeMismatchError
-	| AlreadyArchivedError
-	| NotArchivedError
-	| DuplicateSecretBindingError
-	| ConfigCommandReferenceError
-	| ConfigCommandStorageError
-	| RepositoryCommandReferenceError
-
-type StorageBoundaryError = StorageOperationFailedError | InvalidCoreServiceOutputError
-
-type StorageResult<T> = Result<T, StorageBoundaryError>
-
 type ArchivableRecord = { archivePeriods: ArchivePeriod[] }
 
-export async function withTransaction<TValue, TError extends StorageBackedCommandError>(
-	options: OpenCoreOptions,
-	run: (tx: CoreStorageTransaction) => Promise<Result<TValue, TError>>,
-): Promise<Result<TValue, TError | StorageOperationFailedError>> {
-	try {
-		return await options.storage.transaction(run)
-	} catch {
-		return { ok: false, error: storageFailure({ type: 'transaction' }) }
-	}
-}
-
-export async function putSingleton<TRecord>(
-	resource: 'portfolio-config',
-	repository: SingletonRepository<TRecord>,
-	record: TRecord,
-): Promise<StorageResult<void>> {
-	try {
-		await repository.put(record)
-		return { ok: true, value: undefined }
-	} catch {
-		return { ok: false, error: storageFailure({ type: 'put-singleton', resource }) }
-	}
-}
-
-export // fallow-ignore-next-line complexity
-async function getRecord<TRecord>(
-	resource: CoreResource,
-	repository: RepositoryTable<TRecord>,
-	id: Id,
-	recordPipe: Pipe<unknown, TRecord>,
-): Promise<StorageResult<TRecord | null>> {
-	try {
-		const record = await repository.get(id)
-		if (record === null) return { ok: true, value: null }
-
-		const validation = validateStorageOutput(recordPipe, record, `get:${resource}`)
-		if (!validation.ok) return validation
-
-		const idValidation = validateStorageOutput(v.object({ id: v.eq(id) }), validation.value, `get:${resource}`)
-		if (!idValidation.ok) return idValidation
-
-		return { ok: true, value: validation.value }
-	} catch {
-		return { ok: false, error: storageFailure({ type: 'get', resource, id }) }
-	}
-}
-
-export async function getRequired<TRecord>(
-	resource: CoreResource,
-	repository: RepositoryTable<TRecord>,
-	id: Id,
-	recordPipe: Pipe<unknown, TRecord>,
-): Promise<Result<TRecord, StorageBoundaryError | ResourceNotFoundError>> {
-	const recordResult = await getRecord(resource, repository, id, recordPipe)
-	if (!recordResult.ok) return recordResult
-	if (recordResult.value === null) return notFound(resource, id)
-
-	return { ok: true, value: recordResult.value }
-}
-
-export async function putRecord<TRecord extends { id: Id }>(
-	resource: CoreResource,
-	repository: RepositoryTable<TRecord>,
-	id: Id,
-	record: TRecord,
-): Promise<StorageResult<void>> {
-	try {
-		await repository.put(record)
-		return { ok: true, value: undefined }
-	} catch {
-		return { ok: false, error: storageFailure({ type: 'put', resource, id }) }
-	}
-}
-
-export async function listRecords<TRecord>(
-	resource: CoreResource,
-	repository: RepositoryTable<TRecord>,
-	recordPipe: Pipe<unknown, TRecord>,
-): Promise<StorageResult<TRecord[]>> {
-	try {
-		const records = await repository.list()
-		const validation = validateStorageOutput(v.array(recordPipe), records, `list:${resource}`)
-		if (!validation.ok) return validation
-
-		return { ok: true, value: validation.value }
-	} catch {
-		return { ok: false, error: storageFailure({ type: 'list', resource }) }
-	}
-}
-
-// fallow-ignore-next-line complexity
 export async function validateSelectableModels(
 	tx: CoreStorageTransaction,
 	modelIds: Id[],
 ): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError>> {
 	for (const modelId of uniqueIds(modelIds)) {
-		const modelResult = await getRequired('model', tx.models, modelId, modelPipe)
-		if (!modelResult.ok) return modelResult
-
-		const modelSelectability = validateActiveModel(modelResult.value)
-		if (!modelSelectability.ok) return modelSelectability
-
-		const providerResult = await getRequired('model-provider', tx.modelProviders, modelResult.value.providerId, modelProviderPipe)
-		if (!providerResult.ok) return providerResult
-
-		const providerSelectability = validateActiveModelProvider(providerResult.value)
-		if (!providerSelectability.ok) return providerSelectability
+		const validation = await validateSelectableModel(tx, modelId)
+		if (!validation.ok) return validation
 	}
 
 	return { ok: true, value: undefined }
+}
+
+async function validateSelectableModel(
+	tx: CoreStorageTransaction,
+	modelId: Id,
+): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError>> {
+	const modelResult = await getRequired('model', tx.models, modelId, modelPipe)
+	if (!modelResult.ok) return modelResult
+
+	const modelSelectability = validateActiveModel(modelResult.value)
+	if (!modelSelectability.ok) return modelSelectability
+
+	return validateSelectableModelProvider(tx, modelResult.value.providerId)
+}
+
+async function validateSelectableModelProvider(
+	tx: CoreStorageTransaction,
+	providerId: Id,
+): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError>> {
+	const providerResult = await getRequired('model-provider', tx.modelProviders, providerId, modelProviderPipe)
+	if (!providerResult.ok) return providerResult
+
+	return validateActiveModelProvider(providerResult.value)
 }
 
 export async function validateSourceControlProject(
@@ -211,7 +104,6 @@ export async function validateActiveSecret(
 	return secretResult
 }
 
-// fallow-ignore-next-line complexity
 export async function validateActiveSecretReferences(
 	tx: CoreStorageTransaction,
 	secretIds: Id[],
@@ -219,13 +111,24 @@ export async function validateActiveSecretReferences(
 	Result<void, ResourceNotFoundError | ArchivedSecretReferenceError | StorageOperationFailedError | InvalidCoreServiceOutputError>
 > {
 	for (const secretId of secretIds) {
-		const secret = await getRecord('secret', tx.secrets, secretId, secretPipe)
-		if (!secret.ok) return secret
-		if (secret.value === null) return notFound('secret', secretId)
-		if (isArchived(secret.value.archivePeriods)) return archivedSecretReference(secretId)
+		const validation = await validateActiveSecretReference(tx, secretId)
+		if (!validation.ok) return validation
 	}
 
 	return { ok: true, value: undefined }
+}
+
+async function validateActiveSecretReference(
+	tx: CoreStorageTransaction,
+	secretId: Id,
+): Promise<
+	Result<void, ResourceNotFoundError | ArchivedSecretReferenceError | StorageOperationFailedError | InvalidCoreServiceOutputError>
+> {
+	const secret = await getRecord('secret', tx.secrets, secretId, secretPipe)
+	if (!secret.ok) return secret
+	if (secret.value === null) return notFound('secret', secretId)
+
+	return isArchived(secret.value.archivePeriods) ? archivedSecretReference(secretId) : { ok: true, value: undefined }
 }
 
 export async function validateUniqueRepositoryTarget(
@@ -259,35 +162,6 @@ export async function validateUniqueRepositoryTarget(
 	}
 
 	return { ok: true, value: undefined }
-}
-
-export function auditStamp(options: OpenCoreOptions, context: OperationContext): Result<AuditStamp, InvalidCoreServiceOutputError> {
-	const nowResult = nowIso(options)
-	if (!nowResult.ok) return nowResult
-
-	return {
-		ok: true,
-		value: {
-			origin: 'local',
-			at: nowResult.value,
-			actor: context.actor,
-			correlationId: context.correlationId,
-		},
-	}
-}
-
-export function nextId(options: OpenCoreOptions, brand: string): Result<Id, InvalidCoreServiceOutputError> {
-	let output: unknown
-	try {
-		output = options.idGenerator.next(brand)
-	} catch {
-		output = undefined
-	}
-
-	const validation = validateCoreServiceOutput(coreIdOutputPipe, output, 'idGenerator', 'next')
-	if (!validation.ok) return validation
-
-	return { ok: true, value: validation.value }
 }
 
 export function isArchived(archivePeriods: ArchivePeriod[]): boolean {
@@ -390,18 +264,12 @@ export function modelIdsFromPortfolioConfig(config: PortfolioConfig): Id[] {
 	].filter((modelId): modelId is Id => modelId !== null)
 }
 
-// fallow-ignore-next-line complexity
 export function modelIdsFromProjectConfigRecord(config: ProjectConfigRecord | null): Id[] {
-	if (config?.value?.model === null || config?.value === null || config === null) {
-		return []
-	}
+	const model = config?.value?.model ?? null
 
-	return [
-		config.value.model.planningModelId,
-		config.value.model.revisionPlanningModelId,
-		config.value.model.executionModelId,
-		config.value.model.revisionExecutionModelId,
-	].filter((modelId): modelId is Id => modelId !== null)
+	return model === null
+		? []
+		: nullableIds([model.planningModelId, model.revisionPlanningModelId, model.executionModelId, model.revisionExecutionModelId])
 }
 
 export function modelIdsFromPlanConfigRecord(config: PlanConfigRecord): Id[] {
@@ -426,25 +294,19 @@ export function secretReferencesFromModelProviderConfig(auth: ModelProviderAuth 
 	return references
 }
 
-// fallow-ignore-next-line complexity
 export function scopesEqual(left: SecretBindingScope, right: SecretBindingScope): boolean {
-	if (left.type !== right.type) {
-		return false
-	}
-
-	if (left.type === 'portfolio') {
-		return true
-	}
-
-	if (left.type === 'project' && right.type === 'project') {
-		return left.projectId === right.projectId
-	}
-
-	return left.type === 'delivery' && right.type === 'delivery' && left.deliveryId === right.deliveryId
+	return secretBindingScopeKey(left) === secretBindingScopeKey(right)
 }
 
-export function notFound(resource: CoreResource, id: Id): Result<never, ResourceNotFoundError> {
-	return { ok: false, error: { type: 'not-found', resource, id } }
+function secretBindingScopeKey(scope: SecretBindingScope): string {
+	switch (scope.type) {
+		case 'portfolio':
+			return 'portfolio'
+		case 'project':
+			return `project:${scope.projectId}`
+		case 'delivery':
+			return `delivery:${scope.deliveryId}`
+	}
 }
 
 export function duplicateSecretBinding(
@@ -463,36 +325,19 @@ export function archivedModelProviderReference(modelProviderId: Id): Result<neve
 	return { ok: false, error: { type: 'archived-model-provider-reference', modelProviderId } }
 }
 
-function nowIso(options: OpenCoreOptions): Result<IsoDateTime, InvalidCoreServiceOutputError> {
-	let output: unknown
-	try {
-		output = options.clock.now()
-	} catch {
-		output = undefined
-	}
-
-	const validation = validateCoreServiceOutput(coreClockOutputPipe, output, 'clock', 'now')
-	if (!validation.ok) return validation
-
-	return { ok: true, value: validation.value.toISOString() }
+function normalizeProjectModelConfig(model: ProjectConfig['model']): ProjectConfig['model'] {
+	return model === null || !hasAnyProjectModelId(model) ? null : { ...model }
 }
 
-// fallow-ignore-next-line complexity
-function normalizeProjectModelConfig(model: ProjectConfig['model']): ProjectConfig['model'] {
-	if (model === null) {
-		return null
-	}
+function hasAnyProjectModelId(model: NonNullable<ProjectConfig['model']>): boolean {
+	return (
+		nullableIds([model.planningModelId, model.revisionPlanningModelId, model.executionModelId, model.revisionExecutionModelId]).length >
+		0
+	)
+}
 
-	if (
-		model.planningModelId === null &&
-		model.revisionPlanningModelId === null &&
-		model.executionModelId === null &&
-		model.revisionExecutionModelId === null
-	) {
-		return null
-	}
-
-	return { ...model }
+function nullableIds(modelIds: Array<Id | null>): Id[] {
+	return modelIds.filter((modelId): modelId is Id => modelId !== null)
 }
 
 function normalizePlanConfig(config: PlanConfig): PlanConfig | null {
@@ -525,16 +370,4 @@ function repositoryTargetKey(config: RepositoryConfig): string {
 
 function uniqueIds(ids: Id[]): Id[] {
 	return [...new Set(ids)]
-}
-
-function validateStorageOutput<TPipe extends Pipe<unknown, unknown>>(
-	pipe: TPipe,
-	value: unknown,
-	operation: string,
-): Result<PipeOutput<TPipe>, InvalidCoreServiceOutputError> {
-	return validateCoreServiceOutput(pipe, value, 'storage', operation)
-}
-
-function storageFailure(operation: CoreStorageOperation): StorageOperationFailedError {
-	return { type: 'storage-operation-failed', operation }
 }

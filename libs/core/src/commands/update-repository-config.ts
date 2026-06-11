@@ -19,8 +19,8 @@ import type {
 	InvalidInputError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { OpenCoreOptions } from '../services'
-import type { Result as CoreResult } from '../types'
+import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import type { Result as CoreResult } from '../utils/types'
 
 const updateRepositoryConfigInputPipe = v.object({ repositoryId: idPipe, config: repositoryConfigPipe })
 export type Input = PipeOutput<typeof updateRepositoryConfigInputPipe>
@@ -38,33 +38,47 @@ export type Operation = (input: Input, context: OperationContext) => Promise<Cor
 
 export function createUpdateRepositoryConfigCommand(options: OpenCoreOptions): Operation {
 	return buildCommandHandler('updateRepositoryConfig', updateRepositoryConfigInputPipe, (input) =>
-		// fallow-ignore-next-line complexity
-		withTransaction(options, async (tx): Promise<CoreResult<Repository, Exclude<Error, InvalidInputError>>> => {
-			const repositoryResult = await getRequired('repository', tx.repositories, input.repositoryId, repositoryPipe)
-			if (!repositoryResult.ok) return repositoryResult
-
-			const projectValidation = await validateSourceControlProject(tx, repositoryResult.value.projectId)
-			if (!projectValidation.ok) return projectValidation
-
-			const config = input.config
-			const secretValidation = await validateActiveSecret(tx, config.secretId)
-			if (!secretValidation.ok) return secretValidation
-
-			const duplicateValidation = await validateUniqueRepositoryTarget(
-				tx,
-				repositoryResult.value.projectId,
-				config,
-				repositoryResult.value.id,
-			)
-			if (!duplicateValidation.ok) return duplicateValidation
-
-			const repository: Repository = { ...repositoryResult.value, config: normalizeRepositoryConfig(config) }
-			const putResult = await putRecord('repository', tx.repositories, repository.id, repository)
-			if (!putResult.ok) return putResult
-
-			return { ok: true, value: repository }
-		}),
+		withTransaction(options, (tx) => updateRepositoryConfig(tx, input)),
 	)
+}
+
+async function updateRepositoryConfig(
+	tx: CoreStorageTransaction,
+	input: Input,
+): Promise<CoreResult<Repository, Exclude<Error, InvalidInputError>>> {
+	const repositoryResult = await repositoryForConfigUpdate(tx, input)
+	if (!repositoryResult.ok) return repositoryResult
+
+	const repository: Repository = { ...repositoryResult.value, config: normalizeRepositoryConfig(input.config) }
+	const putResult = await putRecord('repository', tx.repositories, repository.id, repository)
+	if (!putResult.ok) return putResult
+
+	return { ok: true, value: repository }
+}
+
+async function repositoryForConfigUpdate(
+	tx: CoreStorageTransaction,
+	input: Input,
+): Promise<CoreResult<Repository, Exclude<Error, InvalidInputError>>> {
+	const repositoryResult = await getRequired('repository', tx.repositories, input.repositoryId, repositoryPipe)
+	if (!repositoryResult.ok) return repositoryResult
+
+	const validation = await validateRepositoryConfigUpdate(tx, repositoryResult.value, input)
+	return validation.ok ? { ok: true, value: repositoryResult.value } : validation
+}
+
+async function validateRepositoryConfigUpdate(
+	tx: CoreStorageTransaction,
+	repository: Repository,
+	input: Input,
+): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
+	const projectValidation = await validateSourceControlProject(tx, repository.projectId)
+	if (!projectValidation.ok) return projectValidation
+
+	const secretValidation = await validateActiveSecret(tx, input.config.secretId)
+	if (!secretValidation.ok) return secretValidation
+
+	return validateUniqueRepositoryTarget(tx, repository.projectId, input.config, repository.id)
 }
 
 if (import.meta.vitest) {

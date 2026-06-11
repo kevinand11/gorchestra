@@ -4,6 +4,7 @@ import type { DeliveryArtifact, SliceArtifact } from '../domain/artifact'
 import type { AuditStamp, Id, OperationContext } from '../domain/commons'
 import type { PortfolioConfigRecord } from '../domain/config'
 import type { Delivery } from '../domain/delivery'
+import type { ExternalOperation, ExternalOperationEvidence, ValidationEvidence, ValidationOperation } from '../domain/evidence'
 import type { Link } from '../domain/graph'
 import type { Memory } from '../domain/memory'
 import type { Model } from '../domain/model'
@@ -25,6 +26,18 @@ export const context: OperationContext = {
 
 export function localStamp(): AuditStamp {
 	return { origin: 'local', at: '2026-06-10T12:00:00.000Z', actor: context.actor, correlationId: 'correlation-1' }
+}
+
+export function validationEvidence(operation: ValidationOperation['type'], passed: boolean, summary: string): ValidationEvidence {
+	return { type: 'validation', operation: { type: operation }, passed, summary }
+}
+
+export function externalOperationEvidence(
+	operation: ExternalOperation['type'],
+	passed: boolean,
+	summary: string,
+): ExternalOperationEvidence {
+	return { type: 'external-operation', operation: { type: operation }, passed, summary }
 }
 
 export function createTestOpenCoreOptions(): OpenCoreOptions & { tx: MemoryStorageTransaction; transactionCalls: () => number } {
@@ -53,6 +66,34 @@ export function seedProject(tx: MemoryStorageTransaction, id: string) {
 		config: null,
 		created: stamp,
 	})
+}
+
+export function seedDelivery(tx: MemoryStorageTransaction, id: string, sliceIds: string[] = []) {
+	tx.deliveries.records.set(id, {
+		id,
+		projectId: 'project-1',
+		planId: 'plan-1',
+		title: 'Delivery',
+		target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
+		config: null,
+		sliceIds,
+		accepted: stamp,
+	})
+}
+
+export function seedSlice(tx: MemoryStorageTransaction, id: string, deliveryId: string) {
+	tx.slices.records.set(id, {
+		id,
+		deliveryId,
+		title: 'Slice',
+		instruction: { body: 'Do work.' },
+		accepted: stamp,
+	})
+
+	const delivery = tx.deliveries.records.get(deliveryId)
+	if (delivery !== undefined && !delivery.sliceIds.includes(id)) {
+		tx.deliveries.records.set(deliveryId, { ...delivery, sliceIds: [...delivery.sliceIds, id] })
+	}
 }
 
 export function seedSelectableModel(
@@ -141,6 +182,16 @@ export type MemoryStorageTransaction = CoreStorageTransaction & {
 	modelProviders: MemoryTable<ModelProvider>
 	models: MemoryTable<Model>
 	plans: MemoryTable<Plan>
+	deliveries: MemoryTable<Delivery>
+	slices: MemoryTable<Slice>
+	links: MemoryTable<Link>
+	deliveryArtifacts: MemoryTable<DeliveryArtifact>
+	sliceArtifacts: MemoryTable<SliceArtifact>
+	actions: MemoryTable<Action>
+	agentRuns: MemoryTable<AgentRun>
+	reviewSurfaces: MemoryTable<ReviewSurface>
+	revisionGates: MemoryTable<RevisionGate>
+	revisions: MemoryTable<Revision>
 	secrets: MemoryTable<Secret>
 	secretBindings: MemoryTable<SecretBinding>
 }

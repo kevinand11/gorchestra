@@ -4,7 +4,7 @@ import { buildStubCommand } from './utils'
 import { idPipe, type OperationContext } from '../domain/commons'
 import type { ValidationEvidence } from '../domain/evidence'
 import type { CommandStubError } from '../errors'
-import type { Result as CoreResult } from '../types'
+import type { Result as CoreResult } from '../utils/types'
 
 const preflightModelInputPipe = v.object({ modelId: idPipe })
 export type Input = PipeOutput<typeof preflightModelInputPipe>

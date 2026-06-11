@@ -266,17 +266,20 @@ function typedFunctionDependencyPipe<Fn extends AnyFunction>() {
 	return v.any<Fn>().pipe(v.custom((value) => typeof value === 'function', 'Expected a function dependency.'))
 }
 
-// fallow-ignore-next-line complexity
 function isCoreServicePreflightOutputValue(value: unknown): boolean {
-	if (!isRecord(value)) {
-		return false
-	}
+	return isRecord(value) && (isPassedCoreServicePreflightOutput(value) || isFailedCoreServicePreflightOutput(value))
+}
 
-	if (value['ok'] === true) {
-		return true
-	}
+function isPassedCoreServicePreflightOutput(value: Record<string, unknown>): boolean {
+	return value['ok'] === true
+}
 
-	return value['ok'] === false && (typeof value['message'] === 'string' || value['message'] === null)
+function isFailedCoreServicePreflightOutput(value: Record<string, unknown>): boolean {
+	return value['ok'] === false && isCoreServicePreflightMessage(value['message'])
+}
+
+function isCoreServicePreflightMessage(value: unknown): boolean {
+	return typeof value === 'string' || value === null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

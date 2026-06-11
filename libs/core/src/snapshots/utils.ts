@@ -1,7 +1,7 @@
 import { v, type Pipe, type PipeInput } from 'valleyed'
 
 import type { InvalidInputError, NotImplementedError } from '../errors'
-import type { Result } from '../types'
+import type { Result } from '../utils/types'
 import { validateCoreInput } from '../validation'
 
 export function buildSnapshotStub<T, TPipe extends Pipe<unknown, unknown>>(

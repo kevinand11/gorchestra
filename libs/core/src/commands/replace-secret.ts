@@ -6,7 +6,7 @@ import { idPipe, type OperationContext } from '../domain/commons'
 import { secretPipe, secretValueRefPipe, type Secret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { OpenCoreOptions } from '../services'
-import type { Result as CoreResult } from '../types'
+import type { Result as CoreResult } from '../utils/types'
 
 const replaceSecretInputPipe = v.object({ secretId: idPipe, valueRef: secretValueRefPipe })
 export type Input = PipeOutput<typeof replaceSecretInputPipe>

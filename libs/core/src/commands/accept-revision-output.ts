@@ -5,7 +5,7 @@ import { idPipe, type OperationContext } from '../domain/commons'
 import { revisionOutputProposalPipe } from '../domain/revision'
 import type { Revision } from '../domain/revision'
 import type { CommandStubError } from '../errors'
-import type { Result as CoreResult } from '../types'
+import type { Result as CoreResult } from '../utils/types'
 
 const acceptRevisionOutputInputPipe = v.object({ revisionGateId: idPipe, output: revisionOutputProposalPipe })
 export type Input = PipeOutput<typeof acceptRevisionOutputInputPipe>

@@ -5,7 +5,7 @@ import type { Action } from '../domain/action'
 import { idPipe, type OperationContext } from '../domain/commons'
 import type { Delivery } from '../domain/delivery'
 import type { CommandStubError } from '../errors'
-import type { Result as CoreResult } from '../types'
+import type { Result as CoreResult } from '../utils/types'
 
 const shipDeliveryInputPipe = v.object({ deliveryId: idPipe })
 export type Input = PipeOutput<typeof shipDeliveryInputPipe>

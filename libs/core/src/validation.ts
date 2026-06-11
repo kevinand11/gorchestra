@@ -1,7 +1,7 @@
 import { v, type Pipe, type PipeOutput } from 'valleyed'
 
 import type { CoreInputBoundary, CorePreflightCheckName, InvalidCoreServiceOutputError, InvalidInputError } from './errors'
-import type { Result } from './types'
+import type { Result } from './utils/types'
 
 export function validateCoreInput<TPipe extends Pipe<unknown, unknown>>(
 	pipe: TPipe,

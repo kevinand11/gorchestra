@@ -9,12 +9,13 @@ import {
 	coreServicePreflightOutputPipe,
 	openCoreOptionsPipe,
 	type CorePreflightCheck,
+	type CorePreflightChecks,
 	type CorePreflightReport,
 	type CoreServicePreflightOutput,
 	type OpenCoreOptions,
 } from './services'
 import * as Snapshots from './snapshots'
-import type { Result } from './types'
+import type { Result } from './utils/types'
 import { validateCoreInput, validateCoreServiceOutput } from './validation'
 
 export interface GorchestraCore {
@@ -38,45 +39,58 @@ export function openCore(options: OpenCoreOptions): Result<GorchestraCore, OpenC
 		value: {
 			preflight: () => preflightCore(coreServices),
 			commands: Commands.createCoreCommands(coreServices),
-			queries: Queries.createCoreQueries(),
+			queries: Queries.createCoreQueries(coreServices),
 			snapshots: Snapshots.createCoreSnapshots(),
 		},
 	}
 }
 
-// fallow-ignore-next-line complexity
+type CorePreflightCheckResult = Result<CorePreflightCheck, CorePreflightError>
+
 async function preflightCore(options: OpenCoreOptions): Promise<Result<CorePreflightReport, CorePreflightError>> {
-	const storageCheck = await preflightCoreService('storage', () => options.storage.preflight())
-	if (!storageCheck.ok) return storageCheck
+	const checks = await collectCorePreflightChecks(options)
+	if (!checks.ok) return checks
 
-	const secretsCheck = await preflightCoreService('secrets', () => options.secrets.preflight())
-	if (!secretsCheck.ok) return secretsCheck
+	return { ok: true, value: corePreflightReport(checks.value) }
+}
 
-	const sandboxCheck = await preflightCoreService('sandbox', () => options.sandbox.preflight())
-	if (!sandboxCheck.ok) return sandboxCheck
+async function collectCorePreflightChecks(options: OpenCoreOptions): Promise<Result<CorePreflightChecks, CorePreflightError>> {
+	const storage = await preflightCoreService('storage', () => options.storage.preflight())
+	const secrets = await preflightCoreService('secrets', () => options.secrets.preflight())
+	const sandbox = await preflightCoreService('sandbox', () => options.sandbox.preflight())
+	const clock = preflightRuntimeService('clock', 'now', () => options.clock.now(), coreClockOutputPipe)
+	const idGenerator = preflightRuntimeService('idGenerator', 'next', () => options.idGenerator.next('core-preflight'), coreIdOutputPipe)
+	const failure = firstCorePreflightFailure([storage, secrets, sandbox, clock, idGenerator])
+	if (failure !== null) return failure
 
-	const clockCheck = preflightRuntimeService('clock', 'now', () => options.clock.now(), coreClockOutputPipe)
-	if (!clockCheck.ok) return clockCheck
-
-	const idGeneratorCheck = preflightRuntimeService(
-		'idGenerator',
-		'next',
-		() => options.idGenerator.next('core-preflight'),
-		coreIdOutputPipe,
-	)
-	if (!idGeneratorCheck.ok) return idGeneratorCheck
-
-	const checks = {
-		storage: storageCheck.value,
-		secrets: secretsCheck.value,
-		sandbox: sandboxCheck.value,
-		clock: clockCheck.value,
-		idGenerator: idGeneratorCheck.value,
+	return {
+		ok: true,
+		value: {
+			storage: resultValue(storage),
+			secrets: resultValue(secrets),
+			sandbox: resultValue(sandbox),
+			clock: resultValue(clock),
+			idGenerator: resultValue(idGenerator),
+		},
 	}
+}
 
-	const passed = [checks.storage, checks.secrets, checks.sandbox, checks.clock, checks.idGenerator].every((check) => check.ok)
+function firstCorePreflightFailure(results: CorePreflightCheckResult[]): Result<never, CorePreflightError> | null {
+	const failure = results.find((result) => !result.ok)
 
-	return { ok: true, value: { passed, checks } }
+	return failure === undefined || failure.ok ? null : { ok: false, error: failure.error }
+}
+
+function corePreflightReport(checks: CorePreflightChecks): CorePreflightReport {
+	const allChecks = [checks.storage, checks.secrets, checks.sandbox, checks.clock, checks.idGenerator]
+
+	return { passed: allChecks.every((check) => check.ok), checks }
+}
+
+function resultValue<T>(result: Result<T, unknown>): T {
+	if (!result.ok) throw new Error('Expected a successful result after checking failures.')
+
+	return result.value
 }
 
 async function preflightCoreService(

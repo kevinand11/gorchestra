@@ -13,7 +13,7 @@ import {
 	withTransaction,
 } from './storage-utils'
 import { buildCommandHandler } from './utils'
-import { idPipe, type OperationContext } from '../domain/commons'
+import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
 import { envNamePipe, secretBindingScopePipe, type SecretBinding } from '../domain/secret'
 import { secretBindingPipe, secretPipe } from '../domain/secret'
 import type {
@@ -24,8 +24,8 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { OpenCoreOptions } from '../services'
-import type { Result as CoreResult } from '../types'
+import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import type { Result as CoreResult } from '../utils/types'
 
 const bindSecretInputPipe = v.object({ secretId: idPipe, scope: secretBindingScopePipe, envName: envNamePipe })
 export type Input = PipeOutput<typeof bindSecretInputPipe>
@@ -43,41 +43,66 @@ export type Error =
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createBindSecretCommand(options: OpenCoreOptions): Operation {
-	return buildCommandHandler('bindSecret', bindSecretInputPipe, (input, context) => {
-		const stamp = auditStamp(options, context)
-		if (!stamp.ok) return Promise.resolve(stamp)
+	return buildCommandHandler('bindSecret', bindSecretInputPipe, (input, context) => handleBindSecret(options, input, context))
+}
 
-		const id = nextId(options, 'secret-binding')
-		if (!id.ok) return Promise.resolve(id)
+async function handleBindSecret(
+	options: OpenCoreOptions,
+	input: Input,
+	context: OperationContext,
+): Promise<CoreResult<SecretBinding, Error>> {
+	const stamp = auditStamp(options, context)
+	if (!stamp.ok) return stamp
 
-		// fallow-ignore-next-line complexity
-		return withTransaction(options, async (tx): Promise<CoreResult<SecretBinding, Exclude<Error, InvalidInputError>>> => {
-			const secret = await getRequired('secret', tx.secrets, input.secretId, secretPipe)
-			if (!secret.ok) return secret
-			if (isArchived(secret.value.archivePeriods)) return archivedSecretReference(input.secretId)
+	const id = nextId(options, 'secret-binding')
+	if (!id.ok) return id
 
-			const bindings = await listRecords('secret-binding', tx.secretBindings, secretBindingPipe)
-			if (!bindings.ok) return bindings
+	return withTransaction(options, (tx) => writeSecretBinding(tx, input, stamp.value, id.value))
+}
 
-			const duplicate = bindings.value.find((binding) => binding.envName === input.envName && scopesEqual(binding.scope, input.scope))
-			if (duplicate !== undefined) {
-				return duplicateSecretBinding(duplicate.id, input.scope, input.envName)
-			}
+async function writeSecretBinding(
+	tx: CoreStorageTransaction,
+	input: Input,
+	stamp: AuditStamp,
+	bindingId: Id,
+): Promise<CoreResult<SecretBinding, Exclude<Error, InvalidInputError>>> {
+	const validation = await validateSecretBindingCreate(tx, input)
+	if (!validation.ok) return validation
 
-			const binding: SecretBinding = {
-				id: id.value,
-				secretId: input.secretId,
-				scope: input.scope,
-				envName: input.envName,
-				created: stamp.value,
-				archivePeriods: [],
-			}
-			const stored = await putRecord('secret-binding', tx.secretBindings, binding.id, binding)
-			if (!stored.ok) return stored
+	const binding: SecretBinding = {
+		id: bindingId,
+		secretId: input.secretId,
+		scope: input.scope,
+		envName: input.envName,
+		created: stamp,
+		archivePeriods: [],
+	}
+	const stored = await putRecord('secret-binding', tx.secretBindings, binding.id, binding)
+	if (!stored.ok) return stored
 
-			return { ok: true, value: binding }
-		})
-	})
+	return { ok: true, value: binding }
+}
+
+async function validateSecretBindingCreate(
+	tx: CoreStorageTransaction,
+	input: Input,
+): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
+	const secret = await getRequired('secret', tx.secrets, input.secretId, secretPipe)
+	if (!secret.ok) return secret
+	if (isArchived(secret.value.archivePeriods)) return archivedSecretReference(input.secretId)
+
+	return validateSecretBindingUnique(tx, input)
+}
+
+async function validateSecretBindingUnique(
+	tx: CoreStorageTransaction,
+	input: Input,
+): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
+	const bindings = await listRecords('secret-binding', tx.secretBindings, secretBindingPipe)
+	if (!bindings.ok) return bindings
+
+	const duplicate = bindings.value.find((binding) => binding.envName === input.envName && scopesEqual(binding.scope, input.scope))
+	return duplicate === undefined ? { ok: true, value: undefined } : duplicateSecretBinding(duplicate.id, input.scope, input.envName)
 }
 
 if (import.meta.vitest) {

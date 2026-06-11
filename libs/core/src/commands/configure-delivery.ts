@@ -5,7 +5,7 @@ import { idPipe, type OperationContext } from '../domain/commons'
 import { deliveryConfigPipe } from '../domain/config'
 import type { Delivery } from '../domain/delivery'
 import type { CommandStubError } from '../errors'
-import type { Result as CoreResult } from '../types'
+import type { Result as CoreResult } from '../utils/types'
 
 const configureDeliveryInputPipe = v.object({ deliveryId: idPipe, config: deliveryConfigPipe })
 export type Input = PipeOutput<typeof configureDeliveryInputPipe>
