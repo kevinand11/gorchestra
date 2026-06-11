@@ -19,6 +19,7 @@ if (import.meta.vitest) {
 					{
 						id: 'slice-1',
 						deliveryId: 'delivery-1',
+						order: 0,
 						title: 'Slice',
 						instruction: { body: 'Do work.' },
 						accepted: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },

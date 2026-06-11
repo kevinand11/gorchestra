@@ -4,6 +4,7 @@ import type { AgentRunPurpose } from './domain/agent-run'
 import type { Id } from './domain/commons'
 import type { DeliveryWorkState } from './domain/delivery'
 import type { ExternalOperationEvidence, ValidationEvidence } from './domain/evidence'
+import type { GraphNodeRef, LinkType } from './domain/graph'
 import type { SecretBindingScope } from './domain/secret'
 
 export type CorePreflightCheckName = 'storage' | 'secrets' | 'sandbox' | 'clock' | 'idGenerator'
@@ -163,6 +164,24 @@ export interface DeliveryWorkStateMismatchError {
 	actual: DeliveryWorkState
 }
 
+export type InvalidPlanOutputError =
+	| { type: 'invalid-plan-output'; reason: 'empty-output' }
+	| { type: 'invalid-plan-output'; reason: 'delivery-without-slices'; proposedDeliveryKey: string }
+	| { type: 'invalid-plan-output'; reason: 'duplicate-proposed-delivery-key'; proposedDeliveryKey: string }
+	| { type: 'invalid-plan-output'; reason: 'duplicate-proposed-slice-key'; proposedSliceKey: string }
+	| { type: 'invalid-plan-output'; reason: 'duplicate-proposed-memory-key'; proposedMemoryKey: string }
+	| { type: 'invalid-plan-output'; reason: 'unknown-proposed-delivery-key'; proposedDeliveryKey: string }
+	| { type: 'invalid-plan-output'; reason: 'unknown-proposed-slice-key'; proposedSliceKey: string }
+	| { type: 'invalid-plan-output'; reason: 'unknown-proposed-memory-key'; proposedMemoryKey: string }
+	| { type: 'invalid-plan-output'; reason: 'unknown-existing-ref'; ref: GraphNodeRef }
+	| { type: 'invalid-plan-output'; reason: 'repository-project-mismatch'; proposedDeliveryKey: string; repositoryId: Id }
+	| { type: 'invalid-plan-output'; reason: 'project-boundary-mismatch'; ref: GraphNodeRef }
+	| { type: 'invalid-plan-output'; reason: 'invalid-depends-on-scope'; from: GraphNodeRef; to: GraphNodeRef }
+	| { type: 'invalid-plan-output'; reason: 'duplicate-link'; linkType: LinkType; from: GraphNodeRef; to: GraphNodeRef }
+	| { type: 'invalid-plan-output'; reason: 'delivery-dependency-cycle' }
+	| { type: 'invalid-plan-output'; reason: 'slice-dependency-cycle'; proposedDeliveryKey: string }
+	| { type: 'invalid-plan-output'; reason: 'memory-supersession-cycle' }
+
 export interface RevisionGateClosedError {
 	type: 'revision-gate-closed'
 	revisionGateId: Id
@@ -202,6 +221,7 @@ export type CoreError =
 	| DuplicateRepositoryTargetError
 	| ProjectSourceTypeMismatchError
 	| DeliveryWorkStateMismatchError
+	| InvalidPlanOutputError
 	| RevisionGateClosedError
 	| AgentRunModelUnresolvedError
 	| ExternalOperationFailedError

@@ -3,6 +3,7 @@ import { agentRunPipe } from '../../domain/agent-run'
 import { deliveryArtifactPipe, sliceArtifactPipe } from '../../domain/artifact'
 import { linkPipe } from '../../domain/graph'
 import { reviewSurfacePipe } from '../../domain/review-surface'
+import { slicePipe } from '../../domain/slice'
 import type { CoreStorageTransaction } from '../../services'
 import { listRecords, type StorageBoundaryError } from '../storage'
 import type { Result } from '../types'
@@ -16,7 +17,8 @@ export async function loadWorkStateFacts(tx: CoreStorageTransaction): Promise<Re
 	const deliveryArtifacts = await listRecords('delivery-artifact', tx.deliveryArtifacts, deliveryArtifactPipe)
 	const sliceArtifacts = await listRecords('slice-artifact', tx.sliceArtifacts, sliceArtifactPipe)
 	const reviewSurfaces = await listRecords('review-surface', tx.reviewSurfaces, reviewSurfacePipe)
-	const failure = firstStorageFailure([actions, agentRuns, links, deliveryArtifacts, sliceArtifacts, reviewSurfaces])
+	const slices = await listRecords('slice', tx.slices, slicePipe)
+	const failure = firstStorageFailure([actions, agentRuns, links, deliveryArtifacts, sliceArtifacts, reviewSurfaces, slices])
 	if (failure !== null) return failure
 
 	return {
@@ -28,6 +30,7 @@ export async function loadWorkStateFacts(tx: CoreStorageTransaction): Promise<Re
 			deliveryArtifacts: resultValue(deliveryArtifacts),
 			sliceArtifacts: resultValue(sliceArtifacts),
 			reviewSurfaces: resultValue(reviewSurfaces),
+			slices: resultValue(slices),
 		},
 	}
 }

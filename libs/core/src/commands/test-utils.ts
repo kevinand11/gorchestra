@@ -42,6 +42,7 @@ export function externalOperationEvidence(
 
 export function createTestOpenCoreOptions(): OpenCoreOptions & { tx: MemoryStorageTransaction; transactionCalls: () => number } {
 	const storage = createMemoryStorage()
+	const idCounters = new Map<string, number>()
 
 	return {
 		storage: storage.service,
@@ -52,7 +53,14 @@ export function createTestOpenCoreOptions(): OpenCoreOptions & { tx: MemoryStora
 		},
 		sandbox: { preflight: () => Promise.resolve({ ok: true }) },
 		clock: { now: () => new Date('2026-06-10T12:00:00.000Z') },
-		idGenerator: { next: (brand: string) => `${brand}-1` },
+		idGenerator: {
+			next: (brand: string) => {
+				const next = (idCounters.get(brand) ?? 0) + 1
+				idCounters.set(brand, next)
+
+				return `${brand}-${next}`
+			},
+		},
 		tx: storage.tx,
 		transactionCalls: () => storage.transactionCalls,
 	}
@@ -68,7 +76,7 @@ export function seedProject(tx: MemoryStorageTransaction, id: string) {
 	})
 }
 
-export function seedDelivery(tx: MemoryStorageTransaction, id: string, sliceIds: string[] = []) {
+export function seedDelivery(tx: MemoryStorageTransaction, id: string) {
 	tx.deliveries.records.set(id, {
 		id,
 		projectId: 'project-1',
@@ -76,24 +84,23 @@ export function seedDelivery(tx: MemoryStorageTransaction, id: string, sliceIds:
 		title: 'Delivery',
 		target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
 		config: null,
-		sliceIds,
 		accepted: stamp,
 	})
 }
 
-export function seedSlice(tx: MemoryStorageTransaction, id: string, deliveryId: string) {
+export function seedSlice(tx: MemoryStorageTransaction, id: string, deliveryId: string, order = nextSliceOrder(tx, deliveryId)) {
 	tx.slices.records.set(id, {
 		id,
 		deliveryId,
+		order,
 		title: 'Slice',
 		instruction: { body: 'Do work.' },
 		accepted: stamp,
 	})
+}
 
-	const delivery = tx.deliveries.records.get(deliveryId)
-	if (delivery !== undefined && !delivery.sliceIds.includes(id)) {
-		tx.deliveries.records.set(deliveryId, { ...delivery, sliceIds: [...delivery.sliceIds, id] })
-	}
+function nextSliceOrder(tx: MemoryStorageTransaction, deliveryId: string): number {
+	return [...tx.slices.records.values()].filter((slice) => slice.deliveryId === deliveryId).length
 }
 
 export function seedSelectableModel(

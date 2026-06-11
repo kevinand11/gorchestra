@@ -31,6 +31,7 @@ export interface WorkStateFacts {
 	deliveryArtifacts: DeliveryArtifact[]
 	sliceArtifacts: SliceArtifact[]
 	reviewSurfaces: ReviewSurface[]
+	slices: Slice[]
 }
 
 export type ActionOfType<TType extends ActionResult['type']> = Action & { result: Extract<ActionResult, { type: TType }> }

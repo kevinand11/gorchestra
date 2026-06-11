@@ -135,8 +135,6 @@ async function latestSliceCompletionForDelivery(
 	delivery: Delivery,
 	facts: WorkStateFacts,
 ): Promise<WorkStateResult<Action | null>> {
-	if (delivery.sliceIds.length === 0) return invariant('Delivery must contain at least one Slice.')
-
 	const actionIds = await sliceCompletionActionIdsForDelivery(tx, delivery, facts)
 	if (!actionIds.ok) return actionIds
 
@@ -149,7 +147,7 @@ async function sliceCompletionActionIdsForDelivery(
 	facts: WorkStateFacts,
 ): Promise<WorkStateResult<Slice['id'][] | null>> {
 	const actionIds: Slice['id'][] = []
-	for (const sliceId of delivery.sliceIds) {
+	for (const sliceId of orderedDeliverySlices(delivery, facts).map((slice) => slice.id)) {
 		const completion = await sliceCompletionActionId(tx, delivery, sliceId, facts)
 		if (!completion.ok) return completion
 		if (completion.value === null) return ok(null)
@@ -320,6 +318,12 @@ async function blockedDeliveryIds(
 		(candidate): candidate is DeliveryDependencyLink => isDeliveryDependencyLink(candidate, delivery.id),
 		(link) => unclosedDeliveryDependency(tx, delivery, link, facts.actions),
 	)
+}
+
+function orderedDeliverySlices(delivery: Delivery, facts: WorkStateFacts): Slice[] {
+	return facts.slices
+		.filter((slice) => slice.deliveryId === delivery.id)
+		.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
 }
 
 function isDeliveryDependencyLink(link: WorkStateFacts['links'][number], deliveryId: Delivery['id']): link is DeliveryDependencyLink {
@@ -609,17 +613,6 @@ if (import.meta.vitest) {
 		expect(await deriveDeliveryWorkState(tx, 'missing-delivery')).toEqual({
 			ok: false,
 			error: { type: 'not-found', resource: 'delivery', id: 'missing-delivery' },
-		})
-	})
-
-	it('reports missing referenced Slice as an invariant violation through derived Delivery state', async () => {
-		const { tx } = deliveryFixture({ queued: true, withDeliveryArtifact: true })
-		const delivery = tx.deliveries.records.get('delivery-1')
-		tx.deliveries.records.set('delivery-1', { ...delivery!, sliceIds: ['missing-slice'] })
-
-		expect(await deriveDeliveryWorkState(tx, 'delivery-1')).toEqual({
-			ok: false,
-			error: { type: 'not-found', resource: 'slice', id: 'missing-slice' },
 		})
 	})
 }

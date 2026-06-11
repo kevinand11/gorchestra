@@ -1,11 +1,12 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { auditStampPipe, idPipe, nonEmptyTrimmedStringPipe, type Id } from './commons'
+import { auditStampPipe, idPipe, nonEmptyTrimmedStringPipe, nonNegativeIntegerPipe, type Id } from './commons'
 import { instructionSourcePipe } from './plan'
 
 export const slicePipe = v.object({
 	id: idPipe,
 	deliveryId: idPipe,
+	order: nonNegativeIntegerPipe,
 	title: nonEmptyTrimmedStringPipe,
 	instruction: instructionSourcePipe,
 	accepted: auditStampPipe,

@@ -121,11 +121,11 @@ The human steering Planning toward an acceptable Plan Output.
 _Avoid_: Agent, intelligence, Plan owner
 
 **Plan Output**:
-The structured proposal shape a planning Agent Run must produce for review as a whole. A Plan Output proposes new Deliveries with their initial Slices, plus Memories and Links. Accepting a Plan Output materializes those proposed artifacts into the Portfolio graph, including Instruction Sources stored on the materialized Slices. Rejecting it materializes none of them. Plan Outputs do not add Slices to existing Deliveries and are not stored Portfolio artifacts.
+The structured proposal shape a planning Agent Run must produce for review as a whole. A Plan Output proposes new Deliveries with their initial Slices, plus Memories and Links. Proposed Deliveries may depend on existing Deliveries or other proposed Deliveries in the same Plan Output. Accepting a Plan Output materializes those proposed artifacts into the Portfolio graph, including Instruction Sources stored on the materialized Slices, and records Plan-produced Memory provenance for materialized Memories. Rejecting it materializes none of them. Plan Outputs do not add Slices to existing Deliveries, must propose at least one initial Slice for each proposed Delivery, and are not stored Portfolio artifacts.
 _Avoid_: Accepted Plan, partial acceptance, staged output set, draft Plan
 
 **Delivery**:
-The Project-level unit of accepted executable work materialized by accepting a Plan Output. A Delivery belongs to a Project for execution and participates in the Portfolio graph for planning, provenance, and same-Project Delivery-level dependencies. A Delivery targets exactly one execution target for its Project Source Type, contains at least one Slice, and cannot begin Slice work until explicitly queued.
+The Project-level unit of accepted executable work materialized by accepting a Plan Output. A Delivery belongs to a Project for execution and participates in the Portfolio graph for planning, provenance, and same-Project Delivery-level dependencies. A Delivery targets exactly one execution target for its Project Source Type and cannot begin Slice work until explicitly queued.
 _Avoid_: Change, task, ticket, draft Plan
 
 **Queued Delivery**:
@@ -145,7 +145,7 @@ A Delivery with an abandon-delivery Action, removed from active execution consid
 _Avoid_: Archived Delivery, Deleted Delivery, canceled Delivery, soft-deleted Delivery
 
 **Slice**:
-An independently executable unit inside exactly one Delivery. A Slice's parent Delivery and initial Instruction Source are immutable after acceptance. Slices participate in the Portfolio graph, and Slice-level dependencies are represented by Links between Slices in the same Delivery.
+An independently executable unit inside exactly one Delivery. A Slice's parent Delivery, immutable Delivery-scoped order, and initial Instruction Source are immutable after acceptance. Slice order records the accepted Plan Output order for Slices within the Delivery and is the source of truth for deterministic same-Delivery Slice ordering. Slices participate in the Portfolio graph, and Slice-level dependencies are represented by Links between Slices in the same Delivery.
 _Avoid_: Step, task, subtask
 
 **Slice Work State**:
@@ -241,7 +241,7 @@ A Memory that has not been superseded by another Memory.
 _Avoid_: Active Memory, latest Memory
 
 **Link**:
-A typed directed relationship between graph nodes such as Plans, Projects, Deliveries, Slices, and Memories. Portfolio is the graph boundary, not a graph node. Links connect graph nodes, not other Links. Links between Project-level nodes stay within one Project; Portfolio Memories may link to nodes in any Project. A Link reads as “from node, link-type verb, to node”; for example, a depends-on Link means the `from` node depends on the `to` node. Common Link types include produced, implements, references, supersedes, supports, contradicts, and depends-on.
+A typed directed relationship between graph nodes such as Plans, Projects, Deliveries, Slices, and Memories. Portfolio is the graph boundary, not a graph node. Links connect graph nodes, not other Links. Links between Project-level nodes stay within one Project; Portfolio Memories may link to nodes in any Project. A Link reads as “from node, link-type verb, to node”; for example, a depends-on Link means the `from` node depends on the `to` node. Common Link types include produced, references, supersedes, supports, contradicts, and depends-on.
 _Avoid_: Relationship, edge, reference, edge-as-node
 
 **Preflight**:

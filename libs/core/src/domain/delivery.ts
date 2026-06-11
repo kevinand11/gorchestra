@@ -62,7 +62,6 @@ export const deliveryPipe = v.object({
 	title: nonEmptyTrimmedStringPipe,
 	target: deliveryTargetPipe,
 	config: v.nullable(deliveryConfigRecordPipe),
-	sliceIds: v.array(idPipe),
 	accepted: auditStampPipe,
 })
 export type Delivery = PipeOutput<typeof deliveryPipe>

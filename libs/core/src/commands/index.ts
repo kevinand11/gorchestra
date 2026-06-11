@@ -83,7 +83,7 @@ export function createCoreCommands(options: OpenCoreOptions) {
 		preflightModel: createPreflightModelCommand(),
 		preflightRepository: createPreflightRepositoryCommand(),
 		createPlan: createCreatePlanCommand(options),
-		acceptPlanOutput: createAcceptPlanOutputCommand(),
+		acceptPlanOutput: createAcceptPlanOutputCommand(options),
 		rejectPlanOutput: createRejectPlanOutputCommand(),
 		configureDelivery: createConfigureDeliveryCommand(options),
 		queueDelivery: createQueueDeliveryCommand(options),

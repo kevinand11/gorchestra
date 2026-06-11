@@ -32,16 +32,9 @@ export const proposedDeliveryPipe = v.object({
 	target: proposedDeliveryTargetPipe,
 	slices: v.array(proposedSlicePipe),
 	dependsOnDeliveryIds: v.array(idPipe),
+	dependsOnProposedDeliveryKeys: v.array(nonEmptyTrimmedStringPipe),
 })
 export type ProposedDelivery = PipeOutput<typeof proposedDeliveryPipe>
-
-export const proposedMemoryPipe = v.object({
-	proposedMemoryKey: nonEmptyTrimmedStringPipe,
-	title: nonEmptyTrimmedStringPipe,
-	body: freeFormStringPipe,
-	type: v.nullable(memoryTypePipe),
-})
-export type ProposedMemory = PipeOutput<typeof proposedMemoryPipe>
 
 export const proposedGraphRefPipe = v.discriminate((value) => value.type, {
 	existing: v.object({ type: v.eq('existing'), node: graphNodeRefPipe }),
@@ -51,17 +44,29 @@ export const proposedGraphRefPipe = v.discriminate((value) => value.type, {
 })
 export type ProposedGraphRef = PipeOutput<typeof proposedGraphRefPipe>
 
-export const proposedLinkPipe = v.object({
-	type: v.in(['produced', 'implements', 'references', 'supersedes', 'supports', 'contradicts', 'depends-on']),
-	from: proposedGraphRefPipe,
-	to: proposedGraphRefPipe,
+export const proposedMemoryLinkPipe = v.discriminate((value) => value.type, {
+	references: v.object({ type: v.eq('references'), to: proposedGraphRefPipe }),
+	supports: v.object({ type: v.eq('supports'), to: proposedGraphRefPipe }),
+	contradicts: v.object({ type: v.eq('contradicts'), to: proposedGraphRefPipe }),
+	supersedes: v.object({
+		type: v.eq('supersedes'),
+		to: v.object({ type: v.eq('existing'), node: v.object({ type: v.eq('memory'), id: idPipe }) }),
+	}),
 })
-export type ProposedLink = PipeOutput<typeof proposedLinkPipe>
+export type ProposedMemoryLink = PipeOutput<typeof proposedMemoryLinkPipe>
+
+export const proposedMemoryPipe = v.object({
+	proposedMemoryKey: nonEmptyTrimmedStringPipe,
+	title: nonEmptyTrimmedStringPipe,
+	body: freeFormStringPipe,
+	type: v.nullable(memoryTypePipe),
+	links: v.array(proposedMemoryLinkPipe),
+})
+export type ProposedMemory = PipeOutput<typeof proposedMemoryPipe>
 
 export const planOutputProposalPipe = v.object({
 	proposedDeliveries: v.array(proposedDeliveryPipe),
 	proposedMemories: v.array(proposedMemoryPipe),
-	proposedLinks: v.array(proposedLinkPipe),
 })
 export type PlanOutputProposal = PipeOutput<typeof planOutputProposalPipe>
 

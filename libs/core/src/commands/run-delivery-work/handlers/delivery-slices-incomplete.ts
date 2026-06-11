@@ -1,6 +1,6 @@
 import { slicePipe, type Slice, type SliceWorkState } from '../../../domain/slice'
 import type { InvalidInputError } from '../../../errors'
-import { getRequired } from '../../../utils/storage'
+import { listRecords } from '../../../utils/storage'
 import type { Result as CoreResult } from '../../../utils/types'
 import { deriveSliceWorkState } from '../../../utils/work-state'
 import type { DeliveryHandlerContext, DeliveryWorkResolution, Error, RunDeliveryWorkHandlerResult } from '../types'
@@ -29,17 +29,29 @@ export async function handleDeliverySlicesIncomplete(context: DeliveryHandlerCon
 async function sliceStateCandidates(
 	context: DeliveryHandlerContext,
 ): Promise<CoreResult<SliceStateCandidate[], Exclude<Error, InvalidInputError>>> {
-	const candidates: SliceStateCandidate[] = []
-	for (const sliceId of context.delivery.sliceIds) {
-		const sliceResult = await getRequired('slice', context.tx.slices, sliceId, slicePipe)
-		if (!sliceResult.ok) return sliceResult
+	const slices = await deliverySlices(context)
+	if (!slices.ok) return slices
 
-		const stateResult = await deriveSliceWorkState(context.tx, sliceId)
+	const candidates: SliceStateCandidate[] = []
+	for (const slice of slices.value) {
+		const stateResult = await deriveSliceWorkState(context.tx, slice.id)
 		if (!stateResult.ok) return stateResult
-		candidates.push({ slice: sliceResult.value, state: stateResult.value })
+		candidates.push({ slice, state: stateResult.value })
 	}
 
 	return { ok: true, value: candidates }
+}
+
+async function deliverySlices(context: DeliveryHandlerContext): Promise<CoreResult<Slice[], Exclude<Error, InvalidInputError>>> {
+	const slices = await listRecords('slice', context.tx.slices, slicePipe)
+	if (!slices.ok) return slices
+
+	return {
+		ok: true,
+		value: slices.value
+			.filter((slice) => slice.deliveryId === context.delivery.id)
+			.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id)),
+	}
 }
 
 function capacityCheck(candidates: SliceStateCandidate[], resolution: DeliveryWorkResolution): RunDeliveryWorkHandlerResult | null {

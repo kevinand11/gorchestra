@@ -11,7 +11,7 @@ export const graphNodeRefPipe = v.discriminate((value) => value.type, {
 })
 export type GraphNodeRef = PipeOutput<typeof graphNodeRefPipe>
 
-export const linkTypePipe = v.in(['produced', 'implements', 'references', 'supersedes', 'supports', 'contradicts', 'depends-on'])
+export const linkTypePipe = v.in(['produced', 'references', 'supersedes', 'supports', 'contradicts', 'depends-on'])
 export type LinkType = PipeOutput<typeof linkTypePipe>
 
 export const linkPipe = v.object({

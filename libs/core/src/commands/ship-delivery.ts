@@ -212,7 +212,7 @@ if (import.meta.vitest) {
 		tx: ReturnType<typeof createTestOpenCoreOptions>['tx'],
 		options: { integration: 'review-surface-merged' | 'observed-artifact-integration' },
 	) {
-		seedDelivery(tx, 'delivery-1', ['slice-1'])
+		seedDelivery(tx, 'delivery-1')
 		seedSlice(tx, 'slice-1', 'delivery-1')
 		tx.deliveryArtifacts.records.set('delivery-artifact-1', {
 			id: 'delivery-artifact-1',
