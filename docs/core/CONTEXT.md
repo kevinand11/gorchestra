@@ -104,6 +104,10 @@ _Avoid_: Source Control Port, Project Source Type, consumer integration logic
 A Source Control Project-managed source control target. For Source Control Projects, a Delivery targets exactly one Repository, while Plans may coordinate work across multiple Repositories in the same Project. Repository provider config identifies the target and the Secret Core uses for provider access. Repository config writes validate the referenced Secret exists in the Portfolio without calling GitHub; external access validation happens in preflight or provider operations.
 _Avoid_: Project, repo
 
+**Repository Preflight**:
+An observational validation operation that checks whether a stored Repository is ready for Source Control Provider access. Repository Preflight returns Validation Evidence and does not record lifecycle facts. Expected readiness failures, including missing or inactive provider access Secrets and provider access failures, are reported as failed Validation Evidence; missing target Repository records, storage failures, and invalid Core Service Outputs remain operation errors.
+_Avoid_: Repository status, Repository health state, access lifecycle event
+
 **Plan**:
 A Project-level reusable planning and discovery artifact. A Plan belongs to exactly one Project, captures research, analysis, requirements, and architectural discussion, and may produce zero, one, or many Plan Outputs for its Project.
 _Avoid_: Grill

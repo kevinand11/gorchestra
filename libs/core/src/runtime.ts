@@ -7,7 +7,7 @@ export interface CoreRuntime {
 }
 
 export function createCoreRuntime(services: CoreServices): CoreRuntime {
-	return { services, providers: createCoreProviders() }
+	return { services, providers: createCoreProviders(services) }
 }
 
 if (import.meta.vitest) {
@@ -20,7 +20,7 @@ if (import.meta.vitest) {
 			const runtime = createCoreRuntime(services)
 
 			expect(runtime.services).toBe(services)
-			expect(Object.keys(runtime.providers.sourceControl)).toEqual(['github'])
+			expect(Object.keys(runtime.providers.sourceControl)).toEqual(['preflightRepository'])
 			expect(Object.keys(runtime.providers.modelProviderProtocols).sort()).toEqual(
 				['anthropicMessages', 'googleGenerativeAI', 'openAICompletions', 'openAIResponses'].sort(),
 			)

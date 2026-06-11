@@ -3,7 +3,7 @@ import { v, type PipeOutput } from 'valleyed'
 import type { Action } from './domain/action'
 import type { AgentRun } from './domain/agent-run'
 import type { DeliveryArtifact, SliceArtifact } from './domain/artifact'
-import type { Id } from './domain/commons'
+import { idPipe, type Id } from './domain/commons'
 import type { PortfolioConfigRecord } from './domain/config'
 import type { Delivery } from './domain/delivery'
 import type { Link } from './domain/graph'
@@ -89,12 +89,15 @@ export interface ResolvedSecret {
 	plaintext: string
 }
 
-export interface ResolvedSecretValue {
-	secretId: Id
+export const resolvedSecretValuePipe = v.object({
+	secretId: idPipe,
 
 	/** Plaintext exists only transiently. */
-	plaintext: string
-}
+	plaintext: v.string(),
+})
+export type ResolvedSecretValue = PipeOutput<typeof resolvedSecretValuePipe>
+
+export const resolvedSecretValuesPipe = v.array(resolvedSecretValuePipe)
 
 export type CoreEvent = never
 

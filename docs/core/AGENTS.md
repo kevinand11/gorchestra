@@ -14,7 +14,7 @@ The `docs/core/` tree documents Core domain language, durable Core decisions, an
 
 - Read `CONTEXT.md` before changing Core documentation.
 - Read relevant ADRs in `adr/` before changing, superseding, or adding Core decisions.
-- Keep Core documentation aligned with `../../libs/core/src/domain/` and `../../libs/core/src/api.ts` when changes affect both domain language and package source.
+- Keep Core documentation aligned with `../../libs/core/src/domain/` and `../../libs/core/src/index.ts` when changes affect both domain language and package source.
 - Do not encode Server Consumer tenancy or authorization policy as Core-owned behavior; Consumers own application-layer auth, tenancy, and deployment concerns.
 
 ## Work Guidance

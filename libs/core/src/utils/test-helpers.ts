@@ -42,8 +42,11 @@ export function externalOperationEvidence(
 	return { type: 'external-operation', operation: { type: operation }, passed, summary }
 }
 
-export function createTestCoreRuntime(services = createTestCoreServices()): CoreRuntime {
-	return { services, providers: createCoreProviders() }
+export function createTestCoreRuntime(
+	services = createTestCoreServices(),
+	overrides: { providers?: CoreRuntime['providers'] } = {},
+): CoreRuntime {
+	return { services, providers: overrides.providers ?? createCoreProviders(services) }
 }
 
 export function createTestCoreServices(): CoreServices & { tx: MemoryStorageTransaction; transactionCalls: () => number } {
