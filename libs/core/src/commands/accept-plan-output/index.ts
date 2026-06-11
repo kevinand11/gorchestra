@@ -1,5 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import { materializePlanOutput } from './materialize'
+import { prepareMaterializationPlan } from './prepare'
+import type { MaterializedPlanOutput } from './types'
 import { idPipe, type OperationContext } from '../../domain/commons'
 import { deliveryPipe, type Delivery } from '../../domain/delivery'
 import { linkPipe, type Link } from '../../domain/graph'
@@ -15,12 +18,9 @@ import type {
 	StorageOperationFailedError,
 } from '../../errors'
 import type { CoreStorageTransaction, OpenCoreOptions } from '../../services'
+import { buildCommandHandler } from '../../utils/command'
+import { auditStamp, getRequired, listRecords, putRecord, withTransaction } from '../../utils/command-storage'
 import type { Result as CoreResult } from '../../utils/types'
-import { auditStamp, getRequired, listRecords, putRecord, withTransaction } from '../storage-utils'
-import { buildCommandHandler } from '../utils'
-import { materializePlanOutput } from './materialize'
-import { prepareMaterializationPlan } from './prepare'
-import type { MaterializedPlanOutput } from './types'
 
 const acceptPlanOutputInputPipe = v.object({ planId: idPipe, output: planOutputProposalPipe })
 export type Input = PipeOutput<typeof acceptPlanOutputInputPipe>
@@ -170,7 +170,7 @@ function resultValue<TValue>(result: CoreResult<TValue, unknown>): TValue {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedProject, seedSecret } = await import('../test-utils')
+	const { context, createTestOpenCoreOptions, localStamp, seedProject, seedSecret } = await import('../../utils/test-helpers')
 	const { createCreatePlanCommand } = await import('../create-plan')
 	const { createCreateRepositoryCommand } = await import('../create-repository')
 

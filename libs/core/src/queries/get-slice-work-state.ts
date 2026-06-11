@@ -23,7 +23,7 @@ export function createGetSliceWorkStateQuery(options: OpenCoreOptions): Operatio
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestOpenCoreOptions, seedDelivery, seedSlice } = await import('../commands/test-utils')
+	const { createTestOpenCoreOptions, seedDelivery, seedSlice } = await import('../utils/test-helpers')
 
 	describe('getSliceWorkState query', () => {
 		it('validates input before reading storage', async () => {

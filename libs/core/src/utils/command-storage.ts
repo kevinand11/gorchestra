@@ -1,4 +1,4 @@
-import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './errors'
+import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './command-errors'
 import type { ArchivePeriod, AuditStamp, Id, OperationContext } from '../domain/commons'
 import type {
 	DeliveryConfig,

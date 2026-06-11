@@ -112,7 +112,7 @@ export type Core = ReturnType<typeof createCoreCommands>
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestOpenCoreOptions } = await import('./test-utils')
+	const { createTestOpenCoreOptions } = await import('../utils/test-helpers')
 
 	describe('Core commands', () => {
 		it('returns an object with the expected command keys', () => {

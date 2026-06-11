@@ -1,15 +1,15 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import { handleDeliveryWorkState } from './handlers'
+import type { Error, Result } from './types'
 import { idPipe, type OperationContext } from '../../domain/commons'
 import { deliveryPipe } from '../../domain/delivery'
 import type { InvalidInputError } from '../../errors'
 import type { OpenCoreOptions } from '../../services'
+import { buildCommandHandler } from '../../utils/command'
 import { getRequired, withTransaction } from '../../utils/storage'
 import type { Result as CoreResult } from '../../utils/types'
 import { deriveDeliveryWorkState } from '../../utils/work-state'
-import { buildCommandHandler } from '../utils'
-import { handleDeliveryWorkState } from './handlers'
-import type { Error, Result } from './types'
 
 export type {
 	Error,
@@ -54,7 +54,7 @@ async function handleRunDeliveryWork(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions } = await import('../test-utils')
+	const { context, createTestOpenCoreOptions } = await import('../../utils/test-helpers')
 
 	describe('runDeliveryWork command', () => {
 		it('validates input before reading storage', async () => {

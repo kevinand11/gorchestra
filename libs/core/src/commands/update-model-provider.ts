@@ -1,14 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import {
-	auditStamp,
-	getRequired,
-	putRecord,
-	secretReferencesFromModelProviderConfig,
-	validateActiveSecretReferences,
-	withTransaction,
-} from './storage-utils'
-import { buildCommandHandler } from './utils'
 import { idPipe, nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
 import {
 	modelProviderAuthPipe,
@@ -25,6 +16,15 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { OpenCoreOptions } from '../services'
+import { buildCommandHandler } from '../utils/command'
+import {
+	auditStamp,
+	getRequired,
+	putRecord,
+	secretReferencesFromModelProviderConfig,
+	validateActiveSecretReferences,
+	withTransaction,
+} from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const updateModelProviderInputPipe = v.object({
@@ -78,7 +78,7 @@ export function createUpdateModelProviderCommand(options: OpenCoreOptions): Oper
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp } = await import('./test-utils')
+	const { context, createTestOpenCoreOptions, localStamp } = await import('../utils/test-helpers')
 
 	describe('updateModelProvider command', () => {
 		it('updates Model Provider mutable config while preserving protocol', async () => {

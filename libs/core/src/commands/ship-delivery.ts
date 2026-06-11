@@ -1,7 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { deliveryWorkStateMismatch, prepareAuthorizedAction, putRecord, readDeliveryWorkState, withTransaction } from './storage-utils'
-import { buildCommandHandler } from './utils'
 import type { Action } from '../domain/action'
 import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
 import type { Delivery, DeliveryIntegration, DeliveryWorkState } from '../domain/delivery'
@@ -14,6 +12,14 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import { buildCommandHandler } from '../utils/command'
+import {
+	deliveryWorkStateMismatch,
+	prepareAuthorizedAction,
+	putRecord,
+	readDeliveryWorkState,
+	withTransaction,
+} from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const shipDeliveryInputPipe = v.object({ deliveryId: idPipe })
@@ -99,7 +105,7 @@ if (import.meta.vitest) {
 		seedSlice,
 		stamp,
 		validationEvidence,
-	} = await import('./test-utils')
+	} = await import('../utils/test-helpers')
 	const deliveryValidation = validationEvidence('delivery-branch-validation', true, 'Valid.')
 	const sliceValidation = validationEvidence('slice-branch-validation', true, 'Valid.')
 	const slicePromotion = externalOperationEvidence('merge-review-surface', true, 'Merged.')

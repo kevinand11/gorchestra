@@ -1,17 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { RepositoryCommandReferenceError } from './errors'
-import {
-	auditStamp,
-	nextId,
-	normalizeRepositoryConfig,
-	putRecord,
-	validateActiveSecret,
-	validateSourceControlProject,
-	validateUniqueRepositoryTarget,
-	withTransaction,
-} from './storage-utils'
-import { buildCommandHandler } from './utils'
 import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
 import { repositoryConfigPipe, type Repository } from '../domain/repository'
 import type {
@@ -21,6 +9,18 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import { buildCommandHandler } from '../utils/command'
+import type { RepositoryCommandReferenceError } from '../utils/command-errors'
+import {
+	auditStamp,
+	nextId,
+	normalizeRepositoryConfig,
+	putRecord,
+	validateActiveSecret,
+	validateSourceControlProject,
+	validateUniqueRepositoryTarget,
+	withTransaction,
+} from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const createRepositoryInputPipe = v.object({ projectId: idPipe, config: repositoryConfigPipe })
@@ -93,7 +93,7 @@ async function validateRepositoryCreate(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedProject, seedSecret } = await import('./test-utils')
+	const { context, createTestOpenCoreOptions, localStamp, seedProject, seedSecret } = await import('../utils/test-helpers')
 
 	describe('createRepository command', () => {
 		it('creates Repositories only for Source Control Projects with active Secret references', async () => {

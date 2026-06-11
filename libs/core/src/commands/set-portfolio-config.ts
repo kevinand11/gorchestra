@@ -1,6 +1,11 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './errors'
+import type { OperationContext } from '../domain/commons'
+import { portfolioConfigPipe, type PortfolioConfigRecord } from '../domain/config'
+import type { InvalidInputError } from '../errors'
+import type { OpenCoreOptions } from '../services'
+import { buildCommandHandler } from '../utils/command'
+import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import {
 	auditStamp,
 	modelIdsFromPortfolioConfig,
@@ -8,12 +13,7 @@ import {
 	putSingleton,
 	validateSelectableModels,
 	withTransaction,
-} from './storage-utils'
-import { buildCommandHandler } from './utils'
-import type { OperationContext } from '../domain/commons'
-import { portfolioConfigPipe, type PortfolioConfigRecord } from '../domain/config'
-import type { InvalidInputError } from '../errors'
-import type { OpenCoreOptions } from '../services'
+} from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const setPortfolioConfigInputPipe = v.object({ config: portfolioConfigPipe })
@@ -46,7 +46,7 @@ export function createSetPortfolioConfigCommand(options: OpenCoreOptions): Opera
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedSelectableModel } = await import('./test-utils')
+	const { context, createTestOpenCoreOptions, localStamp, seedSelectableModel } = await import('../utils/test-helpers')
 
 	describe('setPortfolioConfig command', () => {
 		it('sets Portfolio config with normalized config and selectable Model validation', async () => {

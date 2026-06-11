@@ -1,7 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { deliveryWorkStateMismatch, prepareAuthorizedAction, putRecord, readDeliveryWorkState, withTransaction } from './storage-utils'
-import { buildCommandHandler } from './utils'
 import type { Action } from '../domain/action'
 import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
 import type { Delivery } from '../domain/delivery'
@@ -14,6 +12,14 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import { buildCommandHandler } from '../utils/command'
+import {
+	deliveryWorkStateMismatch,
+	prepareAuthorizedAction,
+	putRecord,
+	readDeliveryWorkState,
+	withTransaction,
+} from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const queueDeliveryInputPipe = v.object({ deliveryId: idPipe })
@@ -90,7 +96,7 @@ function queueDeliveryAction(deliveryId: Id, stamp: AuditStamp, actionId: Id): A
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedDelivery } = await import('./test-utils')
+	const { context, createTestOpenCoreOptions, localStamp, seedDelivery } = await import('../utils/test-helpers')
 
 	describe('queueDelivery command', () => {
 		it('validates input before reading storage', async () => {

@@ -1,5 +1,5 @@
-import type { RunDeliveryWorkHandlerResult } from '../types'
 import { notImplemented } from './result'
+import type { RunDeliveryWorkHandlerResult } from '../types'
 
 export function handleSliceNeedsDeliveryValidation(): RunDeliveryWorkHandlerResult {
 	return notImplemented('runDeliveryWork.slice.needs-delivery-validation')

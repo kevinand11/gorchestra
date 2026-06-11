@@ -1,7 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { deliveryWorkStateMismatch, prepareAuthorizedAction, putRecord, readDeliveryWorkState, withTransaction } from './storage-utils'
-import { buildCommandHandler } from './utils'
 import type { Action } from '../domain/action'
 import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
 import type { DeliveryWorkConfig } from '../domain/config'
@@ -16,6 +14,14 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import { buildCommandHandler } from '../utils/command'
+import {
+	deliveryWorkStateMismatch,
+	prepareAuthorizedAction,
+	putRecord,
+	readDeliveryWorkState,
+	withTransaction,
+} from '../utils/command-storage'
 import { preflightDeliveryWork } from '../utils/delivery-preflight'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -132,7 +138,7 @@ function deliveryPreflightEvidence(passed: boolean, summary: string): Validation
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { context, createTestOpenCoreOptions, localStamp, seedDelivery, seedProject, seedSelectableModel, validationEvidence } =
-		await import('./test-utils')
+		await import('../utils/test-helpers')
 	const { deriveDeliveryWorkState } = await import('../utils/work-state')
 
 	describe('retryDeliveryPreflight command', () => {

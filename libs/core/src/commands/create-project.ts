@@ -1,6 +1,12 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './errors'
+import { nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
+import { projectConfigPipe } from '../domain/config'
+import { projectSourcePipe, type Project } from '../domain/project'
+import type { InvalidInputError } from '../errors'
+import type { OpenCoreOptions } from '../services'
+import { buildCommandHandler } from '../utils/command'
+import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import {
 	auditStamp,
 	modelIdsFromProjectConfigRecord,
@@ -9,13 +15,7 @@ import {
 	putRecord,
 	validateSelectableModels,
 	withTransaction,
-} from './storage-utils'
-import { buildCommandHandler } from './utils'
-import { nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
-import { projectConfigPipe } from '../domain/config'
-import { projectSourcePipe, type Project } from '../domain/project'
-import type { InvalidInputError } from '../errors'
-import type { OpenCoreOptions } from '../services'
+} from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const createProjectInputPipe = v.object({
@@ -63,7 +63,7 @@ export function createCreateProjectCommand(options: OpenCoreOptions): Operation 
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp } = await import('./test-utils')
+	const { context, createTestOpenCoreOptions, localStamp } = await import('../utils/test-helpers')
 
 	describe('createProject command', () => {
 		it('creates Projects with normalized titles, immutable source, folded create config, and Audit Stamps', async () => {

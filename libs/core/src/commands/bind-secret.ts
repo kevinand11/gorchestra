@@ -1,18 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import {
-	archivedSecretReference,
-	auditStamp,
-	duplicateSecretBinding,
-	getRequired,
-	isArchived,
-	listRecords,
-	nextId,
-	putRecord,
-	scopesEqual,
-	withTransaction,
-} from './storage-utils'
-import { buildCommandHandler } from './utils'
 import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
 import { envNamePipe, secretBindingScopePipe, type SecretBinding } from '../domain/secret'
 import { secretBindingPipe, secretPipe } from '../domain/secret'
@@ -25,6 +12,19 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import { buildCommandHandler } from '../utils/command'
+import {
+	archivedSecretReference,
+	auditStamp,
+	duplicateSecretBinding,
+	getRequired,
+	isArchived,
+	listRecords,
+	nextId,
+	putRecord,
+	scopesEqual,
+	withTransaction,
+} from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const bindSecretInputPipe = v.object({ secretId: idPipe, scope: secretBindingScopePipe, envName: envNamePipe })
@@ -107,7 +107,7 @@ async function validateSecretBindingUnique(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedSecret } = await import('./test-utils')
+	const { context, createTestOpenCoreOptions, localStamp, seedSecret } = await import('../utils/test-helpers')
 
 	describe('bindSecret command', () => {
 		it('creates Secret Bindings only for existing active Secrets', async () => {

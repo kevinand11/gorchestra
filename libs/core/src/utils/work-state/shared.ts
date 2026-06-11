@@ -1,3 +1,4 @@
+import type { DependencyNode, ReplacedReviewSurface, SliceDeliveryValidationAction, WorkStateResult } from './types'
 import type { Action, ActionResult } from '../../domain/action'
 import type { AgentRun } from '../../domain/agent-run'
 import type { DeliveryArtifact, SliceArtifact } from '../../domain/artifact'
@@ -7,7 +8,6 @@ import type { ReviewSurface } from '../../domain/review-surface'
 import type { FailureChain, Slice } from '../../domain/slice'
 import type { InvariantViolationError } from '../../errors'
 import type { Result } from '../types'
-import type { DependencyNode, ReplacedReviewSurface, SliceDeliveryValidationAction, WorkStateResult } from './types'
 
 export function latestPassedSlicePromotion(sliceId: Id, sliceActions: Action[]): Action | null {
 	return latestAction(

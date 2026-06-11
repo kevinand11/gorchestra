@@ -1,3 +1,5 @@
+import { resultValue } from './shared'
+import type { WorkStateFacts } from './types'
 import { actionPipe } from '../../domain/action'
 import { agentRunPipe } from '../../domain/agent-run'
 import { deliveryArtifactPipe, sliceArtifactPipe } from '../../domain/artifact'
@@ -7,8 +9,6 @@ import { slicePipe } from '../../domain/slice'
 import type { CoreStorageTransaction } from '../../services'
 import { listRecords, type StorageBoundaryError } from '../storage'
 import type { Result } from '../types'
-import { resultValue } from './shared'
-import type { WorkStateFacts } from './types'
 
 export async function loadWorkStateFacts(tx: CoreStorageTransaction): Promise<Result<WorkStateFacts, StorageBoundaryError>> {
 	const actions = await listRecords('action', tx.actions, actionPipe)

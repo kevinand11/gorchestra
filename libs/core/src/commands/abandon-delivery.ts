@@ -1,10 +1,10 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { buildStubCommand } from './utils'
 import type { Action } from '../domain/action'
 import { freeFormStringPipe, idPipe, type OperationContext } from '../domain/commons'
 import type { Delivery } from '../domain/delivery'
 import type { CommandStubError } from '../errors'
+import { buildStubCommand } from '../utils/command'
 import type { Result as CoreResult } from '../utils/types'
 
 const abandonDeliveryInputPipe = v.object({ deliveryId: idPipe, reason: freeFormStringPipe })
@@ -26,7 +26,7 @@ export function createAbandonDeliveryCommand(): Operation {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context } = await import('./test-utils')
+	const { context } = await import('../utils/test-helpers')
 
 	describe('abandonDelivery command', () => {
 		it('validates input before returning not implemented', async () => {

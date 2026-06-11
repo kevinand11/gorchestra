@@ -1,11 +1,11 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { auditStamp, nextId, putRecord, withTransaction } from './storage-utils'
-import { buildCommandHandler } from './utils'
 import { nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
 import { secretValueRefPipe, type Secret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
 import type { OpenCoreOptions } from '../services'
+import { buildCommandHandler } from '../utils/command'
+import { auditStamp, nextId, putRecord, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const createSecretInputPipe = v.object({ name: nonEmptyTrimmedStringPipe, valueRef: secretValueRefPipe })
@@ -45,7 +45,7 @@ export function createCreateSecretCommand(options: OpenCoreOptions): Operation {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp } = await import('./test-utils')
+	const { context, createTestOpenCoreOptions, localStamp } = await import('../utils/test-helpers')
 
 	describe('createSecret command', () => {
 		it('creates Secrets with protected value references and empty Archive Periods', async () => {

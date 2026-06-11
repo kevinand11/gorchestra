@@ -1,5 +1,3 @@
-import type { Slice, SliceWorkState } from '../../../domain/slice'
-import type { DeliveryHandlerContext, DeliveryWorkResolution, RunDeliveryWorkHandlerResult } from '../types'
 import { noEligibleWork } from './result'
 import { handleSliceAwaitingReview } from './slice-awaiting-review'
 import { handleSliceExecutable } from './slice-executable'
@@ -7,6 +5,8 @@ import { handleSliceNeedsArtifactCreation } from './slice-needs-artifact-creatio
 import { handleSliceNeedsArtifactValidation } from './slice-needs-artifact-validation'
 import { handleSliceNeedsDeliveryValidation } from './slice-needs-delivery-validation'
 import { handleSliceOperationFailed } from './slice-operation-failed'
+import type { Slice, SliceWorkState } from '../../../domain/slice'
+import type { DeliveryHandlerContext, DeliveryWorkResolution, RunDeliveryWorkHandlerResult } from '../types'
 
 type SliceStateHandler<TState extends SliceWorkState> = (
 	context: DeliveryHandlerContext,

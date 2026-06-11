@@ -1,5 +1,5 @@
-import type { RunDeliveryWorkHandlerResult } from '../types'
 import { notImplemented } from './result'
+import type { RunDeliveryWorkHandlerResult } from '../types'
 
 export function handleDeliveryOperationFailed(): RunDeliveryWorkHandlerResult {
 	return notImplemented('runDeliveryWork.delivery.delivery-operation-failed')

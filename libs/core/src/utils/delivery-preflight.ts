@@ -1,3 +1,5 @@
+import { getRequired, getRequiredSingleton } from './storage'
+import type { Result } from './types'
 import type { Id } from '../domain/commons'
 import { portfolioConfigRecordPipe, type DeliveryWorkConfig, type PortfolioConfigRecord, type ProjectConfigRecord } from '../domain/config'
 import type { Delivery } from '../domain/delivery'
@@ -14,8 +16,6 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreStorageTransaction } from '../services'
-import { getRequired, getRequiredSingleton } from './storage'
-import type { Result } from './types'
 
 export interface PassedDeliveryPreflight {
 	type: 'passed'

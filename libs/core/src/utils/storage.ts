@@ -1,5 +1,6 @@
 import { v, type Pipe, type PipeOutput } from 'valleyed'
 
+import type { Result } from './types'
 import { type AuditStamp, type Id, type IsoDateTime, type OperationContext, type RuntimeRecord } from '../domain/commons'
 import type {
 	CoreIdResource,
@@ -19,7 +20,6 @@ import {
 	type SingletonRepository,
 } from '../services'
 import { validateCoreServiceOutput } from '../validation'
-import type { Result } from './types'
 
 export type StorageBoundaryError = StorageOperationFailedError | InvalidCoreServiceOutputError
 

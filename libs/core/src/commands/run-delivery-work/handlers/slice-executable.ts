@@ -1,10 +1,10 @@
+import { worked } from './result'
 import type { Action } from '../../../domain/action'
 import type { AgentRun } from '../../../domain/agent-run'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
+import { nextId, putRecord, runtimeRecord } from '../../../utils/command-storage'
 import type { Result as CoreResult } from '../../../utils/types'
-import { nextId, putRecord, runtimeRecord } from '../../storage-utils'
 import type { DeliveryHandlerContext, DeliveryWorkResolution, RunDeliveryWorkHandlerResult } from '../types'
-import { worked } from './result'
 
 export async function handleSliceExecutable(
 	context: DeliveryHandlerContext,
@@ -87,7 +87,7 @@ function executionAgentRun(agentRunId: string, modelId: string, actionId: string
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestOpenCoreOptions, seedDelivery, seedSlice, seedSelectableModel } = await import('../../test-utils')
+	const { createTestOpenCoreOptions, seedDelivery, seedSlice, seedSelectableModel } = await import('../../../utils/test-helpers')
 
 	describe('handleSliceExecutable', () => {
 		it('claims initial executable Slice work with an Agent Run and start-slice-execution Action', async () => {

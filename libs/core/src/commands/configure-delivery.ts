@@ -1,6 +1,13 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './errors'
+import type { Action } from '../domain/action'
+import { idPipe, type AuditStamp, type OperationContext } from '../domain/commons'
+import { deliveryConfigPipe, type DeliveryConfigRecord } from '../domain/config'
+import type { Delivery, DeliveryWorkState } from '../domain/delivery'
+import type { DeliveryWorkStateMismatchError, InvalidInputError, InvariantViolationError } from '../errors'
+import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import { buildCommandHandler } from '../utils/command'
+import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import {
 	auditStamp,
 	deliveryWorkStateMismatch,
@@ -10,14 +17,7 @@ import {
 	readDeliveryWorkState,
 	validateSelectableModels,
 	withTransaction,
-} from './storage-utils'
-import { buildCommandHandler } from './utils'
-import type { Action } from '../domain/action'
-import { idPipe, type AuditStamp, type OperationContext } from '../domain/commons'
-import { deliveryConfigPipe, type DeliveryConfigRecord } from '../domain/config'
-import type { Delivery, DeliveryWorkState } from '../domain/delivery'
-import type { DeliveryWorkStateMismatchError, InvalidInputError, InvariantViolationError } from '../errors'
-import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+} from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const configureDeliveryInputPipe = v.object({ deliveryId: idPipe, config: deliveryConfigPipe })
@@ -113,7 +113,7 @@ const openDeliveryStateTypes: Exclude<DeliveryWorkState['type'], 'closed'>[] = [
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { context, createTestOpenCoreOptions, localStamp, seedDelivery, seedSelectableModel, validationEvidence } =
-		await import('./test-utils')
+		await import('../utils/test-helpers')
 
 	describe('configureDelivery command', () => {
 		it('validates input before reading storage', async () => {

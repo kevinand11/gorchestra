@@ -1,5 +1,3 @@
-import type { DeliveryWorkState } from '../../../domain/delivery'
-import type { DeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
 import { handleDeliveryAwaitingReview } from './delivery-awaiting-review'
 import { handleDeliveryNeedsArtifactCreation } from './delivery-needs-artifact-creation'
 import { handleDeliveryNeedsArtifactValidation } from './delivery-needs-artifact-validation'
@@ -9,6 +7,8 @@ import { handleDeliveryReviewFailed } from './delivery-review-failed'
 import { handleDeliverySlicesIncomplete } from './delivery-slices-incomplete'
 import { handleDeliveryValidationFailed } from './delivery-validation-failed'
 import { noEligibleWork } from './result'
+import type { DeliveryWorkState } from '../../../domain/delivery'
+import type { DeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
 
 type DeliveryStateHandler<TState extends DeliveryWorkState> = (
 	context: DeliveryHandlerContext,

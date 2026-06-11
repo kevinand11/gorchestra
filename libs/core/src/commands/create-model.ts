@@ -1,7 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { archivedModelProviderReference, auditStamp, getRequired, isArchived, nextId, putRecord, withTransaction } from './storage-utils'
-import { buildCommandHandler } from './utils'
 import { idPipe, nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
 import { type Model } from '../domain/model'
 import { modelProviderPipe } from '../domain/model-provider'
@@ -13,6 +11,16 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { OpenCoreOptions } from '../services'
+import { buildCommandHandler } from '../utils/command'
+import {
+	archivedModelProviderReference,
+	auditStamp,
+	getRequired,
+	isArchived,
+	nextId,
+	putRecord,
+	withTransaction,
+} from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const createModelInputPipe = v.object({
@@ -65,7 +73,7 @@ export function createCreateModelCommand(options: OpenCoreOptions): Operation {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp } = await import('./test-utils')
+	const { context, createTestOpenCoreOptions, localStamp } = await import('../utils/test-helpers')
 
 	describe('createModel command', () => {
 		it('creates Models under active Providers', async () => {

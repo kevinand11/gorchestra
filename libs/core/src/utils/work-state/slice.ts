@@ -1,9 +1,3 @@
-import type { Action } from '../../domain/action'
-import { deliveryPipe, type Delivery } from '../../domain/delivery'
-import { slicePipe, type Slice, type SliceWorkState } from '../../domain/slice'
-import type { CoreStorageTransaction } from '../../services'
-import { getRequired } from '../storage'
-import type { Result } from '../types'
 import { loadWorkStateFacts } from './facts'
 import {
 	actionAffectsSlice,
@@ -25,6 +19,12 @@ import {
 	stateOrElseSync,
 } from './shared'
 import type { SliceDependencyLink, WorkStateDerivationError, WorkStateFacts, WorkStateResult } from './types'
+import type { Action } from '../../domain/action'
+import { deliveryPipe, type Delivery } from '../../domain/delivery'
+import { slicePipe, type Slice, type SliceWorkState } from '../../domain/slice'
+import type { CoreStorageTransaction } from '../../services'
+import { getRequired } from '../storage'
+import type { Result } from '../types'
 
 export async function deriveSliceWorkState(
 	tx: CoreStorageTransaction,
@@ -235,7 +235,7 @@ function correctionRetriesFor(root: Action, sliceActions: Action[]): number {
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { createTestOpenCoreOptions, externalOperationEvidence, seedDelivery, seedSlice, stamp, validationEvidence } =
-		await import('../../commands/test-utils')
+		await import('../test-helpers')
 	const passedValidation = validationEvidence('slice-branch-validation', true, 'Valid.')
 	const failedValidation = validationEvidence('slice-branch-validation', false, 'Invalid.')
 	const externalFailure = externalOperationEvidence('push-branch', false, 'Failed.')

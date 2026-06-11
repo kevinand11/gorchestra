@@ -1,11 +1,3 @@
-import type { Action } from '../../domain/action'
-import type { DeliveryArtifact } from '../../domain/artifact'
-import { deliveryPipe, type Delivery, type DeliveryIntegration, type DeliveryWorkState } from '../../domain/delivery'
-import { type ReviewSurface, type ReviewSurfaceClosed } from '../../domain/review-surface'
-import { slicePipe, type Slice } from '../../domain/slice'
-import type { CoreStorageTransaction } from '../../services'
-import { getRequired } from '../storage'
-import type { Result } from '../types'
 import { loadWorkStateFacts } from './facts'
 import {
 	blockedDependencyIds,
@@ -21,6 +13,14 @@ import {
 } from './shared'
 import { deriveSliceWorkStateFromFacts } from './slice'
 import type { DeliveryDependencyLink, WorkStateDerivationError, WorkStateFacts, WorkStateResult } from './types'
+import type { Action } from '../../domain/action'
+import type { DeliveryArtifact } from '../../domain/artifact'
+import { deliveryPipe, type Delivery, type DeliveryIntegration, type DeliveryWorkState } from '../../domain/delivery'
+import { type ReviewSurface, type ReviewSurfaceClosed } from '../../domain/review-surface'
+import { slicePipe, type Slice } from '../../domain/slice'
+import type { CoreStorageTransaction } from '../../services'
+import { getRequired } from '../storage'
+import type { Result } from '../types'
 
 interface DeliveryValidationContext {
 	latestValidation: Action | null
@@ -355,7 +355,7 @@ function isDeliveryClosed(deliveryId: Delivery['id'], actions: Action[]): boolea
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { createTestOpenCoreOptions, externalOperationEvidence, seedDelivery, seedSlice, stamp, validationEvidence } =
-		await import('../../commands/test-utils')
+		await import('../test-helpers')
 	const passedValidation = validationEvidence('delivery-branch-validation', true, 'Valid.')
 	const failedValidation = validationEvidence('delivery-branch-validation', false, 'Invalid.')
 	const externalFailure = externalOperationEvidence('push-branch', false, 'Failed.')

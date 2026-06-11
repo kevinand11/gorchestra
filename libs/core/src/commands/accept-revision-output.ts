@@ -1,10 +1,10 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { buildStubCommand } from './utils'
 import { idPipe, type OperationContext } from '../domain/commons'
 import { revisionOutputProposalPipe } from '../domain/revision'
 import type { Revision } from '../domain/revision'
 import type { CommandStubError } from '../errors'
+import { buildStubCommand } from '../utils/command'
 import type { Result as CoreResult } from '../utils/types'
 
 const acceptRevisionOutputInputPipe = v.object({ revisionGateId: idPipe, output: revisionOutputProposalPipe })
@@ -24,7 +24,7 @@ export function createAcceptRevisionOutputCommand(): Operation {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context } = await import('./test-utils')
+	const { context } = await import('../utils/test-helpers')
 
 	describe('acceptRevisionOutput command', () => {
 		it('validates input before returning not implemented', async () => {

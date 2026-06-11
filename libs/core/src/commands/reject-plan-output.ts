@@ -1,8 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { buildStubCommand } from './utils'
 import { idPipe, type OperationContext } from '../domain/commons'
 import type { CommandStubError } from '../errors'
+import { buildStubCommand } from '../utils/command'
 import type { Result as CoreResult } from '../utils/types'
 
 const rejectPlanOutputInputPipe = v.object({ planId: idPipe })
@@ -20,7 +20,7 @@ export function createRejectPlanOutputCommand(): Operation {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context } = await import('./test-utils')
+	const { context } = await import('../utils/test-helpers')
 
 	describe('rejectPlanOutput command', () => {
 		it('validates input before returning not implemented', async () => {

@@ -16,7 +16,7 @@ export type Core = ReturnType<typeof createCoreQueries>
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestOpenCoreOptions } = await import('../commands/test-utils')
+	const { createTestOpenCoreOptions } = await import('../utils/test-helpers')
 
 	describe('Core queries', () => {
 		it('returns an object with the expected query keys', () => {

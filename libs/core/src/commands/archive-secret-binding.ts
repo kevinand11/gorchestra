@@ -1,7 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { archiveRecord, auditStamp, getRequired, putRecord, withTransaction } from './storage-utils'
-import { buildCommandHandler } from './utils'
 import { idPipe, type OperationContext } from '../domain/commons'
 import { secretBindingPipe, type SecretBinding } from '../domain/secret'
 import type {
@@ -12,6 +10,8 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { OpenCoreOptions } from '../services'
+import { buildCommandHandler } from '../utils/command'
+import { archiveRecord, auditStamp, getRequired, putRecord, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const archiveSecretBindingInputPipe = v.object({ secretBindingId: idPipe })
@@ -50,7 +50,7 @@ export function createArchiveSecretBindingCommand(options: OpenCoreOptions): Ope
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedSecret } = await import('./test-utils')
+	const { context, createTestOpenCoreOptions, localStamp, seedSecret } = await import('../utils/test-helpers')
 
 	describe('archiveSecretBinding command', () => {
 		it('archives Secret Bindings while preserving history without cascading Secret archives', async () => {

@@ -1,6 +1,13 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './errors'
+import { idPipe, nonEmptyTrimmedStringPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
+import { planConfigPipe } from '../domain/config'
+import { type Plan } from '../domain/plan'
+import { projectPipe } from '../domain/project'
+import type { InvalidInputError } from '../errors'
+import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import { buildCommandHandler } from '../utils/command'
+import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import {
 	auditStamp,
 	getRequired,
@@ -10,14 +17,7 @@ import {
 	putRecord,
 	validateSelectableModels,
 	withTransaction,
-} from './storage-utils'
-import { buildCommandHandler } from './utils'
-import { idPipe, nonEmptyTrimmedStringPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
-import { planConfigPipe } from '../domain/config'
-import { type Plan } from '../domain/plan'
-import { projectPipe } from '../domain/project'
-import type { InvalidInputError } from '../errors'
-import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+} from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const createPlanInputPipe = v.object({
@@ -76,7 +76,7 @@ async function validatePlanConfigReferences(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestOpenCoreOptions, localStamp, seedProject } = await import('./test-utils')
+	const { context, createTestOpenCoreOptions, localStamp, seedProject } = await import('../utils/test-helpers')
 
 	describe('createPlan command', () => {
 		it('creates Plans for existing Projects without Repository setup', async () => {

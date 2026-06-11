@@ -23,7 +23,7 @@ export function createGetDeliveryWorkStateQuery(options: OpenCoreOptions): Opera
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestOpenCoreOptions, seedDelivery } = await import('../commands/test-utils')
+	const { createTestOpenCoreOptions, seedDelivery } = await import('../utils/test-helpers')
 
 	describe('getDeliveryWorkState query', () => {
 		it('validates input before reading storage', async () => {

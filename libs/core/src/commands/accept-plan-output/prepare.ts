@@ -1,12 +1,12 @@
+import type { ExistingRefIndex, PlanOutputMaterializationPlan, PlannedDelivery, PlannedLink, PlannedMemory, PlannedSlice } from './types'
 import type { AuditStamp, Id } from '../../domain/commons'
 import type { GraphNodeRef, LinkType } from '../../domain/graph'
-import type { PlanOutputProposal, ProposedDelivery, ProposedGraphRef, ProposedMemory } from '../../domain/plan'
 import type { Plan } from '../../domain/plan'
+import type { PlanOutputProposal, ProposedDelivery, ProposedGraphRef, ProposedMemory } from '../../domain/plan'
 import type { InvalidCoreServiceOutputError, InvalidPlanOutputError } from '../../errors'
 import type { OpenCoreOptions } from '../../services'
+import { nextId } from '../../utils/command-storage'
 import type { Result } from '../../utils/types'
-import { nextId } from '../storage-utils'
-import type { ExistingRefIndex, PlanOutputMaterializationPlan, PlannedDelivery, PlannedLink, PlannedMemory, PlannedSlice } from './types'
 
 export function prepareMaterializationPlan(
 	options: OpenCoreOptions,

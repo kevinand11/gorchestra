@@ -1,12 +1,12 @@
+import { resolveDeliveryWork } from './resolution'
+import { noEligibleWork, sliceCapacityFull } from './result'
+import { handleSliceWorkState, isActiveSliceSlotState } from './slice'
 import { slicePipe, type Slice, type SliceWorkState } from '../../../domain/slice'
 import type { InvalidInputError } from '../../../errors'
 import { listRecords } from '../../../utils/storage'
 import type { Result as CoreResult } from '../../../utils/types'
 import { deriveSliceWorkState } from '../../../utils/work-state'
 import type { DeliveryHandlerContext, DeliveryWorkResolution, Error, RunDeliveryWorkHandlerResult } from '../types'
-import { resolveDeliveryWork } from './resolution'
-import { noEligibleWork, sliceCapacityFull } from './result'
-import { handleSliceWorkState, isActiveSliceSlotState } from './slice'
 
 interface SliceStateCandidate {
 	slice: Slice
@@ -75,7 +75,7 @@ function handleFirstExecutableSlice(
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { createTestOpenCoreOptions, localStamp, seedDelivery, seedProject, seedSelectableModel, seedSlice, stamp } =
-		await import('../../test-utils')
+		await import('../../../utils/test-helpers')
 
 	describe('handleDeliverySlicesIncomplete', () => {
 		it('claims the first executable Slice in Delivery slice order', async () => {
