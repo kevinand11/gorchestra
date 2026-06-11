@@ -1,5 +1,10 @@
-export type OpenAIResponsesModelProviderProtocolProvider = Readonly<Record<never, never>>
+import { createOpenAIModelReachabilityPreflight, type OpenAIModelReachabilityClientFactory } from './openai-model-reachability'
+import type { ModelProviderProtocolProvider } from './types'
 
-export function createOpenAIResponsesModelProviderProtocolProvider(): OpenAIResponsesModelProviderProtocolProvider {
-	return {}
+export type OpenAIResponsesModelProviderProtocolProvider = ModelProviderProtocolProvider<'openai-responses'>
+
+export function createOpenAIResponsesModelProviderProtocolProvider(
+	clientFactory?: OpenAIModelReachabilityClientFactory<'openai-responses'>,
+): OpenAIResponsesModelProviderProtocolProvider {
+	return { preflightModel: createOpenAIModelReachabilityPreflight(clientFactory) }
 }

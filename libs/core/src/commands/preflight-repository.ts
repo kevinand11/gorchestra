@@ -144,7 +144,7 @@ if (import.meta.vitest) {
 		it('calls Source Control providers outside the storage transaction and returns passing evidence', async () => {
 			const options = repositoryFixture()
 			seedSecret(options.tx, 'secret-1')
-			options.secrets.resolveSecretValues = () => Promise.resolve([{ secretId: 'secret-1', plaintext: 'token' }])
+			options.secrets.resolveSecretValues = () => Promise.resolve({ 'secret-1': 'token' })
 			let providerTransactionCalls: number | null = null
 			const providers = {
 				sourceControl: createSourceControlProviders(options, {
@@ -168,7 +168,7 @@ if (import.meta.vitest) {
 		it('maps provider failures to failed evidence', async () => {
 			const options = repositoryFixture()
 			seedSecret(options.tx, 'secret-1')
-			options.secrets.resolveSecretValues = () => Promise.resolve([{ secretId: 'secret-1', plaintext: 'token' }])
+			options.secrets.resolveSecretValues = () => Promise.resolve({ 'secret-1': 'token' })
 			const providers = {
 				sourceControl: createSourceControlProviders(options, {
 					github: {
@@ -187,7 +187,7 @@ if (import.meta.vitest) {
 		it('returns invalid Core Service Output from Secret value resolution', async () => {
 			const options = repositoryFixture()
 			seedSecret(options.tx, 'secret-1')
-			options.secrets.resolveSecretValues = () => Promise.resolve([{ secretId: '', plaintext: 'token' }] as never)
+			options.secrets.resolveSecretValues = () => Promise.resolve({ 'secret-1': 1 } as never)
 			const providers = {
 				sourceControl: createSourceControlProviders(options, { github: neverCalledGitHubProvider() }),
 				modelProviderProtocols: createTestCoreRuntime(options).providers.modelProviderProtocols,

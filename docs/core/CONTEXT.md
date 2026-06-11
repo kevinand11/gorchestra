@@ -192,6 +192,10 @@ _Avoid_: provider brand, model type, API key type
 A named Portfolio-owned selectable language model under a Model Provider. A Model has a human-readable name and an immutable provider-facing model identifier. Editable Model fields record when they were last updated. Models may be archived, which makes them unavailable for new work while retaining them for historical references. Archived Models may be updated before being unarchived.
 _Avoid_: provider/model string, model slug
 
+**Model Preflight**:
+An observational validation operation that checks whether a stored Model is ready for Model Provider Protocol access. Model Preflight returns Validation Evidence and does not record lifecycle facts. Expected readiness failures, including archived Models or Model Providers, missing, inactive, or unresolved provider access Secrets, and provider access or model availability failures, are reported as failed Validation Evidence; missing target Model records, missing referenced Model Provider records, storage failures, and invalid Core Service Outputs remain operation errors.
+_Avoid_: Model status, Model health state, access lifecycle event
+
 **Model Agent**:
 An Agent Type where Gorchestra's Core-owned agent loop uses a configured Model to perform goal-directed work consistently across consumers.
 _Avoid_: LLM Loop Agent, Pi Agent, Codex Agent, external harness, consumer agent adapter

@@ -58,7 +58,7 @@ export function createTestCoreServices(): CoreServices & { tx: MemoryStorageTran
 		secrets: {
 			preflight: () => Promise.resolve({ ok: true }),
 			resolveSecrets: () => Promise.resolve([]),
-			resolveSecretValues: () => Promise.resolve([]),
+			resolveSecretValues: () => Promise.resolve({}),
 		},
 		sandbox: { preflight: () => Promise.resolve({ ok: true }) },
 		clock: { now: () => new Date('2026-06-10T12:00:00.000Z') },

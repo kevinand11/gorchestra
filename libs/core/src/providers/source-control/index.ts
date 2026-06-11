@@ -1,5 +1,3 @@
-import { v } from 'valleyed'
-
 import { createGitHubSourceControlProvider, type GitHubSourceControlProvider } from './github'
 import type {
 	GitHubRepository,
@@ -11,7 +9,7 @@ import type {
 } from './types'
 import type { Id } from '../../domain/commons'
 import type { Repository } from '../../domain/repository'
-import { resolvedSecretValuesPipe, type CoreServices, type ResolvedSecretValue } from '../../services'
+import { resolvedSecretValuesPipe, type CoreServices, type ResolvedSecretValues } from '../../services'
 import type { Result } from '../../utils/types'
 import { validateCoreServiceOutput } from '../../validation'
 
@@ -85,28 +83,17 @@ function accessTokenFromResolvedSecretValues(
 	const shapeValidation = validateCoreServiceOutput(resolvedSecretValuesPipe, output, 'secrets', 'resolveSecretValues')
 	if (!shapeValidation.ok) return shapeValidation
 
-	return shapeValidation.value.length === 0
-		? { ok: true, value: unresolvedAccessSecretPreflight(secretId) }
-		: exactAccessToken(secretId, shapeValidation.value)
+	return exactAccessToken(secretId, shapeValidation.value)
 }
 
 function exactAccessToken(
 	secretId: Id,
-	values: ResolvedSecretValue[],
-): Result<SourceControlAccessToken, SourceControlRepositoryPreflightError> {
-	const exactValidation = validateCoreServiceOutput(resolvedSecretValuesForPipe(secretId), values, 'secrets', 'resolveSecretValues')
-	if (!exactValidation.ok) return exactValidation
-
-	return { ok: true, value: { type: 'access-token', plaintext: exactValidation.value[0]!.plaintext } }
-}
-
-function resolvedSecretValuesForPipe(secretId: Id) {
-	return resolvedSecretValuesPipe.pipe(
-		v.custom<ResolvedSecretValue[]>(
-			(values) => values.length === 1 && values[0]?.secretId === secretId,
-			'Expected exactly one resolved value for the requested Secret.',
-		),
-	)
+	values: ResolvedSecretValues,
+): Result<SourceControlAccessToken | SourceControlRepositoryPreflight, never> {
+	const plaintext = values[secretId]
+	return plaintext === undefined
+		? { ok: true, value: unresolvedAccessSecretPreflight(secretId) }
+		: { ok: true, value: { type: 'access-token', plaintext } }
 }
 
 function gitHubRepositoryPreflight(
@@ -157,7 +144,7 @@ if (import.meta.vitest) {
 
 	describe('Source Control Provider family', () => {
 		it('resolves GitHub repository access Secrets and dispatches to GitHub', async () => {
-			const services = coreServices(() => Promise.resolve([{ secretId: 'secret-1', plaintext: 'token' }]))
+			const services = coreServices(() => Promise.resolve({ 'secret-1': 'token' }))
 			let observedToken: string | null = null
 			const sourceControl = createSourceControlProviders(services, {
 				github: {
@@ -175,7 +162,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns failed preflight when the Secret service resolves no value', async () => {
-			const services = coreServices(() => Promise.resolve([]))
+			const services = coreServices(() => Promise.resolve({}))
 			const sourceControl = createSourceControlProviders(services, { github: neverCalledGitHubProvider() })
 
 			const result = await sourceControl.preflightRepository({ repository: gitHubRepository() })
@@ -190,13 +177,8 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('rejects extra resolved Secret values as invalid Core Service Output', async () => {
-			const services = coreServices(() =>
-				Promise.resolve([
-					{ secretId: 'secret-1', plaintext: 'token' },
-					{ secretId: 'secret-2', plaintext: 'other-token' },
-				]),
-			)
+		it('rejects malformed resolved Secret values as invalid Core Service Output', async () => {
+			const services = coreServices(() => Promise.resolve({ 'secret-1': 1 } as never))
 			const sourceControl = createSourceControlProviders(services, { github: neverCalledGitHubProvider() })
 
 			const result = await sourceControl.preflightRepository({ repository: gitHubRepository() })

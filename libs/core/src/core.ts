@@ -148,7 +148,7 @@ if (import.meta.vitest) {
 	const secrets: CoreServices['secrets'] = {
 		preflight: () => Promise.resolve({ ok: true }),
 		resolveSecrets: () => Promise.resolve([]),
-		resolveSecretValues: () => Promise.resolve([]),
+		resolveSecretValues: () => Promise.resolve({}),
 	}
 
 	const sandbox: CoreServices['sandbox'] = { preflight: () => Promise.resolve({ ok: true }) }

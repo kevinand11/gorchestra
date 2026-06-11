@@ -10,6 +10,6 @@ export interface CoreProviders {
 export function createCoreProviders(services: CoreServices): CoreProviders {
 	return {
 		sourceControl: createSourceControlProviders(services),
-		modelProviderProtocols: createModelProviderProtocolProviders(),
+		modelProviderProtocols: createModelProviderProtocolProviders(services),
 	}
 }

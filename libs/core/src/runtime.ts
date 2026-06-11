@@ -21,9 +21,7 @@ if (import.meta.vitest) {
 
 			expect(runtime.services).toBe(services)
 			expect(Object.keys(runtime.providers.sourceControl)).toEqual(['preflightRepository'])
-			expect(Object.keys(runtime.providers.modelProviderProtocols).sort()).toEqual(
-				['anthropicMessages', 'googleGenerativeAI', 'openAICompletions', 'openAIResponses'].sort(),
-			)
+			expect(Object.keys(runtime.providers.modelProviderProtocols)).toEqual(['preflightModel'])
 		})
 	})
 }

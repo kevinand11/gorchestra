@@ -89,15 +89,9 @@ export interface ResolvedSecret {
 	plaintext: string
 }
 
-export const resolvedSecretValuePipe = v.object({
-	secretId: idPipe,
-
-	/** Plaintext exists only transiently. */
-	plaintext: v.string(),
-})
-export type ResolvedSecretValue = PipeOutput<typeof resolvedSecretValuePipe>
-
-export const resolvedSecretValuesPipe = v.array(resolvedSecretValuePipe)
+/** Plaintext values exist only transiently. */
+export const resolvedSecretValuesPipe = v.record(idPipe, v.string())
+export type ResolvedSecretValues = Record<Id, string>
 
 export type CoreEvent = never
 
@@ -113,7 +107,7 @@ export type CoreStorage = CoreStorageService
 export const coreSecretsServicePipe = v.object({
 	preflight: typedFunctionDependencyPipe<PreflightFn>(),
 	resolveSecrets: typedFunctionDependencyPipe<(input: ResolveSecretsInput) => Promise<ResolvedSecret[]>>(),
-	resolveSecretValues: typedFunctionDependencyPipe<(input: ResolveSecretValuesInput) => Promise<ResolvedSecretValue[]>>(),
+	resolveSecretValues: typedFunctionDependencyPipe<(input: ResolveSecretValuesInput) => Promise<ResolvedSecretValues>>(),
 })
 export type CoreSecretsService = PipeOutput<typeof coreSecretsServicePipe>
 
