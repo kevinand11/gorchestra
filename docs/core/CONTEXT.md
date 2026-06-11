@@ -193,7 +193,7 @@ A named Portfolio-owned selectable language model under a Model Provider. A Mode
 _Avoid_: provider/model string, model slug
 
 **Model Preflight**:
-An observational validation operation that checks whether a stored Model is ready for Model Provider Protocol access. Model Preflight returns Validation Evidence and does not record lifecycle facts. Expected readiness failures, including archived Models or Model Providers, missing, inactive, or unresolved provider access Secrets, and provider access or model availability failures, are reported as failed Validation Evidence; missing target Model records, missing referenced Model Provider records, storage failures, and invalid Core Service Outputs remain operation errors.
+An observational validation operation that checks whether a stored Model is ready for Model Provider Protocol access. Model Preflight returns Validation Evidence and does not record lifecycle facts. Expected readiness failures, including archived Models or Model Providers, missing, inactive, or unresolved provider access Secrets, and provider access or model availability failures, are reported as failed Validation Evidence; missing target Model records, missing referenced Model Provider records, storage failures, and invalid Core Service Outputs remain operation errors. Provider setup guidance lives in `provider-setup.md`.
 _Avoid_: Model status, Model health state, access lifecycle event
 
 **Model Agent**:
