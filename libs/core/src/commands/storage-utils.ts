@@ -1,6 +1,14 @@
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './errors'
 import type { ArchivePeriod, AuditStamp, Id, OperationContext } from '../domain/commons'
-import type { PlanConfig, PlanConfigRecord, PortfolioConfig, ProjectConfig, ProjectConfigRecord } from '../domain/config'
+import type {
+	DeliveryConfig,
+	DeliveryConfigRecord,
+	PlanConfig,
+	PlanConfigRecord,
+	PortfolioConfig,
+	ProjectConfig,
+	ProjectConfigRecord,
+} from '../domain/config'
 import { deliveryPipe, type Delivery, type DeliveryWorkState } from '../domain/delivery'
 import { modelPipe, type Model } from '../domain/model'
 import { modelProviderPipe, type ModelProvider, type ModelProviderAuth, type ModelProviderHeader } from '../domain/model-provider'
@@ -303,6 +311,21 @@ export function normalizeProjectConfig(config: ProjectConfig): ProjectConfig | n
 	return { model, work }
 }
 
+export function normalizeDeliveryConfigRecord(config: DeliveryConfig, configured: AuditStamp): DeliveryConfigRecord {
+	return { configured, value: normalizeDeliveryConfig(config) }
+}
+
+export function normalizeDeliveryConfig(config: DeliveryConfig): DeliveryConfig | null {
+	const model = normalizeDeliveryModelConfig(config.model)
+	const work = config.work === null ? null : { ...config.work }
+
+	if (model === null && work === null) {
+		return null
+	}
+
+	return { model, work }
+}
+
 export function normalizePlanConfigRecord(config: PlanConfig | null, configured: AuditStamp): PlanConfigRecord | null {
 	if (config === null) {
 		return null
@@ -340,6 +363,12 @@ export function modelIdsFromPlanConfigRecord(config: PlanConfigRecord): Id[] {
 	}
 
 	return [config.value.model.planningModelId]
+}
+
+export function modelIdsFromDeliveryConfigRecord(config: DeliveryConfigRecord): Id[] {
+	const model = config.value?.model ?? null
+
+	return model === null ? [] : nullableIds([model.revisionPlanningModelId, model.executionModelId, model.revisionExecutionModelId])
 }
 
 export function secretReferencesFromModelProviderConfig(auth: ModelProviderAuth | null, headers: ModelProviderHeader[]): Id[] {
@@ -391,11 +420,19 @@ function normalizeProjectModelConfig(model: ProjectConfig['model']): ProjectConf
 	return model === null || !hasAnyProjectModelId(model) ? null : { ...model }
 }
 
+function normalizeDeliveryModelConfig(model: DeliveryConfig['model']): DeliveryConfig['model'] {
+	return model === null || !hasAnyDeliveryModelId(model) ? null : { ...model }
+}
+
 function hasAnyProjectModelId(model: NonNullable<ProjectConfig['model']>): boolean {
 	return (
 		nullableIds([model.planningModelId, model.revisionPlanningModelId, model.executionModelId, model.revisionExecutionModelId]).length >
 		0
 	)
+}
+
+function hasAnyDeliveryModelId(model: NonNullable<DeliveryConfig['model']>): boolean {
+	return nullableIds([model.revisionPlanningModelId, model.executionModelId, model.revisionExecutionModelId]).length > 0
 }
 
 function nullableIds(modelIds: Array<Id | null>): Id[] {
