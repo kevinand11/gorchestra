@@ -1,10 +1,10 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { auditStamp, getRequired, nextId, putRecord, withTransaction } from './storage-utils'
+import { deliveryWorkStateMismatch, prepareAuthorizedAction, putRecord, readDeliveryWorkState, withTransaction } from './storage-utils'
 import { buildCommandHandler } from './utils'
 import type { Action } from '../domain/action'
 import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
-import { deliveryPipe, type Delivery, type DeliveryWorkState } from '../domain/delivery'
+import type { Delivery } from '../domain/delivery'
 import type {
 	DeliveryWorkStateMismatchError,
 	InvalidCoreServiceOutputError,
@@ -15,7 +15,6 @@ import type {
 } from '../errors'
 import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
 import type { Result as CoreResult } from '../utils/types'
-import { deriveDeliveryWorkState } from '../utils/work-state'
 
 const queueDeliveryInputPipe = v.object({ deliveryId: idPipe })
 export type Input = PipeOutput<typeof queueDeliveryInputPipe>
@@ -45,13 +44,10 @@ async function handleQueueDelivery(
 	input: Input,
 	context: OperationContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const stampResult = auditStamp(options, context)
-	if (!stampResult.ok) return stampResult
+	const authorizedAction = prepareAuthorizedAction(options, context)
+	if (!authorizedAction.ok) return authorizedAction
 
-	const actionId = nextId(options, 'action')
-	if (!actionId.ok) return actionId
-
-	return withTransaction(options, (tx) => writeQueueDelivery(tx, input, stampResult.value, actionId.value))
+	return withTransaction(options, (tx) => writeQueueDelivery(tx, input, authorizedAction.value.stamp, authorizedAction.value.actionId))
 }
 
 async function writeQueueDelivery(
@@ -74,25 +70,12 @@ async function requireUnqueuedDelivery(
 	tx: CoreStorageTransaction,
 	deliveryId: Id,
 ): Promise<CoreResult<Delivery, Exclude<Error, InvalidInputError>>> {
-	const deliveryResult = await getRequired('delivery', tx.deliveries, deliveryId, deliveryPipe)
-	if (!deliveryResult.ok) return deliveryResult
+	const deliveryState = await readDeliveryWorkState(tx, deliveryId)
+	if (!deliveryState.ok) return deliveryState
 
-	const state = await deriveDeliveryWorkState(tx, deliveryId)
-	if (!state.ok) return state
-
-	return state.value.type === 'unqueued' ? { ok: true, value: deliveryResult.value } : deliveryStateMismatch(deliveryId, state.value)
-}
-
-function deliveryStateMismatch(deliveryId: Id, actual: DeliveryWorkState): CoreResult<never, DeliveryWorkStateMismatchError> {
-	return {
-		ok: false,
-		error: {
-			type: 'delivery-work-state-mismatch',
-			deliveryId,
-			expected: ['unqueued'],
-			actual,
-		},
-	}
+	return deliveryState.value.state.type === 'unqueued'
+		? { ok: true, value: deliveryState.value.delivery }
+		: deliveryWorkStateMismatch(deliveryId, ['unqueued'], deliveryState.value.state)
 }
 
 function queueDeliveryAction(deliveryId: Id, stamp: AuditStamp, actionId: Id): Action {

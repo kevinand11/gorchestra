@@ -1,6 +1,7 @@
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './errors'
 import type { ArchivePeriod, AuditStamp, Id, OperationContext } from '../domain/commons'
 import type { PlanConfig, PlanConfigRecord, PortfolioConfig, ProjectConfig, ProjectConfigRecord } from '../domain/config'
+import { deliveryPipe, type Delivery, type DeliveryWorkState } from '../domain/delivery'
 import { modelPipe, type Model } from '../domain/model'
 import { modelProviderPipe, type ModelProvider, type ModelProviderAuth, type ModelProviderHeader } from '../domain/model-provider'
 import { projectPipe, type Project } from '../domain/project'
@@ -12,19 +13,22 @@ import type {
 	ArchivedModelProviderReferenceError,
 	ArchivedModelReferenceError,
 	ArchivedSecretReferenceError,
+	DeliveryWorkStateMismatchError,
 	DuplicateRepositoryTargetError,
 	DuplicateSecretBindingError,
 	InvalidCoreServiceOutputError,
+	InvariantViolationError,
 	NotArchivedError,
 	ProjectSourceTypeMismatchError,
 	ResourceNotFoundError,
 	SecretNotActiveError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreStorageTransaction } from '../services'
-import { getRecord, getRequired, listRecords, notFound } from '../utils/storage'
+import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import { auditStamp, getRecord, getRequired, listRecords, nextId, notFound } from '../utils/storage'
 import type { StorageBoundaryError } from '../utils/storage'
 import type { Result } from '../utils/types'
+import { deriveDeliveryWorkState } from '../utils/work-state'
 
 export {
 	auditStamp,
@@ -45,6 +49,53 @@ export type CommandBoundary<TInput> = {
 }
 
 type ArchivableRecord = { archivePeriods: ArchivePeriod[] }
+
+export function prepareAuthorizedAction(
+	options: OpenCoreOptions,
+	context: OperationContext,
+): Result<{ stamp: AuditStamp; actionId: Id }, InvalidCoreServiceOutputError> {
+	const stampResult = auditStamp(options, context)
+	if (!stampResult.ok) return stampResult
+
+	const actionId = nextId(options, 'action')
+	if (!actionId.ok) return actionId
+
+	return { ok: true, value: { stamp: stampResult.value, actionId: actionId.value } }
+}
+
+export async function readDeliveryWorkState(
+	tx: CoreStorageTransaction,
+	deliveryId: Id,
+): Promise<
+	Result<
+		{ delivery: Delivery; state: DeliveryWorkState },
+		InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError | InvariantViolationError
+	>
+> {
+	const deliveryResult = await getRequired('delivery', tx.deliveries, deliveryId, deliveryPipe)
+	if (!deliveryResult.ok) return deliveryResult
+
+	const state = await deriveDeliveryWorkState(tx, deliveryId)
+	if (!state.ok) return state
+
+	return { ok: true, value: { delivery: deliveryResult.value, state: state.value } }
+}
+
+export function deliveryWorkStateMismatch(
+	deliveryId: Id,
+	expected: DeliveryWorkState['type'][],
+	actual: DeliveryWorkState,
+): Result<never, DeliveryWorkStateMismatchError> {
+	return {
+		ok: false,
+		error: {
+			type: 'delivery-work-state-mismatch',
+			deliveryId,
+			expected,
+			actual,
+		},
+	}
+}
 
 export async function validateSelectableModels(
 	tx: CoreStorageTransaction,

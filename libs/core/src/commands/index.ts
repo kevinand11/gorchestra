@@ -92,7 +92,7 @@ export function createCoreCommands(options: OpenCoreOptions) {
 		openRevisionGate: createOpenRevisionGateCommand(),
 		acceptRevisionOutput: createAcceptRevisionOutputCommand(),
 		closeRevisionGate: createCloseRevisionGateCommand(),
-		shipDelivery: createShipDeliveryCommand(),
+		shipDelivery: createShipDeliveryCommand(options),
 		abandonDelivery: createAbandonDeliveryCommand(),
 		createProject: createCreateProjectCommand(options),
 		setProjectConfig: createSetProjectConfigCommand(options),
