@@ -134,24 +134,20 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('returns not-found-singleton when Portfolio Config is missing', async () => {
+		it('returns invariant violation when called without passing Delivery preflight and Portfolio Config is missing', async () => {
 			const options = executableDeliveryFixture({ portfolioConfig: false })
 			seedSlice(options.tx, 'slice-1', 'delivery-1')
 			seedSliceArtifact(options.tx, 'slice-1')
 
-			expect(await handleDeliverySlicesIncomplete(handlerContext(options))).toEqual(
-				errorResult({ type: 'not-found-singleton', resource: 'portfolio-config' }),
-			)
+			expect(await handleDeliverySlicesIncomplete(handlerContext(options))).toEqual(failedResolutionResult())
 		})
 
-		it('returns not-implemented when effective Delivery Work Config is unresolved', async () => {
+		it('returns invariant violation when called without passing Delivery preflight and Delivery Work Config is unresolved', async () => {
 			const options = executableDeliveryFixture({ workConfig: false })
 			seedSlice(options.tx, 'slice-1', 'delivery-1')
 			seedSliceArtifact(options.tx, 'slice-1')
 
-			expect(await handleDeliverySlicesIncomplete(handlerContext(options))).toEqual(
-				errorResult({ type: 'not-implemented', operation: 'runDeliveryWork.delivery-work-config-unresolved' }),
-			)
+			expect(await handleDeliverySlicesIncomplete(handlerContext(options))).toEqual(failedResolutionResult())
 		})
 	})
 
@@ -161,6 +157,10 @@ if (import.meta.vitest) {
 
 	function errorResult(error: unknown) {
 		return { ok: false, error }
+	}
+
+	function failedResolutionResult() {
+		return errorResult({ type: 'invariant-violation', message: 'Delivery work resolution requires passing Delivery preflight.' })
 	}
 
 	function executableDeliveryFixture(options: { portfolioConfig?: boolean; workConfig?: boolean } = {}) {

@@ -6,6 +6,7 @@ import type { DeliveryWorkConfig } from '../domain/config'
 import type { Delivery } from '../domain/delivery'
 import type { ValidationEvidence } from '../domain/evidence'
 import type {
+	DeliveryPreflightClaimConflictError,
 	DeliveryWorkStateMismatchError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
@@ -24,6 +25,7 @@ import {
 	withTransaction,
 } from '../utils/command-storage'
 import {
+	providerBackedDeliveryPreflightInputsStillCurrent,
 	readProviderBackedDeliveryPreflightPlan,
 	runProviderBackedDeliveryPreflightChecks,
 	type ProviderBackedDeliveryPreflightPlan,
@@ -44,6 +46,7 @@ export type Error =
 	| ResourceNotFoundError
 	| StorageOperationFailedError
 	| DeliveryWorkStateMismatchError
+	| DeliveryPreflightClaimConflictError
 	| InvariantViolationError
 
 /**
@@ -74,7 +77,14 @@ async function handleRetryDeliveryPreflight(
 	if (!checks.ok) return checks
 
 	return withTransaction(runtime.services, (tx) =>
-		writeDeliveryPreflightRetry(tx, input.deliveryId, checks.value, authorizedAction.value.stamp, authorizedAction.value.actionId),
+		writeDeliveryPreflightRetry(
+			tx,
+			input.deliveryId,
+			plan.value.plan,
+			checks.value,
+			authorizedAction.value.stamp,
+			authorizedAction.value.actionId,
+		),
 	)
 }
 
@@ -92,6 +102,7 @@ async function readRetryPreflightPlan(
 async function writeDeliveryPreflightRetry(
 	tx: CoreStorageTransaction,
 	deliveryId: Id,
+	plan: ProviderBackedDeliveryPreflightPlan,
 	checks: ValidationEvidence[],
 	stamp: AuditStamp,
 	actionId: Id,
@@ -99,7 +110,15 @@ async function writeDeliveryPreflightRetry(
 	const deliveryResult = await requirePreflightFailedDelivery(tx, deliveryId)
 	if (!deliveryResult.ok) return deliveryResult
 
+	const freshness = await providerBackedDeliveryPreflightInputsStillCurrent(tx, deliveryResult.value, plan)
+	if (!freshness.ok) return freshness
+	if (!freshness.value) return deliveryPreflightClaimConflict(deliveryId)
+
 	return writePreflightAction(tx, deliveryResult.value, preflightAction(deliveryResult.value.id, checks, stamp, actionId))
+}
+
+function deliveryPreflightClaimConflict(deliveryId: Id): CoreResult<never, DeliveryPreflightClaimConflictError> {
+	return { ok: false, error: { type: 'delivery-preflight-claim-conflict', deliveryId } }
 }
 
 async function requirePreflightFailedDelivery(
@@ -239,18 +258,18 @@ if (import.meta.vitest) {
 			expectRetrySummary(await retry(options), 'Portfolio Config is not configured.')
 		})
 
-		it('records failed evidence when the Delivery Project is missing', async () => {
+		it('returns operation error when the Delivery Project is missing', async () => {
 			const options = preflightFailedFixture()
 
-			expectRetrySummary(await retry(options), 'Delivery Project is missing.')
+			expect(await retry(options)).toEqual({ ok: false, error: { type: 'not-found', resource: 'project', id: 'project-1' } })
 		})
 
-		it('records failed evidence when the selected execution Model is missing', async () => {
+		it('returns operation error when the selected execution Model is missing', async () => {
 			const options = preflightFailedFixture()
 			seedProject(options.tx, 'project-1')
 			seedPassingPortfolioConfig(options)
 
-			expectRetrySummary(await retry(options), 'Selected Delivery execution Model is missing.')
+			expect(await retry(options)).toEqual({ ok: false, error: { type: 'not-found', resource: 'model', id: 'model-1' } })
 		})
 
 		it('records failed evidence when the selected execution Model is archived', async () => {
@@ -278,6 +297,42 @@ if (import.meta.vitest) {
 			seedSelectableModel(options.tx, 'model-1')
 
 			expectRetrySummary(await retry(options), 'Delivery Work Config is not resolved.')
+		})
+
+		it('returns a preflight claim conflict when provider-backed retry inputs become stale', async () => {
+			const options = preflightFailedFixture()
+			seedProject(options.tx, 'project-1')
+			seedPassingPortfolioConfig(options)
+			seedSelectableModel(options.tx, 'model-1')
+			seedSelectableModel(options.tx, 'model-2')
+			seedRepository(options)
+			const providers = passingProviderBackedPreflightProviders()
+			providers.modelProviderProtocols.preflightModel = () => {
+				options.tx.portfolioConfig.record!.value.model.defaultModelId = 'model-2'
+				return Promise.resolve({ ok: true, value: { type: 'passed', summary: 'Anthropic Messages model preflight passed.' } })
+			}
+			const command = createRetryDeliveryPreflightCommand(createTestCoreRuntime(options, { providers }))
+
+			const result = await command({ deliveryId: 'delivery-1' }, context)
+
+			expect(result).toEqual({ ok: false, error: { type: 'delivery-preflight-claim-conflict', deliveryId: 'delivery-1' } })
+			expect(options.tx.actions.records.has('action-1')).toBe(false)
+		})
+
+		it('returns a preflight claim conflict when local retry inputs become stale', async () => {
+			const options = preflightFailedFixture()
+			seedProject(options.tx, 'project-1')
+			seedPortfolioConfig(options, { work: null })
+			seedSelectableModel(options.tx, 'model-1')
+			seedRepository(options)
+			staleLocalPreflightOnSecondTransaction(options, () => {
+				seedPassingPortfolioConfig(options)
+			})
+
+			const result = await retry(options)
+
+			expect(result).toEqual({ ok: false, error: { type: 'delivery-preflight-claim-conflict', deliveryId: 'delivery-1' } })
+			expect(options.tx.actions.records.has('action-1')).toBe(false)
 		})
 
 		it('returns operation errors for storage failures instead of recording preflight evidence', async () => {
@@ -334,6 +389,16 @@ if (import.meta.vitest) {
 		return createRetryDeliveryPreflightCommand(
 			createTestCoreRuntime(options, { providers: passingProviderBackedPreflightProviders() }),
 		)({ deliveryId: 'delivery-1' }, context)
+	}
+
+	function staleLocalPreflightOnSecondTransaction(options: ReturnType<typeof createTestCoreServices>, stale: () => void) {
+		const transaction = options.storage.transaction
+		let calls = 0
+		options.storage.transaction = async (fn) => {
+			calls += 1
+			if (calls === 2) stale()
+			return transaction(fn)
+		}
 	}
 
 	function seedRepository(options: ReturnType<typeof preflightFailedFixture>) {

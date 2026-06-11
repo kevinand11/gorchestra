@@ -31,8 +31,6 @@ export interface PassedDeliveryPreflight {
 
 export type FailedDeliveryPreflightReason =
 	| { type: 'portfolio-config-missing'; error: SingletonNotFoundError }
-	| { type: 'project-missing'; error: ResourceNotFoundError }
-	| { type: 'model-missing'; error: ResourceNotFoundError }
 	| { type: 'model-archived'; error: ArchivedModelReferenceError }
 	| { type: 'model-provider-archived'; error: ArchivedModelProviderReferenceError }
 	| { type: 'work-config-unresolved' }
@@ -41,7 +39,10 @@ export interface FailedDeliveryPreflight {
 	type: 'failed'
 	checks: ValidationEvidence[]
 	reason: FailedDeliveryPreflightReason
+	snapshot: DeliveryPreflightSnapshot
 }
+
+export type DeliveryPreflightSnapshot = string
 
 export type DeliveryPreflight = PassedDeliveryPreflight | FailedDeliveryPreflight
 
@@ -58,13 +59,14 @@ export type ModelDeliveryPreflightPlan =
 	| { type: 'provider'; model: Model; modelProvider: ModelProvider }
 
 export type ProviderBackedDeliveryPreflightPlan =
-	| { type: 'local-failed'; checks: ValidationEvidence[] }
+	| { type: 'local-failed'; checks: ValidationEvidence[]; snapshot: DeliveryPreflightSnapshot }
 	| {
 			type: 'provider-plan'
 			repositoryId: Id
 			resolution: PassedDeliveryPreflight
 			repository: RepositoryDeliveryPreflightPlan
 			model: ModelDeliveryPreflightPlan
+			snapshot: DeliveryPreflightSnapshot
 	  }
 
 interface DeliveryConfigFacts {
@@ -76,8 +78,6 @@ type PreflightStep<T> = Result<T | FailedDeliveryPreflight, DeliveryPreflightErr
 
 const summaries = {
 	portfolioConfigMissing: 'Portfolio Config is not configured.',
-	projectMissing: 'Delivery Project is missing.',
-	modelMissing: 'Selected Delivery execution Model is missing.',
 	modelArchived: 'Selected Delivery execution Model is archived.',
 	modelProviderArchived: 'Selected Delivery execution Model Provider is archived.',
 	workConfigUnresolved: 'Delivery Work Config is not resolved.',
@@ -102,7 +102,7 @@ export async function readProviderBackedDeliveryPreflightPlan(
 	if (!localPreflight.ok) return localPreflight
 
 	return localPreflight.value.type === 'failed'
-		? ok({ type: 'local-failed', checks: localPreflight.value.checks })
+		? ok({ type: 'local-failed', checks: localPreflight.value.checks, snapshot: localPreflight.value.snapshot })
 		: readProviderBackedPlanAfterLocalPreflight(tx, delivery, localPreflight.value)
 }
 
@@ -124,7 +124,21 @@ function providerBackedPlan(
 	repository: RepositoryDeliveryPreflightPlan,
 	model: ModelDeliveryPreflightPlan,
 ): ProviderBackedDeliveryPreflightPlan {
-	return { type: 'provider-plan', repositoryId: delivery.target.repositoryId, resolution, repository, model }
+	return {
+		type: 'provider-plan',
+		repositoryId: delivery.target.repositoryId,
+		resolution,
+		repository,
+		model,
+		snapshot: deliveryPreflightSnapshot({
+			type: 'provider-plan',
+			repositoryId: delivery.target.repositoryId,
+			modelId: resolution.modelId,
+			workConfig: resolution.workConfig,
+			repository,
+			model,
+		}),
+	}
 }
 
 export async function runProviderBackedDeliveryPreflightChecks(
@@ -144,35 +158,13 @@ export function deliveryPreflightChecksPassed(checks: ValidationEvidence[]): boo
 	return checks.length > 0 && checks.every((check) => check.passed)
 }
 
-export function providerBackedDeliveryPreflightInputsStillCurrent(
+export async function providerBackedDeliveryPreflightInputsStillCurrent(
 	tx: CoreStorageTransaction,
 	delivery: Delivery,
 	plan: ProviderBackedDeliveryPreflightPlan,
-): Promise<Result<boolean, DeliveryPreflightError>> | Result<boolean, never> {
-	return plan.type === 'local-failed' ? ok(true) : providerPlanInputsStillCurrent(tx, delivery, plan)
-}
-
-async function providerPlanInputsStillCurrent(
-	tx: CoreStorageTransaction,
-	delivery: Delivery,
-	plan: Extract<ProviderBackedDeliveryPreflightPlan, { type: 'provider-plan' }>,
 ): Promise<Result<boolean, DeliveryPreflightError>> {
-	const current = await preflightDeliveryWork(tx, delivery)
-	if (!current.ok) return current
-
-	return ok(current.value.type === 'passed' && providerPlanMatches(delivery, current.value, plan))
-}
-
-function providerPlanMatches(
-	delivery: Delivery,
-	current: PassedDeliveryPreflight,
-	plan: Extract<ProviderBackedDeliveryPreflightPlan, { type: 'provider-plan' }>,
-): boolean {
-	return (
-		delivery.target.repositoryId === plan.repositoryId &&
-		current.modelId === plan.resolution.modelId &&
-		JSON.stringify(current.workConfig) === JSON.stringify(plan.resolution.workConfig)
-	)
+	const current = await readProviderBackedDeliveryPreflightPlan(tx, delivery)
+	return current.ok ? ok(current.value.snapshot === plan.snapshot) : current
 }
 
 export function providerBackedDeliveryWorkResolution(plan: ProviderBackedDeliveryPreflightPlan) {
@@ -357,12 +349,7 @@ async function deliveryConfigFacts(tx: CoreStorageTransaction, delivery: Deliver
 	return project.ok ? deliveryConfigFactsWithProject(tx, project.value) : project
 }
 
-async function deliveryConfigFactsWithProject(
-	tx: CoreStorageTransaction,
-	project: Project | FailedDeliveryPreflight,
-): Promise<PreflightStep<DeliveryConfigFacts>> {
-	if (isFailedDeliveryPreflight(project)) return ok(project)
-
+async function deliveryConfigFactsWithProject(tx: CoreStorageTransaction, project: Project): Promise<PreflightStep<DeliveryConfigFacts>> {
 	const portfolioConfig = await deliveryPortfolioConfig(tx)
 	if (!portfolioConfig.ok) return portfolioConfig
 
@@ -371,9 +358,8 @@ async function deliveryConfigFactsWithProject(
 		: ok({ project, portfolioConfig: portfolioConfig.value })
 }
 
-async function deliveryProject(tx: CoreStorageTransaction, delivery: Delivery): Promise<PreflightStep<Project>> {
-	const project = await getRequired('project', tx.projects, delivery.projectId, projectPipe)
-	return project.ok ? ok(project.value) : mapMissingProject(project.error)
+async function deliveryProject(tx: CoreStorageTransaction, delivery: Delivery): Promise<Result<Project, DeliveryPreflightError>> {
+	return getRequired('project', tx.projects, delivery.projectId, projectPipe)
 }
 
 async function deliveryPortfolioConfig(tx: CoreStorageTransaction): Promise<PreflightStep<PortfolioConfigRecord>> {
@@ -391,7 +377,7 @@ async function validateSelectableModel(tx: CoreStorageTransaction, modelId: Id):
 
 async function selectedModel(tx: CoreStorageTransaction, modelId: Id): Promise<PreflightStep<Model>> {
 	const model = await getRequired('model', tx.models, modelId, modelPipe)
-	if (!model.ok) return mapMissingModel(model.error)
+	if (!model.ok) return model
 
 	return isArchived(model.value) ? ok(modelArchived(modelId)) : ok(model.value)
 }
@@ -411,20 +397,18 @@ function resolvedWorkConfig(
 ): Result<DeliveryPreflight, never> {
 	const workConfig = resolveDeliveryWorkConfig(delivery, projectConfig, portfolioConfig)
 	return workConfig === null
-		? ok(failedPreflight(summaries.workConfigUnresolved, { type: 'work-config-unresolved' }))
+		? ok(
+				failedPreflight(
+					summaries.workConfigUnresolved,
+					{ type: 'work-config-unresolved' },
+					unresolvedWorkConfigSnapshot(delivery, projectConfig, portfolioConfig, modelId),
+				),
+			)
 		: ok({ type: 'passed', modelId, workConfig, checks: [deliveryPreflightEvidence(true, 'Delivery preflight passed.')] })
-}
-
-function mapMissingProject(error: ResourceNotFoundError | DeliveryPreflightError): PreflightStep<Project> {
-	return error.type === 'not-found' ? ok(projectMissing(error)) : { ok: false, error }
 }
 
 function mapMissingPortfolioConfig(error: SingletonNotFoundError | DeliveryPreflightError): PreflightStep<PortfolioConfigRecord> {
 	return error.type === 'not-found-singleton' ? ok(portfolioConfigMissing(error)) : { ok: false, error }
-}
-
-function mapMissingModel(error: ResourceNotFoundError | DeliveryPreflightError): PreflightStep<Model> {
-	return error.type === 'not-found' && error.resource === 'model' ? ok(modelMissing(error)) : { ok: false, error }
 }
 
 function isFailedDeliveryPreflight(value: unknown): value is FailedDeliveryPreflight {
@@ -435,27 +419,36 @@ function portfolioConfigMissing(error: SingletonNotFoundError): FailedDeliveryPr
 	return failedPreflight(summaries.portfolioConfigMissing, { type: 'portfolio-config-missing', error })
 }
 
-function projectMissing(error: ResourceNotFoundError): FailedDeliveryPreflight {
-	return failedPreflight(summaries.projectMissing, { type: 'project-missing', error })
-}
-
-function modelMissing(error: ResourceNotFoundError): FailedDeliveryPreflight {
-	return failedPreflight(summaries.modelMissing, { type: 'model-missing', error })
-}
-
 function modelArchived(modelId: Id): FailedDeliveryPreflight {
-	return failedPreflight(summaries.modelArchived, { type: 'model-archived', error: { type: 'archived-model-reference', modelId } })
+	return failedPreflight(
+		summaries.modelArchived,
+		{ type: 'model-archived', error: { type: 'archived-model-reference', modelId } },
+		{ type: 'model-archived', modelId },
+	)
 }
 
 function modelProviderArchived(modelProviderId: Id): FailedDeliveryPreflight {
-	return failedPreflight(summaries.modelProviderArchived, {
-		type: 'model-provider-archived',
-		error: { type: 'archived-model-provider-reference', modelProviderId },
-	})
+	return failedPreflight(
+		summaries.modelProviderArchived,
+		{
+			type: 'model-provider-archived',
+			error: { type: 'archived-model-provider-reference', modelProviderId },
+		},
+		{ type: 'model-provider-archived', modelProviderId },
+	)
 }
 
-function failedPreflight(summary: string, reason: FailedDeliveryPreflightReason): FailedDeliveryPreflight {
-	return { type: 'failed', checks: [deliveryPreflightEvidence(false, summary)], reason }
+function failedPreflight(
+	summary: string,
+	reason: FailedDeliveryPreflightReason,
+	snapshotInput: unknown = reason.type,
+): FailedDeliveryPreflight {
+	return {
+		type: 'failed',
+		checks: [deliveryPreflightEvidence(false, summary)],
+		reason,
+		snapshot: deliveryPreflightSnapshot(snapshotInput),
+	}
 }
 
 function deliveryPreflightEvidence(passed: boolean, summary: string): ValidationEvidence {
@@ -481,6 +474,33 @@ function resolveDeliveryWorkConfig(
 	portfolioConfig: PortfolioConfigRecord,
 ): DeliveryWorkConfig | null {
 	return firstOptional([delivery.config?.value?.work, projectConfig?.value?.work, portfolioConfig.value.work])
+}
+
+function unresolvedWorkConfigSnapshot(
+	delivery: Delivery,
+	projectConfig: ProjectConfigRecord | null,
+	portfolioConfig: PortfolioConfigRecord,
+	modelId: Id,
+) {
+	return {
+		type: 'work-config-unresolved',
+		modelId,
+		deliveryWorkConfig: deliveryWorkConfigValue(delivery),
+		projectWorkConfig: projectWorkConfigValue(projectConfig),
+		portfolioWorkConfig: portfolioConfig.value.work,
+	}
+}
+
+function deliveryWorkConfigValue(delivery: Delivery): DeliveryWorkConfig | null {
+	return delivery.config === null ? null : (delivery.config.value?.work ?? null)
+}
+
+function projectWorkConfigValue(projectConfig: ProjectConfigRecord | null): DeliveryWorkConfig | null {
+	return projectConfig === null ? null : (projectConfig.value?.work ?? null)
+}
+
+function deliveryPreflightSnapshot(value: unknown): DeliveryPreflightSnapshot {
+	return JSON.stringify(value)
 }
 
 function firstPresent<T>(values: Array<T | null | undefined>): T {

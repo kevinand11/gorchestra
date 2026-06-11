@@ -66,8 +66,4 @@ export type RunDeliveryWorkStorageError =
 	| StorageOperationFailedError
 	| InvariantViolationError
 
-export type RunDeliveryWorkResolutionError =
-	| RunDeliveryWorkStorageError
-	| ArchivedModelReferenceError
-	| ArchivedModelProviderReferenceError
-	| NotImplementedError
+export type RunDeliveryWorkResolutionError = RunDeliveryWorkStorageError | ArchivedModelReferenceError | ArchivedModelProviderReferenceError

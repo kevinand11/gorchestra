@@ -164,6 +164,11 @@ export interface DeliveryWorkStateMismatchError {
 	actual: DeliveryWorkState
 }
 
+export interface DeliveryPreflightClaimConflictError {
+	type: 'delivery-preflight-claim-conflict'
+	deliveryId: Id
+}
+
 export type InvalidPlanOutputError =
 	| { type: 'invalid-plan-output'; reason: 'empty-output' }
 	| { type: 'invalid-plan-output'; reason: 'delivery-without-slices'; proposedDeliveryKey: string }
@@ -218,6 +223,7 @@ export type CoreError =
 	| ModelPreflightFailedError
 	| ModelNotSelectableError
 	| SecretNotActiveError
+	| DeliveryPreflightClaimConflictError
 	| DuplicateRepositoryTargetError
 	| ProjectSourceTypeMismatchError
 	| DeliveryWorkStateMismatchError

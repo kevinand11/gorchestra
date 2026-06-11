@@ -16,10 +16,9 @@ export async function resolveDeliveryWork(
 		: failedPreflightForRunDeliveryWork(preflight.value)
 }
 
-function failedPreflightForRunDeliveryWork(failure: FailedDeliveryPreflight): Result<never, RunDeliveryWorkResolutionError> {
-	if (failure.reason.type === 'work-config-unresolved') {
-		return { ok: false, error: { type: 'not-implemented', operation: 'runDeliveryWork.delivery-work-config-unresolved' } }
+function failedPreflightForRunDeliveryWork(_failure: FailedDeliveryPreflight): Result<never, RunDeliveryWorkResolutionError> {
+	return {
+		ok: false,
+		error: { type: 'invariant-violation', message: 'Delivery work resolution requires passing Delivery preflight.' },
 	}
-
-	return { ok: false, error: failure.reason.error }
 }

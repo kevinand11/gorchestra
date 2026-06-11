@@ -289,14 +289,10 @@ if (import.meta.vitest) {
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
-			expect(result).toEqual({ ok: true, value: { type: 'worked', actionIds: ['action-1'], agentRunIds: [] } })
-			expect(options.tx.actions.records.get('action-1')?.result).toEqual({
-				type: 'validate-preflight',
-				checks: [
-					validationEvidence('repository-preflight', false, 'GitHub repository access Secret is missing.'),
-					validationEvidence('model-preflight', false, 'Anthropic Messages model provider auth Secret is missing.'),
-				],
-			})
+			expectWorkedPreflightResult(options, result, [
+				validationEvidence('repository-preflight', false, 'GitHub repository access Secret is missing.'),
+				validationEvidence('model-preflight', false, 'Anthropic Messages model provider auth Secret is missing.'),
+			])
 		})
 
 		it('returns operation errors instead of recording partial preflight checks', async () => {
@@ -335,6 +331,37 @@ if (import.meta.vitest) {
 			expect(result).toEqual({ ok: true, value: { type: 'no-op', reason: { type: 'no-eligible-work' } } })
 		})
 
+		it('records failed preflight evidence when Delivery Work Config is unresolved', async () => {
+			const options = providerPreflightFixture()
+			options.tx.portfolioConfig.record!.value.work = null
+			const command = createRunDeliveryWorkCommand(
+				createTestCoreRuntime(options, { providers: neverCalledProviderBackedPreflightProviders() }),
+			)
+
+			const result = await command({ deliveryId: 'delivery-1' }, context)
+
+			expectWorkedPreflightResult(options, result, [
+				validationEvidence('delivery-preflight', false, 'Delivery Work Config is not resolved.'),
+			])
+		})
+
+		it('returns claim-conflict when local preflight failure inputs become stale before evidence is written', async () => {
+			const options = providerPreflightFixture()
+			const resolvedWorkConfig = options.tx.portfolioConfig.record!.value.work
+			options.tx.portfolioConfig.record!.value.work = null
+			staleLocalPreflightOnSecondTransaction(options, () => {
+				options.tx.portfolioConfig.record!.value.work = resolvedWorkConfig
+			})
+			const command = createRunDeliveryWorkCommand(
+				createTestCoreRuntime(options, { providers: neverCalledProviderBackedPreflightProviders() }),
+			)
+
+			const result = await command({ deliveryId: 'delivery-1' }, context)
+
+			expect(result).toEqual({ ok: true, value: { type: 'no-op', reason: { type: 'claim-conflict', work: { type: 'delivery' } } } })
+			expect(options.tx.actions.records.has('action-1')).toBe(false)
+		})
+
 		it('returns claim-conflict when preflight inputs change before scheduler work is written', async () => {
 			const options = providerPreflightFixture()
 			seedSelectableModel(options.tx, 'model-2')
@@ -351,6 +378,25 @@ if (import.meta.vitest) {
 			expect(options.tx.actions.records.has('action-1')).toBe(false)
 		})
 	})
+
+	function expectWorkedPreflightResult(
+		options: ReturnType<typeof createTestCoreServices>,
+		result: Awaited<ReturnType<Operation>>,
+		checks: ReturnType<typeof validationEvidence>[],
+	) {
+		expect(result).toEqual({ ok: true, value: { type: 'worked', actionIds: ['action-1'], agentRunIds: [] } })
+		expect(options.tx.actions.records.get('action-1')?.result).toEqual({ type: 'validate-preflight', checks })
+	}
+
+	function staleLocalPreflightOnSecondTransaction(options: ReturnType<typeof createTestCoreServices>, stale: () => void) {
+		const transaction = options.storage.transaction
+		let calls = 0
+		options.storage.transaction = async (fn) => {
+			calls += 1
+			if (calls === 2) stale()
+			return transaction(fn)
+		}
+	}
 
 	function providerPreflightFixture() {
 		const options = createTestCoreServices()
