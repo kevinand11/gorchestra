@@ -18,6 +18,10 @@ export function worked(actionId: Id, agentRunId: Id): RunDeliveryWorkHandlerResu
 	return { ok: true, value: { type: 'worked', actionIds: [actionId], agentRunIds: [agentRunId] } satisfies Result }
 }
 
+export function workedActions(actionIds: Id[]): RunDeliveryWorkHandlerResult {
+	return { ok: true, value: { type: 'worked', actionIds, agentRunIds: [] } satisfies Result }
+}
+
 export function notImplemented(operation: string): RunDeliveryWorkHandlerResult {
 	return { ok: false, error: { type: 'not-implemented', operation } }
 }

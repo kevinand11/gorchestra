@@ -235,7 +235,7 @@ if (import.meta.vitest) {
 			seedAction(options.tx, 'queue-delivery', '2026-06-10T00:00:00.000Z', { type: 'queue-delivery' })
 			seedAction(options.tx, 'preflight-failed', '2026-06-10T00:01:00.000Z', {
 				type: 'validate-preflight',
-				evidence: validationEvidence('delivery-preflight', false, 'Missing config.'),
+				checks: [validationEvidence('delivery-preflight', false, 'Missing config.')],
 			})
 
 			const result = await command({ deliveryId: 'delivery-1', config: allNullConfig() }, context)

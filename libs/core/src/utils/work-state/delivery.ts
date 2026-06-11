@@ -120,7 +120,11 @@ function deliveryPreflightState(deliveryActions: Action[]): WorkStateResult<Deli
 	const latestPreflight = latestAction(deliveryActions.filter((action) => action.result.type === 'validate-preflight'))
 	if (latestPreflight?.result.type !== 'validate-preflight') return ok(null)
 
-	return latestPreflight.result.evidence.passed ? ok(null) : ok({ type: 'preflight-failed', actionId: latestPreflight.id })
+	return preflightChecksPassed(latestPreflight.result.checks) ? ok(null) : ok({ type: 'preflight-failed', actionId: latestPreflight.id })
+}
+
+function preflightChecksPassed(checks: Extract<Action['result'], { type: 'validate-preflight' }>['checks']): boolean {
+	return checks.length > 0 && checks.every((check) => check.passed)
 }
 
 async function latestSliceCompletionForDelivery(
@@ -394,14 +398,36 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('derives preflight-failed from the latest failed Delivery preflight validation', async () => {
+		it('derives preflight-failed from the latest failed Delivery preflight check', async () => {
 			const { tx } = deliveryFixture({ queued: true })
-			seedAction(tx, { id: 'preflight-failed', result: { type: 'validate-preflight', evidence: failedValidation } })
+			seedAction(tx, { id: 'preflight-failed', result: { type: 'validate-preflight', checks: [failedValidation] } })
 
 			expect(await deriveDeliveryWorkState(tx, 'delivery-1')).toEqual({
 				ok: true,
 				value: { type: 'preflight-failed', actionId: 'preflight-failed' },
 			})
+		})
+
+		it('treats empty Delivery preflight checks as failed', async () => {
+			const { tx } = deliveryFixture({ queued: true })
+			seedAction(tx, { id: 'preflight-empty', result: { type: 'validate-preflight', checks: [] } })
+
+			expect(await deriveDeliveryWorkState(tx, 'delivery-1')).toEqual({
+				ok: true,
+				value: { type: 'preflight-failed', actionId: 'preflight-empty' },
+			})
+		})
+
+		it('clears preflight-failed when the latest Delivery preflight checks all passed', async () => {
+			const { tx } = deliveryFixture({ queued: true })
+			seedAction(tx, { id: 'preflight-failed', result: { type: 'validate-preflight', checks: [failedValidation] } })
+			seedAction(tx, {
+				id: 'preflight-passed',
+				at: '2026-06-10T12:01:00.000Z',
+				result: { type: 'validate-preflight', checks: [validationEvidence('repository-preflight', true, 'Repository ready.')] },
+			})
+
+			expect(await deriveDeliveryWorkState(tx, 'delivery-1')).toEqual({ ok: true, value: { type: 'needs-artifact-creation' } })
 		})
 
 		it('derives needs-artifact-creation after queueing before a Delivery Artifact exists', async () => {

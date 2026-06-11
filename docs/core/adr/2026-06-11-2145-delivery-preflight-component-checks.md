@@ -1,0 +1,3 @@
+# Delivery preflight records component checks
+
+Delivery preflight Actions store the component readiness checks Core evaluated instead of one aggregate Delivery preflight evidence value. Work State treats a validate-preflight Action as passing only when its checks list is non-empty and every check passed; empty checks fail conservatively. We chose component checks so provider-backed Delivery Preflight can report all independently evaluated Repository and Model readiness failures without hiding later failures behind a first-failure summary, while still keeping operation errors such as storage failures or invalid Core Service Outputs outside stored readiness evidence.

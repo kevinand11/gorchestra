@@ -14,7 +14,7 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import type { CoreServices, CoreStorageTransaction } from '../services'
+import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import {
 	deliveryWorkStateMismatch,
@@ -23,7 +23,11 @@ import {
 	readDeliveryWorkState,
 	withTransaction,
 } from '../utils/command-storage'
-import { preflightDeliveryWork } from '../utils/delivery-preflight'
+import {
+	readProviderBackedDeliveryPreflightPlan,
+	runProviderBackedDeliveryPreflightChecks,
+	type ProviderBackedDeliveryPreflightPlan,
+} from '../utils/delivery-preflight'
 import type { Result as CoreResult } from '../utils/types'
 
 const retryDeliveryPreflightInputPipe = v.object({ deliveryId: idPipe })
@@ -50,38 +54,52 @@ export type Error =
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createRetryDeliveryPreflightCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
 	return buildCommandHandler('retryDeliveryPreflight', retryDeliveryPreflightInputPipe, (input, context) =>
-		handleRetryDeliveryPreflight(options, input, context),
+		handleRetryDeliveryPreflight(runtime, input, context),
 	)
 }
 
 async function handleRetryDeliveryPreflight(
-	options: CoreServices,
+	runtime: CoreRuntime,
 	input: Input,
 	context: OperationContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const authorizedAction = prepareAuthorizedAction(options, context)
+	const authorizedAction = prepareAuthorizedAction(runtime.services, context)
 	if (!authorizedAction.ok) return authorizedAction
 
-	return withTransaction(options, (tx) =>
-		writeDeliveryPreflightRetry(tx, input, authorizedAction.value.stamp, authorizedAction.value.actionId),
+	const plan = await withTransaction(runtime.services, (tx) => readRetryPreflightPlan(tx, input))
+	if (!plan.ok) return plan
+
+	const checks = await runProviderBackedDeliveryPreflightChecks(runtime, plan.value.plan)
+	if (!checks.ok) return checks
+
+	return withTransaction(runtime.services, (tx) =>
+		writeDeliveryPreflightRetry(tx, input.deliveryId, checks.value, authorizedAction.value.stamp, authorizedAction.value.actionId),
 	)
+}
+
+async function readRetryPreflightPlan(
+	tx: CoreStorageTransaction,
+	input: Input,
+): Promise<CoreResult<{ delivery: Delivery; plan: ProviderBackedDeliveryPreflightPlan }, Exclude<Error, InvalidInputError>>> {
+	const deliveryResult = await requirePreflightFailedDelivery(tx, input.deliveryId)
+	if (!deliveryResult.ok) return deliveryResult
+
+	const plan = await readProviderBackedDeliveryPreflightPlan(tx, deliveryResult.value)
+	return plan.ok ? { ok: true, value: { delivery: deliveryResult.value, plan: plan.value } } : plan
 }
 
 async function writeDeliveryPreflightRetry(
 	tx: CoreStorageTransaction,
-	input: Input,
+	deliveryId: Id,
+	checks: ValidationEvidence[],
 	stamp: AuditStamp,
 	actionId: Id,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const deliveryResult = await requirePreflightFailedDelivery(tx, input.deliveryId)
+	const deliveryResult = await requirePreflightFailedDelivery(tx, deliveryId)
 	if (!deliveryResult.ok) return deliveryResult
 
-	const evidence = await retryPreflightEvidence(tx, deliveryResult.value)
-	if (!evidence.ok) return evidence
-
-	return writePreflightAction(tx, deliveryResult.value, preflightAction(deliveryResult.value.id, evidence.value, stamp, actionId))
+	return writePreflightAction(tx, deliveryResult.value, preflightAction(deliveryResult.value.id, checks, stamp, actionId))
 }
 
 async function requirePreflightFailedDelivery(
@@ -96,22 +114,6 @@ async function requirePreflightFailedDelivery(
 		: deliveryWorkStateMismatch(deliveryId, ['preflight-failed'], deliveryState.value.state)
 }
 
-async function retryPreflightEvidence(
-	tx: CoreStorageTransaction,
-	delivery: Delivery,
-): Promise<CoreResult<ValidationEvidence, Exclude<Error, InvalidInputError | DeliveryWorkStateMismatchError>>> {
-	const preflight = await preflightDeliveryWork(tx, delivery)
-	if (!preflight.ok) return preflight
-
-	return {
-		ok: true,
-		value:
-			preflight.value.type === 'passed'
-				? deliveryPreflightEvidence(true, 'Delivery preflight passed.')
-				: deliveryPreflightEvidence(false, preflight.value.summary),
-	}
-}
-
 async function writePreflightAction(
 	tx: CoreStorageTransaction,
 	delivery: Delivery,
@@ -123,18 +125,14 @@ async function writePreflightAction(
 	return { ok: true, value: { delivery, action } }
 }
 
-function preflightAction(deliveryId: Id, evidence: ValidationEvidence, stamp: AuditStamp, actionId: Id): Action {
+function preflightAction(deliveryId: Id, checks: ValidationEvidence[], stamp: AuditStamp, actionId: Id): Action {
 	return {
 		id: actionId,
 		deliveryId,
 		performed: { at: stamp.at },
 		authorized: stamp,
-		result: { type: 'validate-preflight', evidence },
+		result: { type: 'validate-preflight', checks },
 	}
-}
-
-function deliveryPreflightEvidence(passed: boolean, summary: string): ValidationEvidence {
-	return { type: 'validation', operation: { type: 'delivery-preflight' }, passed, summary }
 }
 
 if (import.meta.vitest) {
@@ -143,9 +141,12 @@ if (import.meta.vitest) {
 		context,
 		createTestCoreRuntime,
 		createTestCoreServices,
+		failingProviderBackedPreflightProviders,
 		localStamp,
+		passingProviderBackedPreflightProviders,
 		seedDelivery,
 		seedProject,
+		seedSecret,
 		seedSelectableModel,
 		validationEvidence,
 	} = await import('../utils/test-helpers')
@@ -183,7 +184,10 @@ if (import.meta.vitest) {
 			seedProject(options.tx, 'project-1')
 			seedPassingPortfolioConfig(options)
 			seedSelectableModel(options.tx, 'model-1')
-			const command = createRetryDeliveryPreflightCommand(createTestCoreRuntime(options))
+			seedRepository(options)
+			const command = createRetryDeliveryPreflightCommand(
+				createTestCoreRuntime(options, { providers: passingProviderBackedPreflightProviders() }),
+			)
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
@@ -191,12 +195,40 @@ if (import.meta.vitest) {
 				ok: true,
 				value: {
 					delivery: options.tx.deliveries.records.get('delivery-1'),
-					action: expectedPreflightAction('action-1', true, 'Delivery preflight passed.'),
+					action: expectedPassingProviderPreflightAction('action-1'),
 				},
 			})
 			expect(await deriveDeliveryWorkState(options.tx, 'delivery-1')).not.toMatchObject({
 				ok: true,
 				value: { type: 'preflight-failed' },
+			})
+		})
+
+		it('records all failed provider-backed preflight checks on retry', async () => {
+			const options = preflightFailedFixture()
+			seedProject(options.tx, 'project-1')
+			seedPassingPortfolioConfig(options)
+			seedSelectableModel(options.tx, 'model-1')
+			seedRepository(options)
+			const command = createRetryDeliveryPreflightCommand(
+				createTestCoreRuntime(options, { providers: failingProviderBackedPreflightProviders() }),
+			)
+
+			const result = await command({ deliveryId: 'delivery-1' }, context)
+
+			expect(result).toMatchObject({
+				ok: true,
+				value: {
+					action: {
+						result: {
+							type: 'validate-preflight',
+							checks: [
+								validationEvidence('repository-preflight', false, 'GitHub repository was not found.'),
+								validationEvidence('model-preflight', false, 'Anthropic Messages model was not found.'),
+							],
+						},
+					},
+				},
 			})
 		})
 
@@ -253,6 +285,7 @@ if (import.meta.vitest) {
 			seedProject(options.tx, 'project-1')
 			seedPassingPortfolioConfig(options)
 			seedSelectableModel(options.tx, 'model-1')
+			seedRepository(options)
 			options.tx.actions.fail.put = true
 
 			expect(await retry(options)).toEqual({
@@ -291,14 +324,26 @@ if (import.meta.vitest) {
 			deliveryId: 'delivery-1',
 			performed: { at: '2026-06-10T00:01:00.000Z' },
 			authorized: localStamp(),
-			result: { type: 'validate-preflight', evidence: validationEvidence('delivery-preflight', false, 'Missing config.') },
+			result: { type: 'validate-preflight', checks: [validationEvidence('delivery-preflight', false, 'Missing config.')] },
 		})
 
 		return options
 	}
 
 	async function retry(options: ReturnType<typeof preflightFailedFixture>) {
-		return createRetryDeliveryPreflightCommand(createTestCoreRuntime(options))({ deliveryId: 'delivery-1' }, context)
+		return createRetryDeliveryPreflightCommand(
+			createTestCoreRuntime(options, { providers: passingProviderBackedPreflightProviders() }),
+		)({ deliveryId: 'delivery-1' }, context)
+	}
+
+	function seedRepository(options: ReturnType<typeof preflightFailedFixture>) {
+		seedSecret(options.tx, 'secret-1')
+		options.tx.repositories.records.set('repository-1', {
+			id: 'repository-1',
+			projectId: 'project-1',
+			config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
+			created: localStamp(),
+		})
 	}
 
 	function seedPassingPortfolioConfig(options: ReturnType<typeof preflightFailedFixture>) {
@@ -325,13 +370,29 @@ if (import.meta.vitest) {
 		expect(result).toMatchObject({ ok: true, value: { action: expectedPreflightAction('action-1', false, summary) } })
 	}
 
+	function expectedPassingProviderPreflightAction(id: string): Action {
+		return {
+			id,
+			deliveryId: 'delivery-1',
+			performed: { at: '2026-06-10T12:00:00.000Z' },
+			authorized: localStamp(),
+			result: {
+				type: 'validate-preflight',
+				checks: [
+					validationEvidence('repository-preflight', true, 'GitHub repository preflight passed.'),
+					validationEvidence('model-preflight', true, 'Anthropic Messages model preflight passed.'),
+				],
+			},
+		}
+	}
+
 	function expectedPreflightAction(id: string, passed: boolean, summary: string): Action {
 		return {
 			id,
 			deliveryId: 'delivery-1',
 			performed: { at: '2026-06-10T12:00:00.000Z' },
 			authorized: localStamp(),
-			result: { type: 'validate-preflight', evidence: deliveryPreflightEvidence(passed, summary) },
+			result: { type: 'validate-preflight', checks: [validationEvidence('delivery-preflight', passed, summary)] },
 		}
 	}
 }

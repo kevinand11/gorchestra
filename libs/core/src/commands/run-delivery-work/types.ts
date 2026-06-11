@@ -49,6 +49,7 @@ export interface RunDeliveryWorkContext {
 
 export interface DeliveryHandlerContext extends RunDeliveryWorkContext {
 	delivery: Delivery
+	preflight?: DeliveryWorkResolution
 }
 
 export interface DeliveryWorkResolution {

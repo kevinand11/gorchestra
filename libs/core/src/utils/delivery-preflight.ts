@@ -3,9 +3,11 @@ import type { Result } from './types'
 import type { Id } from '../domain/commons'
 import { portfolioConfigRecordPipe, type DeliveryWorkConfig, type PortfolioConfigRecord, type ProjectConfigRecord } from '../domain/config'
 import type { Delivery } from '../domain/delivery'
+import type { ValidationEvidence } from '../domain/evidence'
 import { modelPipe, type Model } from '../domain/model'
-import { modelProviderPipe, type ModelProvider } from '../domain/model-provider'
+import { modelProviderPipe, type ModelProvider, type ModelProviderHeader } from '../domain/model-provider'
 import { projectPipe, type Project } from '../domain/project'
+import { repositoryPipe, type Repository } from '../domain/repository'
 import type {
 	ArchivedModelProviderReferenceError,
 	ArchivedModelReferenceError,
@@ -13,14 +15,18 @@ import type {
 	InvariantViolationError,
 	ResourceNotFoundError,
 	SingletonNotFoundError,
+	SecretNotActiveError,
 	StorageOperationFailedError,
 } from '../errors'
+import type { CoreRuntime } from '../runtime'
 import type { CoreStorageTransaction } from '../services'
+import { validateActiveSecret } from './command-storage'
 
 export interface PassedDeliveryPreflight {
 	type: 'passed'
 	modelId: Id
 	workConfig: DeliveryWorkConfig
+	checks: ValidationEvidence[]
 }
 
 export type FailedDeliveryPreflightReason =
@@ -33,7 +39,7 @@ export type FailedDeliveryPreflightReason =
 
 export interface FailedDeliveryPreflight {
 	type: 'failed'
-	summary: string
+	checks: ValidationEvidence[]
 	reason: FailedDeliveryPreflightReason
 }
 
@@ -44,6 +50,22 @@ export type DeliveryPreflightError =
 	| ResourceNotFoundError
 	| StorageOperationFailedError
 	| InvariantViolationError
+
+export type RepositoryDeliveryPreflightPlan = { type: 'check'; check: ValidationEvidence } | { type: 'provider'; repository: Repository }
+
+export type ModelDeliveryPreflightPlan =
+	| { type: 'check'; check: ValidationEvidence }
+	| { type: 'provider'; model: Model; modelProvider: ModelProvider }
+
+export type ProviderBackedDeliveryPreflightPlan =
+	| { type: 'local-failed'; checks: ValidationEvidence[] }
+	| {
+			type: 'provider-plan'
+			repositoryId: Id
+			resolution: PassedDeliveryPreflight
+			repository: RepositoryDeliveryPreflightPlan
+			model: ModelDeliveryPreflightPlan
+	  }
 
 interface DeliveryConfigFacts {
 	project: Project
@@ -70,6 +92,251 @@ export async function preflightDeliveryWork(
 	if (isFailedDeliveryPreflight(facts.value)) return ok(facts.value)
 
 	return preflightWithFacts(tx, delivery, facts.value)
+}
+
+export async function readProviderBackedDeliveryPreflightPlan(
+	tx: CoreStorageTransaction,
+	delivery: Delivery,
+): Promise<Result<ProviderBackedDeliveryPreflightPlan, DeliveryPreflightError>> {
+	const localPreflight = await preflightDeliveryWork(tx, delivery)
+	if (!localPreflight.ok) return localPreflight
+
+	return localPreflight.value.type === 'failed'
+		? ok({ type: 'local-failed', checks: localPreflight.value.checks })
+		: readProviderBackedPlanAfterLocalPreflight(tx, delivery, localPreflight.value)
+}
+
+async function readProviderBackedPlanAfterLocalPreflight(
+	tx: CoreStorageTransaction,
+	delivery: Delivery,
+	localPreflight: PassedDeliveryPreflight,
+): Promise<Result<ProviderBackedDeliveryPreflightPlan, DeliveryPreflightError>> {
+	const repository = await readRepositoryPlan(tx, delivery)
+	if (!repository.ok) return repository
+
+	const model = await readModelPlan(tx, localPreflight.modelId)
+	return model.ok ? ok(providerBackedPlan(delivery, localPreflight, repository.value, model.value)) : model
+}
+
+function providerBackedPlan(
+	delivery: Delivery,
+	resolution: PassedDeliveryPreflight,
+	repository: RepositoryDeliveryPreflightPlan,
+	model: ModelDeliveryPreflightPlan,
+): ProviderBackedDeliveryPreflightPlan {
+	return { type: 'provider-plan', repositoryId: delivery.target.repositoryId, resolution, repository, model }
+}
+
+export async function runProviderBackedDeliveryPreflightChecks(
+	runtime: CoreRuntime,
+	plan: ProviderBackedDeliveryPreflightPlan,
+): Promise<Result<ValidationEvidence[], DeliveryPreflightError>> {
+	if (plan.type === 'local-failed') return ok(plan.checks)
+
+	const [repository, model] = await Promise.all([runRepositoryCheck(runtime, plan.repository), runModelCheck(runtime, plan.model)])
+	if (!repository.ok) return repository
+	if (!model.ok) return model
+
+	return ok([repository.value, model.value])
+}
+
+export function deliveryPreflightChecksPassed(checks: ValidationEvidence[]): boolean {
+	return checks.length > 0 && checks.every((check) => check.passed)
+}
+
+export function providerBackedDeliveryPreflightInputsStillCurrent(
+	tx: CoreStorageTransaction,
+	delivery: Delivery,
+	plan: ProviderBackedDeliveryPreflightPlan,
+): Promise<Result<boolean, DeliveryPreflightError>> | Result<boolean, never> {
+	return plan.type === 'local-failed' ? ok(true) : providerPlanInputsStillCurrent(tx, delivery, plan)
+}
+
+async function providerPlanInputsStillCurrent(
+	tx: CoreStorageTransaction,
+	delivery: Delivery,
+	plan: Extract<ProviderBackedDeliveryPreflightPlan, { type: 'provider-plan' }>,
+): Promise<Result<boolean, DeliveryPreflightError>> {
+	const current = await preflightDeliveryWork(tx, delivery)
+	if (!current.ok) return current
+
+	return ok(current.value.type === 'passed' && providerPlanMatches(delivery, current.value, plan))
+}
+
+function providerPlanMatches(
+	delivery: Delivery,
+	current: PassedDeliveryPreflight,
+	plan: Extract<ProviderBackedDeliveryPreflightPlan, { type: 'provider-plan' }>,
+): boolean {
+	return (
+		delivery.target.repositoryId === plan.repositoryId &&
+		current.modelId === plan.resolution.modelId &&
+		JSON.stringify(current.workConfig) === JSON.stringify(plan.resolution.workConfig)
+	)
+}
+
+export function providerBackedDeliveryWorkResolution(plan: ProviderBackedDeliveryPreflightPlan) {
+	return plan.type === 'provider-plan' ? { modelId: plan.resolution.modelId, workConfig: plan.resolution.workConfig } : undefined
+}
+
+async function readRepositoryPlan(
+	tx: CoreStorageTransaction,
+	delivery: Delivery,
+): Promise<Result<RepositoryDeliveryPreflightPlan, DeliveryPreflightError>> {
+	const repository = await getRequired('repository', tx.repositories, delivery.target.repositoryId, repositoryPipe)
+	if (!repository.ok) return repository
+
+	const secret = await validateActiveSecret(tx, repository.value.config.secretId)
+	if (!secret.ok) return mapRepositoryAccessSecretFailure(secret.error)
+
+	return ok({ type: 'provider', repository: repository.value })
+}
+
+async function readModelPlan(tx: CoreStorageTransaction, modelId: Id): Promise<Result<ModelDeliveryPreflightPlan, DeliveryPreflightError>> {
+	const facts = await readModelPlanFacts(tx, modelId)
+	return facts.ok ? readModelPlanWithFacts(tx, facts.value.model, facts.value.modelProvider) : facts
+}
+
+async function readModelPlanFacts(
+	tx: CoreStorageTransaction,
+	modelId: Id,
+): Promise<Result<{ model: Model; modelProvider: ModelProvider }, DeliveryPreflightError>> {
+	const model = await getRequired('model', tx.models, modelId, modelPipe)
+	if (!model.ok) return model
+
+	const modelProvider = await getRequired('model-provider', tx.modelProviders, model.value.providerId, modelProviderPipe)
+	return modelProvider.ok ? ok({ model: model.value, modelProvider: modelProvider.value }) : modelProvider
+}
+
+async function readModelPlanWithFacts(
+	tx: CoreStorageTransaction,
+	model: Model,
+	modelProvider: ModelProvider,
+): Promise<Result<ModelDeliveryPreflightPlan, DeliveryPreflightError>> {
+	const authSecret = await readModelProviderAuthSecretCheck(tx, modelProvider)
+	if (!authSecret.ok) return authSecret
+	if (authSecret.value !== null) return ok({ type: 'check', check: authSecret.value })
+
+	return readModelProviderHeaderSecretPlan(tx, model, modelProvider)
+}
+
+async function readModelProviderAuthSecretCheck(
+	tx: CoreStorageTransaction,
+	modelProvider: ModelProvider,
+): Promise<Result<ValidationEvidence | null, DeliveryPreflightError>> {
+	if (modelProvider.auth === null) return ok(null)
+
+	const secret = await validateActiveSecret(tx, modelProvider.auth.secretId)
+	return secret.ok ? ok(null) : mapModelProviderAuthSecretFailure(modelProvider, secret.error)
+}
+
+async function readModelProviderHeaderSecretPlan(
+	tx: CoreStorageTransaction,
+	model: Model,
+	modelProvider: ModelProvider,
+): Promise<Result<ModelDeliveryPreflightPlan, DeliveryPreflightError>> {
+	for (const header of modelProvider.headers) {
+		const secret = await validateActiveSecret(tx, header.valueSecretId)
+		if (!secret.ok) return mapModelProviderHeaderSecretFailure(modelProvider, header, secret.error)
+	}
+
+	return ok({ type: 'provider', model, modelProvider })
+}
+
+function mapRepositoryAccessSecretFailure(
+	error: ResourceNotFoundError | SecretNotActiveError | StorageOperationFailedError | InvalidCoreServiceOutputError,
+): Result<RepositoryDeliveryPreflightPlan, DeliveryPreflightError> {
+	if (error.type === 'not-found' && error.resource === 'secret') {
+		return ok({
+			type: 'check',
+			check: validationEvidence('repository-preflight', false, 'GitHub repository access Secret is missing.'),
+		})
+	}
+	if (error.type === 'secret-not-active') {
+		return ok({
+			type: 'check',
+			check: validationEvidence('repository-preflight', false, 'GitHub repository access Secret is not active.'),
+		})
+	}
+
+	return { ok: false, error }
+}
+
+function mapModelProviderAuthSecretFailure(
+	modelProvider: ModelProvider,
+	error: ResourceNotFoundError | SecretNotActiveError | StorageOperationFailedError | InvalidCoreServiceOutputError,
+): Result<ValidationEvidence | null, DeliveryPreflightError> {
+	if (error.type === 'not-found' && error.resource === 'secret') {
+		return ok(validationEvidence('model-preflight', false, modelSecretSummary(modelProvider, 'auth', 'missing')))
+	}
+	if (error.type === 'secret-not-active') {
+		return ok(validationEvidence('model-preflight', false, modelSecretSummary(modelProvider, 'auth', 'inactive')))
+	}
+
+	return { ok: false, error }
+}
+
+function mapModelProviderHeaderSecretFailure(
+	modelProvider: ModelProvider,
+	_header: ModelProviderHeader,
+	error: ResourceNotFoundError | SecretNotActiveError | StorageOperationFailedError | InvalidCoreServiceOutputError,
+): Result<ModelDeliveryPreflightPlan, DeliveryPreflightError> {
+	if (error.type === 'not-found' && error.resource === 'secret') {
+		return ok({
+			type: 'check',
+			check: validationEvidence('model-preflight', false, modelSecretSummary(modelProvider, 'header', 'missing')),
+		})
+	}
+	if (error.type === 'secret-not-active') {
+		return ok({
+			type: 'check',
+			check: validationEvidence('model-preflight', false, modelSecretSummary(modelProvider, 'header', 'inactive')),
+		})
+	}
+
+	return { ok: false, error }
+}
+
+async function runRepositoryCheck(
+	runtime: CoreRuntime,
+	plan: RepositoryDeliveryPreflightPlan,
+): Promise<Result<ValidationEvidence, DeliveryPreflightError>> {
+	if (plan.type === 'check') return ok(plan.check)
+
+	const preflight = await runtime.providers.sourceControl.preflightRepository({ repository: plan.repository })
+	return preflight.ok
+		? ok(validationEvidence('repository-preflight', preflight.value.type === 'passed', preflight.value.summary))
+		: preflight
+}
+
+async function runModelCheck(
+	runtime: CoreRuntime,
+	plan: ModelDeliveryPreflightPlan,
+): Promise<Result<ValidationEvidence, DeliveryPreflightError>> {
+	if (plan.type === 'check') return ok(plan.check)
+
+	const preflight = await runtime.providers.modelProviderProtocols.preflightModel({
+		model: plan.model,
+		modelProvider: plan.modelProvider,
+	})
+	return preflight.ok ? ok(validationEvidence('model-preflight', preflight.value.type === 'passed', preflight.value.summary)) : preflight
+}
+
+function modelSecretSummary(modelProvider: ModelProvider, secretKind: 'auth' | 'header', state: 'missing' | 'inactive'): string {
+	const providerName = protocolDisplayName(modelProvider)
+	const noun = secretKind === 'auth' ? 'auth Secret' : 'header Secret'
+	return `${providerName} model provider ${noun} is ${state === 'missing' ? 'missing' : 'not active'}.`
+}
+
+function protocolDisplayName(modelProvider: ModelProvider): string {
+	const names: Record<ModelProvider['protocol'], string> = {
+		'anthropic-messages': 'Anthropic Messages',
+		'openai-responses': 'OpenAI Responses',
+		'openai-completions': 'OpenAI Completions',
+		'google-generative-ai': 'Google Generative AI',
+	}
+
+	return names[modelProvider.protocol]
 }
 
 async function preflightWithFacts(
@@ -145,7 +412,7 @@ function resolvedWorkConfig(
 	const workConfig = resolveDeliveryWorkConfig(delivery, projectConfig, portfolioConfig)
 	return workConfig === null
 		? ok(failedPreflight(summaries.workConfigUnresolved, { type: 'work-config-unresolved' }))
-		: ok({ type: 'passed', modelId, workConfig })
+		: ok({ type: 'passed', modelId, workConfig, checks: [deliveryPreflightEvidence(true, 'Delivery preflight passed.')] })
 }
 
 function mapMissingProject(error: ResourceNotFoundError | DeliveryPreflightError): PreflightStep<Project> {
@@ -188,7 +455,15 @@ function modelProviderArchived(modelProviderId: Id): FailedDeliveryPreflight {
 }
 
 function failedPreflight(summary: string, reason: FailedDeliveryPreflightReason): FailedDeliveryPreflight {
-	return { type: 'failed', summary, reason }
+	return { type: 'failed', checks: [deliveryPreflightEvidence(false, summary)], reason }
+}
+
+function deliveryPreflightEvidence(passed: boolean, summary: string): ValidationEvidence {
+	return validationEvidence('delivery-preflight', passed, summary)
+}
+
+function validationEvidence(operation: ValidationEvidence['operation']['type'], passed: boolean, summary: string): ValidationEvidence {
+	return { type: 'validation', operation: { type: operation }, passed, summary }
 }
 
 function resolveExecutionModelId(delivery: Delivery, project: Project, portfolioConfig: PortfolioConfigRecord): Id {

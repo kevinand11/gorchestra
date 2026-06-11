@@ -49,6 +49,53 @@ export function createTestCoreRuntime(
 	return { services, providers: overrides.providers ?? createCoreProviders(services) }
 }
 
+export function passingProviderBackedPreflightProviders(): CoreRuntime['providers'] {
+	return {
+		sourceControl: {
+			preflightRepository: () =>
+				Promise.resolve({ ok: true, value: { type: 'passed', summary: 'GitHub repository preflight passed.' } }),
+		},
+		modelProviderProtocols: {
+			preflightModel: () =>
+				Promise.resolve({ ok: true, value: { type: 'passed', summary: 'Anthropic Messages model preflight passed.' } }),
+		},
+	}
+}
+
+export function failingProviderBackedPreflightProviders(): CoreRuntime['providers'] {
+	return {
+		sourceControl: {
+			preflightRepository: () =>
+				Promise.resolve({
+					ok: true,
+					value: {
+						type: 'failed',
+						reason: { type: 'provider-repository-not-found' },
+						summary: 'GitHub repository was not found.',
+					},
+				}),
+		},
+		modelProviderProtocols: {
+			preflightModel: () =>
+				Promise.resolve({
+					ok: true,
+					value: {
+						type: 'failed',
+						reason: { type: 'provider-model-not-found' },
+						summary: 'Anthropic Messages model was not found.',
+					},
+				}),
+		},
+	}
+}
+
+export function neverCalledProviderBackedPreflightProviders(): CoreRuntime['providers'] {
+	return {
+		sourceControl: { preflightRepository: () => Promise.reject(new Error('Source control should not be called.')) },
+		modelProviderProtocols: { preflightModel: () => Promise.reject(new Error('Model provider should not be called.')) },
+	}
+}
+
 export function createTestCoreServices(): CoreServices & { tx: MemoryStorageTransaction; transactionCalls: () => number } {
 	const storage = createMemoryStorage()
 	const idCounters = new Map<string, number>()

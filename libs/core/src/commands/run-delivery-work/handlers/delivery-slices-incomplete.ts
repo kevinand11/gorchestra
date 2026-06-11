@@ -14,7 +14,7 @@ interface SliceStateCandidate {
 }
 
 export async function handleDeliverySlicesIncomplete(context: DeliveryHandlerContext): Promise<RunDeliveryWorkHandlerResult> {
-	const resolution = await resolveDeliveryWork(context.tx, context.delivery)
+	const resolution = await deliveryWorkResolution(context)
 	if (!resolution.ok) return resolution
 
 	const candidates = await sliceStateCandidates(context)
@@ -24,6 +24,12 @@ export async function handleDeliverySlicesIncomplete(context: DeliveryHandlerCon
 	if (capacityResult !== null) return capacityResult
 
 	return handleFirstExecutableSlice(context, candidates.value, resolution.value)
+}
+
+function deliveryWorkResolution(
+	context: DeliveryHandlerContext,
+): Promise<CoreResult<DeliveryWorkResolution, Exclude<Error, InvalidInputError>>> | CoreResult<DeliveryWorkResolution, never> {
+	return context.preflight === undefined ? resolveDeliveryWork(context.tx, context.delivery) : { ok: true, value: context.preflight }
 }
 
 async function sliceStateCandidates(

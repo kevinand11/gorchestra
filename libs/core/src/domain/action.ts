@@ -12,7 +12,7 @@ export const actionResultPipe = v.discriminate((value) => value.type, {
 		reason: v.string(),
 		cleanupEvidence: v.array(externalOperationEvidencePipe),
 	}),
-	'validate-preflight': v.object({ type: v.eq('validate-preflight'), evidence: validationEvidencePipe }),
+	'validate-preflight': v.object({ type: v.eq('validate-preflight'), checks: v.array(validationEvidencePipe) }),
 	'create-delivery-artifact': v.object({ type: v.eq('create-delivery-artifact'), deliveryArtifactId: idPipe }),
 	'create-slice-artifact': v.object({ type: v.eq('create-slice-artifact'), sliceId: idPipe, sliceArtifactId: idPipe }),
 	'start-slice-execution': v.object({
