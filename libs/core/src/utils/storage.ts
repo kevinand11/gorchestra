@@ -1,7 +1,14 @@
 import { v, type Pipe, type PipeOutput } from 'valleyed'
 
-import type { Result } from './types'
-import { type AuditStamp, type Id, type IsoDateTime, type OperationContext, type RuntimeRecord } from '../domain/commons'
+import {
+	idPipe,
+	isoDateTimePipe,
+	type AuditStamp,
+	type Id,
+	type IsoDateTime,
+	type OperationContext,
+	type RuntimeRecord,
+} from '../domain/commons'
 import type {
 	CoreIdResource,
 	CoreSingletonResource,
@@ -11,22 +18,16 @@ import type {
 	SingletonNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import {
-	coreClockOutputPipe,
-	coreIdOutputPipe,
-	type CoreStorageTransaction,
-	type OpenCoreOptions,
-	type RepositoryTable,
-	type SingletonRepository,
-} from '../services'
+import { type CoreServices, type CoreStorageTransaction, type RepositoryTable, type SingletonRepository } from '../services'
 import { validateCoreServiceOutput } from '../validation'
+import type { Result } from './types'
 
 export type StorageBoundaryError = StorageOperationFailedError | InvalidCoreServiceOutputError
 
 type StorageResult<T> = Result<T, StorageBoundaryError>
 
 export async function withTransaction<TValue, TError>(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	run: (tx: CoreStorageTransaction) => Promise<Result<TValue, TError>>,
 ): Promise<Result<TValue, TError | StorageOperationFailedError>> {
 	try {
@@ -134,7 +135,7 @@ export async function listRecords<TRecord>(
 	}
 }
 
-export function auditStamp(options: OpenCoreOptions, context: OperationContext): Result<AuditStamp, InvalidCoreServiceOutputError> {
+export function auditStamp(options: CoreServices, context: OperationContext): Result<AuditStamp, InvalidCoreServiceOutputError> {
 	const nowResult = nowIso(options)
 	if (!nowResult.ok) return nowResult
 
@@ -149,14 +150,14 @@ export function auditStamp(options: OpenCoreOptions, context: OperationContext):
 	}
 }
 
-export function runtimeRecord(options: OpenCoreOptions): Result<RuntimeRecord, InvalidCoreServiceOutputError> {
+export function runtimeRecord(options: CoreServices): Result<RuntimeRecord, InvalidCoreServiceOutputError> {
 	const nowResult = nowIso(options)
 	if (!nowResult.ok) return nowResult
 
 	return { ok: true, value: { at: nowResult.value } }
 }
 
-export function nextId(options: OpenCoreOptions, brand: string): Result<Id, InvalidCoreServiceOutputError> {
+export function nextId(options: CoreServices, brand: string): Result<Id, InvalidCoreServiceOutputError> {
 	let output: unknown
 	try {
 		output = options.idGenerator.next(brand)
@@ -164,7 +165,7 @@ export function nextId(options: OpenCoreOptions, brand: string): Result<Id, Inva
 		output = undefined
 	}
 
-	const validation = validateCoreServiceOutput(coreIdOutputPipe, output, 'idGenerator', 'next')
+	const validation = validateCoreServiceOutput(idPipe, output, 'idGenerator', 'next')
 	if (!validation.ok) return validation
 
 	return { ok: true, value: validation.value }
@@ -178,7 +179,7 @@ function singletonNotFound(resource: CoreSingletonResource): Result<never, Singl
 	return { ok: false, error: { type: 'not-found-singleton', resource } }
 }
 
-function nowIso(options: OpenCoreOptions): Result<IsoDateTime, InvalidCoreServiceOutputError> {
+function nowIso(options: CoreServices): Result<IsoDateTime, InvalidCoreServiceOutputError> {
 	let output: unknown
 	try {
 		output = options.clock.now()
@@ -186,10 +187,10 @@ function nowIso(options: OpenCoreOptions): Result<IsoDateTime, InvalidCoreServic
 		output = undefined
 	}
 
-	const validation = validateCoreServiceOutput(coreClockOutputPipe, output, 'clock', 'now')
+	const validation = validateCoreServiceOutput(isoDateTimePipe, output, 'clock', 'now')
 	if (!validation.ok) return validation
 
-	return { ok: true, value: validation.value.toISOString() }
+	return { ok: true, value: validation.value }
 }
 
 function validateStorageOutput<TPipe extends Pipe<unknown, unknown>>(

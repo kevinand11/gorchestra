@@ -3,7 +3,7 @@ import { v, type PipeOutput } from 'valleyed'
 import { idPipe, nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
 import { modelPipe, type Model } from '../domain/model'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { updateStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -19,7 +19,7 @@ export type Operation = (input: Input, context: OperationContext) => Promise<Cor
 
 const selectModels = (tx: CoreStorageTransaction) => tx.models
 
-export function createUpdateModelCommand(options: OpenCoreOptions): Operation {
+export function createUpdateModelCommand(options: CoreServices): Operation {
 	return buildCommandHandler('updateModel', updateModelInputPipe, (input, context) =>
 		updateStoredRecordWithAudit(options, context, 'model', selectModels, input.modelId, modelPipe, (model, stamp) => ({
 			...model,

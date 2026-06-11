@@ -1,10 +1,10 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { buildQueryHandler } from './utils'
 import { idPipe } from '../domain/commons'
 import type { SliceWorkState } from '../domain/slice'
 import type { WorkStateQueryError } from '../errors'
-import type { OpenCoreOptions } from '../services'
+import type { CoreServices } from '../services'
+import { buildQueryHandler } from './utils'
 import { withTransaction } from '../utils/storage'
 import type { Result as CoreResult } from '../utils/types'
 import { deriveSliceWorkState } from '../utils/work-state'
@@ -15,7 +15,7 @@ export type Result = SliceWorkState
 export type Error = WorkStateQueryError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createGetSliceWorkStateQuery(options: OpenCoreOptions): Operation {
+export function createGetSliceWorkStateQuery(options: CoreServices): Operation {
 	return buildQueryHandler('getSliceWorkState', getSliceWorkStateInputPipe, (input) =>
 		withTransaction(options, (tx) => deriveSliceWorkState(tx, input.sliceId)),
 	)

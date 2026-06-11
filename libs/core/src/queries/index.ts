@@ -1,11 +1,11 @@
+import type { CoreServices } from '../services'
 import { createGetDeliveryWorkStateQuery } from './get-delivery-work-state'
 import { createGetSliceWorkStateQuery } from './get-slice-work-state'
-import type { OpenCoreOptions } from '../services'
 
 export type * as GetDeliveryWorkState from './get-delivery-work-state'
 export type * as GetSliceWorkState from './get-slice-work-state'
 
-export function createCoreQueries(options: OpenCoreOptions) {
+export function createCoreQueries(options: CoreServices) {
 	return {
 		getDeliveryWorkState: createGetDeliveryWorkStateQuery(options),
 		getSliceWorkState: createGetSliceWorkStateQuery(options),

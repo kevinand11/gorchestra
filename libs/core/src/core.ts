@@ -1,18 +1,17 @@
 import { type Pipe } from 'valleyed'
 
 import * as Commands from './commands'
+import { idPipe, isoDateTimePipe } from './domain/commons'
 import type { CorePreflightError, OpenCoreError } from './errors'
 import * as Queries from './queries'
 import {
-	coreClockOutputPipe,
-	coreIdOutputPipe,
 	coreServicePreflightOutputPipe,
-	openCoreOptionsPipe,
+	coreServicesPipe,
 	type CorePreflightCheck,
 	type CorePreflightChecks,
 	type CorePreflightReport,
 	type CoreServicePreflightOutput,
-	type OpenCoreOptions,
+	type CoreServices,
 } from './services'
 import * as Snapshots from './snapshots'
 import type { Result } from './utils/types'
@@ -25,12 +24,10 @@ export interface GorchestraCore {
 	snapshots: Snapshots.Core
 }
 
-export function openCore(options: OpenCoreOptions): Result<GorchestraCore, OpenCoreError> {
-	const validation = validateCoreInput(openCoreOptionsPipe, options, 'construction', 'openCore')
+export function openCore(services: CoreServices): Result<GorchestraCore, OpenCoreError> {
+	const validation = validateCoreInput(coreServicesPipe, services, 'core', 'openCore')
 
-	if (!validation.ok) {
-		return validation
-	}
+	if (!validation.ok) return validation
 
 	const coreServices = validation.value
 
@@ -47,19 +44,19 @@ export function openCore(options: OpenCoreOptions): Result<GorchestraCore, OpenC
 
 type CorePreflightCheckResult = Result<CorePreflightCheck, CorePreflightError>
 
-async function preflightCore(options: OpenCoreOptions): Promise<Result<CorePreflightReport, CorePreflightError>> {
+async function preflightCore(options: CoreServices): Promise<Result<CorePreflightReport, CorePreflightError>> {
 	const checks = await collectCorePreflightChecks(options)
 	if (!checks.ok) return checks
 
 	return { ok: true, value: corePreflightReport(checks.value) }
 }
 
-async function collectCorePreflightChecks(options: OpenCoreOptions): Promise<Result<CorePreflightChecks, CorePreflightError>> {
+async function collectCorePreflightChecks(options: CoreServices): Promise<Result<CorePreflightChecks, CorePreflightError>> {
 	const storage = await preflightCoreService('storage', () => options.storage.preflight())
 	const secrets = await preflightCoreService('secrets', () => options.secrets.preflight())
 	const sandbox = await preflightCoreService('sandbox', () => options.sandbox.preflight())
-	const clock = preflightRuntimeService('clock', 'now', () => options.clock.now(), coreClockOutputPipe)
-	const idGenerator = preflightRuntimeService('idGenerator', 'next', () => options.idGenerator.next('core-preflight'), coreIdOutputPipe)
+	const clock = preflightRuntimeService('clock', 'now', () => options.clock.now(), isoDateTimePipe)
+	const idGenerator = preflightRuntimeService('idGenerator', 'next', () => options.idGenerator.next('core-preflight'), idPipe)
 	const failure = firstCorePreflightFailure([storage, secrets, sandbox, clock, idGenerator])
 	if (failure !== null) return failure
 
@@ -142,20 +139,20 @@ function failedProbeCheck(): CorePreflightCheck {
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
-	const storage: OpenCoreOptions['storage'] = {
+	const storage: CoreServices['storage'] = {
 		preflight: () => Promise.resolve({ ok: true }),
 		transaction: (fn) => fn({} as never),
 	}
 
-	const secrets: OpenCoreOptions['secrets'] = {
+	const secrets: CoreServices['secrets'] = {
 		preflight: () => Promise.resolve({ ok: true }),
 		resolveSecrets: () => Promise.resolve([]),
 		resolveSecretValues: () => Promise.resolve([]),
 	}
 
-	const sandbox: OpenCoreOptions['sandbox'] = { preflight: () => Promise.resolve({ ok: true }) }
+	const sandbox: CoreServices['sandbox'] = { preflight: () => Promise.resolve({ ok: true }) }
 
-	function openCoreOptions(): OpenCoreOptions {
+	function openCoreOptions(): CoreServices {
 		return {
 			storage,
 			secrets,
@@ -178,14 +175,14 @@ if (import.meta.vitest) {
 			expect(typeof result.value.snapshots.restore).toBe('function')
 		})
 
-		it('rejects invalid construction input with a narrow invalid-input error', () => {
+		it('rejects invalid core input with a narrow invalid-input error', () => {
 			const result = openCore(null as unknown as Parameters<typeof openCore>[0])
 
 			expect(result).toMatchObject({
 				ok: false,
 				error: {
 					type: 'invalid-input',
-					boundary: 'construction',
+					boundary: 'core',
 					operation: 'openCore',
 					pipeError: { messages: [{ message: 'is not an object', value: null }] },
 				},
@@ -239,7 +236,7 @@ if (import.meta.vitest) {
 				ok: false,
 				error: {
 					type: 'invalid-input',
-					boundary: 'construction',
+					boundary: 'core',
 					operation: 'openCore',
 					pipeError: { messages: [expect.objectContaining({ path: 'secrets.resolveSecrets' })] },
 				},
@@ -249,7 +246,7 @@ if (import.meta.vitest) {
 				ok: false,
 				error: {
 					type: 'invalid-input',
-					boundary: 'construction',
+					boundary: 'core',
 					operation: 'openCore',
 					pipeError: { messages: [expect.objectContaining({ path: 'idGenerator.next' })] },
 				},
@@ -269,7 +266,7 @@ if (import.meta.vitest) {
 				ok: false,
 				error: {
 					type: 'invalid-input',
-					boundary: 'construction',
+					boundary: 'core',
 					operation: 'openCore',
 					pipeError: { messages: [expect.objectContaining({ path: 'logger' })] },
 				},
@@ -278,7 +275,7 @@ if (import.meta.vitest) {
 				ok: false,
 				error: {
 					type: 'invalid-input',
-					boundary: 'construction',
+					boundary: 'core',
 					operation: 'openCore',
 					pipeError: { messages: [expect.objectContaining({ path: 'eventSink' })] },
 				},

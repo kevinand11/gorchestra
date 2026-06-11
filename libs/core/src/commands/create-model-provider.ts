@@ -15,7 +15,7 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { OpenCoreOptions } from '../services'
+import type { CoreServices } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { auditStamp, nextId, putValidModelProvider, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -40,7 +40,7 @@ export type Error =
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createCreateModelProviderCommand(options: OpenCoreOptions): Operation {
+export function createCreateModelProviderCommand(options: CoreServices): Operation {
 	return buildCommandHandler('createModelProvider', createModelProviderInputPipe, (input, context) => {
 		const stamp = auditStamp(options, context)
 		if (!stamp.ok) return Promise.resolve(stamp)

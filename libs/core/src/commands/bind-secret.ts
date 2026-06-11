@@ -1,8 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
-import { envNamePipe, secretBindingScopePipe, type SecretBinding } from '../domain/secret'
-import { secretBindingPipe, secretPipe } from '../domain/secret'
+import { envNamePipe, secretBindingPipe, secretBindingScopePipe, secretPipe, type SecretBinding } from '../domain/secret'
 import type {
 	ArchivedSecretReferenceError,
 	DuplicateSecretBindingError,
@@ -11,7 +10,7 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import {
 	archivedSecretReference,
@@ -42,15 +41,11 @@ export type Error =
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createBindSecretCommand(options: OpenCoreOptions): Operation {
+export function createBindSecretCommand(options: CoreServices): Operation {
 	return buildCommandHandler('bindSecret', bindSecretInputPipe, (input, context) => handleBindSecret(options, input, context))
 }
 
-async function handleBindSecret(
-	options: OpenCoreOptions,
-	input: Input,
-	context: OperationContext,
-): Promise<CoreResult<SecretBinding, Error>> {
+async function handleBindSecret(options: CoreServices, input: Input, context: OperationContext): Promise<CoreResult<SecretBinding, Error>> {
 	const stamp = auditStamp(options, context)
 	if (!stamp.ok) return stamp
 

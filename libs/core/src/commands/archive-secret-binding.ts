@@ -9,7 +9,7 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { archiveStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -30,7 +30,7 @@ export type Operation = (input: Input, context: OperationContext) => Promise<Cor
 
 const selectSecretBindings = (tx: CoreStorageTransaction) => tx.secretBindings
 
-export function createArchiveSecretBindingCommand(options: OpenCoreOptions): Operation {
+export function createArchiveSecretBindingCommand(options: CoreServices): Operation {
 	return buildCommandHandler('archiveSecretBinding', archiveSecretBindingInputPipe, (input, context) =>
 		archiveStoredRecordWithAudit(options, context, 'secret-binding', selectSecretBindings, input.secretBindingId, secretBindingPipe),
 	)

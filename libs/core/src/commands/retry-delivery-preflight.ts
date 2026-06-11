@@ -13,7 +13,7 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import {
 	deliveryWorkStateMismatch,
@@ -48,14 +48,14 @@ export type Error =
  */
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createRetryDeliveryPreflightCommand(options: OpenCoreOptions): Operation {
+export function createRetryDeliveryPreflightCommand(options: CoreServices): Operation {
 	return buildCommandHandler('retryDeliveryPreflight', retryDeliveryPreflightInputPipe, (input, context) =>
 		handleRetryDeliveryPreflight(options, input, context),
 	)
 }
 
 async function handleRetryDeliveryPreflight(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	input: Input,
 	context: OperationContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {

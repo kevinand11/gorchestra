@@ -5,7 +5,7 @@ import { idPipe, type AuditStamp, type OperationContext } from '../domain/common
 import { deliveryConfigPipe, type DeliveryConfigRecord } from '../domain/config'
 import type { Delivery, DeliveryWorkState } from '../domain/delivery'
 import type { DeliveryWorkStateMismatchError, InvalidInputError, InvariantViolationError } from '../errors'
-import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import {
@@ -35,14 +35,14 @@ export type Error =
 /** Requires Delivery Work State not closed. Does not clear preflight-failed. */
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createConfigureDeliveryCommand(options: OpenCoreOptions): Operation {
+export function createConfigureDeliveryCommand(options: CoreServices): Operation {
 	return buildCommandHandler('configureDelivery', configureDeliveryInputPipe, (input, context) =>
 		handleConfigureDelivery(options, input, context),
 	)
 }
 
 async function handleConfigureDelivery(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	input: Input,
 	context: OperationContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {

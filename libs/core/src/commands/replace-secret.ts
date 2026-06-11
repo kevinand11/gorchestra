@@ -3,7 +3,7 @@ import { v, type PipeOutput } from 'valleyed'
 import { idPipe, type OperationContext } from '../domain/commons'
 import { secretPipe, secretValueRefPipe, type Secret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { updateStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -19,7 +19,7 @@ export type Operation = (input: Input, context: OperationContext) => Promise<Cor
 
 const selectSecrets = (tx: CoreStorageTransaction) => tx.secrets
 
-export function createReplaceSecretCommand(options: OpenCoreOptions): Operation {
+export function createReplaceSecretCommand(options: CoreServices): Operation {
 	return buildCommandHandler('replaceSecret', replaceSecretInputPipe, (input, context) =>
 		updateStoredRecordWithAudit(options, context, 'secret', selectSecrets, input.secretId, secretPipe, (secret, stamp) => ({
 			...secret,

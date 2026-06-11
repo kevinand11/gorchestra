@@ -8,7 +8,7 @@ import type {
 	InvalidInputError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { RepositoryCommandReferenceError } from '../utils/command-errors'
 import {
@@ -36,7 +36,7 @@ export type Error =
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createUpdateRepositoryConfigCommand(options: OpenCoreOptions): Operation {
+export function createUpdateRepositoryConfigCommand(options: CoreServices): Operation {
 	return buildCommandHandler('updateRepositoryConfig', updateRepositoryConfigInputPipe, (input) =>
 		withTransaction(options, (tx) => updateRepositoryConfig(tx, input)),
 	)

@@ -5,7 +5,7 @@ import type { Error, Result } from './types'
 import { idPipe, type OperationContext } from '../../domain/commons'
 import { deliveryPipe } from '../../domain/delivery'
 import type { InvalidInputError } from '../../errors'
-import type { OpenCoreOptions } from '../../services'
+import type { CoreServices } from '../../services'
 import { buildCommandHandler } from '../../utils/command'
 import { getRequired, withTransaction } from '../../utils/storage'
 import type { Result as CoreResult } from '../../utils/types'
@@ -33,14 +33,11 @@ export type Input = PipeOutput<typeof runDeliveryWorkInputPipe>
  */
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createRunDeliveryWorkCommand(options: OpenCoreOptions): Operation {
+export function createRunDeliveryWorkCommand(options: CoreServices): Operation {
 	return buildCommandHandler('runDeliveryWork', runDeliveryWorkInputPipe, (input) => handleRunDeliveryWork(options, input))
 }
 
-async function handleRunDeliveryWork(
-	options: OpenCoreOptions,
-	input: Input,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+async function handleRunDeliveryWork(options: CoreServices, input: Input): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	return withTransaction(options, async (tx) => {
 		const deliveryResult = await getRequired('delivery', tx.deliveries, input.deliveryId, deliveryPipe)
 		if (!deliveryResult.ok) return deliveryResult

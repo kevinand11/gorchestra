@@ -3,7 +3,7 @@ import { v, type PipeOutput } from 'valleyed'
 import { nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
 import { secretValueRefPipe, type Secret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
-import type { OpenCoreOptions } from '../services'
+import type { CoreServices } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { auditStamp, nextId, putRecordValue, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -17,7 +17,7 @@ export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageO
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createCreateSecretCommand(options: OpenCoreOptions): Operation {
+export function createCreateSecretCommand(options: CoreServices): Operation {
 	return buildCommandHandler('createSecret', createSecretInputPipe, (input, context) => {
 		const stamp = auditStamp(options, context)
 		if (!stamp.ok) return Promise.resolve(stamp)

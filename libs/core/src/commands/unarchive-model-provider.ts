@@ -9,7 +9,7 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { unarchiveStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -30,7 +30,7 @@ export type Operation = (input: Input, context: OperationContext) => Promise<Cor
 
 const selectModelProviders = (tx: CoreStorageTransaction) => tx.modelProviders
 
-export function createUnarchiveModelProviderCommand(options: OpenCoreOptions): Operation {
+export function createUnarchiveModelProviderCommand(options: CoreServices): Operation {
 	return buildCommandHandler('unarchiveModelProvider', unarchiveModelProviderInputPipe, (input, context) =>
 		unarchiveStoredRecordWithAudit(options, context, 'model-provider', selectModelProviders, input.modelProviderId, modelProviderPipe),
 	)

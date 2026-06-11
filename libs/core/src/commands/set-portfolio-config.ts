@@ -3,7 +3,7 @@ import { v, type PipeOutput } from 'valleyed'
 import type { OperationContext } from '../domain/commons'
 import { portfolioConfigPipe, type PortfolioConfigRecord } from '../domain/config'
 import type { InvalidInputError } from '../errors'
-import type { OpenCoreOptions } from '../services'
+import type { CoreServices } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import {
@@ -24,7 +24,7 @@ export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigComm
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createSetPortfolioConfigCommand(options: OpenCoreOptions): Operation {
+export function createSetPortfolioConfigCommand(options: CoreServices): Operation {
 	return buildCommandHandler('setPortfolioConfig', setPortfolioConfigInputPipe, (input, context) =>
 		withAuditStampTransaction(
 			options,

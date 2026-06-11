@@ -21,11 +21,11 @@ import { secretPipe, type Secret, type SecretBindingScope } from '../domain/secr
 import type {
 	AlreadyArchivedError,
 	ArchivableCoreResource,
-	CoreIdResource,
-	CoreSingletonResource,
 	ArchivedModelProviderReferenceError,
 	ArchivedModelReferenceError,
 	ArchivedSecretReferenceError,
+	CoreIdResource,
+	CoreSingletonResource,
 	DeliveryWorkStateMismatchError,
 	DuplicateRepositoryTargetError,
 	DuplicateSecretBindingError,
@@ -37,7 +37,8 @@ import type {
 	SecretNotActiveError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreStorageTransaction, OpenCoreOptions, RepositoryTable, SingletonRepository } from '../services'
+import type { CoreServices, CoreStorageTransaction, RepositoryTable, SingletonRepository } from '../services'
+import type { StorageBoundaryError } from '../utils/storage'
 import {
 	auditStamp,
 	getRecord,
@@ -49,7 +50,6 @@ import {
 	putSingleton,
 	withTransaction,
 } from '../utils/storage'
-import type { StorageBoundaryError } from '../utils/storage'
 import type { Result } from '../utils/types'
 import { deriveDeliveryWorkState } from '../utils/work-state'
 
@@ -101,7 +101,7 @@ export async function putSingletonValue<TRecord>(
 }
 
 export function updateStoredRecordWithAudit<TRecord extends { id: Id }>(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	context: OperationContext,
 	resource: CoreIdResource,
 	repository: (tx: CoreStorageTransaction) => RepositoryTable<TRecord>,
@@ -118,7 +118,7 @@ export function updateStoredRecordWithAudit<TRecord extends { id: Id }>(
 }
 
 export function withAuditStampTransaction<TValue, TError>(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	context: OperationContext,
 	run: (tx: CoreStorageTransaction, stamp: AuditStamp) => Promise<Result<TValue, TError>>,
 ): Promise<Result<TValue, TError | InvalidCoreServiceOutputError | StorageOperationFailedError>> {
@@ -129,7 +129,7 @@ export function withAuditStampTransaction<TValue, TError>(
 }
 
 export function prepareAuthorizedAction(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	context: OperationContext,
 ): Result<{ stamp: AuditStamp; actionId: Id }, InvalidCoreServiceOutputError> {
 	const stampResult = auditStamp(options, context)
@@ -336,7 +336,7 @@ export function isArchived(archivePeriods: ArchivePeriod[]): boolean {
 }
 
 export function archiveStoredRecordWithAudit<TRecord extends ArchivableRecord & { id: Id }>(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	context: OperationContext,
 	resource: ArchivableCoreResource,
 	repository: (tx: CoreStorageTransaction) => RepositoryTable<TRecord>,
@@ -364,7 +364,7 @@ export function archiveStoredRecordWithAudit<TRecord extends ArchivableRecord & 
 }
 
 export function unarchiveStoredRecordWithAudit<TRecord extends ArchivableRecord & { id: Id }>(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	context: OperationContext,
 	resource: ArchivableCoreResource,
 	repository: (tx: CoreStorageTransaction) => RepositoryTable<TRecord>,

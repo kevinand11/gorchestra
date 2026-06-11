@@ -4,7 +4,7 @@ import { idPipe, type OperationContext } from '../domain/commons'
 import { projectConfigPipe } from '../domain/config'
 import { projectPipe, type Project } from '../domain/project'
 import type { InvalidInputError } from '../errors'
-import type { OpenCoreOptions } from '../services'
+import type { CoreServices } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import {
@@ -26,7 +26,7 @@ export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigComm
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createSetProjectConfigCommand(options: OpenCoreOptions): Operation {
+export function createSetProjectConfigCommand(options: CoreServices): Operation {
 	return buildCommandHandler('setProjectConfig', setProjectConfigInputPipe, (input, context) =>
 		withAuditStampTransaction(options, context, async (tx, stamp): Promise<CoreResult<Project, Exclude<Error, InvalidInputError>>> => {
 			const projectResult = await getRequired('project', tx.projects, input.projectId, projectPipe)

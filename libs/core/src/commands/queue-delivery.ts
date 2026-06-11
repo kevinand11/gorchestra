@@ -2,16 +2,16 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
 import type { InvalidInputError } from '../errors'
-import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { DeliveryActionCommandError } from '../utils/command-errors'
 import {
-	type DeliveryActionCommandResult,
 	deliveryWorkStateMismatch,
 	prepareAuthorizedAction,
 	putRecord,
 	readDeliveryWorkState,
 	withTransaction,
+	type DeliveryActionCommandResult,
 } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -25,12 +25,12 @@ export type Error = DeliveryActionCommandError
 /** Requires Delivery Work State unqueued; records exactly one queue-delivery Action; duplicate calls fail with delivery-work-state-mismatch. */
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createQueueDeliveryCommand(options: OpenCoreOptions): Operation {
+export function createQueueDeliveryCommand(options: CoreServices): Operation {
 	return buildCommandHandler('queueDelivery', queueDeliveryInputPipe, (input, context) => handleQueueDelivery(options, input, context))
 }
 
 async function handleQueueDelivery(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	input: Input,
 	context: OperationContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {

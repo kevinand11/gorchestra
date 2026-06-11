@@ -1,8 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe, type OperationContext } from '../domain/commons'
-import { revisionOutputProposalPipe } from '../domain/revision'
 import type { Revision } from '../domain/revision'
+import { revisionOutputProposalPipe } from '../domain/revision'
 import type { CommandStubError } from '../errors'
 import { buildStubCommand } from '../utils/command'
 import type { Result as CoreResult } from '../utils/types'

@@ -17,7 +17,7 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../../errors'
-import type { CoreStorageTransaction, OpenCoreOptions } from '../../services'
+import type { CoreServices, CoreStorageTransaction } from '../../services'
 import { buildCommandHandler } from '../../utils/command'
 import { auditStamp, getRequired, listRecords, putRecord, withTransaction } from '../../utils/command-storage'
 import type { Result as CoreResult } from '../../utils/types'
@@ -41,14 +41,14 @@ export type Error =
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createAcceptPlanOutputCommand(options: OpenCoreOptions): Operation {
+export function createAcceptPlanOutputCommand(options: CoreServices): Operation {
 	return buildCommandHandler('acceptPlanOutput', acceptPlanOutputInputPipe, (input, context) =>
 		handleAcceptPlanOutput(options, input, context),
 	)
 }
 
 async function handleAcceptPlanOutput(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	input: Input,
 	context: OperationContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
@@ -60,7 +60,7 @@ async function handleAcceptPlanOutput(
 
 async function acceptPlanOutput(
 	tx: CoreStorageTransaction,
-	options: OpenCoreOptions,
+	options: CoreServices,
 	input: Input,
 	stamp: Parameters<typeof prepareMaterializationPlan>[2],
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
@@ -70,7 +70,7 @@ async function acceptPlanOutput(
 
 async function acceptLoadedPlan(
 	tx: CoreStorageTransaction,
-	options: OpenCoreOptions,
+	options: CoreServices,
 	input: Input,
 	stamp: Parameters<typeof prepareMaterializationPlan>[2],
 	plan: Parameters<typeof prepareMaterializationPlan>[1],
@@ -83,7 +83,7 @@ async function acceptLoadedPlan(
 
 async function acceptWithExistingRefs(
 	tx: CoreStorageTransaction,
-	options: OpenCoreOptions,
+	options: CoreServices,
 	input: Input,
 	stamp: Parameters<typeof prepareMaterializationPlan>[2],
 	plan: Parameters<typeof prepareMaterializationPlan>[1],

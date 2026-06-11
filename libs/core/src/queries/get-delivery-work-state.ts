@@ -1,10 +1,10 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { buildQueryHandler } from './utils'
 import { idPipe } from '../domain/commons'
 import type { DeliveryWorkState } from '../domain/delivery'
 import type { WorkStateQueryError } from '../errors'
-import type { OpenCoreOptions } from '../services'
+import type { CoreServices } from '../services'
+import { buildQueryHandler } from './utils'
 import { withTransaction } from '../utils/storage'
 import type { Result as CoreResult } from '../utils/types'
 import { deriveDeliveryWorkState } from '../utils/work-state'
@@ -15,7 +15,7 @@ export type Result = DeliveryWorkState
 export type Error = WorkStateQueryError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createGetDeliveryWorkStateQuery(options: OpenCoreOptions): Operation {
+export function createGetDeliveryWorkStateQuery(options: CoreServices): Operation {
 	return buildQueryHandler('getDeliveryWorkState', getDeliveryWorkStateInputPipe, (input) =>
 		withTransaction(options, (tx) => deriveDeliveryWorkState(tx, input.deliveryId)),
 	)

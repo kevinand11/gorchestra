@@ -5,7 +5,7 @@ import { planConfigPipe } from '../domain/config'
 import { type Plan } from '../domain/plan'
 import { projectPipe } from '../domain/project'
 import type { InvalidInputError } from '../errors'
-import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import {
@@ -33,11 +33,11 @@ export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigComm
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createCreatePlanCommand(options: OpenCoreOptions): Operation {
+export function createCreatePlanCommand(options: CoreServices): Operation {
 	return buildCommandHandler('createPlan', createPlanInputPipe, (input, context) => handleCreatePlan(options, input, context))
 }
 
-async function handleCreatePlan(options: OpenCoreOptions, input: Input, context: OperationContext): Promise<CoreResult<Plan, Error>> {
+async function handleCreatePlan(options: CoreServices, input: Input, context: OperationContext): Promise<CoreResult<Plan, Error>> {
 	const stampResult = auditStamp(options, context)
 	if (!stampResult.ok) return stampResult
 

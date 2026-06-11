@@ -4,16 +4,16 @@ import type { Action } from '../domain/action'
 import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
 import type { Delivery, DeliveryIntegration, DeliveryWorkState } from '../domain/delivery'
 import type { InvalidInputError } from '../errors'
-import type { CoreStorageTransaction, OpenCoreOptions } from '../services'
+import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { DeliveryActionCommandError } from '../utils/command-errors'
 import {
-	type DeliveryActionCommandResult,
 	deliveryWorkStateMismatch,
 	prepareAuthorizedAction,
 	putRecord,
 	readDeliveryWorkState,
 	withTransaction,
+	type DeliveryActionCommandResult,
 } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -27,12 +27,12 @@ export type Error = DeliveryActionCommandError
 /** Requires Delivery Work State ready-to-ship; records exactly one ship-delivery Action without post-merge validation in v1; duplicate calls fail with delivery-work-state-mismatch. */
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-export function createShipDeliveryCommand(options: OpenCoreOptions): Operation {
+export function createShipDeliveryCommand(options: CoreServices): Operation {
 	return buildCommandHandler('shipDelivery', shipDeliveryInputPipe, (input, context) => handleShipDelivery(options, input, context))
 }
 
 async function handleShipDelivery(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	input: Input,
 	context: OperationContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {

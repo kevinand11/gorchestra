@@ -9,7 +9,7 @@ import type { SecretBindingScope } from './domain/secret'
 
 export type CorePreflightCheckName = 'storage' | 'secrets' | 'sandbox' | 'clock' | 'idGenerator'
 
-export type CoreInputBoundary = 'construction' | 'command' | 'query' | 'snapshot'
+export type CoreInputBoundary = 'core' | 'command' | 'query' | 'snapshot'
 
 export interface InvalidInputError {
 	type: 'invalid-input'

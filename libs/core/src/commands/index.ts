@@ -1,3 +1,4 @@
+import type { CoreServices } from '../services'
 import { createAbandonDeliveryCommand } from './abandon-delivery'
 import { createAcceptPlanOutputCommand } from './accept-plan-output'
 import { createAcceptRevisionOutputCommand } from './accept-revision-output'
@@ -32,7 +33,6 @@ import { createUnarchiveSecretBindingCommand } from './unarchive-secret-binding'
 import { createUpdateModelCommand } from './update-model'
 import { createUpdateModelProviderCommand } from './update-model-provider'
 import { createUpdateRepositoryConfigCommand } from './update-repository-config'
-import type { OpenCoreOptions } from '../services'
 
 export type * as AbandonDelivery from './abandon-delivery'
 export type * as AcceptPlanOutput from './accept-plan-output'
@@ -69,7 +69,7 @@ export type * as UpdateModel from './update-model'
 export type * as UpdateModelProvider from './update-model-provider'
 export type * as UpdateRepositoryConfig from './update-repository-config'
 
-export function createCoreCommands(options: OpenCoreOptions) {
+export function createCoreCommands(options: CoreServices) {
 	return {
 		setPortfolioConfig: createSetPortfolioConfigCommand(options),
 		createModelProvider: createCreateModelProviderCommand(options),

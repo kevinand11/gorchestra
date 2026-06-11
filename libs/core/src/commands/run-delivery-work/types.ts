@@ -12,7 +12,7 @@ import type {
 	SingletonNotFoundError,
 	StorageOperationFailedError,
 } from '../../errors'
-import type { CoreStorageTransaction, OpenCoreOptions } from '../../services'
+import type { CoreServices, CoreStorageTransaction } from '../../services'
 import type { Result as CoreResult } from '../../utils/types'
 
 export type Result =
@@ -43,7 +43,7 @@ export type Error =
 	| NotImplementedError
 
 export interface RunDeliveryWorkContext {
-	options: OpenCoreOptions
+	options: CoreServices
 	tx: CoreStorageTransaction
 }
 

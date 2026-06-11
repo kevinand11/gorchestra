@@ -1,15 +1,14 @@
 import type { ExistingRefIndex, PlanOutputMaterializationPlan, PlannedDelivery, PlannedLink, PlannedMemory, PlannedSlice } from './types'
 import type { AuditStamp, Id } from '../../domain/commons'
 import type { GraphNodeRef, LinkType } from '../../domain/graph'
-import type { Plan } from '../../domain/plan'
-import type { PlanOutputProposal, ProposedDelivery, ProposedGraphRef, ProposedMemory } from '../../domain/plan'
+import type { Plan, PlanOutputProposal, ProposedDelivery, ProposedGraphRef, ProposedMemory } from '../../domain/plan'
 import type { InvalidCoreServiceOutputError, InvalidPlanOutputError } from '../../errors'
-import type { OpenCoreOptions } from '../../services'
+import type { CoreServices } from '../../services'
 import { nextId } from '../../utils/command-storage'
 import type { Result } from '../../utils/types'
 
 export function prepareMaterializationPlan(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	plan: Plan,
 	stamp: AuditStamp,
 	output: PlanOutputProposal,
@@ -25,7 +24,7 @@ export function prepareMaterializationPlan(
 }
 
 function prepareWithDeliveries(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	plan: Plan,
 	stamp: AuditStamp,
 	output: PlanOutputProposal,
@@ -39,7 +38,7 @@ function prepareWithDeliveries(
 }
 
 function prepareWithMemories(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	plan: Plan,
 	stamp: AuditStamp,
 	output: PlanOutputProposal,
@@ -68,7 +67,7 @@ function validateBasicOutput(output: PlanOutputProposal): Result<void, InvalidPl
 }
 
 function plannedDeliveries(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	proposedDeliveries: ProposedDelivery[],
 ): Result<PlannedDelivery[], InvalidCoreServiceOutputError> {
 	const deliveries: PlannedDelivery[] = []
@@ -85,7 +84,7 @@ function plannedDeliveries(
 }
 
 function plannedSlices(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	delivery: ProposedDelivery,
 	deliveryId: Id,
 ): Result<PlannedSlice[], InvalidCoreServiceOutputError> {
@@ -100,7 +99,7 @@ function plannedSlices(
 }
 
 function plannedMemories(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	proposedMemories: ProposedMemory[],
 ): Result<PlannedMemory[], InvalidCoreServiceOutputError> {
 	const memories: PlannedMemory[] = []
@@ -114,7 +113,7 @@ function plannedMemories(
 }
 
 function plannedLinks(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	plan: Plan,
 	output: PlanOutputProposal,
 	existing: ExistingRefIndex,
@@ -134,7 +133,7 @@ function plannedLinks(
 }
 
 function plannedLinksWithDependencies(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	plan: Plan,
 	output: PlanOutputProposal,
 	existing: ExistingRefIndex,
@@ -160,7 +159,7 @@ function plannedLinksWithDependencies(
 }
 
 function dependencyLinkPlan(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	deliveries: PlannedDelivery[],
 ): Result<
 	Pick<PlanOutputMaterializationPlan, 'deliveryDependencyLinks' | 'sliceDependencyLinks'>,
@@ -175,14 +174,14 @@ function dependencyLinkPlan(
 }
 
 function deliveryDependencyLinkPlan(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	deliveries: PlannedDelivery[],
 ): Result<PlannedLink[], InvalidCoreServiceOutputError | InvalidPlanOutputError> {
 	return collectLinks(deliveries, (delivery) => deliveryDependencyLinksForDelivery(options, delivery, deliveries))
 }
 
 function deliveryDependencyLinksForDelivery(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	delivery: PlannedDelivery,
 	deliveries: PlannedDelivery[],
 ): Result<PlannedLink[], InvalidCoreServiceOutputError | InvalidPlanOutputError> {
@@ -197,7 +196,7 @@ function deliveryDependencyLinksForDelivery(
 }
 
 function deliveryDependencyLink(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	delivery: PlannedDelivery,
 	dependencyId: Id,
 ): Result<PlannedLink, InvalidCoreServiceOutputError> {
@@ -205,7 +204,7 @@ function deliveryDependencyLink(
 }
 
 function proposedDeliveryDependencyLink(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	delivery: PlannedDelivery,
 	key: string,
 	deliveries: PlannedDelivery[],
@@ -217,7 +216,7 @@ function proposedDeliveryDependencyLink(
 }
 
 function sliceDependencyLinkPlan(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	deliveries: PlannedDelivery[],
 ): Result<PlannedLink[], InvalidCoreServiceOutputError | InvalidPlanOutputError> {
 	const slices = deliveries.flatMap((delivery) => delivery.slices)
@@ -225,7 +224,7 @@ function sliceDependencyLinkPlan(
 }
 
 function sliceDependencyLinksForSlice(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	slice: PlannedSlice,
 	slices: PlannedSlice[],
 ): Result<PlannedLink[], InvalidCoreServiceOutputError | InvalidPlanOutputError> {
@@ -233,7 +232,7 @@ function sliceDependencyLinksForSlice(
 }
 
 function proposedSliceDependencyLink(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	slice: PlannedSlice,
 	key: string,
 	slices: PlannedSlice[],
@@ -245,7 +244,7 @@ function proposedSliceDependencyLink(
 }
 
 function memoryLinkPlan(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	output: PlanOutputProposal,
 	existing: ExistingRefIndex,
 	deliveries: PlannedDelivery[],
@@ -255,7 +254,7 @@ function memoryLinkPlan(
 }
 
 function memoryLinksForMemory(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	output: PlanOutputProposal,
 	existing: ExistingRefIndex,
 	deliveries: PlannedDelivery[],
@@ -266,7 +265,7 @@ function memoryLinksForMemory(
 }
 
 function memoryLink(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	output: PlanOutputProposal,
 	existing: ExistingRefIndex,
 	deliveries: PlannedDelivery[],
@@ -279,7 +278,7 @@ function memoryLink(
 }
 
 function producedMemoryLinkPlan(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	plan: Plan,
 	memories: PlannedMemory[],
 ): Result<PlannedLink[], InvalidCoreServiceOutputError | InvalidPlanOutputError> {
@@ -303,7 +302,7 @@ function collectLinks<TItem>(
 }
 
 function plannedLink(
-	options: OpenCoreOptions,
+	options: CoreServices,
 	type: PlannedLink['type'],
 	from: PlannedLink['from'],
 	to: PlannedLink['to'],
