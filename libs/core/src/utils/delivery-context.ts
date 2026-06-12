@@ -39,7 +39,7 @@ export interface SliceStateSummary {
 	state: SliceWorkState
 }
 
-export interface StoredDeliveryWorkContext {
+export interface DeliveryContext {
 	phase: 'stored'
 	delivery: Delivery
 	project: Project
@@ -54,7 +54,7 @@ export interface StoredDeliveryWorkContext {
 	sliceArtifacts: SliceArtifact[]
 	reviewSurfaces: ReviewSurface[]
 	deliveryState: DeliveryWorkState
-	sliceStates?: SliceStateSummary[]
+	sliceStates: SliceStateSummary[]
 }
 
 export interface ModelProviderResolvedAccess {
@@ -62,7 +62,7 @@ export interface ModelProviderResolvedAccess {
 	headers: Array<{ name: string; plaintext: string }>
 }
 
-export type RuntimeDeliveryWorkContext = Omit<StoredDeliveryWorkContext, 'phase'> & {
+export type RuntimeDeliveryWorkContext = Omit<DeliveryContext, 'phase'> & {
 	phase: 'runtime'
 	workConfig: DeliveryWorkConfig
 	executionModel: Model
@@ -75,23 +75,23 @@ export type RuntimeDeliveryWorkContextUpgrade =
 	| { type: 'runtime-context'; context: RuntimeDeliveryWorkContext; snapshot: DeliveryPreflightSnapshot }
 	| { type: 'failed-preflight'; checks: ValidationEvidence[]; snapshot: DeliveryPreflightSnapshot }
 
-export type StoredDeliveryWorkContextError = WorkStateDerivationError
+export type DeliveryContextError = WorkStateDerivationError
 export type RuntimeDeliveryWorkContextError = DeliveryPreflightError
 
-export async function buildStoredDeliveryWorkContext(
+export async function buildDeliveryContext(
 	tx: CoreStorageTransaction,
 	deliveryId: Delivery['id'],
-): Promise<Result<StoredDeliveryWorkContext, StoredDeliveryWorkContextError>> {
-	const root = await readStoredDeliveryWorkRoot(tx, deliveryId)
+): Promise<Result<DeliveryContext, DeliveryContextError>> {
+	const root = await readDeliveryContextRoot(tx, deliveryId)
 	if (!root.ok) return root
 
-	const records = await readStoredDeliveryWorkRecords(tx)
+	const records = await readDeliveryContextRecords(tx)
 	if (!records.ok) return records
 
 	const deliveryState = await deriveDeliveryWorkState(tx, deliveryId)
 	if (!deliveryState.ok) return deliveryState
 
-	return storedDeliveryWorkContext(
+	return deliveryContext(
 		root.value,
 		records.value,
 		deliveryState.value,
@@ -99,7 +99,7 @@ export async function buildStoredDeliveryWorkContext(
 	)
 }
 
-interface StoredDeliveryWorkRoot {
+interface DeliveryContextRoot {
 	delivery: Delivery
 	project: Project
 	repository: Repository
@@ -107,7 +107,7 @@ interface StoredDeliveryWorkRoot {
 	projectConfig: ProjectConfigRecord | null
 }
 
-interface StoredDeliveryWorkRecords {
+interface DeliveryContextRecords {
 	slices: Slice[]
 	links: Link[]
 	actions: Action[]
@@ -117,18 +117,18 @@ interface StoredDeliveryWorkRecords {
 	reviewSurfaces: ReviewSurface[]
 }
 
-async function readStoredDeliveryWorkRoot(
+async function readDeliveryContextRoot(
 	tx: CoreStorageTransaction,
 	deliveryId: Delivery['id'],
-): Promise<Result<StoredDeliveryWorkRoot, StoredDeliveryWorkContextError>> {
+): Promise<Result<DeliveryContextRoot, DeliveryContextError>> {
 	const delivery = await getRequired('delivery', tx.deliveries, deliveryId, deliveryPipe)
-	return delivery.ok ? readStoredDeliveryWorkRootForDelivery(tx, delivery.value) : delivery
+	return delivery.ok ? readDeliveryContextRootForDelivery(tx, delivery.value) : delivery
 }
 
-async function readStoredDeliveryWorkRootForDelivery(
+async function readDeliveryContextRootForDelivery(
 	tx: CoreStorageTransaction,
 	delivery: Delivery,
-): Promise<Result<StoredDeliveryWorkRoot, StoredDeliveryWorkContextError>> {
+): Promise<Result<DeliveryContextRoot, DeliveryContextError>> {
 	const [project, repository, portfolioConfig] = await Promise.all([
 		getRequired('project', tx.projects, delivery.projectId, projectPipe),
 		getRequired('repository', tx.repositories, delivery.target.repositoryId, repositoryPipe),
@@ -141,16 +141,16 @@ async function readStoredDeliveryWorkRootForDelivery(
 	const repositoryRecord = resultValue(repository)
 	const projectBoundary = repositoryProjectBoundary(projectRecord, repositoryRecord)
 	return projectBoundary.ok
-		? { ok: true, value: storedDeliveryWorkRoot(delivery, projectRecord, repositoryRecord, resultValue(portfolioConfig)) }
+		? { ok: true, value: deliveryContextRoot(delivery, projectRecord, repositoryRecord, resultValue(portfolioConfig)) }
 		: projectBoundary
 }
 
-function storedDeliveryWorkRoot(
+function deliveryContextRoot(
 	delivery: Delivery,
 	project: Project,
 	repository: Repository,
 	portfolioConfig: PortfolioConfigRecord | null,
-): StoredDeliveryWorkRoot {
+): DeliveryContextRoot {
 	return { delivery, project, repository, portfolioConfig, projectConfig: project.config }
 }
 
@@ -179,17 +179,15 @@ async function readOptionalPortfolioConfig(
 	}
 }
 
-async function readStoredDeliveryWorkRecords(
-	tx: CoreStorageTransaction,
-): Promise<Result<StoredDeliveryWorkRecords, StoredDeliveryWorkContextError>> {
-	const records = await readStoredDeliveryWorkRecordResults(tx)
+async function readDeliveryContextRecords(tx: CoreStorageTransaction): Promise<Result<DeliveryContextRecords, DeliveryContextError>> {
+	const records = await readDeliveryContextRecordResults(tx)
 	const failure = firstFailure(records)
-	return failure ?? okStoredDeliveryWorkRecords(records)
+	return failure ?? okDeliveryContextRecords(records)
 }
 
-function okStoredDeliveryWorkRecords(
-	records: Awaited<ReturnType<typeof readStoredDeliveryWorkRecordResults>>,
-): Result<StoredDeliveryWorkRecords, StoredDeliveryWorkContextError> {
+function okDeliveryContextRecords(
+	records: Awaited<ReturnType<typeof readDeliveryContextRecordResults>>,
+): Result<DeliveryContextRecords, DeliveryContextError> {
 	const [slices, links, actions, agentRuns, deliveryArtifacts, sliceArtifacts, reviewSurfaces] = records
 	return {
 		ok: true,
@@ -205,7 +203,7 @@ function okStoredDeliveryWorkRecords(
 	}
 }
 
-async function readStoredDeliveryWorkRecordResults(tx: CoreStorageTransaction) {
+async function readDeliveryContextRecordResults(tx: CoreStorageTransaction) {
 	return Promise.all([
 		listRecords('slice', tx.slices, slicePipe),
 		listRecords('link', tx.links, linkPipe),
@@ -221,7 +219,7 @@ async function sliceStatesForDelivery(
 	tx: CoreStorageTransaction,
 	slices: Slice[],
 	deliveryId: Delivery['id'],
-): Promise<Result<SliceStateSummary[], StoredDeliveryWorkContextError>> {
+): Promise<Result<SliceStateSummary[], DeliveryContextError>> {
 	const summaries: SliceStateSummary[] = []
 	for (const slice of deliverySlices(slices, deliveryId)) {
 		const state = await deriveSliceWorkState(tx, slice.id)
@@ -252,7 +250,7 @@ function deliverySlices(slices: Slice[], deliveryId: Delivery['id']): Slice[] {
 export async function upgradeToRuntimeDeliveryWorkContext(
 	services: CoreServices,
 	tx: CoreStorageTransaction,
-	stored: StoredDeliveryWorkContext,
+	stored: DeliveryContext,
 ): Promise<Result<RuntimeDeliveryWorkContextUpgrade, RuntimeDeliveryWorkContextError>> {
 	const localPreflight = await preflightDeliveryWork(tx, stored.delivery)
 	return localPreflight.ok ? runtimeContextUpgradeForPreflight(services, tx, stored, localPreflight.value) : localPreflight
@@ -261,7 +259,7 @@ export async function upgradeToRuntimeDeliveryWorkContext(
 async function runtimeContextUpgradeForPreflight(
 	services: CoreServices,
 	tx: CoreStorageTransaction,
-	stored: StoredDeliveryWorkContext,
+	stored: DeliveryContext,
 	preflight: DeliveryPreflight,
 ): Promise<Result<RuntimeDeliveryWorkContextUpgrade, RuntimeDeliveryWorkContextError>> {
 	return preflight.type === 'failed'
@@ -272,7 +270,7 @@ async function runtimeContextUpgradeForPreflight(
 async function runtimeContextUpgradeForPassedPreflight(
 	services: CoreServices,
 	tx: CoreStorageTransaction,
-	stored: StoredDeliveryWorkContext,
+	stored: DeliveryContext,
 	preflight: PassedDeliveryPreflight,
 ): Promise<Result<RuntimeDeliveryWorkContextUpgrade, RuntimeDeliveryWorkContextError>> {
 	const modelFacts = await runtimeModelFacts(tx, preflight.modelId)
@@ -283,7 +281,7 @@ async function runtimeContextUpgradeForPassedPreflight(
 }
 
 function runtimeContextUpgradeWithAccess(
-	stored: StoredDeliveryWorkContext,
+	stored: DeliveryContext,
 	preflight: PassedDeliveryPreflight,
 	modelFacts: { model: Model; modelProvider: ModelProvider },
 	access: RuntimeProviderAccess,
@@ -294,7 +292,7 @@ function runtimeContextUpgradeWithAccess(
 }
 
 function okRuntimeDeliveryWorkContext(
-	stored: StoredDeliveryWorkContext,
+	stored: DeliveryContext,
 	preflight: PassedDeliveryPreflight,
 	modelFacts: { model: Model; modelProvider: ModelProvider },
 	access: Extract<RuntimeProviderAccess, { type: 'resolved' }>,
@@ -310,7 +308,7 @@ function okRuntimeDeliveryWorkContext(
 }
 
 function runtimeDeliveryWorkContext(
-	stored: StoredDeliveryWorkContext,
+	stored: DeliveryContext,
 	preflight: PassedDeliveryPreflight,
 	modelFacts: { model: Model; modelProvider: ModelProvider },
 	access: Extract<RuntimeProviderAccess, { type: 'resolved' }>,
@@ -508,12 +506,12 @@ function validationEvidence(operation: ValidationEvidence['operation']['type'], 
 	return { type: 'validation', operation: { type: operation }, passed, summary }
 }
 
-function storedDeliveryWorkContext(
-	root: StoredDeliveryWorkRoot,
-	records: StoredDeliveryWorkRecords,
+function deliveryContext(
+	root: DeliveryContextRoot,
+	records: DeliveryContextRecords,
 	deliveryState: DeliveryWorkState,
-	sliceStates: Result<SliceStateSummary[], StoredDeliveryWorkContextError>,
-): Result<StoredDeliveryWorkContext, StoredDeliveryWorkContextError> {
+	sliceStates: Result<SliceStateSummary[], DeliveryContextError>,
+): Result<DeliveryContext, DeliveryContextError> {
 	if (!sliceStates.ok) return sliceStates
 
 	return {
@@ -527,11 +525,11 @@ if (import.meta.vitest) {
 	const { createTestCoreServices, localStamp, seedDelivery, seedProject, seedSecret, seedSelectableModel, seedSlice } =
 		await import('./test-helpers')
 
-	describe('buildStoredDeliveryWorkContext', () => {
+	describe('buildDeliveryContext', () => {
 		it('loads root-level Delivery work facts and derives unqueued state', async () => {
 			const options = storedContextFixture()
 
-			const result = await buildStoredDeliveryWorkContext(options.tx, 'delivery-1')
+			const result = await buildDeliveryContext(options.tx, 'delivery-1')
 
 			expect(result).toMatchObject({ ok: true, value: { phase: 'stored', deliveryState: { type: 'unqueued' } } })
 			if (result.ok) {
@@ -546,7 +544,7 @@ if (import.meta.vitest) {
 			seedSlice(options.tx, 'slice-2', 'delivery-1')
 			seedSlice(options.tx, 'slice-1', 'delivery-1')
 
-			const result = await buildStoredDeliveryWorkContext(options.tx, 'delivery-1')
+			const result = await buildDeliveryContext(options.tx, 'delivery-1')
 
 			expect(result).toMatchObject({
 				ok: true,
@@ -563,7 +561,7 @@ if (import.meta.vitest) {
 			const options = storedContextFixture()
 			options.tx.repositories.records.get('repository-1')!.projectId = 'other-project'
 
-			const result = await buildStoredDeliveryWorkContext(options.tx, 'delivery-1')
+			const result = await buildDeliveryContext(options.tx, 'delivery-1')
 
 			expect(result).toEqual({
 				ok: false,
@@ -573,7 +571,7 @@ if (import.meta.vitest) {
 
 		it('returns failed preflight checks when runtime context needs missing Portfolio Config', async () => {
 			const options = storedContextFixture()
-			const stored = await buildStoredDeliveryWorkContext(options.tx, 'delivery-1')
+			const stored = await buildDeliveryContext(options.tx, 'delivery-1')
 			if (!stored.ok) throw new Error('Expected stored context.')
 
 			const result = await upgradeToRuntimeDeliveryWorkContext(options, options.tx, stored.value)
@@ -599,7 +597,7 @@ if (import.meta.vitest) {
 			seedSelectableModel(options.tx, 'model-1')
 			seedPortfolioConfig(options)
 			options.secrets.resolveSecretValues = () => Promise.resolve({ 'secret-1': 'github-token' })
-			const stored = await buildStoredDeliveryWorkContext(options.tx, 'delivery-1')
+			const stored = await buildDeliveryContext(options.tx, 'delivery-1')
 			if (!stored.ok) throw new Error('Expected stored context.')
 
 			const result = await upgradeToRuntimeDeliveryWorkContext(options, options.tx, stored.value)
