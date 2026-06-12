@@ -148,7 +148,7 @@ if (import.meta.vitest) {
 					deliveryId: 'delivery-1',
 					config: {
 						model: deliveryModelConfig('execution-model'),
-						work: { maxActiveSliceSlots: 2, maxCorrectionRetriesPerFailure: 3, modelTimeoutMs: 1000 },
+						work: { maxProcessableSliceSlots: 2, maxCorrectionRetriesPerFailure: 3, modelTimeoutMs: 1000 },
 					},
 				},
 				context,
@@ -162,7 +162,7 @@ if (import.meta.vitest) {
 						configured: localStamp(),
 						value: {
 							model: deliveryModelConfig('execution-model'),
-							work: { maxActiveSliceSlots: 2, maxCorrectionRetriesPerFailure: 3, modelTimeoutMs: 1000 },
+							work: { maxProcessableSliceSlots: 2, maxCorrectionRetriesPerFailure: 3, modelTimeoutMs: 1000 },
 						},
 					},
 				},

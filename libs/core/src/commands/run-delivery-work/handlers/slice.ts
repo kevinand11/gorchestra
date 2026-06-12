@@ -23,7 +23,6 @@ const sliceHandlers: SliceHandlerMap = {
 	complete: noEligibleWork,
 	'needs-delivery-validation': () => handleSliceNeedsDeliveryValidation(),
 	'dependency-blocked': noEligibleWork,
-	executing: noEligibleWork,
 	'needs-artifact-validation': () => handleSliceNeedsArtifactValidation(),
 	'correction-blocked': noEligibleWork,
 	'awaiting-review': (_context, slice, state) => handleSliceAwaitingReview(slice, state),
@@ -42,5 +41,5 @@ export function handleSliceWorkState(
 }
 
 export function isActiveSliceSlotState(state: SliceWorkState): boolean {
-	return state.type === 'executing' || state.type === 'needs-artifact-validation' || state.type === 'needs-delivery-validation'
+	return state.type === 'needs-artifact-validation' || state.type === 'needs-delivery-validation'
 }

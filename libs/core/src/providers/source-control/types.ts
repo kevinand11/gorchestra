@@ -22,10 +22,39 @@ export type SourceControlRepositoryPreflight =
 
 export type SourceControlRepositoryPreflightError = InvalidCoreServiceOutputError
 
+export interface SourceControlCreateDeliveryArtifactInput {
+	repository: Repository
+	accessToken: SourceControlAccessToken
+	sourceBranch: string
+	deliveryBranch: string
+}
+
+export interface SourceControlCreateSliceArtifactInput {
+	repository: Repository
+	accessToken: SourceControlAccessToken
+	sourceBranch: string
+	sliceBranch: string
+}
+
+export type SourceControlArtifactCreationFailureReason =
+	| { type: 'provider-authentication-failed' }
+	| { type: 'provider-access-denied' }
+	| { type: 'provider-repository-not-found' }
+	| { type: 'source-branch-not-found'; branch: string }
+	| { type: 'artifact-branch-diverged'; branch: string; sourceBranch: string }
+	| { type: 'artifact-branch-update-denied'; branch: string }
+	| { type: 'provider-unavailable' }
+
+export type SourceControlArtifactCreation =
+	| { type: 'passed'; mode: 'created' | 'adopted-existing' | 'fast-forwarded-existing'; summary: string }
+	| { type: 'failed'; reason: SourceControlArtifactCreationFailureReason; summary: string }
+
 export interface SourceControlProviders {
 	preflightRepository(
 		input: SourceControlRepositoryPreflightInput,
 	): Promise<Result<SourceControlRepositoryPreflight, SourceControlRepositoryPreflightError>>
+	createDeliveryArtifact(input: SourceControlCreateDeliveryArtifactInput): Promise<Result<SourceControlArtifactCreation, never>>
+	createSliceArtifact(input: SourceControlCreateSliceArtifactInput): Promise<Result<SourceControlArtifactCreation, never>>
 }
 
 export interface SourceControlAccessToken {
@@ -36,6 +65,13 @@ export interface SourceControlAccessToken {
 export interface SourceControlProviderPreflightRepositoryInput<Config extends RepositoryConfig> {
 	repository: Repository & { config: Config }
 	accessToken: SourceControlAccessToken
+}
+
+export interface SourceControlProviderCreateArtifactBranchInput<Config extends RepositoryConfig> {
+	repository: Repository & { config: Config }
+	accessToken: SourceControlAccessToken
+	sourceBranch: string
+	artifactBranch: string
 }
 
 export type SourceControlProviderRepositoryPreflight =
@@ -53,6 +89,7 @@ export type SourceControlProviderRepositoryPreflight =
 
 export interface SourceControlProvider<Config extends RepositoryConfig> {
 	preflightRepository(input: SourceControlProviderPreflightRepositoryInput<Config>): Promise<SourceControlProviderRepositoryPreflight>
+	createArtifactBranch(input: SourceControlProviderCreateArtifactBranchInput<Config>): Promise<SourceControlArtifactCreation>
 }
 
 export type GitHubRepository = Repository & { config: GitHubRepositoryConfig }

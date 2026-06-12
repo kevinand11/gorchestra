@@ -63,7 +63,7 @@ if (import.meta.vitest) {
 							executionModelId: null,
 							revisionExecutionModelId: null,
 						},
-						work: { maxActiveSliceSlots: 2, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
+						work: { maxProcessableSliceSlots: 2, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
 					},
 				},
 				context,
@@ -81,7 +81,7 @@ if (import.meta.vitest) {
 							executionModelId: null,
 							revisionExecutionModelId: null,
 						},
-						work: { maxActiveSliceSlots: 2, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
+						work: { maxProcessableSliceSlots: 2, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
 					},
 				},
 			})

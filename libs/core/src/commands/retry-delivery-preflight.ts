@@ -412,7 +412,7 @@ if (import.meta.vitest) {
 	}
 
 	function seedPassingPortfolioConfig(options: ReturnType<typeof preflightFailedFixture>) {
-		seedPortfolioConfig(options, { work: { maxActiveSliceSlots: 1, maxCorrectionRetriesPerFailure: 2, modelTimeoutMs: 1000 } })
+		seedPortfolioConfig(options, { work: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 2, modelTimeoutMs: 1000 } })
 	}
 
 	function seedPortfolioConfig(options: ReturnType<typeof preflightFailedFixture>, config: { work: DeliveryWorkConfig | null }) {

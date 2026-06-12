@@ -2,6 +2,9 @@ import { createGitHubSourceControlProvider, type GitHubSourceControlProvider } f
 import type {
 	GitHubRepository,
 	SourceControlAccessToken,
+	SourceControlArtifactCreation,
+	SourceControlCreateDeliveryArtifactInput,
+	SourceControlCreateSliceArtifactInput,
 	SourceControlProviders,
 	SourceControlRepositoryPreflight,
 	SourceControlRepositoryPreflightError,
@@ -30,7 +33,47 @@ export function createSourceControlProviders(
 					return preflightGitHubRepository(services, github, input.repository)
 			}
 		},
+		createDeliveryArtifact(input) {
+			switch (input.repository.config.provider) {
+				case 'github':
+					return createGitHubDeliveryArtifact(github, { ...input, repository: input.repository })
+			}
+		},
+		createSliceArtifact(input) {
+			switch (input.repository.config.provider) {
+				case 'github':
+					return createGitHubSliceArtifact(github, { ...input, repository: input.repository })
+			}
+		},
 	}
+}
+
+async function createGitHubDeliveryArtifact(
+	github: GitHubSourceControlProvider,
+	input: SourceControlCreateDeliveryArtifactInput & { repository: GitHubRepository },
+): Promise<Result<SourceControlArtifactCreation, never>> {
+	const creation = await github.createArtifactBranch({
+		repository: input.repository,
+		accessToken: input.accessToken,
+		sourceBranch: input.sourceBranch,
+		artifactBranch: input.deliveryBranch,
+	})
+
+	return { ok: true, value: creation }
+}
+
+async function createGitHubSliceArtifact(
+	github: GitHubSourceControlProvider,
+	input: SourceControlCreateSliceArtifactInput & { repository: GitHubRepository },
+): Promise<Result<SourceControlArtifactCreation, never>> {
+	const creation = await github.createArtifactBranch({
+		repository: input.repository,
+		accessToken: input.accessToken,
+		sourceBranch: input.sourceBranch,
+		artifactBranch: input.sliceBranch,
+	})
+
+	return { ok: true, value: creation }
 }
 
 async function preflightGitHubRepository(
@@ -130,7 +173,12 @@ export type { GitHubSourceControlProvider } from './github'
 
 export type {
 	SourceControlAccessToken,
+	SourceControlArtifactCreation,
+	SourceControlArtifactCreationFailureReason,
+	SourceControlCreateDeliveryArtifactInput,
+	SourceControlCreateSliceArtifactInput,
 	SourceControlProvider,
+	SourceControlProviderCreateArtifactBranchInput,
 	SourceControlProviderPreflightRepositoryInput,
 	SourceControlProviderRepositoryPreflight,
 	SourceControlProviders,
@@ -151,6 +199,9 @@ if (import.meta.vitest) {
 					preflightRepository(input) {
 						observedToken = input.accessToken.plaintext
 						return Promise.resolve({ type: 'passed' })
+					},
+					createArtifactBranch() {
+						throw new Error('GitHub provider should not be called.')
 					},
 				},
 			})
@@ -175,6 +226,32 @@ if (import.meta.vitest) {
 					summary: 'GitHub repository access Secret value could not be resolved.',
 				},
 			})
+		})
+
+		it('dispatches resolved Delivery Artifact creation to GitHub', async () => {
+			let observedBranch: string | null = null
+			const sourceControl = createSourceControlProviders(
+				coreServices(() => Promise.resolve({})),
+				{
+					github: {
+						preflightRepository: () => Promise.resolve({ type: 'passed' }),
+						createArtifactBranch(input) {
+							observedBranch = input.artifactBranch
+							return Promise.resolve({ type: 'passed', mode: 'created', summary: 'created' })
+						},
+					},
+				},
+			)
+
+			const result = await sourceControl.createDeliveryArtifact({
+				repository: gitHubRepository(),
+				accessToken: { type: 'access-token', plaintext: 'token' },
+				sourceBranch: 'main',
+				deliveryBranch: 'delivery-branch',
+			})
+
+			expect(result).toEqual({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } })
+			expect(observedBranch).toBe('delivery-branch')
 		})
 
 		it('rejects malformed resolved Secret values as invalid Core Service Output', async () => {
@@ -219,6 +296,9 @@ if (import.meta.vitest) {
 	function neverCalledGitHubProvider(): GitHubSourceControlProvider {
 		return {
 			preflightRepository() {
+				throw new Error('GitHub provider should not be called.')
+			},
+			createArtifactBranch() {
 				throw new Error('GitHub provider should not be called.')
 			},
 		}

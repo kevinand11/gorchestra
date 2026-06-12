@@ -15,7 +15,7 @@ export type Slice = PipeOutput<typeof slicePipe>
 
 /**
  * Derived in priority order: complete, needs-delivery-validation,
- * dependency-blocked, executing, needs-artifact-validation, correction-blocked,
+ * dependency-blocked, needs-artifact-validation, correction-blocked,
  * awaiting-review, slice-operation-failed, needs-artifact-creation, then
  * executable.
  */
@@ -23,7 +23,7 @@ export interface FailureChain {
 	/** The failed validation or external-operation Action that started the chain. */
 	rootActionId: Id
 
-	/** Number of correction execution Actions started for this chain. */
+	/** Number of correction Agent Runs started for this chain. */
 	correctionRetries: number
 }
 
@@ -34,8 +34,6 @@ export type SliceWorkState =
 	| { type: 'needs-delivery-validation'; actionId: Id }
 	/** blockedBy contains direct incomplete same-Delivery Slice dependencies only, ordered by dependency accepted time then slice id. */
 	| { type: 'dependency-blocked'; blockedBy: Id[] }
-	| { type: 'executing'; mode: 'initial'; agentRunId: Id }
-	| { type: 'executing'; mode: 'correction'; agentRunId: Id; failureChain: FailureChain }
 	| { type: 'needs-artifact-validation'; mode: 'initial'; sliceArtifactId: Id }
 	| {
 			type: 'needs-artifact-validation'

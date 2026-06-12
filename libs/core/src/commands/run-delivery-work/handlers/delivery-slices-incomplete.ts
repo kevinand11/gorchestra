@@ -63,8 +63,8 @@ async function deliverySlices(context: DeliveryHandlerContext): Promise<CoreResu
 function capacityCheck(candidates: SliceStateCandidate[], resolution: DeliveryWorkResolution): RunDeliveryWorkHandlerResult | null {
 	const activeSlots = candidates.filter((candidate) => isActiveSliceSlotState(candidate.state)).length
 
-	return activeSlots >= resolution.workConfig.maxActiveSliceSlots
-		? sliceCapacityFull(activeSlots, resolution.workConfig.maxActiveSliceSlots)
+	return activeSlots >= resolution.workConfig.maxProcessableSliceSlots
+		? sliceCapacityFull(activeSlots, resolution.workConfig.maxProcessableSliceSlots)
 		: null
 }
 
@@ -101,12 +101,12 @@ if (import.meta.vitest) {
 
 			const result = await handleDeliverySlicesIncomplete(handlerContext(options))
 
-			expect(result).toEqual({ ok: true, value: { type: 'worked', actionIds: ['action-1'], agentRunIds: ['agent-run-1'] } })
-			expect(options.tx.actions.records.get('action-1')?.result).toEqual({
-				type: 'start-slice-execution',
+			expect(result).toEqual({ ok: true, value: { type: 'worked', actionIds: [], agentRunIds: ['agent-run-1'] } })
+			expect(options.tx.agentRuns.records.get('agent-run-1')?.purpose).toEqual({
+				type: 'execution',
+				deliveryId: 'delivery-1',
 				sliceId: 'slice-executable',
-				mode: 'initial',
-				agentRunId: 'agent-run-1',
+				mode: { type: 'initial' },
 			})
 		})
 
@@ -116,11 +116,11 @@ if (import.meta.vitest) {
 			seedSlice(options.tx, 'slice-executable', 'delivery-1')
 			seedSliceArtifact(options.tx, 'slice-active')
 			seedSliceArtifact(options.tx, 'slice-executable')
-			seedStartSliceExecution(options.tx, 'slice-active')
+			seedCompletedSliceExecution(options.tx, 'slice-active')
 
 			expect(await handleDeliverySlicesIncomplete(handlerContext(options))).toEqual({
 				ok: true,
-				value: { type: 'no-op', reason: { type: 'slice-capacity-full', activeSlots: 1, maxActiveSliceSlots: 1 } },
+				value: { type: 'no-op', reason: { type: 'slice-capacity-full', activeSlots: 1, maxProcessableSliceSlots: 1 } },
 			})
 		})
 
@@ -186,7 +186,7 @@ if (import.meta.vitest) {
 					executionModelId: null,
 					revisionExecutionModelId: null,
 				},
-				work: includeWorkConfig ? { maxActiveSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 } : null,
+				work: includeWorkConfig ? { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 } : null,
 			},
 		}
 	}
@@ -219,20 +219,13 @@ if (import.meta.vitest) {
 		})
 	}
 
-	function seedStartSliceExecution(tx: ReturnType<typeof executableDeliveryFixture>['tx'], sliceId: string) {
+	function seedCompletedSliceExecution(tx: ReturnType<typeof executableDeliveryFixture>['tx'], sliceId: string) {
 		tx.agentRuns.records.set('agent-run-active', {
 			id: 'agent-run-active',
 			agent: { type: 'model', modelId: 'model-1' },
-			purpose: { type: 'execution', actionId: 'start-active' },
+			purpose: { type: 'execution', deliveryId: 'delivery-1', sliceId, mode: { type: 'initial' } },
 			started: { at: '2026-06-10T11:30:00.000Z' },
-			completed: null,
-		})
-		tx.actions.records.set('start-active', {
-			id: 'start-active',
-			deliveryId: 'delivery-1',
-			performed: { at: '2026-06-10T11:30:00.000Z' },
-			authorized: null,
-			result: { type: 'start-slice-execution', sliceId, mode: 'initial', agentRunId: 'agent-run-active' },
+			completed: { at: '2026-06-10T11:40:00.000Z' },
 		})
 	}
 }

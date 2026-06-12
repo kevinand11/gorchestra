@@ -1,0 +1,8 @@
+# Core TODO
+
+Durable follow-up items that are known but intentionally deferred.
+
+## Delivery work ownership and runtime follow-ups
+
+- Move same-Delivery worker exclusion into Core with a Core-owned Delivery work lease. The near-term scheduler/consumer runtime must ensure only one worker processes a Delivery at a time, but this should not remain a consumer discipline requirement.
+- Define preflight behavior for resumed incomplete Agent Runs whose stored Model differs from the current selected execution Model. The likely direction is claim-specific preflight that checks the AgentRun's stored Model for resumed work and the current selected execution Model for new Agent Runs.

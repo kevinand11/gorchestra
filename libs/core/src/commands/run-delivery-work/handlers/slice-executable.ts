@@ -1,6 +1,4 @@
-import { worked } from './result'
-import type { Action } from '../../../domain/action'
-import type { AgentRun } from '../../../domain/agent-run'
+import type { AgentRun, ExecutionMode } from '../../../domain/agent-run'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
 import { nextId, putRecord, runtimeRecord } from '../../../utils/command-storage'
 import type { Result as CoreResult } from '../../../utils/types'
@@ -12,37 +10,25 @@ export async function handleSliceExecutable(
 	state: Extract<SliceWorkState, { type: 'executable' }>,
 	resolution: DeliveryWorkResolution,
 ): Promise<RunDeliveryWorkHandlerResult> {
-	const records = sliceExecutionRecords(context, slice, state, resolution)
-	if (!records.ok) return records
+	const agentRun = sliceExecutionAgentRun(context, slice, state, resolution)
+	if (!agentRun.ok) return agentRun
 
-	return writeSliceExecutionRecords(context, records.value)
+	return writeSliceExecutionAgentRun(context, agentRun.value)
 }
 
-async function writeSliceExecutionRecords(
-	context: DeliveryHandlerContext,
-	records: { action: Action; agentRun: AgentRun },
-): Promise<RunDeliveryWorkHandlerResult> {
-	const actionPut = await putRecord('action', context.tx.actions, records.action.id, records.action)
-	if (!actionPut.ok) return actionPut
-
-	const agentRunPut = await putRecord('agent-run', context.tx.agentRuns, records.agentRun.id, records.agentRun)
+async function writeSliceExecutionAgentRun(context: DeliveryHandlerContext, agentRun: AgentRun): Promise<RunDeliveryWorkHandlerResult> {
+	const agentRunPut = await putRecord('agent-run', context.tx.agentRuns, agentRun.id, agentRun)
 	if (!agentRunPut.ok) return agentRunPut
 
-	return worked(records.action.id, records.agentRun.id)
+	return { ok: true, value: { type: 'worked', actionIds: [], agentRunIds: [agentRun.id] } }
 }
 
-function sliceExecutionRecords(
+function sliceExecutionAgentRun(
 	context: DeliveryHandlerContext,
 	slice: Slice,
 	state: Extract<SliceWorkState, { type: 'executable' }>,
 	resolution: DeliveryWorkResolution,
-): CoreResult<
-	{ action: Action; agentRun: AgentRun },
-	RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
-> {
-	const actionId = nextId(context.options, 'action')
-	if (!actionId.ok) return actionId
-
+): CoreResult<AgentRun, RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
 	const agentRunId = nextId(context.options, 'agent-run')
 	if (!agentRunId.ok) return agentRunId
 
@@ -51,35 +37,35 @@ function sliceExecutionRecords(
 
 	return {
 		ok: true,
-		value: {
-			action: startSliceExecutionAction(context.delivery.id, slice.id, state.mode, actionId.value, agentRunId.value, started.value),
-			agentRun: executionAgentRun(agentRunId.value, resolution.modelId, actionId.value, started.value),
-		},
+		value: executionAgentRun(
+			agentRunId.value,
+			resolution.modelId,
+			context.delivery.id,
+			slice.id,
+			executionModeForState(state),
+			started.value,
+		),
 	}
 }
 
-function startSliceExecutionAction(
+function executionModeForState(state: Extract<SliceWorkState, { type: 'executable' }>): ExecutionMode {
+	return state.mode === 'initial'
+		? { type: 'initial' }
+		: { type: 'correction', failureChainRootActionId: state.failureChain.rootActionId }
+}
+
+function executionAgentRun(
+	agentRunId: string,
+	modelId: string,
 	deliveryId: string,
 	sliceId: string,
-	mode: 'initial' | 'correction',
-	actionId: string,
-	agentRunId: string,
-	performed: Action['performed'],
-): Action {
-	return {
-		id: actionId,
-		deliveryId,
-		performed,
-		authorized: null,
-		result: { type: 'start-slice-execution', sliceId, mode, agentRunId },
-	}
-}
-
-function executionAgentRun(agentRunId: string, modelId: string, actionId: string, started: AgentRun['started']): AgentRun {
+	mode: ExecutionMode,
+	started: AgentRun['started'],
+): AgentRun {
 	return {
 		id: agentRunId,
 		agent: { type: 'model', modelId },
-		purpose: { type: 'execution', actionId },
+		purpose: { type: 'execution', deliveryId, sliceId, mode },
 		started,
 		completed: null,
 	}
@@ -90,7 +76,7 @@ if (import.meta.vitest) {
 	const { createTestCoreServices, seedDelivery, seedSlice, seedSelectableModel } = await import('../../../utils/test-helpers')
 
 	describe('handleSliceExecutable', () => {
-		it('claims initial executable Slice work with an Agent Run and start-slice-execution Action', async () => {
+		it('claims initial executable Slice work with an Agent Run', async () => {
 			const context = executableHandlerContext()
 			const result = await handleSliceExecutable(
 				context,
@@ -99,18 +85,12 @@ if (import.meta.vitest) {
 				resolution,
 			)
 
-			expect(result).toEqual({ ok: true, value: { type: 'worked', actionIds: ['action-1'], agentRunIds: ['agent-run-1'] } })
-			expect(context.tx.actions.records.get('action-1')).toEqual({
-				id: 'action-1',
-				deliveryId: 'delivery-1',
-				performed: { at: '2026-06-10T12:00:00.000Z' },
-				authorized: null,
-				result: { type: 'start-slice-execution', sliceId: 'slice-1', mode: 'initial', agentRunId: 'agent-run-1' },
-			})
+			expect(result).toEqual({ ok: true, value: { type: 'worked', actionIds: [], agentRunIds: ['agent-run-1'] } })
+			expect(context.tx.actions.records.size).toBe(0)
 			expect(context.tx.agentRuns.records.get('agent-run-1')).toEqual({
 				id: 'agent-run-1',
 				agent: { type: 'model', modelId: 'model-1' },
-				purpose: { type: 'execution', actionId: 'action-1' },
+				purpose: { type: 'execution', deliveryId: 'delivery-1', sliceId: 'slice-1', mode: { type: 'initial' } },
 				started: { at: '2026-06-10T12:00:00.000Z' },
 				completed: null,
 			})
@@ -129,19 +109,19 @@ if (import.meta.vitest) {
 				resolution,
 			)
 
-			expect(result).toEqual({ ok: true, value: { type: 'worked', actionIds: ['action-1'], agentRunIds: ['agent-run-1'] } })
-			expect(context.tx.actions.records.get('action-1')?.result).toEqual({
-				type: 'start-slice-execution',
+			expect(result).toEqual({ ok: true, value: { type: 'worked', actionIds: [], agentRunIds: ['agent-run-1'] } })
+			expect(context.tx.agentRuns.records.get('agent-run-1')?.purpose).toEqual({
+				type: 'execution',
+				deliveryId: 'delivery-1',
 				sliceId: 'slice-1',
-				mode: 'correction',
-				agentRunId: 'agent-run-1',
+				mode: { type: 'correction', failureChainRootActionId: 'failed-validation' },
 			})
 		})
 	})
 
 	const resolution: DeliveryWorkResolution = {
 		modelId: 'model-1',
-		workConfig: { maxActiveSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
+		workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
 	}
 
 	function executableHandlerContext() {

@@ -1,7 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { auditStampPipe, idPipe, nonEmptyTrimmedStringPipe } from './commons'
-
+import { idPipe, nonEmptyTrimmedStringPipe, runtimeRecordPipe } from './commons'
 export const deliveryArtifactConfigPipe = v.discriminate((value) => value.type, {
 	'source-control': v.object({ type: v.eq('source-control'), deliveryBranch: nonEmptyTrimmedStringPipe }),
 })
@@ -13,7 +12,7 @@ export const deliveryArtifactPipe = v.object({
 	id: idPipe,
 	deliveryId: idPipe,
 	config: deliveryArtifactConfigPipe,
-	created: auditStampPipe,
+	created: runtimeRecordPipe,
 })
 export type DeliveryArtifact = PipeOutput<typeof deliveryArtifactPipe>
 
@@ -28,6 +27,6 @@ export const sliceArtifactPipe = v.object({
 	id: idPipe,
 	sliceId: idPipe,
 	config: sliceArtifactConfigPipe,
-	created: auditStampPipe,
+	created: runtimeRecordPipe,
 })
 export type SliceArtifact = PipeOutput<typeof sliceArtifactPipe>

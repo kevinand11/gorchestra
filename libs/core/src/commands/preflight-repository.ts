@@ -153,6 +153,9 @@ if (import.meta.vitest) {
 							providerTransactionCalls = options.transactionCalls()
 							return Promise.resolve({ type: 'passed' })
 						},
+						createArtifactBranch() {
+							throw new Error('GitHub provider should not be called.')
+						},
 					},
 				}),
 				modelProviderProtocols: createTestCoreRuntime(options).providers.modelProviderProtocols,
@@ -173,6 +176,9 @@ if (import.meta.vitest) {
 				sourceControl: createSourceControlProviders(options, {
 					github: {
 						preflightRepository: () => Promise.resolve({ type: 'failed', reason: { type: 'provider-repository-not-found' } }),
+						createArtifactBranch() {
+							throw new Error('GitHub provider should not be called.')
+						},
 					},
 				}),
 				modelProviderProtocols: createTestCoreRuntime(options).providers.modelProviderProtocols,
@@ -224,6 +230,9 @@ if (import.meta.vitest) {
 	function neverCalledGitHubProvider() {
 		return {
 			preflightRepository() {
+				throw new Error('GitHub provider should not be called.')
+			},
+			createArtifactBranch() {
 				throw new Error('GitHub provider should not be called.')
 			},
 		}

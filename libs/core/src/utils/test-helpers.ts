@@ -44,9 +44,13 @@ export function externalOperationEvidence(
 
 export function createTestCoreRuntime(
 	services = createTestCoreServices(),
-	overrides: { providers?: CoreRuntime['providers'] } = {},
+	overrides: { providers?: CoreRuntime['providers']; agentRuns?: CoreRuntime['agentRuns'] } = {},
 ): CoreRuntime {
-	return { services, providers: overrides.providers ?? createCoreProviders(services) }
+	return {
+		services,
+		providers: overrides.providers ?? createCoreProviders(services),
+		agentRuns: overrides.agentRuns ?? { runExecutionAgentRun: () => Promise.resolve() },
+	}
 }
 
 export function passingProviderBackedPreflightProviders(): CoreRuntime['providers'] {
@@ -54,6 +58,8 @@ export function passingProviderBackedPreflightProviders(): CoreRuntime['provider
 		sourceControl: {
 			preflightRepository: () =>
 				Promise.resolve({ ok: true, value: { type: 'passed', summary: 'GitHub repository preflight passed.' } }),
+			createDeliveryArtifact: () => Promise.resolve({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } }),
+			createSliceArtifact: () => Promise.resolve({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } }),
 		},
 		modelProviderProtocols: {
 			preflightModel: () =>
@@ -74,6 +80,8 @@ export function failingProviderBackedPreflightProviders(): CoreRuntime['provider
 						summary: 'GitHub repository was not found.',
 					},
 				}),
+			createDeliveryArtifact: () => Promise.resolve({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } }),
+			createSliceArtifact: () => Promise.resolve({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } }),
 		},
 		modelProviderProtocols: {
 			preflightModel: () =>
@@ -91,7 +99,11 @@ export function failingProviderBackedPreflightProviders(): CoreRuntime['provider
 
 export function neverCalledProviderBackedPreflightProviders(): CoreRuntime['providers'] {
 	return {
-		sourceControl: { preflightRepository: () => Promise.reject(new Error('Source control should not be called.')) },
+		sourceControl: {
+			preflightRepository: () => Promise.reject(new Error('Source control should not be called.')),
+			createDeliveryArtifact: () => Promise.reject(new Error('Source control should not be called.')),
+			createSliceArtifact: () => Promise.reject(new Error('Source control should not be called.')),
+		},
 		modelProviderProtocols: { preflightModel: () => Promise.reject(new Error('Model provider should not be called.')) },
 	}
 }

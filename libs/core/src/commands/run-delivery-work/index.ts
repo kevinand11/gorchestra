@@ -420,7 +420,7 @@ if (import.meta.vitest) {
 					executionModelId: null,
 					revisionExecutionModelId: null,
 				},
-				work: { maxActiveSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
+				work: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
 			},
 		}
 		options.tx.actions.records.set('queue-delivery', {

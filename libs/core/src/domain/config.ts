@@ -4,7 +4,7 @@ import type { AgentRunPurpose } from './agent-run'
 import { auditStampPipe, idPipe, nonNegativeIntegerPipe, positiveIntegerPipe, type Id } from './commons'
 
 export const deliveryWorkConfigPipe = v.object({
-	maxActiveSliceSlots: positiveIntegerPipe,
+	maxProcessableSliceSlots: positiveIntegerPipe,
 	maxCorrectionRetriesPerFailure: nonNegativeIntegerPipe,
 	modelTimeoutMs: positiveIntegerPipe,
 })

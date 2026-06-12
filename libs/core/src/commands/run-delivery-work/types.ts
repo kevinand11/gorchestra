@@ -21,7 +21,7 @@ export type Result =
 
 export type RunDeliveryWorkNoOpReason =
 	| { type: 'no-eligible-work' }
-	| { type: 'slice-capacity-full'; activeSlots: number; maxActiveSliceSlots: number }
+	| { type: 'slice-capacity-full'; activeSlots: number; maxProcessableSliceSlots: number }
 	| { type: 'claim-conflict'; work: RunDeliveryWorkClaimConflictWork }
 	| { type: 'no-observed-change'; observed: RunDeliveryWorkNoObservedChangeTarget }
 

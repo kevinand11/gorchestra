@@ -8,10 +8,16 @@ export const agentPipe = v.discriminate((value) => value.type, {
 export type Agent = PipeOutput<typeof agentPipe>
 export type ModelAgent = Extract<Agent, { type: 'model' }>
 
+export const executionModePipe = v.discriminate((value) => value.type, {
+	initial: v.object({ type: v.eq('initial') }),
+	correction: v.object({ type: v.eq('correction'), failureChainRootActionId: idPipe }),
+})
+export type ExecutionMode = PipeOutput<typeof executionModePipe>
+
 export const agentRunPurposePipe = v.discriminate((value) => value.type, {
 	planning: v.object({ type: v.eq('planning'), planId: idPipe }),
 	'revision-planning': v.object({ type: v.eq('revision-planning'), revisionGateId: idPipe }),
-	execution: v.object({ type: v.eq('execution'), actionId: idPipe }),
+	execution: v.object({ type: v.eq('execution'), deliveryId: idPipe, sliceId: idPipe, mode: executionModePipe }),
 	'revision-execution': v.object({ type: v.eq('revision-execution'), revisionId: idPipe, actionId: idPipe }),
 })
 export type AgentRunPurpose = PipeOutput<typeof agentRunPurposePipe>

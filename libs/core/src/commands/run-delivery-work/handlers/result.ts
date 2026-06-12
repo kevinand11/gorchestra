@@ -10,8 +10,8 @@ export function noObservedChange(observed: RunDeliveryWorkNoObservedChangeTarget
 	return { ok: true, value: { type: 'no-op', reason: { type: 'no-observed-change', observed } } }
 }
 
-export function sliceCapacityFull(activeSlots: number, maxActiveSliceSlots: number): RunDeliveryWorkHandlerResult {
-	return { ok: true, value: { type: 'no-op', reason: { type: 'slice-capacity-full', activeSlots, maxActiveSliceSlots } } }
+export function sliceCapacityFull(activeSlots: number, maxProcessableSliceSlots: number): RunDeliveryWorkHandlerResult {
+	return { ok: true, value: { type: 'no-op', reason: { type: 'slice-capacity-full', activeSlots, maxProcessableSliceSlots } } }
 }
 
 export function worked(actionId: Id, agentRunId: Id): RunDeliveryWorkHandlerResult {
