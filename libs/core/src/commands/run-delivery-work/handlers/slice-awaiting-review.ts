@@ -26,16 +26,7 @@ if (import.meta.vitest) {
 					},
 					{ type: 'awaiting-review', reviewSurfaceId: 'review-1' },
 				),
-			).toEqual({
-				ok: true,
-				value: {
-					type: 'no-op',
-					reason: {
-						type: 'no-observed-change',
-						observed: { type: 'slice-review-surface', sliceId: 'slice-1', reviewSurfaceId: 'review-1' },
-					},
-				},
-			})
+			).toEqual({ ok: true, value: { processedCount: 0, failures: [] } })
 		})
 	})
 }

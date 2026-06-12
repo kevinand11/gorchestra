@@ -15,17 +15,24 @@ import type {
 import type { CoreServices, CoreStorageTransaction } from '../../services'
 import type { Result as CoreResult } from '../../utils/types'
 
-export type Result =
-	/** At least one of actionIds or agentRunIds must be non-empty. */
-	{ type: 'worked'; actionIds: Id[]; agentRunIds: Id[] } | { type: 'no-op'; reason: RunDeliveryWorkNoOpReason }
+export interface Result {
+	processedCount: number
+	failures: RunDeliveryWorkFailure[]
+}
 
-export type RunDeliveryWorkNoOpReason =
-	| { type: 'no-eligible-work' }
-	| { type: 'slice-capacity-full'; activeSlots: number; maxProcessableSliceSlots: number }
-	| { type: 'claim-conflict'; work: RunDeliveryWorkClaimConflictWork }
-	| { type: 'no-observed-change'; observed: RunDeliveryWorkNoObservedChangeTarget }
+export interface RunDeliveryWorkFailure {
+	scope: { type: 'delivery' } | { type: 'slice'; sliceId: Id }
+	operation: RunDeliveryWorkFailureOperation
+	summary: string
+}
 
-export type RunDeliveryWorkClaimConflictWork = { type: 'delivery' } | { type: 'slice'; sliceId: Id }
+export type RunDeliveryWorkFailureOperation =
+	| 'preflight'
+	| 'create-artifact'
+	| 'agent-run'
+	| 'validate-artifact'
+	| 'validate-delivery-artifact'
+	| 'review-surface'
 
 export type RunDeliveryWorkNoObservedChangeTarget =
 	| { type: 'slice-review-surface'; sliceId: Id; reviewSurfaceId: Id }

@@ -101,7 +101,7 @@ if (import.meta.vitest) {
 
 			const result = await handleDeliverySlicesIncomplete(handlerContext(options))
 
-			expect(result).toEqual({ ok: true, value: { type: 'worked', actionIds: [], agentRunIds: ['agent-run-1'] } })
+			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
 			expect(options.tx.agentRuns.records.get('agent-run-1')?.purpose).toEqual({
 				type: 'execution',
 				deliveryId: 'delivery-1',
@@ -120,7 +120,7 @@ if (import.meta.vitest) {
 
 			expect(await handleDeliverySlicesIncomplete(handlerContext(options))).toEqual({
 				ok: true,
-				value: { type: 'no-op', reason: { type: 'slice-capacity-full', activeSlots: 1, maxProcessableSliceSlots: 1 } },
+				value: { processedCount: 0, failures: [] },
 			})
 		})
 
@@ -130,7 +130,7 @@ if (import.meta.vitest) {
 
 			expect(await handleDeliverySlicesIncomplete(handlerContext(options))).toEqual({
 				ok: true,
-				value: { type: 'no-op', reason: { type: 'no-eligible-work' } },
+				value: { processedCount: 0, failures: [] },
 			})
 		})
 

@@ -24,13 +24,7 @@ import { getRequired, withTransaction } from '../../utils/storage'
 import type { Result as CoreResult } from '../../utils/types'
 import { deriveDeliveryWorkState } from '../../utils/work-state'
 
-export type {
-	Error,
-	Result,
-	RunDeliveryWorkClaimConflictWork,
-	RunDeliveryWorkNoObservedChangeTarget,
-	RunDeliveryWorkNoOpReason,
-} from './types'
+export type { Error, Result, RunDeliveryWorkFailure, RunDeliveryWorkFailureOperation, RunDeliveryWorkNoObservedChangeTarget } from './types'
 
 const runDeliveryWorkInputPipe = v.object({ deliveryId: idPipe })
 export type Input = PipeOutput<typeof runDeliveryWorkInputPipe>
@@ -188,7 +182,7 @@ function schedulerHandlerContext(
 }
 
 function deliveryClaimConflict(): CoreResult<Result, never> {
-	return { ok: true, value: { type: 'no-op', reason: { type: 'claim-conflict', work: { type: 'delivery' } } } }
+	return { ok: true, value: { processedCount: 0, failures: [] } }
 }
 
 async function writeFailedPreflightAction(
@@ -252,7 +246,7 @@ if (import.meta.vitest) {
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
-			expect(result).toEqual({ ok: true, value: { type: 'worked', actionIds: ['action-1'], agentRunIds: [] } })
+			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
 			expect(options.tx.actions.records.get('action-1')).toEqual({
 				id: 'action-1',
 				deliveryId: 'delivery-1',
@@ -328,7 +322,7 @@ if (import.meta.vitest) {
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
-			expect(result).toEqual({ ok: true, value: { type: 'no-op', reason: { type: 'no-eligible-work' } } })
+			expect(result).toEqual({ ok: true, value: { processedCount: 0, failures: [] } })
 		})
 
 		it('records failed preflight evidence when Delivery Work Config is unresolved', async () => {
@@ -358,7 +352,7 @@ if (import.meta.vitest) {
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
-			expect(result).toEqual({ ok: true, value: { type: 'no-op', reason: { type: 'claim-conflict', work: { type: 'delivery' } } } })
+			expect(result).toEqual({ ok: true, value: { processedCount: 0, failures: [] } })
 			expect(options.tx.actions.records.has('action-1')).toBe(false)
 		})
 
@@ -374,7 +368,7 @@ if (import.meta.vitest) {
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
-			expect(result).toEqual({ ok: true, value: { type: 'no-op', reason: { type: 'claim-conflict', work: { type: 'delivery' } } } })
+			expect(result).toEqual({ ok: true, value: { processedCount: 0, failures: [] } })
 			expect(options.tx.actions.records.has('action-1')).toBe(false)
 		})
 	})
@@ -384,7 +378,7 @@ if (import.meta.vitest) {
 		result: Awaited<ReturnType<Operation>>,
 		checks: ReturnType<typeof validationEvidence>[],
 	) {
-		expect(result).toEqual({ ok: true, value: { type: 'worked', actionIds: ['action-1'], agentRunIds: [] } })
+		expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
 		expect(options.tx.actions.records.get('action-1')?.result).toEqual({ type: 'validate-preflight', checks })
 	}
 

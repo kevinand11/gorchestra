@@ -1,25 +1,29 @@
 import type { Id } from '../../../domain/commons'
-import type { Result, RunDeliveryWorkNoObservedChangeTarget } from '../index'
-import type { RunDeliveryWorkHandlerResult } from '../types'
+import type { RunDeliveryWorkNoObservedChangeTarget } from '../index'
+import type { Result, RunDeliveryWorkHandlerResult } from '../types'
 
 export function noEligibleWork(): RunDeliveryWorkHandlerResult {
-	return { ok: true, value: { type: 'no-op', reason: { type: 'no-eligible-work' } } }
+	return completed()
 }
 
-export function noObservedChange(observed: RunDeliveryWorkNoObservedChangeTarget): RunDeliveryWorkHandlerResult {
-	return { ok: true, value: { type: 'no-op', reason: { type: 'no-observed-change', observed } } }
+export function noObservedChange(_observed: RunDeliveryWorkNoObservedChangeTarget): RunDeliveryWorkHandlerResult {
+	return completed()
 }
 
-export function sliceCapacityFull(activeSlots: number, maxProcessableSliceSlots: number): RunDeliveryWorkHandlerResult {
-	return { ok: true, value: { type: 'no-op', reason: { type: 'slice-capacity-full', activeSlots, maxProcessableSliceSlots } } }
+export function sliceCapacityFull(_activeSlots: number, _maxProcessableSliceSlots: number): RunDeliveryWorkHandlerResult {
+	return completed()
 }
 
-export function worked(actionId: Id, agentRunId: Id): RunDeliveryWorkHandlerResult {
-	return { ok: true, value: { type: 'worked', actionIds: [actionId], agentRunIds: [agentRunId] } satisfies Result }
+export function worked(_actionId: Id, _agentRunId: Id): RunDeliveryWorkHandlerResult {
+	return completed(1)
 }
 
 export function workedActions(actionIds: Id[]): RunDeliveryWorkHandlerResult {
-	return { ok: true, value: { type: 'worked', actionIds, agentRunIds: [] } satisfies Result }
+	return completed(actionIds.length)
+}
+
+export function completed(processedCount = 0): RunDeliveryWorkHandlerResult {
+	return { ok: true, value: { processedCount, failures: [] } satisfies Result }
 }
 
 export function notImplemented(operation: string): RunDeliveryWorkHandlerResult {

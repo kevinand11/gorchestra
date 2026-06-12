@@ -20,7 +20,7 @@ async function writeSliceExecutionAgentRun(context: DeliveryHandlerContext, agen
 	const agentRunPut = await putRecord('agent-run', context.tx.agentRuns, agentRun.id, agentRun)
 	if (!agentRunPut.ok) return agentRunPut
 
-	return { ok: true, value: { type: 'worked', actionIds: [], agentRunIds: [agentRun.id] } }
+	return { ok: true, value: { processedCount: 1, failures: [] } }
 }
 
 function sliceExecutionAgentRun(
@@ -85,7 +85,7 @@ if (import.meta.vitest) {
 				resolution,
 			)
 
-			expect(result).toEqual({ ok: true, value: { type: 'worked', actionIds: [], agentRunIds: ['agent-run-1'] } })
+			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
 			expect(context.tx.actions.records.size).toBe(0)
 			expect(context.tx.agentRuns.records.get('agent-run-1')).toEqual({
 				id: 'agent-run-1',
@@ -109,7 +109,7 @@ if (import.meta.vitest) {
 				resolution,
 			)
 
-			expect(result).toEqual({ ok: true, value: { type: 'worked', actionIds: [], agentRunIds: ['agent-run-1'] } })
+			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
 			expect(context.tx.agentRuns.records.get('agent-run-1')?.purpose).toEqual({
 				type: 'execution',
 				deliveryId: 'delivery-1',
