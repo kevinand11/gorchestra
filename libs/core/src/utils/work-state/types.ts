@@ -24,14 +24,22 @@ export type WorkStateResult<T> = Result<T, WorkStateDerivationError>
 export type MaybeStateResult<T> = WorkStateResult<T | null>
 export type MaybeStateStep<T> = () => MaybeStateResult<T> | Promise<MaybeStateResult<T>>
 
-export interface WorkStateFacts {
+export interface WorkStateDeliveryDependency {
+	link: DeliveryDependencyLink
+	delivery: Delivery
+	closedBy: Action | null
+}
+
+export interface WorkStateDeliveryContext {
+	delivery: Delivery
+	slices: Slice[]
 	actions: Action[]
 	agentRuns: AgentRun[]
-	links: Link[]
 	deliveryArtifacts: DeliveryArtifact[]
 	sliceArtifacts: SliceArtifact[]
 	reviewSurfaces: ReviewSurface[]
-	slices: Slice[]
+	deliveryDependencies: WorkStateDeliveryDependency[]
+	sliceDependencyLinks: SliceDependencyLink[]
 }
 
 export type ActionOfType<TType extends ActionResult['type']> = Action & { result: Extract<ActionResult, { type: TType }> }

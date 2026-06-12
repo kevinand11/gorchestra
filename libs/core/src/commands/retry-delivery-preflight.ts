@@ -17,13 +17,8 @@ import type {
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
-import {
-	deliveryWorkStateMismatch,
-	prepareAuthorizedAction,
-	putRecord,
-	readDeliveryWorkState,
-	withTransaction,
-} from '../utils/command-storage'
+import { deliveryWorkStateMismatch, prepareAuthorizedAction, putRecord, withTransaction } from '../utils/command-storage'
+import { buildDeliveryContext } from '../utils/delivery-context'
 import {
 	providerBackedDeliveryPreflightInputsStillCurrent,
 	readProviderBackedDeliveryPreflightPlan,
@@ -31,6 +26,7 @@ import {
 	type ProviderBackedDeliveryPreflightPlan,
 } from '../utils/delivery-preflight'
 import type { Result as CoreResult } from '../utils/types'
+import { getDeliveryState } from '../utils/work-state'
 
 const retryDeliveryPreflightInputPipe = v.object({ deliveryId: idPipe })
 export type Input = PipeOutput<typeof retryDeliveryPreflightInputPipe>
@@ -125,12 +121,15 @@ async function requirePreflightFailedDelivery(
 	tx: CoreStorageTransaction,
 	deliveryId: Id,
 ): Promise<CoreResult<Delivery, Exclude<Error, InvalidInputError>>> {
-	const deliveryState = await readDeliveryWorkState(tx, deliveryId)
+	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
+	if (!deliveryContext.ok) return deliveryContext
+
+	const deliveryState = getDeliveryState(deliveryContext.value)
 	if (!deliveryState.ok) return deliveryState
 
-	return deliveryState.value.state.type === 'preflight-failed'
-		? { ok: true, value: deliveryState.value.delivery }
-		: deliveryWorkStateMismatch(deliveryId, ['preflight-failed'], deliveryState.value.state)
+	return deliveryState.value.type === 'preflight-failed'
+		? { ok: true, value: deliveryContext.value.delivery }
+		: deliveryWorkStateMismatch(deliveryId, ['preflight-failed'], deliveryState.value)
 }
 
 async function writePreflightAction(
@@ -169,7 +168,8 @@ if (import.meta.vitest) {
 		seedSelectableModel,
 		validationEvidence,
 	} = await import('../utils/test-helpers')
-	const { deriveDeliveryWorkState } = await import('../utils/work-state')
+	const { buildDeliveryContext } = await import('../utils/delivery-context')
+	const { getDeliveryState } = await import('../utils/work-state')
 
 	describe('retryDeliveryPreflight command', () => {
 		it('validates input before reading storage', async () => {
@@ -217,7 +217,9 @@ if (import.meta.vitest) {
 					action: expectedPassingProviderPreflightAction('action-1'),
 				},
 			})
-			expect(await deriveDeliveryWorkState(options.tx, 'delivery-1')).not.toMatchObject({
+			const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
+			if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
+			expect(getDeliveryState(deliveryContext.value)).not.toMatchObject({
 				ok: true,
 				value: { type: 'preflight-failed' },
 			})
@@ -260,6 +262,7 @@ if (import.meta.vitest) {
 
 		it('returns operation error when the Delivery Project is missing', async () => {
 			const options = preflightFailedFixture()
+			options.tx.projects.records.delete('project-1')
 
 			expect(await retry(options)).toEqual({ ok: false, error: { type: 'not-found', resource: 'project', id: 'project-1' } })
 		})

@@ -8,6 +8,7 @@ import { buildQueryHandler } from './utils'
 import { buildDeliveryContext } from '../utils/delivery-context'
 import { withTransaction } from '../utils/storage'
 import type { Result as CoreResult } from '../utils/types'
+import { getDeliveryState } from '../utils/work-state'
 
 const getDeliveryWorkStateInputPipe = v.object({ deliveryId: idPipe })
 export type Input = PipeOutput<typeof getDeliveryWorkStateInputPipe>
@@ -19,7 +20,7 @@ export function createGetDeliveryWorkStateQuery(options: CoreServices): Operatio
 	return buildQueryHandler('getDeliveryWorkState', getDeliveryWorkStateInputPipe, (input) =>
 		withTransaction(options, async (tx) => {
 			const context = await buildDeliveryContext(tx, input.deliveryId)
-			return context.ok ? { ok: true, value: context.value.deliveryState } : context
+			return context.ok ? getDeliveryState(context.value) : context
 		}),
 	)
 }

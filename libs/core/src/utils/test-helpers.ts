@@ -145,6 +145,16 @@ export function seedProject(tx: MemoryStorageTransaction, id: string) {
 }
 
 export function seedDelivery(tx: MemoryStorageTransaction, id: string) {
+	if (!tx.projects.records.has('project-1')) seedProject(tx, 'project-1')
+	if (!tx.repositories.records.has('repository-1')) {
+		tx.repositories.records.set('repository-1', {
+			id: 'repository-1',
+			projectId: 'project-1',
+			config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
+			created: stamp,
+		})
+	}
+
 	tx.deliveries.records.set(id, {
 		id,
 		projectId: 'project-1',

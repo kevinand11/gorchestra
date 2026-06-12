@@ -173,7 +173,7 @@ A derived state describing the current execution state of a Delivery. Delivery W
 _Avoid_: Execution state, job state, stored work state
 
 **Delivery Context**:
-A transient, never-stored context Gorchestra prepares around one Delivery. Delivery Context contains root-level validated Portfolio facts and derived Delivery and Slice Work States for that Delivery, so Delivery queries and commands can reuse one consistent view of Delivery facts. Runtime Delivery Work Context extends Delivery Context for one Delivery work pass with resolved Delivery Config, selected execution Model, and provider access values needed by Core-owned runtime and provider behavior.
+A transient, never-stored context Gorchestra prepares around one Delivery. Delivery Context contains scoped, validated Portfolio facts needed to derive Delivery and Slice Work States for that Delivery, including facts for direct dependencies when dependency gates require them. Delivery queries and commands can reuse this consistent view of Delivery facts. Runtime Delivery Work Context extends Delivery Context for one Delivery work pass with resolved Delivery Config, selected execution Model, and provider access values needed by Core-owned runtime and provider behavior.
 _Avoid_: Scheduler context, stored execution context, Agent Run context, facts bag
 
 **Agent**:

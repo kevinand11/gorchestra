@@ -5,13 +5,14 @@ import { workedActions } from './handlers/result'
 import type { Error, Result } from './types'
 import type { Action } from '../../domain/action'
 import { idPipe, type OperationContext } from '../../domain/commons'
-import { deliveryPipe, type DeliveryWorkState } from '../../domain/delivery'
+import type { DeliveryWorkState } from '../../domain/delivery'
 import type { ValidationEvidence } from '../../domain/evidence'
 import type { InvalidInputError } from '../../errors'
 import type { CoreRuntime } from '../../runtime'
 import type { CoreServices, CoreStorageTransaction } from '../../services'
 import { buildCommandHandler } from '../../utils/command'
 import { nextId, putRecord, runtimeRecord } from '../../utils/command-storage'
+import { buildDeliveryContext, type DeliveryContext } from '../../utils/delivery-context'
 import {
 	deliveryPreflightChecksPassed,
 	providerBackedDeliveryPreflightInputsStillCurrent,
@@ -20,9 +21,9 @@ import {
 	runProviderBackedDeliveryPreflightChecks,
 	type ProviderBackedDeliveryPreflightPlan,
 } from '../../utils/delivery-preflight'
-import { getRequired, withTransaction } from '../../utils/storage'
+import { withTransaction } from '../../utils/storage'
 import type { Result as CoreResult } from '../../utils/types'
-import { deriveDeliveryWorkState } from '../../utils/work-state'
+import { getDeliveryState } from '../../utils/work-state'
 
 export type { Error, Result, RunDeliveryWorkFailure, RunDeliveryWorkFailureOperation, RunDeliveryWorkNoObservedChangeTarget } from './types'
 
@@ -62,26 +63,26 @@ async function handleRunDeliveryWork(runtime: CoreRuntime, input: Input): Promis
 type SchedulerPreflightRead = { type: 'result'; result: Result } | ProviderBackedDeliveryPreflightPlan
 
 async function readSchedulerPreflightPlan(
-	options: CoreServices,
+	services: CoreServices,
 	tx: CoreStorageTransaction,
 	deliveryId: string,
 ): Promise<CoreResult<SchedulerPreflightRead, Exclude<Error, InvalidInputError>>> {
-	const deliveryResult = await getRequired('delivery', tx.deliveries, deliveryId, deliveryPipe)
-	if (!deliveryResult.ok) return deliveryResult
+	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
+	if (!deliveryContext.ok) return deliveryContext
 
-	const stateResult = await deriveDeliveryWorkState(tx, deliveryId)
-	return stateResult.ok ? schedulerPreflightPlanForState(options, tx, deliveryResult.value, stateResult.value) : stateResult
+	const stateResult = getDeliveryState(deliveryContext.value)
+	return stateResult.ok ? schedulerPreflightPlanForState(services, tx, deliveryContext.value, stateResult.value) : stateResult
 }
 
 async function schedulerPreflightPlanForState(
-	options: CoreServices,
+	services: CoreServices,
 	tx: CoreStorageTransaction,
-	delivery: Parameters<typeof handleDeliveryWorkState>[0]['delivery'],
+	deliveryContext: DeliveryContext,
 	state: DeliveryWorkState,
 ): Promise<CoreResult<SchedulerPreflightRead, Exclude<Error, InvalidInputError>>> {
-	if (isSchedulerPreflightState(state)) return readProviderBackedDeliveryPreflightPlan(tx, delivery)
+	if (isSchedulerPreflightState(state)) return readProviderBackedDeliveryPreflightPlan(tx, deliveryContext.delivery)
 
-	const handled = await handleDeliveryWorkState({ options, tx, delivery }, state)
+	const handled = await handleDeliveryWorkState({ services, tx, deliveryContext }, state)
 	return handled.ok ? { ok: true, value: { type: 'result', result: handled.value } } : handled
 }
 
@@ -107,12 +108,10 @@ async function applySchedulerPreflight(
 	if (!readiness.ok) return readiness
 	if (readiness.value.type === 'conflict') return deliveryClaimConflict()
 
-	return applyCurrentSchedulerPreflight(options, tx, readiness.value.delivery, readiness.value.state, plan, checks)
+	return applyCurrentSchedulerPreflight(options, tx, readiness.value.deliveryContext, readiness.value.state, plan, checks)
 }
 
-type SchedulerPreflightWriteReadiness =
-	| { type: 'ready'; delivery: Parameters<typeof handleDeliveryWorkState>[0]['delivery']; state: DeliveryWorkState }
-	| { type: 'conflict' }
+type SchedulerPreflightWriteReadiness = { type: 'ready'; deliveryContext: DeliveryContext; state: DeliveryWorkState } | { type: 'conflict' }
 
 async function schedulerPreflightWriteReadiness(
 	tx: CoreStorageTransaction,
@@ -123,35 +122,30 @@ async function schedulerPreflightWriteReadiness(
 	if (!current.ok) return current
 	if (!isSchedulerPreflightState(current.value.state)) return schedulerPreflightConflict()
 
-	return freshSchedulerPreflightReadiness(tx, current.value.delivery, current.value.state, plan)
+	return freshSchedulerPreflightReadiness(tx, current.value.deliveryContext, current.value.state, plan)
 }
 
 async function currentSchedulerPreflightState(
 	tx: CoreStorageTransaction,
 	deliveryId: string,
-): Promise<
-	CoreResult<
-		{ delivery: Parameters<typeof handleDeliveryWorkState>[0]['delivery']; state: DeliveryWorkState },
-		Exclude<Error, InvalidInputError>
-	>
-> {
-	const deliveryResult = await getRequired('delivery', tx.deliveries, deliveryId, deliveryPipe)
-	if (!deliveryResult.ok) return deliveryResult
+): Promise<CoreResult<{ deliveryContext: DeliveryContext; state: DeliveryWorkState }, Exclude<Error, InvalidInputError>>> {
+	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
+	if (!deliveryContext.ok) return deliveryContext
 
-	const stateResult = await deriveDeliveryWorkState(tx, deliveryId)
-	return stateResult.ok ? { ok: true, value: { delivery: deliveryResult.value, state: stateResult.value } } : stateResult
+	const stateResult = getDeliveryState(deliveryContext.value)
+	return stateResult.ok ? { ok: true, value: { deliveryContext: deliveryContext.value, state: stateResult.value } } : stateResult
 }
 
 async function freshSchedulerPreflightReadiness(
 	tx: CoreStorageTransaction,
-	delivery: Parameters<typeof handleDeliveryWorkState>[0]['delivery'],
+	deliveryContext: DeliveryContext,
 	state: DeliveryWorkState,
 	plan: Exclude<SchedulerPreflightRead, { type: 'result' }>,
 ): Promise<CoreResult<SchedulerPreflightWriteReadiness, Exclude<Error, InvalidInputError>>> {
-	const freshness = await providerBackedDeliveryPreflightInputsStillCurrent(tx, delivery, plan)
+	const freshness = await providerBackedDeliveryPreflightInputsStillCurrent(tx, deliveryContext.delivery, plan)
 	if (!freshness.ok) return freshness
 
-	return freshness.value ? { ok: true, value: { type: 'ready', delivery, state } } : schedulerPreflightConflict()
+	return freshness.value ? { ok: true, value: { type: 'ready', deliveryContext, state } } : schedulerPreflightConflict()
 }
 
 function schedulerPreflightConflict(): CoreResult<Extract<SchedulerPreflightWriteReadiness, { type: 'conflict' }>, never> {
@@ -159,26 +153,26 @@ function schedulerPreflightConflict(): CoreResult<Extract<SchedulerPreflightWrit
 }
 
 function applyCurrentSchedulerPreflight(
-	options: CoreServices,
+	services: CoreServices,
 	tx: CoreStorageTransaction,
-	delivery: Parameters<typeof handleDeliveryWorkState>[0]['delivery'],
+	deliveryContext: DeliveryContext,
 	state: DeliveryWorkState,
 	plan: Exclude<SchedulerPreflightRead, { type: 'result' }>,
 	checks: ValidationEvidence[],
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> | CoreResult<Result, Exclude<Error, InvalidInputError>> {
 	return deliveryPreflightChecksPassed(checks)
-		? handleDeliveryWorkState(schedulerHandlerContext(options, tx, delivery, plan), state)
-		: writeFailedPreflightAction(options, tx, delivery.id, checks)
+		? handleDeliveryWorkState(schedulerHandlerContext(services, tx, deliveryContext, plan), state)
+		: writeFailedPreflightAction(services, tx, deliveryContext.delivery.id, checks)
 }
 
 function schedulerHandlerContext(
-	options: CoreServices,
+	services: CoreServices,
 	tx: CoreStorageTransaction,
-	delivery: Parameters<typeof handleDeliveryWorkState>[0]['delivery'],
+	deliveryContext: DeliveryContext,
 	plan: Exclude<SchedulerPreflightRead, { type: 'result' }>,
 ) {
 	const resolution = providerBackedDeliveryWorkResolution(plan)
-	return resolution === undefined ? { options, tx, delivery } : { options, tx, delivery, preflight: resolution }
+	return resolution === undefined ? { services, tx, deliveryContext } : { services, tx, deliveryContext, preflight: resolution }
 }
 
 function deliveryClaimConflict(): CoreResult<Result, never> {

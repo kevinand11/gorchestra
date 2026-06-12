@@ -10,11 +10,12 @@ import {
 	deliveryWorkStateMismatch,
 	prepareAuthorizedAction,
 	putRecord,
-	readDeliveryWorkState,
 	withTransaction,
 	type DeliveryActionCommandResult,
 } from '../utils/command-storage'
+import { buildDeliveryContext } from '../utils/delivery-context'
 import type { Result as CoreResult } from '../utils/types'
+import { getDeliveryState } from '../utils/work-state'
 
 const queueDeliveryInputPipe = v.object({ deliveryId: idPipe })
 export type Input = PipeOutput<typeof queueDeliveryInputPipe>
@@ -62,12 +63,15 @@ async function requireUnqueuedDelivery(
 	tx: CoreStorageTransaction,
 	deliveryId: Id,
 ): Promise<CoreResult<Result['delivery'], Exclude<Error, InvalidInputError>>> {
-	const deliveryState = await readDeliveryWorkState(tx, deliveryId)
+	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
+	if (!deliveryContext.ok) return deliveryContext
+
+	const deliveryState = getDeliveryState(deliveryContext.value)
 	if (!deliveryState.ok) return deliveryState
 
-	return deliveryState.value.state.type === 'unqueued'
-		? { ok: true, value: deliveryState.value.delivery }
-		: deliveryWorkStateMismatch(deliveryId, ['unqueued'], deliveryState.value.state)
+	return deliveryState.value.type === 'unqueued'
+		? { ok: true, value: deliveryContext.value.delivery }
+		: deliveryWorkStateMismatch(deliveryId, ['unqueued'], deliveryState.value)
 }
 
 function queueDeliveryAction(deliveryId: Id, stamp: AuditStamp, actionId: Id): Result['action'] {

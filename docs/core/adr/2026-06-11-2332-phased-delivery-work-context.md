@@ -1,6 +1,6 @@
 # Phased Delivery Context
 
-Delivery queries and commands prepare a transient Delivery Context instead of independently reloading and reinterpreting required Portfolio facts. Delivery Context contains root-level validated Portfolio facts for one Delivery, the derived Delivery Work State, and all Slice Work States in Delivery order. Runtime Delivery Work Context extends Delivery Context for one scheduler-actionable Delivery work pass with resolved Delivery Config, the selected execution Model and Model Provider, and provider access plaintext needed by Core-owned runtime and provider behavior.
+Delivery queries and commands prepare a transient Delivery Context instead of independently reloading and reinterpreting required Portfolio facts. Delivery Context contains scoped validated Portfolio facts needed to derive Delivery and Slice Work States for one Delivery; the Work States are derived from the context and are not fields on the context. Runtime Delivery Work Context extends Delivery Context for one scheduler-actionable Delivery work pass with resolved Delivery Config, the selected execution Model and Model Provider, and provider access plaintext needed by Core-owned runtime and provider behavior.
 
 Delivery Context and Runtime Delivery Work Context are never stored. Secret plaintext may exist only in Runtime Delivery Work Context and must not be written to Actions, Artifact records, freshness fingerprints, logs, or other durable facts. Freshness checks use operation-scoped fingerprints derived from non-secret stored facts in the context.
 

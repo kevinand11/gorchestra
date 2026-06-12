@@ -15,11 +15,12 @@ import {
 	modelIdsFromDeliveryConfigRecord,
 	normalizeDeliveryConfigRecord,
 	putRecord,
-	readDeliveryWorkState,
 	validateSelectableModels,
 	withTransaction,
 } from '../utils/command-storage'
+import { buildDeliveryContext } from '../utils/delivery-context'
 import type { Result as CoreResult } from '../utils/types'
+import { getDeliveryState } from '../utils/work-state'
 
 const configureDeliveryInputPipe = v.object({ deliveryId: idPipe, config: deliveryConfigPipe })
 export type Input = PipeOutput<typeof configureDeliveryInputPipe>
@@ -73,12 +74,15 @@ async function requireOpenDelivery(
 	tx: CoreStorageTransaction,
 	deliveryId: string,
 ): Promise<CoreResult<Delivery, Exclude<Error, InvalidInputError>>> {
-	const deliveryState = await readDeliveryWorkState(tx, deliveryId)
+	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
+	if (!deliveryContext.ok) return deliveryContext
+
+	const deliveryState = getDeliveryState(deliveryContext.value)
 	if (!deliveryState.ok) return deliveryState
 
-	return deliveryState.value.state.type === 'closed'
-		? closedDeliveryMismatch(deliveryId, deliveryState.value.state)
-		: { ok: true, value: deliveryState.value.delivery }
+	return deliveryState.value.type === 'closed'
+		? closedDeliveryMismatch(deliveryId, deliveryState.value)
+		: { ok: true, value: deliveryContext.value.delivery }
 }
 
 async function writeConfiguredDelivery(

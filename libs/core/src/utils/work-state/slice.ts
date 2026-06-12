@@ -1,50 +1,33 @@
 import { actionAffectsSlice, latestAction, latestPassedSlicePromotion, latestSliceDeliveryValidationAfter, sortedActions } from './actions'
 import { singleSliceArtifact } from './artifacts'
-import { blockedDependencyIds } from './dependencies'
-import { loadWorkStateFacts } from './facts'
-import { firstState, firstSyncState, invariant, ok, stateOrElse, stateOrElseSync } from './result'
+import { compareAcceptedThenId } from './dependencies'
+import { firstSyncState, invariant, ok, stateOrElseSync } from './result'
 import { currentScopedReviewSurface } from './review-surfaces'
-import type { SliceDependencyLink, WorkStateDerivationError, WorkStateFacts, WorkStateResult } from './types'
+import type { SliceDependencyLink, WorkStateDeliveryContext, WorkStateDerivationError, WorkStateResult } from './types'
 import type { Action } from '../../domain/action'
 import type { AgentRun, ExecutionMode } from '../../domain/agent-run'
-import { deliveryPipe, type Delivery } from '../../domain/delivery'
-import { slicePipe, type Slice, type SliceWorkState } from '../../domain/slice'
-import type { CoreStorageTransaction } from '../../services'
-import { getRequired } from '../storage'
+import type { ArchivePeriod, Id } from '../../domain/commons'
+import type { Slice, SliceWorkState } from '../../domain/slice'
+import { notFound } from '../storage'
 import type { Result } from '../types'
 
-export async function deriveSliceWorkState(
-	tx: CoreStorageTransaction,
-	sliceId: Slice['id'],
-): Promise<Result<SliceWorkState, WorkStateDerivationError>> {
-	const sliceResult = await getRequired('slice', tx.slices, sliceId, slicePipe)
-	if (!sliceResult.ok) return sliceResult
-
-	const factsResult = await loadWorkStateFacts(tx)
-	if (!factsResult.ok) return factsResult
-
-	return deriveSliceWorkStateFromFacts(tx, sliceResult.value, factsResult.value)
+export function getSliceState(context: WorkStateDeliveryContext, sliceId: Id): Result<SliceWorkState, WorkStateDerivationError> {
+	const slice = context.slices.find((candidate) => candidate.id === sliceId && candidate.deliveryId === context.delivery.id)
+	return slice === undefined ? notFound('slice', sliceId) : deriveSliceState(context, slice)
 }
 
-export async function deriveSliceWorkStateFromFacts(
-	tx: CoreStorageTransaction,
+function deriveSliceState(context: WorkStateDeliveryContext, slice: Slice): WorkStateResult<SliceWorkState> {
+	const sliceActions = sortedActions(context.actions.filter((action) => actionAffectsSlice(action, slice.id)))
+	const earlyState = firstSyncState([() => promotedSliceState(context, slice, sliceActions), () => sliceDependencyState(context, slice)])
+
+	return stateOrElseSync(earlyState, () => deriveSliceStateAfterEarlyGates(context, slice, sliceActions))
+}
+
+function promotedSliceState(
+	context: WorkStateDeliveryContext,
 	slice: Slice,
-	facts: WorkStateFacts,
-): Promise<WorkStateResult<SliceWorkState>> {
-	const deliveryResult = await getRequired('delivery', tx.deliveries, slice.deliveryId, deliveryPipe)
-	if (!deliveryResult.ok) return deliveryResult
-
-	const deliveryActions = sortedActions(facts.actions.filter((action) => action.deliveryId === slice.deliveryId))
-	const sliceActions = deliveryActions.filter((action) => actionAffectsSlice(action, slice.id))
-	const earlyState = await firstState([
-		() => promotedSliceState(slice, sliceActions, facts),
-		() => sliceDependencyState(tx, deliveryResult.value, slice, facts),
-	])
-
-	return stateOrElse(earlyState, () => deriveSliceStateAfterEarlyGates(slice, sliceActions, facts))
-}
-
-function promotedSliceState(slice: Slice, sliceActions: Action[], facts: WorkStateFacts): WorkStateResult<SliceWorkState | null> {
+	sliceActions: Action[],
+): WorkStateResult<SliceWorkState | null> {
 	const promotion = latestPassedSlicePromotion(slice.id, sliceActions)
 	if (promotion === null) return ok(null)
 
@@ -56,26 +39,21 @@ function promotedSliceState(slice: Slice, sliceActions: Action[], facts: WorkSta
 		: ok({
 				type: 'executable',
 				mode: 'correction',
-				failureChain: { rootActionId: validation.id, correctionRetries: correctionRetriesFor(validation, slice, facts) },
+				failureChain: { rootActionId: validation.id, correctionRetries: correctionRetriesFor(context, validation, slice) },
 			})
 }
 
-async function sliceDependencyState(
-	tx: CoreStorageTransaction,
-	delivery: Delivery,
-	slice: Slice,
-	facts: WorkStateFacts,
-): Promise<WorkStateResult<SliceWorkState | null>> {
-	const blockedIds = await blockedSliceIds(tx, delivery, slice, facts)
+function sliceDependencyState(context: WorkStateDeliveryContext, slice: Slice): WorkStateResult<SliceWorkState | null> {
+	const blockedIds = blockedSliceIds(context, slice)
 	if (!blockedIds.ok) return blockedIds
 
 	return blockedIds.value.length === 0 ? ok(null) : ok({ type: 'dependency-blocked', blockedBy: blockedIds.value })
 }
 
 function failedSliceArtifactValidationState(
+	context: WorkStateDeliveryContext,
 	slice: Slice,
 	sliceActions: Action[],
-	facts: WorkStateFacts,
 ): WorkStateResult<SliceWorkState | null> {
 	const validation = latestAction(sliceActions.filter((action) => action.result.type === 'validate-slice-artifact'))
 	if (validation?.result.type !== 'validate-slice-artifact' || validation.result.evidence.passed) return ok(null)
@@ -83,18 +61,26 @@ function failedSliceArtifactValidationState(
 	return ok({
 		type: 'executable',
 		mode: 'correction',
-		failureChain: { rootActionId: validation.id, correctionRetries: correctionRetriesFor(validation, slice, facts) },
+		failureChain: { rootActionId: validation.id, correctionRetries: correctionRetriesFor(context, validation, slice) },
 	})
 }
 
-function deriveSliceStateAfterEarlyGates(slice: Slice, sliceActions: Action[], facts: WorkStateFacts): WorkStateResult<SliceWorkState> {
-	const executionState = deriveSliceExecutionState(slice, sliceActions, facts)
-	return stateOrElseSync(executionState, () => deriveSliceStateAfterExecution(slice, sliceActions, facts))
+function deriveSliceStateAfterEarlyGates(
+	context: WorkStateDeliveryContext,
+	slice: Slice,
+	sliceActions: Action[],
+): WorkStateResult<SliceWorkState> {
+	const executionState = deriveSliceExecutionState(context, slice, sliceActions)
+	return stateOrElseSync(executionState, () => deriveSliceStateAfterExecution(context, slice, sliceActions))
 }
 
-function deriveSliceExecutionState(slice: Slice, sliceActions: Action[], facts: WorkStateFacts): WorkStateResult<SliceWorkState | null> {
-	const execution = latestCompletedSliceExecutionAgentRun(slice, facts)
-	return execution === null ? ok(null) : completedSliceExecutionState(slice, execution, sliceActions, facts)
+function deriveSliceExecutionState(
+	context: WorkStateDeliveryContext,
+	slice: Slice,
+	sliceActions: Action[],
+): WorkStateResult<SliceWorkState | null> {
+	const execution = latestCompletedSliceExecutionAgentRun(context, slice)
+	return execution === null ? ok(null) : completedSliceExecutionState(context, slice, execution, sliceActions)
 }
 
 type CompletedExecutionAgentRun = AgentRun & {
@@ -103,18 +89,18 @@ type CompletedExecutionAgentRun = AgentRun & {
 }
 
 function completedSliceExecutionState(
+	context: WorkStateDeliveryContext,
 	slice: Slice,
 	execution: CompletedExecutionAgentRun,
 	sliceActions: Action[],
-	facts: WorkStateFacts,
 ): WorkStateResult<SliceWorkState | null> {
 	if (!executionNeedsArtifactValidation(execution, sliceActions)) return ok(null)
 
-	const artifactResult = singleSliceArtifact(slice, facts.sliceArtifacts)
+	const artifactResult = singleSliceArtifact(slice, context.sliceArtifacts)
 	if (!artifactResult.ok) return artifactResult
 	if (artifactResult.value === null) return invariant(`Completed Slice execution ${execution.id} has no Slice Artifact.`)
 
-	return ok(needsSliceArtifactValidationState(slice, execution.purpose.mode, artifactResult.value.id, facts))
+	return ok(needsSliceArtifactValidationState(context, slice, execution.purpose.mode, artifactResult.value.id))
 }
 
 function executionNeedsArtifactValidation(execution: CompletedExecutionAgentRun, sliceActions: Action[]): boolean {
@@ -124,10 +110,10 @@ function executionNeedsArtifactValidation(execution: CompletedExecutionAgentRun,
 }
 
 function needsSliceArtifactValidationState(
+	context: WorkStateDeliveryContext,
 	slice: Slice,
 	mode: ExecutionMode,
 	sliceArtifactId: string,
-	facts: WorkStateFacts,
 ): SliceWorkState {
 	return mode.type === 'correction'
 		? {
@@ -136,26 +122,30 @@ function needsSliceArtifactValidationState(
 				sliceArtifactId,
 				failureChain: {
 					rootActionId: mode.failureChainRootActionId,
-					correctionRetries: correctionRetriesForRoot(mode.failureChainRootActionId, slice, facts),
+					correctionRetries: correctionRetriesForRoot(context, mode.failureChainRootActionId, slice),
 				},
 			}
 		: { type: 'needs-artifact-validation', mode: 'initial', sliceArtifactId }
 }
 
-function deriveSliceStateAfterExecution(slice: Slice, sliceActions: Action[], facts: WorkStateFacts): WorkStateResult<SliceWorkState> {
+function deriveSliceStateAfterExecution(
+	context: WorkStateDeliveryContext,
+	slice: Slice,
+	sliceActions: Action[],
+): WorkStateResult<SliceWorkState> {
 	const externalState = firstSyncState([
-		() => sliceReviewState(slice, facts),
+		() => sliceReviewState(context, slice),
 		() => sliceExternalFailureState(sliceActions),
-		() => initialSliceArtifactState(slice, facts),
-		() => failedSliceArtifactValidationState(slice, sliceActions, facts),
+		() => initialSliceArtifactState(context, slice),
+		() => failedSliceArtifactValidationState(context, slice, sliceActions),
 	])
 
 	return stateOrElseSync(externalState, () => ok({ type: 'executable', mode: 'initial' }))
 }
 
-function sliceReviewState(slice: Slice, facts: WorkStateFacts): WorkStateResult<SliceWorkState | null> {
+function sliceReviewState(context: WorkStateDeliveryContext, slice: Slice): WorkStateResult<SliceWorkState | null> {
 	const reviewSurface = currentScopedReviewSurface(
-		facts.reviewSurfaces.filter((candidate) => candidate.scope.type === 'slice' && candidate.scope.sliceId === slice.id),
+		context.reviewSurfaces.filter((candidate) => candidate.scope.type === 'slice' && candidate.scope.sliceId === slice.id),
 	)
 	if (!reviewSurface.ok) return reviewSurface
 
@@ -170,42 +160,45 @@ function sliceExternalFailureState(sliceActions: Action[]): WorkStateResult<Slic
 	return failure === null ? ok(null) : ok({ type: 'slice-operation-failed', actionId: failure.id })
 }
 
-function initialSliceArtifactState(slice: Slice, facts: WorkStateFacts): WorkStateResult<SliceWorkState | null> {
-	const artifactResult = singleSliceArtifact(slice, facts.sliceArtifacts)
+function initialSliceArtifactState(context: WorkStateDeliveryContext, slice: Slice): WorkStateResult<SliceWorkState | null> {
+	const artifactResult = singleSliceArtifact(slice, context.sliceArtifacts)
 	if (!artifactResult.ok) return artifactResult
 
 	return artifactResult.value === null ? ok({ type: 'needs-artifact-creation' }) : ok(null)
 }
 
-async function blockedSliceIds(
-	tx: CoreStorageTransaction,
-	delivery: Delivery,
-	slice: Slice,
-	facts: WorkStateFacts,
-): Promise<WorkStateResult<Slice['id'][]>> {
-	return blockedDependencyIds(
-		facts.links,
-		(candidate): candidate is SliceDependencyLink => isSliceDependencyLink(candidate, slice.id),
-		(link) => incompleteSliceDependency(tx, delivery, link, facts.actions),
-	)
+function blockedSliceIds(context: WorkStateDeliveryContext, slice: Slice): WorkStateResult<Slice['id'][]> {
+	const prerequisites: Slice[] = []
+	for (const link of activeSliceDependencyLinks(context, slice.id)) {
+		const prerequisite = incompleteSliceDependency(context, link)
+		if (!prerequisite.ok) return prerequisite
+		if (prerequisite.value !== null) prerequisites.push(prerequisite.value)
+	}
+
+	return ok(prerequisites.sort(compareAcceptedThenId).map((blocked) => blocked.id))
 }
 
-function isSliceDependencyLink(link: WorkStateFacts['links'][number], sliceId: Slice['id']): link is SliceDependencyLink {
-	return link.type === 'depends-on' && link.from.type === 'slice' && link.from.id === sliceId && link.to.type === 'slice'
+function incompleteSliceDependency(context: WorkStateDeliveryContext, link: SliceDependencyLink): WorkStateResult<Slice | null> {
+	const prerequisite = context.slices.find((candidate) => candidate.id === link.to.id)
+	if (prerequisite === undefined) return notFound('slice', link.to.id)
+
+	return validSliceDependency(context, prerequisite).ok && isSliceComplete(prerequisite.id, context.actions)
+		? ok(null)
+		: validSliceDependency(context, prerequisite)
 }
 
-async function incompleteSliceDependency(
-	tx: CoreStorageTransaction,
-	delivery: Delivery,
-	link: SliceDependencyLink,
-	actions: Action[],
-): Promise<WorkStateResult<Slice | null>> {
-	const prerequisite = await getRequired('slice', tx.slices, link.to.id, slicePipe)
-	if (!prerequisite.ok) return prerequisite
-	if (prerequisite.value.deliveryId !== delivery.id)
-		return invariant(`Slice dependency ${prerequisite.value.id} is outside Delivery ${delivery.id}.`)
+function validSliceDependency(context: WorkStateDeliveryContext, prerequisite: Slice): WorkStateResult<Slice> {
+	return prerequisite.deliveryId === context.delivery.id
+		? ok(prerequisite)
+		: invariant(`Slice dependency ${prerequisite.id} is outside Delivery ${context.delivery.id}.`)
+}
 
-	return isSliceComplete(prerequisite.value.id, actions) ? ok(null) : ok(prerequisite.value)
+function activeSliceDependencyLinks(context: WorkStateDeliveryContext, sliceId: Slice['id']): SliceDependencyLink[] {
+	return context.sliceDependencyLinks.filter((link) => link.from.id === sliceId && !isArchived(link.archivePeriods))
+}
+
+function isArchived(archivePeriods: ArchivePeriod[]): boolean {
+	return archivePeriods.at(-1)?.unarchived === null
 }
 
 function isSliceComplete(sliceId: Slice['id'], actions: Action[]): boolean {
@@ -216,9 +209,9 @@ function isSliceComplete(sliceId: Slice['id'], actions: Action[]): boolean {
 	return latestSliceDeliveryValidationAfter(sliceId, sliceActions, latestPromotion)?.result.evidence.passed === true
 }
 
-function latestCompletedSliceExecutionAgentRun(slice: Slice, facts: WorkStateFacts): CompletedExecutionAgentRun | null {
+function latestCompletedSliceExecutionAgentRun(context: WorkStateDeliveryContext, slice: Slice): CompletedExecutionAgentRun | null {
 	return (
-		sliceExecutionAgentRuns(slice, facts)
+		sliceExecutionAgentRuns(context, slice)
 			.filter((run): run is CompletedExecutionAgentRun => run.completed !== null)
 			.sort(compareAgentRunsByCompletion)
 			.at(-1) ?? null
@@ -226,12 +219,12 @@ function latestCompletedSliceExecutionAgentRun(slice: Slice, facts: WorkStateFac
 }
 
 function sliceExecutionAgentRuns(
+	context: WorkStateDeliveryContext,
 	slice: Slice,
-	facts: WorkStateFacts,
 ): Array<AgentRun & { purpose: Extract<AgentRun['purpose'], { type: 'execution' }> }> {
-	return facts.agentRuns.filter(
+	return context.agentRuns.filter(
 		(run): run is AgentRun & { purpose: Extract<AgentRun['purpose'], { type: 'execution' }> } =>
-			run.purpose.type === 'execution' && run.purpose.deliveryId === slice.deliveryId && run.purpose.sliceId === slice.id,
+			run.purpose.type === 'execution' && run.purpose.deliveryId === context.delivery.id && run.purpose.sliceId === slice.id,
 	)
 }
 
@@ -243,12 +236,12 @@ function compareAgentRunsByCompletion(left: CompletedExecutionAgentRun, right: C
 	return byStart !== 0 ? byStart : left.id.localeCompare(right.id)
 }
 
-function correctionRetriesFor(root: Action, slice: Slice, facts: WorkStateFacts): number {
-	return correctionRetriesForRoot(root.id, slice, facts)
+function correctionRetriesFor(context: WorkStateDeliveryContext, root: Action, slice: Slice): number {
+	return correctionRetriesForRoot(context, root.id, slice)
 }
 
-function correctionRetriesForRoot(rootActionId: string, slice: Slice, facts: WorkStateFacts): number {
-	return facts.agentRuns.filter(
+function correctionRetriesForRoot(context: WorkStateDeliveryContext, rootActionId: string, slice: Slice): number {
+	return context.agentRuns.filter(
 		(run) =>
 			run.purpose.type === 'execution' &&
 			run.purpose.sliceId === slice.id &&
@@ -266,26 +259,26 @@ if (import.meta.vitest) {
 	const externalFailure = externalOperationEvidence('push-branch', false, 'Failed.')
 	const externalPassed = externalOperationEvidence('merge-review-surface', true, 'Merged.')
 
-	describe('deriveSliceWorkState', () => {
-		it('derives complete after Slice Delivery Artifact validation passes after promotion', async () => {
+	describe('getSliceState', () => {
+		it('derives complete after Slice Delivery Artifact validation passes after promotion', () => {
 			const { tx } = sliceFixture()
 			seedPromotion(tx, 'promote-slice', 'slice-1')
 			seedSliceDeliveryValidation(tx, 'slice-complete', 'slice-1', true)
 
-			expect(await deriveSliceWorkState(tx, 'slice-1')).toEqual({ ok: true, value: { type: 'complete', actionId: 'slice-complete' } })
+			expect(sliceState(tx, 'slice-1')).toEqual({ ok: true, value: { type: 'complete', actionId: 'slice-complete' } })
 		})
 
-		it('derives needs-delivery-validation after promotion without later Slice Delivery Artifact validation', async () => {
+		it('derives needs-delivery-validation after promotion without later Slice Delivery Artifact validation', () => {
 			const { tx } = sliceFixture()
 			seedPromotion(tx, 'promote-slice', 'slice-1')
 
-			expect(await deriveSliceWorkState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, 'slice-1')).toEqual({
 				ok: true,
 				value: { type: 'needs-delivery-validation', actionId: 'promote-slice' },
 			})
 		})
 
-		it('derives dependency-blocked for an incomplete same-Delivery prerequisite Slice', async () => {
+		it('derives dependency-blocked for an incomplete same-Delivery prerequisite Slice', () => {
 			const { tx } = sliceFixture()
 			seedSlice(tx, 'slice-prerequisite', 'delivery-1')
 			tx.links.records.set('slice-dependency', {
@@ -297,25 +290,25 @@ if (import.meta.vitest) {
 				archivePeriods: [],
 			})
 
-			expect(await deriveSliceWorkState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, 'slice-1')).toEqual({
 				ok: true,
 				value: { type: 'dependency-blocked', blockedBy: ['slice-prerequisite'] },
 			})
 		})
 
-		it('keeps a Slice executable while an initial Agent Run is incomplete', async () => {
+		it('keeps a Slice executable while an initial Agent Run is incomplete', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
 			seedSliceExecution(tx, 'start-initial', 'slice-1', 'initial', 'agent-run-1', null)
 
-			expect(await deriveSliceWorkState(tx, 'slice-1')).toEqual({ ok: true, value: { type: 'executable', mode: 'initial' } })
+			expect(sliceState(tx, 'slice-1')).toEqual({ ok: true, value: { type: 'executable', mode: 'initial' } })
 		})
 
-		it('counts an incomplete correction Agent Run without exposing an in-transit Slice state', async () => {
+		it('counts an incomplete correction Agent Run without exposing an in-transit Slice state', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
 			seedSliceArtifactValidation(tx, 'failed-validation', 'slice-1', false)
 			seedSliceExecution(tx, 'start-correction', 'slice-1', 'correction', 'agent-run-1', null, '2026-06-10T12:01:00.000Z')
 
-			expect(await deriveSliceWorkState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, 'slice-1')).toEqual({
 				ok: true,
 				value: {
 					type: 'executable',
@@ -325,17 +318,17 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('derives needs-artifact-validation initial after completed initial execution', async () => {
+		it('derives needs-artifact-validation initial after completed initial execution', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
 			seedSliceExecution(tx, 'start-initial', 'slice-1', 'initial', 'agent-run-1', { at: '2026-06-10T12:01:00.000Z' })
 
-			expect(await deriveSliceWorkState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, 'slice-1')).toEqual({
 				ok: true,
 				value: { type: 'needs-artifact-validation', mode: 'initial', sliceArtifactId: 'slice-artifact-1' },
 			})
 		})
 
-		it('derives needs-artifact-validation correction after completed correction execution', async () => {
+		it('derives needs-artifact-validation correction after completed correction execution', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
 			seedSliceArtifactValidation(tx, 'failed-validation', 'slice-1', false)
 			seedSliceExecution(
@@ -348,7 +341,7 @@ if (import.meta.vitest) {
 				'2026-06-10T12:01:00.000Z',
 			)
 
-			expect(await deriveSliceWorkState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, 'slice-1')).toEqual({
 				ok: true,
 				value: {
 					type: 'needs-artifact-validation',
@@ -359,7 +352,7 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('derives awaiting-review while the current Slice Review Surface is open', async () => {
+		it('derives awaiting-review while the current Slice Review Surface is open', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
 			tx.reviewSurfaces.records.set('review-surface-1', {
 				id: 'review-surface-1',
@@ -371,13 +364,13 @@ if (import.meta.vitest) {
 				created: stamp,
 			})
 
-			expect(await deriveSliceWorkState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, 'slice-1')).toEqual({
 				ok: true,
 				value: { type: 'awaiting-review', reviewSurfaceId: 'review-surface-1' },
 			})
 		})
 
-		it('derives slice-operation-failed from latest Slice external operation failure', async () => {
+		it('derives slice-operation-failed from latest Slice external operation failure', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
 			tx.actions.records.set('external-failure', {
 				id: 'external-failure',
@@ -387,29 +380,29 @@ if (import.meta.vitest) {
 				result: { type: 'record-slice-external-operation-failure', sliceId: 'slice-1', evidence: externalFailure },
 			})
 
-			expect(await deriveSliceWorkState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, 'slice-1')).toEqual({
 				ok: true,
 				value: { type: 'slice-operation-failed', actionId: 'external-failure' },
 			})
 		})
 
-		it('derives needs-artifact-creation before a Slice Artifact exists', async () => {
+		it('derives needs-artifact-creation before a Slice Artifact exists', () => {
 			const { tx } = sliceFixture()
 
-			expect(await deriveSliceWorkState(tx, 'slice-1')).toEqual({ ok: true, value: { type: 'needs-artifact-creation' } })
+			expect(sliceState(tx, 'slice-1')).toEqual({ ok: true, value: { type: 'needs-artifact-creation' } })
 		})
 
-		it('derives executable initial when the Slice Artifact exists and no earlier gate applies', async () => {
+		it('derives executable initial when the Slice Artifact exists and no earlier gate applies', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
 
-			expect(await deriveSliceWorkState(tx, 'slice-1')).toEqual({ ok: true, value: { type: 'executable', mode: 'initial' } })
+			expect(sliceState(tx, 'slice-1')).toEqual({ ok: true, value: { type: 'executable', mode: 'initial' } })
 		})
 
-		it('derives executable correction from a failed Slice Artifact validation', async () => {
+		it('derives executable correction from a failed Slice Artifact validation', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
 			seedSliceArtifactValidation(tx, 'failed-validation', 'slice-1', false)
 
-			expect(await deriveSliceWorkState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, 'slice-1')).toEqual({
 				ok: true,
 				value: {
 					type: 'executable',
@@ -419,7 +412,7 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('does not treat Delivery-level artifact validation as Slice completion', async () => {
+		it('does not treat Delivery-level artifact validation as Slice completion', () => {
 			const { tx } = sliceFixture()
 			seedPromotion(tx, 'promote-slice', 'slice-1')
 			tx.actions.records.set('delivery-validation', {
@@ -430,7 +423,7 @@ if (import.meta.vitest) {
 				result: { type: 'validate-delivery-artifact', evidence: passedValidation },
 			})
 
-			expect(await deriveSliceWorkState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, 'slice-1')).toEqual({
 				ok: true,
 				value: { type: 'needs-delivery-validation', actionId: 'promote-slice' },
 			})
@@ -514,5 +507,36 @@ if (import.meta.vitest) {
 			sourceBranch: 'slice-branch',
 			targetBranch: 'delivery-branch',
 		}
+	}
+
+	function sliceState(tx: ReturnType<typeof sliceFixture>['tx'], sliceId: string) {
+		const delivery = tx.deliveries.records.get('delivery-1')!
+		const slices = [...tx.slices.records.values()]
+			.filter((slice) => slice.deliveryId === delivery.id)
+			.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
+		const sliceIds = new Set(slices.map((slice) => slice.id))
+		const links = [...tx.links.records.values()]
+
+		return getSliceState(
+			{
+				delivery,
+				slices,
+				actions: [...tx.actions.records.values()].filter((action) => action.deliveryId === delivery.id),
+				agentRuns: [...tx.agentRuns.records.values()].filter(
+					(run) => run.purpose.type === 'execution' && run.purpose.deliveryId === delivery.id,
+				),
+				deliveryArtifacts: [...tx.deliveryArtifacts.records.values()].filter((artifact) => artifact.deliveryId === delivery.id),
+				sliceArtifacts: [...tx.sliceArtifacts.records.values()].filter((artifact) => sliceIds.has(artifact.sliceId)),
+				reviewSurfaces: [...tx.reviewSurfaces.records.values()].filter((surface) =>
+					surface.scope.type === 'delivery' ? surface.scope.deliveryId === delivery.id : sliceIds.has(surface.scope.sliceId),
+				),
+				deliveryDependencies: [],
+				sliceDependencyLinks: links.filter(
+					(link) =>
+						link.type === 'depends-on' && link.from.type === 'slice' && sliceIds.has(link.from.id) && link.to.type === 'slice',
+				) as WorkStateDeliveryContext['sliceDependencyLinks'],
+			},
+			sliceId,
+		)
 	}
 }

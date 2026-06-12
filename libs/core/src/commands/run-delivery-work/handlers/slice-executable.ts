@@ -29,10 +29,10 @@ function sliceExecutionAgentRun(
 	state: Extract<SliceWorkState, { type: 'executable' }>,
 	resolution: DeliveryWorkResolution,
 ): CoreResult<AgentRun, RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	const agentRunId = nextId(context.options, 'agent-run')
+	const agentRunId = nextId(context.services, 'agent-run')
 	if (!agentRunId.ok) return agentRunId
 
-	const started = runtimeRecord(context.options)
+	const started = runtimeRecord(context.services)
 	if (!started.ok) return started
 
 	return {
@@ -40,7 +40,7 @@ function sliceExecutionAgentRun(
 		value: executionAgentRun(
 			agentRunId.value,
 			resolution.modelId,
-			context.delivery.id,
+			context.deliveryContext.delivery.id,
 			slice.id,
 			executionModeForState(state),
 			started.value,
@@ -73,11 +73,12 @@ function executionAgentRun(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
+	const { buildDeliveryContext } = await import('../../../utils/delivery-context')
 	const { createTestCoreServices, seedDelivery, seedSlice, seedSelectableModel } = await import('../../../utils/test-helpers')
 
 	describe('handleSliceExecutable', () => {
 		it('claims initial executable Slice work with an Agent Run', async () => {
-			const context = executableHandlerContext()
+			const context = await executableHandlerContext()
 			const result = await handleSliceExecutable(
 				context,
 				context.tx.slices.records.get('slice-1')!,
@@ -97,7 +98,7 @@ if (import.meta.vitest) {
 		})
 
 		it('claims correction executable Slice work in correction mode', async () => {
-			const context = executableHandlerContext()
+			const context = await executableHandlerContext()
 			const result = await handleSliceExecutable(
 				context,
 				context.tx.slices.records.get('slice-1')!,
@@ -124,12 +125,15 @@ if (import.meta.vitest) {
 		workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
 	}
 
-	function executableHandlerContext() {
+	async function executableHandlerContext() {
 		const options = createTestCoreServices()
 		seedSelectableModel(options.tx, 'model-1')
 		seedDelivery(options.tx, 'delivery-1')
 		seedSlice(options.tx, 'slice-1', 'delivery-1')
 
-		return { options, tx: options.tx, delivery: options.tx.deliveries.records.get('delivery-1')! }
+		const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
+		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
+
+		return { services: options, tx: options.tx, deliveryContext: deliveryContext.value }
 	}
 }

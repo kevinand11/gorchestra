@@ -12,7 +12,7 @@ import type {
 	ProjectConfig,
 	ProjectConfigRecord,
 } from '../domain/config'
-import { deliveryPipe, type Delivery, type DeliveryWorkState } from '../domain/delivery'
+import type { Delivery, DeliveryWorkState } from '../domain/delivery'
 import { modelPipe, type Model } from '../domain/model'
 import { modelProviderPipe, type ModelProvider, type ModelProviderAuth, type ModelProviderHeader } from '../domain/model-provider'
 import { projectPipe, type Project } from '../domain/project'
@@ -30,7 +30,6 @@ import type {
 	DuplicateRepositoryTargetError,
 	DuplicateSecretBindingError,
 	InvalidCoreServiceOutputError,
-	InvariantViolationError,
 	NotArchivedError,
 	ProjectSourceTypeMismatchError,
 	ResourceNotFoundError,
@@ -51,7 +50,6 @@ import {
 	withTransaction,
 } from '../utils/storage'
 import type { Result } from '../utils/types'
-import { deriveDeliveryWorkState } from '../utils/work-state'
 
 export {
 	auditStamp,
@@ -139,24 +137,6 @@ export function prepareAuthorizedAction(
 	if (!actionId.ok) return actionId
 
 	return { ok: true, value: { stamp: stampResult.value, actionId: actionId.value } }
-}
-
-export async function readDeliveryWorkState(
-	tx: CoreStorageTransaction,
-	deliveryId: Id,
-): Promise<
-	Result<
-		{ delivery: Delivery; state: DeliveryWorkState },
-		InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError | InvariantViolationError
-	>
-> {
-	const deliveryResult = await getRequired('delivery', tx.deliveries, deliveryId, deliveryPipe)
-	if (!deliveryResult.ok) return deliveryResult
-
-	const state = await deriveDeliveryWorkState(tx, deliveryId)
-	if (!state.ok) return state
-
-	return { ok: true, value: { delivery: deliveryResult.value, state: state.value } }
 }
 
 export function deliveryWorkStateMismatch(

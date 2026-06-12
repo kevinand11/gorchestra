@@ -6,15 +6,14 @@ import {
 	type DeliveryPreflightSnapshot,
 	type PassedDeliveryPreflight,
 } from './delivery-preflight'
-import { getRequired, listRecords } from './storage'
+import { getRequired, listRecords, notFound } from './storage'
 import type { Result } from './types'
-import { deriveDeliveryWorkState, deriveSliceWorkState } from './work-state'
 import { actionPipe, type Action } from '../domain/action'
 import { agentRunPipe, type AgentRun } from '../domain/agent-run'
 import { deliveryArtifactPipe, sliceArtifactPipe, type DeliveryArtifact, type SliceArtifact } from '../domain/artifact'
-import type { Id } from '../domain/commons'
+import type { ArchivePeriod, Id } from '../domain/commons'
 import { portfolioConfigRecordPipe, type DeliveryWorkConfig, type PortfolioConfigRecord, type ProjectConfigRecord } from '../domain/config'
-import { deliveryPipe, type Delivery, type DeliveryWorkState } from '../domain/delivery'
+import { deliveryPipe, type Delivery } from '../domain/delivery'
 import type { ValidationEvidence } from '../domain/evidence'
 import { linkPipe, type Link } from '../domain/graph'
 import { modelPipe, type Model } from '../domain/model'
@@ -22,7 +21,7 @@ import { modelProviderPipe, type ModelProvider, type ModelProviderHeader } from 
 import { projectPipe, type Project } from '../domain/project'
 import { repositoryPipe, type Repository } from '../domain/repository'
 import { reviewSurfacePipe, type ReviewSurface } from '../domain/review-surface'
-import { slicePipe, type Slice, type SliceWorkState } from '../domain/slice'
+import { slicePipe, type Slice } from '../domain/slice'
 import type {
 	InvalidCoreServiceOutputError,
 	InvariantViolationError,
@@ -32,14 +31,18 @@ import type {
 } from '../errors'
 import { resolvedSecretValuesPipe, type CoreServices, type CoreStorageTransaction, type ResolvedSecretValues } from '../services'
 import { validateCoreServiceOutput } from '../validation'
-import type { WorkStateDerivationError } from './work-state/types'
+import { latestAction } from './work-state/actions'
+import type {
+	DeliveryDependencyLink,
+	SliceDependencyLink,
+	WorkStateDeliveryContext,
+	WorkStateDeliveryDependency,
+	WorkStateDerivationError,
+} from './work-state/types'
 
-export interface SliceStateSummary {
-	slice: Slice
-	state: SliceWorkState
-}
+export type DeliveryDependencySummary = WorkStateDeliveryDependency
 
-export interface DeliveryContext {
+export interface DeliveryContext extends WorkStateDeliveryContext {
 	phase: 'stored'
 	delivery: Delivery
 	project: Project
@@ -47,14 +50,13 @@ export interface DeliveryContext {
 	portfolioConfig: PortfolioConfigRecord | null
 	projectConfig: ProjectConfigRecord | null
 	slices: Slice[]
-	links: Link[]
 	actions: Action[]
 	agentRuns: AgentRun[]
 	deliveryArtifacts: DeliveryArtifact[]
 	sliceArtifacts: SliceArtifact[]
 	reviewSurfaces: ReviewSurface[]
-	deliveryState: DeliveryWorkState
-	sliceStates: SliceStateSummary[]
+	deliveryDependencies: DeliveryDependencySummary[]
+	sliceDependencyLinks: SliceDependencyLink[]
 }
 
 export interface ModelProviderResolvedAccess {
@@ -88,15 +90,7 @@ export async function buildDeliveryContext(
 	const records = await readDeliveryContextRecords(tx)
 	if (!records.ok) return records
 
-	const deliveryState = await deriveDeliveryWorkState(tx, deliveryId)
-	if (!deliveryState.ok) return deliveryState
-
-	return deliveryContext(
-		root.value,
-		records.value,
-		deliveryState.value,
-		await sliceStatesForDelivery(tx, records.value.slices, deliveryId),
-	)
+	return deliveryContext(root.value, scopedDeliveryContextRecords(root.value.delivery, records.value))
 }
 
 interface DeliveryContextRoot {
@@ -112,9 +106,21 @@ interface DeliveryContextRecords {
 	links: Link[]
 	actions: Action[]
 	agentRuns: AgentRun[]
+	deliveries: Delivery[]
 	deliveryArtifacts: DeliveryArtifact[]
 	sliceArtifacts: SliceArtifact[]
 	reviewSurfaces: ReviewSurface[]
+}
+
+interface ScopedDeliveryContextRecords {
+	slices: Slice[]
+	actions: Action[]
+	agentRuns: AgentRun[]
+	deliveryArtifacts: DeliveryArtifact[]
+	sliceArtifacts: SliceArtifact[]
+	reviewSurfaces: ReviewSurface[]
+	deliveryDependencies: DeliveryDependencySummary[]
+	sliceDependencyLinks: SliceDependencyLink[]
 }
 
 async function readDeliveryContextRoot(
@@ -188,7 +194,7 @@ async function readDeliveryContextRecords(tx: CoreStorageTransaction): Promise<R
 function okDeliveryContextRecords(
 	records: Awaited<ReturnType<typeof readDeliveryContextRecordResults>>,
 ): Result<DeliveryContextRecords, DeliveryContextError> {
-	const [slices, links, actions, agentRuns, deliveryArtifacts, sliceArtifacts, reviewSurfaces] = records
+	const [slices, links, actions, agentRuns, deliveries, deliveryArtifacts, sliceArtifacts, reviewSurfaces] = records
 	return {
 		ok: true,
 		value: {
@@ -196,6 +202,7 @@ function okDeliveryContextRecords(
 			links: resultValue(links),
 			actions: resultValue(actions),
 			agentRuns: resultValue(agentRuns),
+			deliveries: resultValue(deliveries),
 			deliveryArtifacts: resultValue(deliveryArtifacts),
 			sliceArtifacts: resultValue(sliceArtifacts),
 			reviewSurfaces: resultValue(reviewSurfaces),
@@ -209,25 +216,137 @@ async function readDeliveryContextRecordResults(tx: CoreStorageTransaction) {
 		listRecords('link', tx.links, linkPipe),
 		listRecords('action', tx.actions, actionPipe),
 		listRecords('agent-run', tx.agentRuns, agentRunPipe),
+		listRecords('delivery', tx.deliveries, deliveryPipe),
 		listRecords('delivery-artifact', tx.deliveryArtifacts, deliveryArtifactPipe),
 		listRecords('slice-artifact', tx.sliceArtifacts, sliceArtifactPipe),
 		listRecords('review-surface', tx.reviewSurfaces, reviewSurfacePipe),
 	] as const)
 }
 
-async function sliceStatesForDelivery(
-	tx: CoreStorageTransaction,
-	slices: Slice[],
-	deliveryId: Delivery['id'],
-): Promise<Result<SliceStateSummary[], DeliveryContextError>> {
-	const summaries: SliceStateSummary[] = []
-	for (const slice of deliverySlices(slices, deliveryId)) {
-		const state = await deriveSliceWorkState(tx, slice.id)
-		if (!state.ok) return state
-		summaries.push({ slice, state: state.value })
+function scopedDeliveryContextRecords(
+	delivery: Delivery,
+	records: DeliveryContextRecords,
+): Result<ScopedDeliveryContextRecords, DeliveryContextError> {
+	const slices = deliverySlices(delivery, records.slices)
+	const sliceIds = new Set(slices.map((slice) => slice.id))
+	const dependencies = deliveryDependencies(delivery, records)
+	if (!dependencies.ok) return dependencies
+
+	return {
+		ok: true,
+		value: {
+			slices,
+			actions: records.actions.filter((action) => action.deliveryId === delivery.id),
+			agentRuns: records.agentRuns.filter((run) => agentRunReferencesDelivery(run, delivery.id)),
+			deliveryArtifacts: records.deliveryArtifacts.filter((artifact) => artifact.deliveryId === delivery.id),
+			sliceArtifacts: records.sliceArtifacts.filter((artifact) => sliceIds.has(artifact.sliceId)),
+			reviewSurfaces: records.reviewSurfaces.filter((reviewSurface) =>
+				reviewSurfaceReferencesDelivery(reviewSurface, delivery.id, sliceIds),
+			),
+			deliveryDependencies: dependencies.value,
+			sliceDependencyLinks: sliceDependencyLinks(sliceIds, records.links),
+		},
+	}
+}
+
+function deliverySlices(delivery: Delivery, slices: Slice[]): Slice[] {
+	return slices
+		.filter((slice) => slice.deliveryId === delivery.id)
+		.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
+}
+
+function agentRunReferencesDelivery(run: AgentRun, deliveryId: Delivery['id']): boolean {
+	return run.purpose.type === 'execution' && run.purpose.deliveryId === deliveryId
+}
+
+function reviewSurfaceReferencesDelivery(reviewSurface: ReviewSurface, deliveryId: Delivery['id'], sliceIds: Set<Id>): boolean {
+	return reviewSurface.scope.type === 'delivery'
+		? reviewSurface.scope.deliveryId === deliveryId
+		: sliceIds.has(reviewSurface.scope.sliceId)
+}
+
+function sliceDependencyLinks(sliceIds: Set<Id>, links: Link[]): SliceDependencyLink[] {
+	return links.filter((link): link is SliceDependencyLink => isContextSliceDependencyLink(link, sliceIds)).sort(compareDependencyLinks)
+}
+
+function isContextSliceDependencyLink(link: Link, sliceIds: Set<Id>): link is SliceDependencyLink {
+	return isActiveDependsOnLink(link) && isSliceDependencyEndpointLink(link) && sliceIds.has(link.from.id)
+}
+
+function isSliceDependencyEndpointLink(link: Link): link is SliceDependencyLink {
+	return link.from.type === 'slice' && link.to.type === 'slice'
+}
+
+function compareDependencyLinks(
+	left: DeliveryDependencyLink | SliceDependencyLink,
+	right: DeliveryDependencyLink | SliceDependencyLink,
+): number {
+	return left.created.at.localeCompare(right.created.at) || left.to.id.localeCompare(right.to.id)
+}
+
+function isArchived(archivePeriods: ArchivePeriod[]): boolean {
+	return archivePeriods.at(-1)?.unarchived === null
+}
+
+function deliveryDependencies(
+	delivery: Delivery,
+	records: DeliveryContextRecords,
+): Result<DeliveryDependencySummary[], DeliveryContextError> {
+	const summaries: DeliveryDependencySummary[] = []
+	for (const link of deliveryDependencyLinks(delivery, records.links)) {
+		const summary = deliveryDependencySummary(delivery, link, records)
+		if (!summary.ok) return summary
+		summaries.push(summary.value)
 	}
 
 	return { ok: true, value: summaries }
+}
+
+function deliveryDependencyLinks(delivery: Delivery, links: Link[]): DeliveryDependencyLink[] {
+	return links
+		.filter((link): link is DeliveryDependencyLink => isContextDeliveryDependencyLink(link, delivery))
+		.sort(compareDependencyLinks)
+}
+
+function isContextDeliveryDependencyLink(link: Link, delivery: Delivery): link is DeliveryDependencyLink {
+	return isActiveDependsOnLink(link) && isDeliveryDependencyEndpointLink(link) && link.from.id === delivery.id
+}
+
+function isActiveDependsOnLink(link: Link): boolean {
+	return link.type === 'depends-on' && !isArchived(link.archivePeriods)
+}
+
+function isDeliveryDependencyEndpointLink(link: Link): link is DeliveryDependencyLink {
+	return link.from.type === 'delivery' && link.to.type === 'delivery'
+}
+
+function deliveryDependencySummary(
+	delivery: Delivery,
+	link: DeliveryDependencyLink,
+	records: DeliveryContextRecords,
+): Result<DeliveryDependencySummary, DeliveryContextError> {
+	const dependency = records.deliveries.find((candidate) => candidate.id === link.to.id)
+	if (dependency === undefined) return notFound('delivery', link.to.id)
+	if (dependency.projectId !== delivery.projectId) {
+		return {
+			ok: false,
+			error: {
+				type: 'invariant-violation',
+				message: `Delivery dependency ${dependency.id} is outside Project ${delivery.projectId}.`,
+			},
+		}
+	}
+
+	return { ok: true, value: { link, delivery: dependency, closedBy: latestDeliveryCloseAction(dependency, records.actions) } }
+}
+
+function latestDeliveryCloseAction(delivery: Delivery, actions: Action[]): Action | null {
+	return latestAction(
+		actions.filter(
+			(action) =>
+				action.deliveryId === delivery.id && (action.result.type === 'ship-delivery' || action.result.type === 'abandon-delivery'),
+		),
+	)
 }
 
 function firstFailure<TError>(results: ReadonlyArray<Result<unknown, TError>>): Result<never, TError> | null {
@@ -239,12 +358,6 @@ function resultValue<TValue>(result: Result<TValue, unknown>): TValue {
 	if (!result.ok) throw new Error('Expected result value after checking for failures.')
 
 	return result.value
-}
-
-function deliverySlices(slices: Slice[], deliveryId: Delivery['id']): Slice[] {
-	return slices
-		.filter((slice) => slice.deliveryId === deliveryId)
-		.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
 }
 
 export async function upgradeToRuntimeDeliveryWorkContext(
@@ -508,53 +621,44 @@ function validationEvidence(operation: ValidationEvidence['operation']['type'], 
 
 function deliveryContext(
 	root: DeliveryContextRoot,
-	records: DeliveryContextRecords,
-	deliveryState: DeliveryWorkState,
-	sliceStates: Result<SliceStateSummary[], DeliveryContextError>,
+	records: Result<ScopedDeliveryContextRecords, DeliveryContextError>,
 ): Result<DeliveryContext, DeliveryContextError> {
-	if (!sliceStates.ok) return sliceStates
-
-	return {
-		ok: true,
-		value: { phase: 'stored', ...root, ...records, deliveryState, sliceStates: sliceStates.value },
-	}
+	return records.ok ? { ok: true, value: { phase: 'stored', ...root, ...records.value } } : records
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
+	const { getDeliveryState, getSliceState } = await import('./work-state')
 	const { createTestCoreServices, localStamp, seedDelivery, seedProject, seedSecret, seedSelectableModel, seedSlice } =
 		await import('./test-helpers')
 
 	describe('buildDeliveryContext', () => {
-		it('loads root-level Delivery work facts and derives unqueued state', async () => {
+		it('loads root-level Delivery facts and supports derived unqueued state', async () => {
 			const options = storedContextFixture()
 
 			const result = await buildDeliveryContext(options.tx, 'delivery-1')
 
-			expect(result).toMatchObject({ ok: true, value: { phase: 'stored', deliveryState: { type: 'unqueued' } } })
+			expect(result).toMatchObject({ ok: true, value: { phase: 'stored' } })
 			if (result.ok) {
 				expect(result.value.delivery.id).toBe('delivery-1')
 				expect(result.value.project.id).toBe('project-1')
 				expect(result.value.repository.id).toBe('repository-1')
+				expect(getDeliveryState(result.value)).toEqual({ ok: true, value: { type: 'unqueued' } })
 			}
 		})
 
-		it('includes Slice Work States in Delivery order', async () => {
+		it('loads Slices in Delivery order and supports derived Slice Work States', async () => {
 			const options = storedContextFixture()
 			seedSlice(options.tx, 'slice-2', 'delivery-1')
 			seedSlice(options.tx, 'slice-1', 'delivery-1')
 
 			const result = await buildDeliveryContext(options.tx, 'delivery-1')
 
-			expect(result).toMatchObject({
-				ok: true,
-				value: {
-					sliceStates: [
-						{ slice: { id: 'slice-2' }, state: { type: 'needs-artifact-creation' } },
-						{ slice: { id: 'slice-1' }, state: { type: 'needs-artifact-creation' } },
-					],
-				},
-			})
+			expect(result).toMatchObject({ ok: true, value: { slices: [{ id: 'slice-2' }, { id: 'slice-1' }] } })
+			if (result.ok) {
+				expect(getSliceState(result.value, 'slice-2')).toEqual({ ok: true, value: { type: 'needs-artifact-creation' } })
+				expect(getSliceState(result.value, 'slice-1')).toEqual({ ok: true, value: { type: 'needs-artifact-creation' } })
+			}
 		})
 
 		it('returns an invariant violation when the target Repository is outside the Delivery Project', async () => {
