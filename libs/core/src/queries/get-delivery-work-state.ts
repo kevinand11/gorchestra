@@ -5,10 +5,10 @@ import type { DeliveryWorkState } from '../domain/delivery'
 import type { WorkStateQueryError } from '../errors'
 import type { CoreServices } from '../services'
 import { buildQueryHandler } from './utils'
-import { buildDeliveryContext } from '../utils/delivery-context'
+import { buildStoredDeliveryContext } from '../utils/delivery-context'
+import { getDeliveryState } from '../utils/delivery-context'
 import { withTransaction } from '../utils/storage'
 import type { Result as CoreResult } from '../utils/types'
-import { getDeliveryState } from '../utils/work-state'
 
 const getDeliveryWorkStateInputPipe = v.object({ deliveryId: idPipe })
 export type Input = PipeOutput<typeof getDeliveryWorkStateInputPipe>
@@ -19,7 +19,7 @@ export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 export function createGetDeliveryWorkStateQuery(options: CoreServices): Operation {
 	return buildQueryHandler('getDeliveryWorkState', getDeliveryWorkStateInputPipe, (input) =>
 		withTransaction(options, async (tx) => {
-			const context = await buildDeliveryContext(tx, input.deliveryId)
+			const context = await buildStoredDeliveryContext(tx, input.deliveryId)
 			return context.ok ? getDeliveryState(context.value) : context
 		}),
 	)

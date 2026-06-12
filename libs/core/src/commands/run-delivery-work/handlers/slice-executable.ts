@@ -73,7 +73,7 @@ function executionAgentRun(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { buildDeliveryContext } = await import('../../../utils/delivery-context')
+	const { buildStoredDeliveryContext } = await import('../../../utils/delivery-context')
 	const { createTestCoreServices, seedDelivery, seedSlice, seedSelectableModel } = await import('../../../utils/test-helpers')
 
 	describe('handleSliceExecutable', () => {
@@ -131,7 +131,7 @@ if (import.meta.vitest) {
 		seedDelivery(options.tx, 'delivery-1')
 		seedSlice(options.tx, 'slice-1', 'delivery-1')
 
-		const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
+		const deliveryContext = await buildStoredDeliveryContext(options.tx, 'delivery-1')
 		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
 
 		return { services: options, tx: options.tx, deliveryContext: deliveryContext.value }

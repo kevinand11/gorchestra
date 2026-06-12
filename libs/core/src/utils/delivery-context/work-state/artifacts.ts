@@ -1,9 +1,9 @@
 import { invariant, ok } from './result'
-import type { DeliveryArtifact, SliceArtifact } from '../../domain/artifact'
-import type { Id } from '../../domain/commons'
-import type { Slice } from '../../domain/slice'
-import type { InvariantViolationError } from '../../errors'
-import type { Result } from '../types'
+import type { DeliveryArtifact, SliceArtifact } from '../../../domain/artifact'
+import type { Id } from '../../../domain/commons'
+import type { Slice } from '../../../domain/slice'
+import type { InvariantViolationError } from '../../../errors'
+import type { Result } from '../../types'
 
 export function singleDeliveryArtifact(
 	deliveryId: Id,

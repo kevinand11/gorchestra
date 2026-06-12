@@ -18,7 +18,8 @@ import type { CoreRuntime } from '../runtime'
 import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { deliveryWorkStateMismatch, prepareAuthorizedAction, putRecord, withTransaction } from '../utils/command-storage'
-import { buildDeliveryContext } from '../utils/delivery-context'
+import { buildStoredDeliveryContext } from '../utils/delivery-context'
+import { getDeliveryState } from '../utils/delivery-context'
 import {
 	providerBackedDeliveryPreflightInputsStillCurrent,
 	readProviderBackedDeliveryPreflightPlan,
@@ -26,7 +27,6 @@ import {
 	type ProviderBackedDeliveryPreflightPlan,
 } from '../utils/delivery-preflight'
 import type { Result as CoreResult } from '../utils/types'
-import { getDeliveryState } from '../utils/work-state'
 
 const retryDeliveryPreflightInputPipe = v.object({ deliveryId: idPipe })
 export type Input = PipeOutput<typeof retryDeliveryPreflightInputPipe>
@@ -121,7 +121,7 @@ async function requirePreflightFailedDelivery(
 	tx: CoreStorageTransaction,
 	deliveryId: Id,
 ): Promise<CoreResult<Delivery, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
+	const deliveryContext = await buildStoredDeliveryContext(tx, deliveryId)
 	if (!deliveryContext.ok) return deliveryContext
 
 	const deliveryState = getDeliveryState(deliveryContext.value)
@@ -168,8 +168,8 @@ if (import.meta.vitest) {
 		seedSelectableModel,
 		validationEvidence,
 	} = await import('../utils/test-helpers')
-	const { buildDeliveryContext } = await import('../utils/delivery-context')
-	const { getDeliveryState } = await import('../utils/work-state')
+	const { buildStoredDeliveryContext } = await import('../utils/delivery-context')
+	const { getDeliveryState } = await import('../utils/delivery-context')
 
 	describe('retryDeliveryPreflight command', () => {
 		it('validates input before reading storage', async () => {
@@ -217,7 +217,7 @@ if (import.meta.vitest) {
 					action: expectedPassingProviderPreflightAction('action-1'),
 				},
 			})
-			const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
+			const deliveryContext = await buildStoredDeliveryContext(options.tx, 'delivery-1')
 			if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
 			expect(getDeliveryState(deliveryContext.value)).not.toMatchObject({
 				ok: true,

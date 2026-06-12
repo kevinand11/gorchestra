@@ -4,13 +4,13 @@ import { compareAcceptedThenId } from './dependencies'
 import { firstSyncState, invariant, ok, stateOrElseSync } from './result'
 import { currentScopedReviewSurface } from './review-surfaces'
 import type { SliceDependencyLink, WorkStateDerivationError, WorkStateResult } from './types'
-import type { Action } from '../../domain/action'
-import type { AgentRun, ExecutionMode } from '../../domain/agent-run'
-import type { ArchivePeriod, Id } from '../../domain/commons'
-import type { Slice, SliceWorkState } from '../../domain/slice'
-import type { StoredDeliveryContext } from '../delivery-context-types'
-import { notFound } from '../storage'
-import type { Result } from '../types'
+import type { Action } from '../../../domain/action'
+import type { AgentRun, ExecutionMode } from '../../../domain/agent-run'
+import type { ArchivePeriod, Id } from '../../../domain/commons'
+import type { Slice, SliceWorkState } from '../../../domain/slice'
+import { notFound } from '../../storage'
+import type { Result } from '../../types'
+import type { StoredDeliveryContext } from '../types'
 
 export function getSliceState(context: StoredDeliveryContext, sliceId: Id): Result<SliceWorkState, WorkStateDerivationError> {
 	const slice = context.slices.find((candidate) => candidate.id === sliceId && candidate.deliveryId === context.delivery.id)
@@ -250,7 +250,7 @@ function correctionRetriesForRoot(context: StoredDeliveryContext, rootActionId: 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { createTestCoreServices, externalOperationEvidence, seedDelivery, seedSlice, stamp, validationEvidence } =
-		await import('../test-helpers')
+		await import('../../test-helpers')
 	const passedValidation = validationEvidence('slice-branch-validation', true, 'Valid.')
 	const failedValidation = validationEvidence('slice-branch-validation', false, 'Invalid.')
 	const externalFailure = externalOperationEvidence('push-branch', false, 'Failed.')

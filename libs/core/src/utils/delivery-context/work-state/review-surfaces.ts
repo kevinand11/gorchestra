@@ -1,7 +1,7 @@
 import { invariant, ok } from './result'
 import type { ReplacedReviewSurface, WorkStateResult } from './types'
-import type { Id } from '../../domain/commons'
-import type { ReviewSurface } from '../../domain/review-surface'
+import type { Id } from '../../../domain/commons'
+import type { ReviewSurface } from '../../../domain/review-surface'
 
 export function currentScopedReviewSurface(reviewSurfaces: ReviewSurface[]): WorkStateResult<ReviewSurface | null> {
 	const first = firstReviewSurface(reviewSurfaces)

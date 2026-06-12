@@ -12,7 +12,8 @@ import type { CoreRuntime } from '../../runtime'
 import type { CoreServices, CoreStorageTransaction } from '../../services'
 import { buildCommandHandler } from '../../utils/command'
 import { nextId, putRecord, runtimeRecord } from '../../utils/command-storage'
-import { buildDeliveryContext, type StoredDeliveryContext } from '../../utils/delivery-context'
+import { buildStoredDeliveryContext, type StoredDeliveryContext } from '../../utils/delivery-context'
+import { getDeliveryState } from '../../utils/delivery-context'
 import {
 	deliveryPreflightChecksPassed,
 	providerBackedDeliveryPreflightInputsStillCurrent,
@@ -23,7 +24,6 @@ import {
 } from '../../utils/delivery-preflight'
 import { withTransaction } from '../../utils/storage'
 import type { Result as CoreResult } from '../../utils/types'
-import { getDeliveryState } from '../../utils/work-state'
 
 export type { Error, Result, RunDeliveryWorkFailure, RunDeliveryWorkFailureOperation, RunDeliveryWorkNoObservedChangeTarget } from './types'
 
@@ -67,7 +67,7 @@ async function readSchedulerPreflightPlan(
 	tx: CoreStorageTransaction,
 	deliveryId: string,
 ): Promise<CoreResult<SchedulerPreflightRead, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
+	const deliveryContext = await buildStoredDeliveryContext(tx, deliveryId)
 	if (!deliveryContext.ok) return deliveryContext
 
 	const stateResult = getDeliveryState(deliveryContext.value)
@@ -131,7 +131,7 @@ async function currentSchedulerPreflightState(
 	tx: CoreStorageTransaction,
 	deliveryId: string,
 ): Promise<CoreResult<{ deliveryContext: StoredDeliveryContext; state: DeliveryWorkState }, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
+	const deliveryContext = await buildStoredDeliveryContext(tx, deliveryId)
 	if (!deliveryContext.ok) return deliveryContext
 
 	const stateResult = getDeliveryState(deliveryContext.value)

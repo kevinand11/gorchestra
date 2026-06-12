@@ -5,10 +5,10 @@ import type { SliceWorkState } from '../domain/slice'
 import type { WorkStateQueryError } from '../errors'
 import type { CoreServices } from '../services'
 import { buildQueryHandler } from './utils'
-import { buildDeliveryContext } from '../utils/delivery-context'
+import { buildStoredDeliveryContext } from '../utils/delivery-context'
+import { getSliceState } from '../utils/delivery-context'
 import { withTransaction } from '../utils/storage'
 import type { Result as CoreResult } from '../utils/types'
-import { getSliceState } from '../utils/work-state'
 
 const getSliceWorkStateInputPipe = v.object({ deliveryId: idPipe, sliceId: idPipe })
 export type Input = PipeOutput<typeof getSliceWorkStateInputPipe>
@@ -19,7 +19,7 @@ export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 export function createGetSliceWorkStateQuery(options: CoreServices): Operation {
 	return buildQueryHandler('getSliceWorkState', getSliceWorkStateInputPipe, (input) =>
 		withTransaction(options, async (tx) => {
-			const context = await buildDeliveryContext(tx, input.deliveryId)
+			const context = await buildStoredDeliveryContext(tx, input.deliveryId)
 			return context.ok ? getSliceState(context.value, input.sliceId) : context
 		}),
 	)

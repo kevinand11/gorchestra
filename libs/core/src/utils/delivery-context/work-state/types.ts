@@ -1,16 +1,16 @@
-import type { Action, ActionResult } from '../../domain/action'
-import type { Id } from '../../domain/commons'
-import type { Delivery } from '../../domain/delivery'
-import type { Link } from '../../domain/graph'
-import type { ReviewSurface, ReviewSurfaceReplaced } from '../../domain/review-surface'
-import type { Slice } from '../../domain/slice'
+import type { Action, ActionResult } from '../../../domain/action'
+import type { Id } from '../../../domain/commons'
+import type { Delivery } from '../../../domain/delivery'
+import type { Link } from '../../../domain/graph'
+import type { ReviewSurface, ReviewSurfaceReplaced } from '../../../domain/review-surface'
+import type { Slice } from '../../../domain/slice'
 import type {
 	InvalidCoreServiceOutputError,
 	InvariantViolationError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
-} from '../../errors'
-import type { Result } from '../types'
+} from '../../../errors'
+import type { Result } from '../../types'
 
 export type WorkStateDerivationError =
 	| InvalidCoreServiceOutputError

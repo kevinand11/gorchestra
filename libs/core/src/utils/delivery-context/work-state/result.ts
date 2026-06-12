@@ -1,6 +1,6 @@
 import type { WorkStateResult } from './types'
-import type { InvariantViolationError } from '../../errors'
-import type { Result } from '../types'
+import type { InvariantViolationError } from '../../../errors'
+import type { Result } from '../../types'
 
 export async function firstState<T>(
 	steps: Array<() => WorkStateResult<T | null> | Promise<WorkStateResult<T | null>>>,

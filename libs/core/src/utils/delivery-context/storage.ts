@@ -1,63 +1,26 @@
-import { validateActiveSecret } from './command-storage'
-import type { StoredDeliveryContext, DeliveryDependencySummary } from './delivery-context-types'
-import {
-	preflightDeliveryWork,
-	type DeliveryPreflight,
-	type DeliveryPreflightError,
-	type DeliveryPreflightSnapshot,
-	type PassedDeliveryPreflight,
-} from './delivery-preflight'
-import { getRequired, listRecords, notFound } from './storage'
-import type { Result } from './types'
-import { actionPipe, type Action } from '../domain/action'
-import { agentRunPipe, type AgentRun } from '../domain/agent-run'
-import { deliveryArtifactPipe, sliceArtifactPipe, type DeliveryArtifact, type SliceArtifact } from '../domain/artifact'
-import type { ArchivePeriod, Id } from '../domain/commons'
-import { portfolioConfigRecordPipe, type DeliveryWorkConfig, type PortfolioConfigRecord, type ProjectConfigRecord } from '../domain/config'
-import { deliveryPipe, type Delivery } from '../domain/delivery'
-import type { ValidationEvidence } from '../domain/evidence'
-import { linkPipe, type Link } from '../domain/graph'
-import { modelPipe, type Model } from '../domain/model'
-import { modelProviderPipe, type ModelProvider, type ModelProviderHeader } from '../domain/model-provider'
-import { projectPipe, type Project } from '../domain/project'
-import { repositoryPipe, type Repository } from '../domain/repository'
-import { reviewSurfacePipe, type ReviewSurface } from '../domain/review-surface'
-import { slicePipe, type Slice } from '../domain/slice'
-import type {
-	InvalidCoreServiceOutputError,
-	InvariantViolationError,
-	ResourceNotFoundError,
-	SecretNotActiveError,
-	StorageOperationFailedError,
-} from '../errors'
-import { resolvedSecretValuesPipe, type CoreServices, type CoreStorageTransaction, type ResolvedSecretValues } from '../services'
-import { validateCoreServiceOutput } from '../validation'
+import type { StoredDeliveryContext, DeliveryDependencySummary } from './types'
 import { latestAction } from './work-state/actions'
 import type { DeliveryDependencyLink, SliceDependencyLink, WorkStateDerivationError } from './work-state/types'
-
-export type { StoredDeliveryContext, DeliveryDependencySummary } from './delivery-context-types'
-
-export interface ModelProviderResolvedAccess {
-	auth: { type: 'apiKey'; plaintext: string } | null
-	headers: Array<{ name: string; plaintext: string }>
-}
-
-export type RuntimeDeliveryWorkContext = StoredDeliveryContext & {
-	workConfig: DeliveryWorkConfig
-	executionModel: Model
-	executionModelProvider: ModelProvider
-	sourceControlAccessToken: { type: 'access-token'; plaintext: string }
-	modelProviderAccess: ModelProviderResolvedAccess
-}
-
-export type RuntimeDeliveryWorkContextUpgrade =
-	| { type: 'runtime-context'; context: RuntimeDeliveryWorkContext; snapshot: DeliveryPreflightSnapshot }
-	| { type: 'failed-preflight'; checks: ValidationEvidence[]; snapshot: DeliveryPreflightSnapshot }
+import { actionPipe, type Action } from '../../domain/action'
+import { agentRunPipe, type AgentRun } from '../../domain/agent-run'
+import { deliveryArtifactPipe, sliceArtifactPipe, type DeliveryArtifact, type SliceArtifact } from '../../domain/artifact'
+import type { ArchivePeriod, Id } from '../../domain/commons'
+import { portfolioConfigRecordPipe, type PortfolioConfigRecord, type ProjectConfigRecord } from '../../domain/config'
+import { deliveryPipe, type Delivery } from '../../domain/delivery'
+import { linkPipe, type Link } from '../../domain/graph'
+import { projectPipe, type Project } from '../../domain/project'
+import { repositoryPipe, type Repository } from '../../domain/repository'
+import { reviewSurfacePipe, type ReviewSurface } from '../../domain/review-surface'
+import { slicePipe, type Slice } from '../../domain/slice'
+import type { InvalidCoreServiceOutputError, InvariantViolationError, StorageOperationFailedError } from '../../errors'
+import type { CoreStorageTransaction } from '../../services'
+import { validateCoreServiceOutput } from '../../validation'
+import { getRequired, listRecords, notFound } from '../storage'
+import type { Result } from '../types'
 
 export type DeliveryContextError = WorkStateDerivationError
-export type RuntimeDeliveryWorkContextError = DeliveryPreflightError
 
-export async function buildDeliveryContext(
+export async function buildStoredDeliveryContext(
 	tx: CoreStorageTransaction,
 	deliveryId: Delivery['id'],
 ): Promise<Result<StoredDeliveryContext, DeliveryContextError>> {
@@ -337,264 +300,6 @@ function resultValue<TValue>(result: Result<TValue, unknown>): TValue {
 	return result.value
 }
 
-export async function upgradeToRuntimeDeliveryWorkContext(
-	services: CoreServices,
-	tx: CoreStorageTransaction,
-	stored: StoredDeliveryContext,
-): Promise<Result<RuntimeDeliveryWorkContextUpgrade, RuntimeDeliveryWorkContextError>> {
-	const localPreflight = await preflightDeliveryWork(tx, stored.delivery)
-	return localPreflight.ok ? runtimeContextUpgradeForPreflight(services, tx, stored, localPreflight.value) : localPreflight
-}
-
-async function runtimeContextUpgradeForPreflight(
-	services: CoreServices,
-	tx: CoreStorageTransaction,
-	stored: StoredDeliveryContext,
-	preflight: DeliveryPreflight,
-): Promise<Result<RuntimeDeliveryWorkContextUpgrade, RuntimeDeliveryWorkContextError>> {
-	return preflight.type === 'failed'
-		? failedRuntimeContextUpgrade(preflight.checks, preflight.snapshot)
-		: runtimeContextUpgradeForPassedPreflight(services, tx, stored, preflight)
-}
-
-async function runtimeContextUpgradeForPassedPreflight(
-	services: CoreServices,
-	tx: CoreStorageTransaction,
-	stored: StoredDeliveryContext,
-	preflight: PassedDeliveryPreflight,
-): Promise<Result<RuntimeDeliveryWorkContextUpgrade, RuntimeDeliveryWorkContextError>> {
-	const modelFacts = await runtimeModelFacts(tx, preflight.modelId)
-	if (!modelFacts.ok) return modelFacts
-
-	const access = await runtimeProviderAccess(services, tx, stored.repository.config.secretId, modelFacts.value.modelProvider)
-	return access.ok ? runtimeContextUpgradeWithAccess(stored, preflight, modelFacts.value, access.value) : access
-}
-
-function runtimeContextUpgradeWithAccess(
-	stored: StoredDeliveryContext,
-	preflight: PassedDeliveryPreflight,
-	modelFacts: { model: Model; modelProvider: ModelProvider },
-	access: RuntimeProviderAccess,
-): Result<RuntimeDeliveryWorkContextUpgrade, never> {
-	return access.type === 'failed-preflight'
-		? { ok: true, value: access }
-		: okRuntimeDeliveryWorkContext(stored, preflight, modelFacts, access)
-}
-
-function okRuntimeDeliveryWorkContext(
-	stored: StoredDeliveryContext,
-	preflight: PassedDeliveryPreflight,
-	modelFacts: { model: Model; modelProvider: ModelProvider },
-	access: Extract<RuntimeProviderAccess, { type: 'resolved' }>,
-): Result<RuntimeDeliveryWorkContextUpgrade, never> {
-	return {
-		ok: true,
-		value: {
-			type: 'runtime-context',
-			context: runtimeDeliveryWorkContext(stored, preflight, modelFacts, access),
-			snapshot: preflight.checks.map((check) => check.summary).join('|'),
-		},
-	}
-}
-
-function runtimeDeliveryWorkContext(
-	stored: StoredDeliveryContext,
-	preflight: PassedDeliveryPreflight,
-	modelFacts: { model: Model; modelProvider: ModelProvider },
-	access: Extract<RuntimeProviderAccess, { type: 'resolved' }>,
-): RuntimeDeliveryWorkContext {
-	return {
-		...stored,
-		workConfig: preflight.workConfig,
-		executionModel: modelFacts.model,
-		executionModelProvider: modelFacts.modelProvider,
-		sourceControlAccessToken: { type: 'access-token', plaintext: access.repositoryAccessToken },
-		modelProviderAccess: access.modelProviderAccess,
-	}
-}
-
-function failedRuntimeContextUpgrade(
-	checks: ValidationEvidence[],
-	snapshot: DeliveryPreflightSnapshot,
-): Result<Extract<RuntimeDeliveryWorkContextUpgrade, { type: 'failed-preflight' }>, never> {
-	return { ok: true, value: { type: 'failed-preflight', checks, snapshot } }
-}
-
-async function runtimeModelFacts(
-	tx: CoreStorageTransaction,
-	modelId: Id,
-): Promise<Result<{ model: Model; modelProvider: ModelProvider }, RuntimeDeliveryWorkContextError>> {
-	const model = await getRequired('model', tx.models, modelId, modelPipe)
-	if (!model.ok) return model
-
-	const modelProvider = await getRequired('model-provider', tx.modelProviders, model.value.providerId, modelProviderPipe)
-	return modelProvider.ok ? { ok: true, value: { model: model.value, modelProvider: modelProvider.value } } : modelProvider
-}
-
-type RuntimeProviderAccess =
-	| { type: 'resolved'; repositoryAccessToken: string; modelProviderAccess: ModelProviderResolvedAccess }
-	| Extract<RuntimeDeliveryWorkContextUpgrade, { type: 'failed-preflight' }>
-
-async function runtimeProviderAccess(
-	services: CoreServices,
-	tx: CoreStorageTransaction,
-	repositorySecretId: Id,
-	modelProvider: ModelProvider,
-): Promise<Result<RuntimeProviderAccess, RuntimeDeliveryWorkContextError>> {
-	const secretIds = providerAccessSecretIds(repositorySecretId, modelProvider)
-	const readiness = await runtimeProviderAccessReadiness(tx, secretIds)
-	return readiness.ok
-		? runtimeProviderAccessAfterReadiness(services, repositorySecretId, modelProvider, secretIds, readiness.value)
-		: readiness
-}
-
-async function runtimeProviderAccessReadiness(
-	tx: CoreStorageTransaction,
-	secretIds: Id[],
-): Promise<
-	Result<ValidationEvidence[] | Extract<RuntimeDeliveryWorkContextUpgrade, { type: 'failed-preflight' }>, RuntimeDeliveryWorkContextError>
-> {
-	const readiness = await providerAccessSecretsReady(tx, secretIds)
-	return readiness.ok && readiness.value.length > 0 ? failedRuntimeContextUpgrade(readiness.value, JSON.stringify(secretIds)) : readiness
-}
-
-async function runtimeProviderAccessAfterReadiness(
-	services: CoreServices,
-	repositorySecretId: Id,
-	modelProvider: ModelProvider,
-	secretIds: Id[],
-	readiness: ValidationEvidence[] | Extract<RuntimeDeliveryWorkContextUpgrade, { type: 'failed-preflight' }>,
-): Promise<Result<RuntimeProviderAccess, RuntimeDeliveryWorkContextError>> {
-	return Array.isArray(readiness)
-		? resolvedRuntimeProviderAccess(services, repositorySecretId, modelProvider, secretIds)
-		: { ok: true, value: readiness }
-}
-
-async function resolvedRuntimeProviderAccess(
-	services: CoreServices,
-	repositorySecretId: Id,
-	modelProvider: ModelProvider,
-	secretIds: Id[],
-): Promise<Result<RuntimeProviderAccess, RuntimeDeliveryWorkContextError>> {
-	const plaintext = await resolveRuntimeSecretValues(services, secretIds)
-	return plaintext.ok ? runtimeProviderAccessFromPlaintext(repositorySecretId, modelProvider, secretIds, plaintext.value) : plaintext
-}
-
-function runtimeProviderAccessFromPlaintext(
-	repositorySecretId: Id,
-	modelProvider: ModelProvider,
-	secretIds: Id[],
-	plaintext: ResolvedSecretValues,
-): Result<RuntimeProviderAccess, never> {
-	const unresolved = unresolvedProviderAccessChecks(repositorySecretId, modelProvider, plaintext)
-	return unresolved.length > 0
-		? failedRuntimeContextUpgrade(unresolved, JSON.stringify(secretIds))
-		: {
-				ok: true,
-				value: {
-					type: 'resolved',
-					repositoryAccessToken: plaintext[repositorySecretId]!,
-					modelProviderAccess: modelProviderAccess(modelProvider, plaintext),
-				},
-			}
-}
-
-function providerAccessSecretIds(repositorySecretId: Id, modelProvider: ModelProvider): Id[] {
-	return [repositorySecretId, ...modelProviderSecretIds(modelProvider)]
-}
-
-function modelProviderSecretIds(modelProvider: ModelProvider): Id[] {
-	return [modelProvider.auth?.secretId, ...modelProvider.headers.map((header) => header.valueSecretId)].filter(
-		(id): id is Id => id !== undefined,
-	)
-}
-
-async function providerAccessSecretsReady(
-	tx: CoreStorageTransaction,
-	secretIds: Id[],
-): Promise<Result<ValidationEvidence[], RuntimeDeliveryWorkContextError>> {
-	const checks: ValidationEvidence[] = []
-	for (const secretId of secretIds) {
-		const ready = await validateActiveSecret(tx, secretId)
-		if (!ready.ok) {
-			const check = secretReadinessCheck(secretId, ready.error)
-			if (check === null) return secretReadinessOperationError(ready.error)
-			checks.push(check)
-		}
-	}
-
-	return { ok: true, value: checks }
-}
-
-function secretReadinessCheck(
-	secretId: Id,
-	error: ResourceNotFoundError | SecretNotActiveError | StorageOperationFailedError | InvalidCoreServiceOutputError,
-): ValidationEvidence | null {
-	if (error.type === 'not-found' && error.resource === 'secret')
-		return validationEvidence('delivery-preflight', false, `Secret ${secretId} is missing.`)
-	if (error.type === 'secret-not-active') return validationEvidence('delivery-preflight', false, `Secret ${secretId} is not active.`)
-
-	return null
-}
-
-function secretReadinessOperationError(
-	error: ResourceNotFoundError | SecretNotActiveError | StorageOperationFailedError | InvalidCoreServiceOutputError,
-): Result<never, RuntimeDeliveryWorkContextError> {
-	return error.type === 'storage-operation-failed' || error.type === 'invalid-core-service-output'
-		? { ok: false, error }
-		: { ok: false, error: { type: 'invariant-violation', message: 'Unexpected Secret readiness error.' } }
-}
-
-async function resolveRuntimeSecretValues(
-	services: CoreServices,
-	secretIds: Id[],
-): Promise<Result<ResolvedSecretValues, RuntimeDeliveryWorkContextError>> {
-	try {
-		return validateCoreServiceOutput(
-			resolvedSecretValuesPipe,
-			await services.secrets.resolveSecretValues({ secretIds }),
-			'secrets',
-			'resolveSecretValues',
-		)
-	} catch {
-		return { ok: true, value: {} }
-	}
-}
-
-function unresolvedProviderAccessChecks(
-	repositorySecretId: Id,
-	modelProvider: ModelProvider,
-	plaintext: ResolvedSecretValues,
-): ValidationEvidence[] {
-	return [
-		...missingSecretValueCheck(repositorySecretId, 'Repository access Secret value could not be resolved.'),
-		...modelProviderSecretIds(modelProvider).flatMap((secretId) =>
-			missingSecretValueCheck(secretId, 'Model Provider Secret value could not be resolved.'),
-		),
-	]
-		.filter((check) => plaintext[check.secretId] === undefined)
-		.map((check) => check.evidence)
-}
-
-function missingSecretValueCheck(secretId: Id, summary: string): Array<{ secretId: Id; evidence: ValidationEvidence }> {
-	return [{ secretId, evidence: validationEvidence('delivery-preflight', false, summary) }]
-}
-
-function modelProviderAccess(modelProvider: ModelProvider, plaintext: ResolvedSecretValues): ModelProviderResolvedAccess {
-	return {
-		auth: modelProvider.auth === null ? null : { type: 'apiKey', plaintext: plaintext[modelProvider.auth.secretId]! },
-		headers: modelProvider.headers.map((header) => modelProviderHeaderAccess(header, plaintext)),
-	}
-}
-
-function modelProviderHeaderAccess(header: ModelProviderHeader, plaintext: ResolvedSecretValues): { name: string; plaintext: string } {
-	return { name: header.name, plaintext: plaintext[header.valueSecretId]! }
-}
-
-function validationEvidence(operation: ValidationEvidence['operation']['type'], passed: boolean, summary: string): ValidationEvidence {
-	return { type: 'validation', operation: { type: operation }, passed, summary }
-}
-
 function deliveryContext(
 	root: DeliveryContextRoot,
 	records: Result<ScopedDeliveryContextRecords, DeliveryContextError>,
@@ -605,14 +310,15 @@ function deliveryContext(
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { getDeliveryState, getSliceState } = await import('./work-state')
+	const { upgradeToRuntimeDeliveryWorkContext } = await import('./runtime')
 	const { createTestCoreServices, localStamp, seedDelivery, seedProject, seedSecret, seedSelectableModel, seedSlice } =
-		await import('./test-helpers')
+		await import('../test-helpers')
 
-	describe('buildDeliveryContext', () => {
+	describe('buildStoredDeliveryContext', () => {
 		it('loads root-level Delivery facts and supports derived unqueued state', async () => {
 			const options = storedContextFixture()
 
-			const result = await buildDeliveryContext(options.tx, 'delivery-1')
+			const result = await buildStoredDeliveryContext(options.tx, 'delivery-1')
 
 			expect(result).toMatchObject({ ok: true, value: { delivery: { id: 'delivery-1' } } })
 			if (result.ok) {
@@ -628,7 +334,7 @@ if (import.meta.vitest) {
 			seedSlice(options.tx, 'slice-2', 'delivery-1')
 			seedSlice(options.tx, 'slice-1', 'delivery-1')
 
-			const result = await buildDeliveryContext(options.tx, 'delivery-1')
+			const result = await buildStoredDeliveryContext(options.tx, 'delivery-1')
 
 			expect(result).toMatchObject({ ok: true, value: { slices: [{ id: 'slice-2' }, { id: 'slice-1' }] } })
 			if (result.ok) {
@@ -641,7 +347,7 @@ if (import.meta.vitest) {
 			const options = storedContextFixture()
 			options.tx.repositories.records.get('repository-1')!.projectId = 'other-project'
 
-			const result = await buildDeliveryContext(options.tx, 'delivery-1')
+			const result = await buildStoredDeliveryContext(options.tx, 'delivery-1')
 
 			expect(result).toEqual({
 				ok: false,
@@ -651,7 +357,7 @@ if (import.meta.vitest) {
 
 		it('returns failed preflight checks when runtime context needs missing Portfolio Config', async () => {
 			const options = storedContextFixture()
-			const stored = await buildDeliveryContext(options.tx, 'delivery-1')
+			const stored = await buildStoredDeliveryContext(options.tx, 'delivery-1')
 			if (!stored.ok) throw new Error('Expected stored context.')
 
 			const result = await upgradeToRuntimeDeliveryWorkContext(options, options.tx, stored.value)
@@ -677,7 +383,7 @@ if (import.meta.vitest) {
 			seedSelectableModel(options.tx, 'model-1')
 			seedPortfolioConfig(options)
 			options.secrets.resolveSecretValues = () => Promise.resolve({ 'secret-1': 'github-token' })
-			const stored = await buildDeliveryContext(options.tx, 'delivery-1')
+			const stored = await buildStoredDeliveryContext(options.tx, 'delivery-1')
 			if (!stored.ok) throw new Error('Expected stored context.')
 
 			const result = await upgradeToRuntimeDeliveryWorkContext(options, options.tx, stored.value)

@@ -1,8 +1,8 @@
 import { invariant, ok } from './result'
 import type { SliceDeliveryValidationAction, WorkStateResult } from './types'
-import type { Action, ActionResult } from '../../domain/action'
-import type { AgentRun } from '../../domain/agent-run'
-import type { Id } from '../../domain/commons'
+import type { Action, ActionResult } from '../../../domain/action'
+import type { AgentRun } from '../../../domain/agent-run'
+import type { Id } from '../../../domain/commons'
 
 export function latestPassedSlicePromotion(sliceId: Id, sliceActions: Action[]): Action | null {
 	return latestAction(

@@ -5,14 +5,14 @@ import { firstSyncState, ok, stateOrElseSync } from './result'
 import { currentScopedReviewSurface } from './review-surfaces'
 import { getSliceState } from './slice'
 import type { WorkStateDerivationError, WorkStateResult } from './types'
-import type { Action } from '../../domain/action'
-import type { DeliveryArtifact } from '../../domain/artifact'
-import type { ArchivePeriod } from '../../domain/commons'
-import type { Delivery, DeliveryIntegration, DeliveryWorkState } from '../../domain/delivery'
-import { type ReviewSurface, type ReviewSurfaceClosed } from '../../domain/review-surface'
-import type { Slice } from '../../domain/slice'
-import type { StoredDeliveryContext } from '../delivery-context-types'
-import type { Result } from '../types'
+import type { Action } from '../../../domain/action'
+import type { DeliveryArtifact } from '../../../domain/artifact'
+import type { ArchivePeriod } from '../../../domain/commons'
+import type { Delivery, DeliveryIntegration, DeliveryWorkState } from '../../../domain/delivery'
+import { type ReviewSurface, type ReviewSurfaceClosed } from '../../../domain/review-surface'
+import type { Slice } from '../../../domain/slice'
+import type { Result } from '../../types'
+import type { StoredDeliveryContext } from '../types'
 
 interface DeliveryValidationContext {
 	latestValidation: Action | null
@@ -265,7 +265,7 @@ function deliveryReadyByObservationState(action: Action): DeliveryWorkState {
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { createTestCoreServices, externalOperationEvidence, seedDelivery, seedSlice, stamp, validationEvidence } =
-		await import('../test-helpers')
+		await import('../../test-helpers')
 	const passedValidation = validationEvidence('delivery-branch-validation', true, 'Valid.')
 	const failedValidation = validationEvidence('delivery-branch-validation', false, 'Invalid.')
 	const externalFailure = externalOperationEvidence('push-branch', false, 'Failed.')

@@ -3,8 +3,8 @@ import { noEligibleWork, sliceCapacityFull } from './result'
 import { handleSliceWorkState, isActiveSliceSlotState } from './slice'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
 import type { InvalidInputError } from '../../../errors'
+import { getSliceState } from '../../../utils/delivery-context'
 import type { Result as CoreResult } from '../../../utils/types'
-import { getSliceState } from '../../../utils/work-state'
 import type { DeliveryHandlerContext, DeliveryWorkResolution, Error, RunDeliveryWorkHandlerResult } from '../types'
 
 interface SliceStateCandidate {
@@ -64,7 +64,7 @@ function handleFirstExecutableSlice(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { buildDeliveryContext } = await import('../../../utils/delivery-context')
+	const { buildStoredDeliveryContext } = await import('../../../utils/delivery-context')
 	const { createTestCoreServices, localStamp, seedDelivery, seedProject, seedSelectableModel, seedSlice, stamp } =
 		await import('../../../utils/test-helpers')
 
@@ -137,7 +137,7 @@ if (import.meta.vitest) {
 	})
 
 	async function handlerContext(options: ReturnType<typeof executableDeliveryFixture>): Promise<DeliveryHandlerContext> {
-		const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
+		const deliveryContext = await buildStoredDeliveryContext(options.tx, 'delivery-1')
 		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
 
 		return { services: options, tx: options.tx, deliveryContext: deliveryContext.value }

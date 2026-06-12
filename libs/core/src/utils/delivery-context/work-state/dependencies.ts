@@ -1,7 +1,7 @@
 import { ok } from './result'
 import type { DependencyNode, WorkStateResult } from './types'
-import type { ArchivePeriod, Id } from '../../domain/commons'
-import type { Link } from '../../domain/graph'
+import type { ArchivePeriod, Id } from '../../../domain/commons'
+import type { Link } from '../../../domain/graph'
 
 export function compareAcceptedThenId(left: DependencyNode, right: DependencyNode): number {
 	const byAccepted = left.accepted.at.localeCompare(right.accepted.at)
