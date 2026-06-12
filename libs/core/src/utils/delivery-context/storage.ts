@@ -1,5 +1,5 @@
-import type { StoredDeliveryContext, DeliveryDependencySummary } from './types'
-import { latestAction } from './work-state/actions'
+import type { DeliveryDependencySummary, StoredDeliveryContext, StoredDeliverySlice } from './types'
+import { compareActions, latestAction } from './work-state/actions'
 import type { DeliveryDependencyLink, SliceDependencyLink, WorkStateDerivationError } from './work-state/types'
 import { actionPipe, type Action } from '../../domain/action'
 import { agentRunPipe, type AgentRun } from '../../domain/agent-run'
@@ -53,14 +53,12 @@ interface DeliveryContextRecords {
 }
 
 interface ScopedDeliveryContextRecords {
-	slices: Slice[]
+	deliveryArtifact: DeliveryArtifact | null
+	slices: StoredDeliverySlice[]
 	actions: Action[]
 	agentRuns: AgentRun[]
-	deliveryArtifacts: DeliveryArtifact[]
-	sliceArtifacts: SliceArtifact[]
 	reviewSurfaces: ReviewSurface[]
 	deliveryDependencies: DeliveryDependencySummary[]
-	sliceDependencyLinks: SliceDependencyLink[]
 }
 
 async function readDeliveryContextRoot(
@@ -140,7 +138,7 @@ function okDeliveryContextRecords(
 		value: {
 			slices: resultValue(slices),
 			links: resultValue(links),
-			actions: resultValue(actions),
+			actions: resultValue(actions).sort(compareActions),
 			agentRuns: resultValue(agentRuns),
 			deliveries: resultValue(deliveries),
 			deliveryArtifacts: resultValue(deliveryArtifacts),
@@ -167,24 +165,26 @@ function scopedDeliveryContextRecords(
 	delivery: Delivery,
 	records: DeliveryContextRecords,
 ): Result<ScopedDeliveryContextRecords, DeliveryContextError> {
-	const slices = deliverySlices(delivery, records.slices)
-	const sliceIds = new Set(slices.map((slice) => slice.id))
+	const orderedSlices = deliverySlices(delivery, records.slices)
+	const sliceIds = new Set(orderedSlices.map((slice) => slice.id))
 	const dependencies = deliveryDependencies(delivery, records)
 	if (!dependencies.ok) return dependencies
+	const deliveryArtifact = singleDeliveryArtifact(delivery, records.deliveryArtifacts)
+	if (!deliveryArtifact.ok) return deliveryArtifact
+	const slices = storedDeliverySlices(orderedSlices, records)
+	if (!slices.ok) return slices
 
 	return {
 		ok: true,
 		value: {
-			slices,
+			deliveryArtifact: deliveryArtifact.value,
+			slices: slices.value,
 			actions: records.actions.filter((action) => action.deliveryId === delivery.id),
 			agentRuns: records.agentRuns.filter((run) => agentRunReferencesDelivery(run, delivery.id)),
-			deliveryArtifacts: records.deliveryArtifacts.filter((artifact) => artifact.deliveryId === delivery.id),
-			sliceArtifacts: records.sliceArtifacts.filter((artifact) => sliceIds.has(artifact.sliceId)),
 			reviewSurfaces: records.reviewSurfaces.filter((reviewSurface) =>
 				reviewSurfaceReferencesDelivery(reviewSurface, delivery.id, sliceIds),
 			),
 			deliveryDependencies: dependencies.value,
-			sliceDependencyLinks: sliceDependencyLinks(sliceIds, records.links),
 		},
 	}
 }
@@ -193,6 +193,34 @@ function deliverySlices(delivery: Delivery, slices: Slice[]): Slice[] {
 	return slices
 		.filter((slice) => slice.deliveryId === delivery.id)
 		.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
+}
+
+function singleDeliveryArtifact(
+	delivery: Delivery,
+	artifacts: DeliveryArtifact[],
+): Result<DeliveryArtifact | null, InvariantViolationError> {
+	const matching = artifacts.filter((artifact) => artifact.deliveryId === delivery.id)
+	return singleArtifact(matching, `Delivery ${delivery.id} has multiple Delivery Artifacts.`)
+}
+
+function storedDeliverySlices(slices: Slice[], records: DeliveryContextRecords): Result<StoredDeliverySlice[], DeliveryContextError> {
+	const stored: StoredDeliverySlice[] = []
+	for (const slice of slices) {
+		const artifact = singleSliceArtifact(slice, records.sliceArtifacts)
+		if (!artifact.ok) return artifact
+		stored.push({ slice, artifact: artifact.value, dependencyLinks: sliceDependencyLinks(slice.id, records.links) })
+	}
+
+	return { ok: true, value: stored }
+}
+
+function singleSliceArtifact(slice: Slice, artifacts: SliceArtifact[]): Result<SliceArtifact | null, InvariantViolationError> {
+	const matching = artifacts.filter((artifact) => artifact.sliceId === slice.id)
+	return singleArtifact(matching, `Slice ${slice.id} has multiple Slice Artifacts.`)
+}
+
+function singleArtifact<TArtifact>(artifacts: TArtifact[], message: string): Result<TArtifact | null, InvariantViolationError> {
+	return artifacts.length > 1 ? { ok: false, error: { type: 'invariant-violation', message } } : { ok: true, value: artifacts[0] ?? null }
 }
 
 function agentRunReferencesDelivery(run: AgentRun, deliveryId: Delivery['id']): boolean {
@@ -205,12 +233,12 @@ function reviewSurfaceReferencesDelivery(reviewSurface: ReviewSurface, deliveryI
 		: sliceIds.has(reviewSurface.scope.sliceId)
 }
 
-function sliceDependencyLinks(sliceIds: Set<Id>, links: Link[]): SliceDependencyLink[] {
-	return links.filter((link): link is SliceDependencyLink => isContextSliceDependencyLink(link, sliceIds)).sort(compareDependencyLinks)
+function sliceDependencyLinks(sliceId: Id, links: Link[]): SliceDependencyLink[] {
+	return links.filter((link): link is SliceDependencyLink => isContextSliceDependencyLink(link, sliceId)).sort(compareDependencyLinks)
 }
 
-function isContextSliceDependencyLink(link: Link, sliceIds: Set<Id>): link is SliceDependencyLink {
-	return isActiveDependsOnLink(link) && isSliceDependencyEndpointLink(link) && sliceIds.has(link.from.id)
+function isContextSliceDependencyLink(link: Link, sliceId: Id): link is SliceDependencyLink {
+	return isActiveDependsOnLink(link) && isSliceDependencyEndpointLink(link) && link.from.id === sliceId
 }
 
 function isSliceDependencyEndpointLink(link: Link): link is SliceDependencyLink {
@@ -336,11 +364,122 @@ if (import.meta.vitest) {
 
 			const result = await buildStoredDeliveryContext(options.tx, 'delivery-1')
 
-			expect(result).toMatchObject({ ok: true, value: { slices: [{ id: 'slice-2' }, { id: 'slice-1' }] } })
+			expect(result).toMatchObject({
+				ok: true,
+				value: {
+					slices: [
+						{ slice: { id: 'slice-2' }, artifact: null },
+						{ slice: { id: 'slice-1' }, artifact: null },
+					],
+				},
+			})
 			if (result.ok) {
 				expect(getSliceState(result.value, 'slice-2')).toEqual({ ok: true, value: { type: 'needs-artifact-creation' } })
 				expect(getSliceState(result.value, 'slice-1')).toEqual({ ok: true, value: { type: 'needs-artifact-creation' } })
 			}
+		})
+
+		it('loads singular Artifact facts, Slice dependency links, and sorted Actions', async () => {
+			const options = storedContextFixture()
+			seedSlice(options.tx, 'slice-1', 'delivery-1')
+			options.tx.deliveryArtifacts.records.set('delivery-artifact-1', {
+				id: 'delivery-artifact-1',
+				deliveryId: 'delivery-1',
+				config: { type: 'source-control', deliveryBranch: 'delivery-branch' },
+				created: localStamp(),
+			})
+			options.tx.sliceArtifacts.records.set('slice-artifact-1', {
+				id: 'slice-artifact-1',
+				sliceId: 'slice-1',
+				config: { type: 'source-control', sliceBranch: 'slice-branch' },
+				created: localStamp(),
+			})
+			options.tx.links.records.set('link-1', {
+				id: 'link-1',
+				type: 'depends-on',
+				from: { type: 'slice', id: 'slice-1' },
+				to: { type: 'slice', id: 'slice-2' },
+				created: localStamp(),
+				archivePeriods: [],
+			})
+			options.tx.actions.records.set('action-later', {
+				id: 'action-later',
+				deliveryId: 'delivery-1',
+				performed: { at: '2026-06-10T12:01:00.000Z' },
+				authorized: null,
+				result: { type: 'queue-delivery' },
+			})
+			options.tx.actions.records.set('action-earlier', {
+				id: 'action-earlier',
+				deliveryId: 'delivery-1',
+				performed: { at: '2026-06-10T12:00:00.000Z' },
+				authorized: null,
+				result: { type: 'queue-delivery' },
+			})
+
+			const result = await buildStoredDeliveryContext(options.tx, 'delivery-1')
+
+			expect(result).toMatchObject({
+				ok: true,
+				value: {
+					deliveryArtifact: { id: 'delivery-artifact-1' },
+					slices: [
+						{
+							slice: { id: 'slice-1' },
+							artifact: { id: 'slice-artifact-1' },
+							dependencyLinks: [{ id: 'link-1' }],
+						},
+					],
+					actions: [{ id: 'action-earlier' }, { id: 'action-later' }],
+				},
+			})
+		})
+
+		it('returns an invariant violation when a Delivery has multiple Artifacts', async () => {
+			const options = storedContextFixture()
+			options.tx.deliveryArtifacts.records.set('delivery-artifact-1', {
+				id: 'delivery-artifact-1',
+				deliveryId: 'delivery-1',
+				config: { type: 'source-control', deliveryBranch: 'delivery-branch' },
+				created: localStamp(),
+			})
+			options.tx.deliveryArtifacts.records.set('delivery-artifact-2', {
+				id: 'delivery-artifact-2',
+				deliveryId: 'delivery-1',
+				config: { type: 'source-control', deliveryBranch: 'other-delivery-branch' },
+				created: localStamp(),
+			})
+
+			const result = await buildStoredDeliveryContext(options.tx, 'delivery-1')
+
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'invariant-violation', message: 'Delivery delivery-1 has multiple Delivery Artifacts.' },
+			})
+		})
+
+		it('returns an invariant violation when a Slice has multiple Artifacts', async () => {
+			const options = storedContextFixture()
+			seedSlice(options.tx, 'slice-1', 'delivery-1')
+			options.tx.sliceArtifacts.records.set('slice-artifact-1', {
+				id: 'slice-artifact-1',
+				sliceId: 'slice-1',
+				config: { type: 'source-control', sliceBranch: 'slice-branch' },
+				created: localStamp(),
+			})
+			options.tx.sliceArtifacts.records.set('slice-artifact-2', {
+				id: 'slice-artifact-2',
+				sliceId: 'slice-1',
+				config: { type: 'source-control', sliceBranch: 'other-slice-branch' },
+				created: localStamp(),
+			})
+
+			const result = await buildStoredDeliveryContext(options.tx, 'delivery-1')
+
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'invariant-violation', message: 'Slice slice-1 has multiple Slice Artifacts.' },
+			})
 		})
 
 		it('returns an invariant violation when the target Repository is outside the Delivery Project', async () => {

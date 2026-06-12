@@ -19,20 +19,24 @@ export interface DeliveryDependencySummary {
 	closedBy: Action | null
 }
 
+export interface StoredDeliverySlice {
+	slice: Slice
+	artifact: SliceArtifact | null
+	dependencyLinks: SliceDependencyLink[]
+}
+
 export interface StoredDeliveryContext {
 	delivery: Delivery
 	project: Project
 	repository: Repository
 	portfolioConfig: PortfolioConfigRecord | null
 	projectConfig: ProjectConfigRecord | null
-	slices: Slice[]
+	deliveryArtifact: DeliveryArtifact | null
+	slices: StoredDeliverySlice[]
 	actions: Action[]
 	agentRuns: AgentRun[]
-	deliveryArtifacts: DeliveryArtifact[]
-	sliceArtifacts: SliceArtifact[]
 	reviewSurfaces: ReviewSurface[]
 	deliveryDependencies: DeliveryDependencySummary[]
-	sliceDependencyLinks: SliceDependencyLink[]
 }
 
 export interface ModelProviderResolvedAccess {

@@ -38,7 +38,7 @@ export function latestKnownAction(actionIds: Id[], actions: Action[]): WorkState
 		known.push(action)
 	}
 
-	return ok(latestAction(known))
+	return ok(maxAction(known))
 }
 
 export function getKnownAgentRun(agentRunId: Id, agentRuns: AgentRun[]): WorkStateResult<AgentRun> {
@@ -46,12 +46,15 @@ export function getKnownAgentRun(agentRunId: Id, agentRuns: AgentRun[]): WorkSta
 	return agentRun === undefined ? invariant(`Agent Run ${agentRunId} is missing.`) : ok(agentRun)
 }
 
-export function sortedActions<TAction extends Action>(actions: TAction[]): TAction[] {
-	return [...actions].sort(compareActions)
+export function latestAction<TAction extends Action>(actions: TAction[]): TAction | null {
+	return actions.at(-1) ?? null
 }
 
-export function latestAction<TAction extends Action>(actions: TAction[]): TAction | null {
-	return sortedActions(actions).at(-1) ?? null
+function maxAction<TAction extends Action>(actions: TAction[]): TAction | null {
+	return actions.reduce<TAction | null>(
+		(latest, action) => (latest === null || compareActions(action, latest) > 0 ? action : latest),
+		null,
+	)
 }
 
 export function compareActions(left: Action, right: Action): number {

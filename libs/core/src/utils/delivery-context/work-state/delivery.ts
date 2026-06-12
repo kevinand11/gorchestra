@@ -1,5 +1,4 @@
 import { compareActions, latestAction, latestKnownAction } from './actions'
-import { singleDeliveryArtifact } from './artifacts'
 import { compareAcceptedThenId } from './dependencies'
 import { firstSyncState, ok, stateOrElseSync } from './result'
 import { currentScopedReviewSurface } from './review-surfaces'
@@ -20,7 +19,7 @@ interface DeliveryValidationContext {
 }
 
 export function getDeliveryState(context: StoredDeliveryContext): Result<DeliveryWorkState, WorkStateDerivationError> {
-	const deliveryActions = deliveryActionsFor(context).sort(compareActions)
+	const deliveryActions = deliveryActionsFor(context)
 	const earlyState = firstSyncState([
 		() => immediateDeliveryLifecycleState(deliveryActions),
 		() => deliveryDependencyState(context),
@@ -45,12 +44,9 @@ function deriveDeliveryStateAfterEarlyGates(context: StoredDeliveryContext, deli
 function deliveryArtifactDecision(
 	context: StoredDeliveryContext,
 ): WorkStateResult<{ type: 'artifact'; artifact: DeliveryArtifact } | { type: 'state'; state: DeliveryWorkState }> {
-	const artifact = singleDeliveryArtifact(context.delivery.id, context.deliveryArtifacts)
-	if (!artifact.ok) return artifact
-
-	return artifact.value === null
+	return context.deliveryArtifact === null
 		? ok({ type: 'state', state: { type: 'needs-artifact-creation' } })
-		: ok({ type: 'artifact', artifact: artifact.value })
+		: ok({ type: 'artifact', artifact: context.deliveryArtifact })
 }
 
 function deriveDeliveryStateWithArtifact(
@@ -122,7 +118,7 @@ function latestSliceCompletionForDelivery(context: StoredDeliveryContext): WorkS
 function sliceCompletionActionIdsForDelivery(context: StoredDeliveryContext): WorkStateResult<Slice['id'][] | null> {
 	const actionIds: Slice['id'][] = []
 	for (const slice of context.slices) {
-		const completion = sliceCompletionActionId(context, slice.id)
+		const completion = sliceCompletionActionId(context, slice.slice.id)
 		if (!completion.ok) return completion
 		if (completion.value === null) return ok(null)
 		actionIds.push(completion.value)
@@ -530,12 +526,19 @@ if (import.meta.vitest) {
 		if (delivery === undefined)
 			return { ok: false, error: { type: 'not-found' as const, resource: 'delivery' as const, id: deliveryId } }
 
-		const actions = [...tx.actions.records.values()]
-		const slices = [...tx.slices.records.values()]
+		const actions = [...tx.actions.records.values()].sort(compareActions)
+		const sliceRecords = [...tx.slices.records.values()]
 			.filter((slice) => slice.deliveryId === delivery.id)
 			.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
-		const sliceIds = new Set(slices.map((slice) => slice.id))
+		const sliceIds = new Set(sliceRecords.map((slice) => slice.id))
 		const links = [...tx.links.records.values()]
+		const slices = sliceRecords.map((slice) => ({
+			slice,
+			artifact: [...tx.sliceArtifacts.records.values()].find((artifact) => artifact.sliceId === slice.id) ?? null,
+			dependencyLinks: links.filter(
+				(link) => link.type === 'depends-on' && link.from.type === 'slice' && link.from.id === slice.id && link.to.type === 'slice',
+			) as StoredDeliveryContext['slices'][number]['dependencyLinks'],
+		}))
 		const deliveryDependencies = links
 			.filter(
 				(link) =>
@@ -565,21 +568,16 @@ if (import.meta.vitest) {
 			repository: tx.repositories.records.get(delivery.target.repositoryId)!,
 			portfolioConfig: tx.portfolioConfig.record,
 			projectConfig: tx.projects.records.get(delivery.projectId)!.config,
+			deliveryArtifact: [...tx.deliveryArtifacts.records.values()].find((artifact) => artifact.deliveryId === delivery.id) ?? null,
 			slices,
 			actions: actions.filter((action) => action.deliveryId === delivery.id),
 			agentRuns: [...tx.agentRuns.records.values()].filter(
 				(run) => run.purpose.type === 'execution' && run.purpose.deliveryId === delivery.id,
 			),
-			deliveryArtifacts: [...tx.deliveryArtifacts.records.values()].filter((artifact) => artifact.deliveryId === delivery.id),
-			sliceArtifacts: [...tx.sliceArtifacts.records.values()].filter((artifact) => sliceIds.has(artifact.sliceId)),
 			reviewSurfaces: [...tx.reviewSurfaces.records.values()].filter((surface) =>
 				surface.scope.type === 'delivery' ? surface.scope.deliveryId === delivery.id : sliceIds.has(surface.scope.sliceId),
 			),
 			deliveryDependencies: deliveryDependencies as StoredDeliveryContext['deliveryDependencies'],
-			sliceDependencyLinks: links.filter(
-				(link) =>
-					link.type === 'depends-on' && link.from.type === 'slice' && sliceIds.has(link.from.id) && link.to.type === 'slice',
-			) as StoredDeliveryContext['sliceDependencyLinks'],
 		})
 	}
 }

@@ -36,9 +36,9 @@ function deliveryWorkResolution(
 function sliceStateCandidates(context: DeliveryHandlerContext): CoreResult<SliceStateCandidate[], Exclude<Error, InvalidInputError>> {
 	const candidates: SliceStateCandidate[] = []
 	for (const slice of context.deliveryContext.slices) {
-		const stateResult = getSliceState(context.deliveryContext, slice.id)
+		const stateResult = getSliceState(context.deliveryContext, slice.slice.id)
 		if (!stateResult.ok) return stateResult
-		candidates.push({ slice, state: stateResult.value })
+		candidates.push({ slice: slice.slice, state: stateResult.value })
 	}
 
 	return { ok: true, value: candidates }
