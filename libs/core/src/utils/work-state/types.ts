@@ -1,6 +1,4 @@
 import type { Action, ActionResult } from '../../domain/action'
-import type { AgentRun } from '../../domain/agent-run'
-import type { DeliveryArtifact, SliceArtifact } from '../../domain/artifact'
 import type { Id } from '../../domain/commons'
 import type { Delivery } from '../../domain/delivery'
 import type { Link } from '../../domain/graph'
@@ -23,24 +21,6 @@ export type WorkStateDerivationError =
 export type WorkStateResult<T> = Result<T, WorkStateDerivationError>
 export type MaybeStateResult<T> = WorkStateResult<T | null>
 export type MaybeStateStep<T> = () => MaybeStateResult<T> | Promise<MaybeStateResult<T>>
-
-export interface WorkStateDeliveryDependency {
-	link: DeliveryDependencyLink
-	delivery: Delivery
-	closedBy: Action | null
-}
-
-export interface WorkStateDeliveryContext {
-	delivery: Delivery
-	slices: Slice[]
-	actions: Action[]
-	agentRuns: AgentRun[]
-	deliveryArtifacts: DeliveryArtifact[]
-	sliceArtifacts: SliceArtifact[]
-	reviewSurfaces: ReviewSurface[]
-	deliveryDependencies: WorkStateDeliveryDependency[]
-	sliceDependencyLinks: SliceDependencyLink[]
-}
 
 export type ActionOfType<TType extends ActionResult['type']> = Action & { result: Extract<ActionResult, { type: TType }> }
 export type SliceDeliveryValidationAction = ActionOfType<'validate-slice-delivery-artifact'>

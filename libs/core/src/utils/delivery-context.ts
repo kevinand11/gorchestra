@@ -1,4 +1,5 @@
 import { validateActiveSecret } from './command-storage'
+import type { DeliveryContext, DeliveryDependencySummary } from './delivery-context-types'
 import {
 	preflightDeliveryWork,
 	type DeliveryPreflight,
@@ -32,32 +33,9 @@ import type {
 import { resolvedSecretValuesPipe, type CoreServices, type CoreStorageTransaction, type ResolvedSecretValues } from '../services'
 import { validateCoreServiceOutput } from '../validation'
 import { latestAction } from './work-state/actions'
-import type {
-	DeliveryDependencyLink,
-	SliceDependencyLink,
-	WorkStateDeliveryContext,
-	WorkStateDeliveryDependency,
-	WorkStateDerivationError,
-} from './work-state/types'
+import type { DeliveryDependencyLink, SliceDependencyLink, WorkStateDerivationError } from './work-state/types'
 
-export type DeliveryDependencySummary = WorkStateDeliveryDependency
-
-export interface DeliveryContext extends WorkStateDeliveryContext {
-	phase: 'stored'
-	delivery: Delivery
-	project: Project
-	repository: Repository
-	portfolioConfig: PortfolioConfigRecord | null
-	projectConfig: ProjectConfigRecord | null
-	slices: Slice[]
-	actions: Action[]
-	agentRuns: AgentRun[]
-	deliveryArtifacts: DeliveryArtifact[]
-	sliceArtifacts: SliceArtifact[]
-	reviewSurfaces: ReviewSurface[]
-	deliveryDependencies: DeliveryDependencySummary[]
-	sliceDependencyLinks: SliceDependencyLink[]
-}
+export type { DeliveryContext, DeliveryDependencySummary } from './delivery-context-types'
 
 export interface ModelProviderResolvedAccess {
 	auth: { type: 'apiKey'; plaintext: string } | null
