@@ -8,23 +8,23 @@ import type { Action } from '../../domain/action'
 import type { AgentRun, ExecutionMode } from '../../domain/agent-run'
 import type { ArchivePeriod, Id } from '../../domain/commons'
 import type { Slice, SliceWorkState } from '../../domain/slice'
-import type { DeliveryContext } from '../delivery-context-types'
+import type { StoredDeliveryContext } from '../delivery-context-types'
 import { notFound } from '../storage'
 import type { Result } from '../types'
 
-export function getSliceState(context: DeliveryContext, sliceId: Id): Result<SliceWorkState, WorkStateDerivationError> {
+export function getSliceState(context: StoredDeliveryContext, sliceId: Id): Result<SliceWorkState, WorkStateDerivationError> {
 	const slice = context.slices.find((candidate) => candidate.id === sliceId && candidate.deliveryId === context.delivery.id)
 	return slice === undefined ? notFound('slice', sliceId) : deriveSliceState(context, slice)
 }
 
-function deriveSliceState(context: DeliveryContext, slice: Slice): WorkStateResult<SliceWorkState> {
+function deriveSliceState(context: StoredDeliveryContext, slice: Slice): WorkStateResult<SliceWorkState> {
 	const sliceActions = sortedActions(context.actions.filter((action) => actionAffectsSlice(action, slice.id)))
 	const earlyState = firstSyncState([() => promotedSliceState(context, slice, sliceActions), () => sliceDependencyState(context, slice)])
 
 	return stateOrElseSync(earlyState, () => deriveSliceStateAfterEarlyGates(context, slice, sliceActions))
 }
 
-function promotedSliceState(context: DeliveryContext, slice: Slice, sliceActions: Action[]): WorkStateResult<SliceWorkState | null> {
+function promotedSliceState(context: StoredDeliveryContext, slice: Slice, sliceActions: Action[]): WorkStateResult<SliceWorkState | null> {
 	const promotion = latestPassedSlicePromotion(slice.id, sliceActions)
 	if (promotion === null) return ok(null)
 
@@ -40,7 +40,7 @@ function promotedSliceState(context: DeliveryContext, slice: Slice, sliceActions
 			})
 }
 
-function sliceDependencyState(context: DeliveryContext, slice: Slice): WorkStateResult<SliceWorkState | null> {
+function sliceDependencyState(context: StoredDeliveryContext, slice: Slice): WorkStateResult<SliceWorkState | null> {
 	const blockedIds = blockedSliceIds(context, slice)
 	if (!blockedIds.ok) return blockedIds
 
@@ -48,7 +48,7 @@ function sliceDependencyState(context: DeliveryContext, slice: Slice): WorkState
 }
 
 function failedSliceArtifactValidationState(
-	context: DeliveryContext,
+	context: StoredDeliveryContext,
 	slice: Slice,
 	sliceActions: Action[],
 ): WorkStateResult<SliceWorkState | null> {
@@ -62,12 +62,20 @@ function failedSliceArtifactValidationState(
 	})
 }
 
-function deriveSliceStateAfterEarlyGates(context: DeliveryContext, slice: Slice, sliceActions: Action[]): WorkStateResult<SliceWorkState> {
+function deriveSliceStateAfterEarlyGates(
+	context: StoredDeliveryContext,
+	slice: Slice,
+	sliceActions: Action[],
+): WorkStateResult<SliceWorkState> {
 	const executionState = deriveSliceExecutionState(context, slice, sliceActions)
 	return stateOrElseSync(executionState, () => deriveSliceStateAfterExecution(context, slice, sliceActions))
 }
 
-function deriveSliceExecutionState(context: DeliveryContext, slice: Slice, sliceActions: Action[]): WorkStateResult<SliceWorkState | null> {
+function deriveSliceExecutionState(
+	context: StoredDeliveryContext,
+	slice: Slice,
+	sliceActions: Action[],
+): WorkStateResult<SliceWorkState | null> {
 	const execution = latestCompletedSliceExecutionAgentRun(context, slice)
 	return execution === null ? ok(null) : completedSliceExecutionState(context, slice, execution, sliceActions)
 }
@@ -78,7 +86,7 @@ type CompletedExecutionAgentRun = AgentRun & {
 }
 
 function completedSliceExecutionState(
-	context: DeliveryContext,
+	context: StoredDeliveryContext,
 	slice: Slice,
 	execution: CompletedExecutionAgentRun,
 	sliceActions: Action[],
@@ -99,7 +107,7 @@ function executionNeedsArtifactValidation(execution: CompletedExecutionAgentRun,
 }
 
 function needsSliceArtifactValidationState(
-	context: DeliveryContext,
+	context: StoredDeliveryContext,
 	slice: Slice,
 	mode: ExecutionMode,
 	sliceArtifactId: string,
@@ -117,7 +125,11 @@ function needsSliceArtifactValidationState(
 		: { type: 'needs-artifact-validation', mode: 'initial', sliceArtifactId }
 }
 
-function deriveSliceStateAfterExecution(context: DeliveryContext, slice: Slice, sliceActions: Action[]): WorkStateResult<SliceWorkState> {
+function deriveSliceStateAfterExecution(
+	context: StoredDeliveryContext,
+	slice: Slice,
+	sliceActions: Action[],
+): WorkStateResult<SliceWorkState> {
 	const externalState = firstSyncState([
 		() => sliceReviewState(context, slice),
 		() => sliceExternalFailureState(sliceActions),
@@ -128,7 +140,7 @@ function deriveSliceStateAfterExecution(context: DeliveryContext, slice: Slice, 
 	return stateOrElseSync(externalState, () => ok({ type: 'executable', mode: 'initial' }))
 }
 
-function sliceReviewState(context: DeliveryContext, slice: Slice): WorkStateResult<SliceWorkState | null> {
+function sliceReviewState(context: StoredDeliveryContext, slice: Slice): WorkStateResult<SliceWorkState | null> {
 	const reviewSurface = currentScopedReviewSurface(
 		context.reviewSurfaces.filter((candidate) => candidate.scope.type === 'slice' && candidate.scope.sliceId === slice.id),
 	)
@@ -145,14 +157,14 @@ function sliceExternalFailureState(sliceActions: Action[]): WorkStateResult<Slic
 	return failure === null ? ok(null) : ok({ type: 'slice-operation-failed', actionId: failure.id })
 }
 
-function initialSliceArtifactState(context: DeliveryContext, slice: Slice): WorkStateResult<SliceWorkState | null> {
+function initialSliceArtifactState(context: StoredDeliveryContext, slice: Slice): WorkStateResult<SliceWorkState | null> {
 	const artifactResult = singleSliceArtifact(slice, context.sliceArtifacts)
 	if (!artifactResult.ok) return artifactResult
 
 	return artifactResult.value === null ? ok({ type: 'needs-artifact-creation' }) : ok(null)
 }
 
-function blockedSliceIds(context: DeliveryContext, slice: Slice): WorkStateResult<Slice['id'][]> {
+function blockedSliceIds(context: StoredDeliveryContext, slice: Slice): WorkStateResult<Slice['id'][]> {
 	const prerequisites: Slice[] = []
 	for (const link of activeSliceDependencyLinks(context, slice.id)) {
 		const prerequisite = incompleteSliceDependency(context, link)
@@ -163,7 +175,7 @@ function blockedSliceIds(context: DeliveryContext, slice: Slice): WorkStateResul
 	return ok(prerequisites.sort(compareAcceptedThenId).map((blocked) => blocked.id))
 }
 
-function incompleteSliceDependency(context: DeliveryContext, link: SliceDependencyLink): WorkStateResult<Slice | null> {
+function incompleteSliceDependency(context: StoredDeliveryContext, link: SliceDependencyLink): WorkStateResult<Slice | null> {
 	const prerequisite = context.slices.find((candidate) => candidate.id === link.to.id)
 	if (prerequisite === undefined) return notFound('slice', link.to.id)
 
@@ -172,13 +184,13 @@ function incompleteSliceDependency(context: DeliveryContext, link: SliceDependen
 		: validSliceDependency(context, prerequisite)
 }
 
-function validSliceDependency(context: DeliveryContext, prerequisite: Slice): WorkStateResult<Slice> {
+function validSliceDependency(context: StoredDeliveryContext, prerequisite: Slice): WorkStateResult<Slice> {
 	return prerequisite.deliveryId === context.delivery.id
 		? ok(prerequisite)
 		: invariant(`Slice dependency ${prerequisite.id} is outside Delivery ${context.delivery.id}.`)
 }
 
-function activeSliceDependencyLinks(context: DeliveryContext, sliceId: Slice['id']): SliceDependencyLink[] {
+function activeSliceDependencyLinks(context: StoredDeliveryContext, sliceId: Slice['id']): SliceDependencyLink[] {
 	return context.sliceDependencyLinks.filter((link) => link.from.id === sliceId && !isArchived(link.archivePeriods))
 }
 
@@ -194,7 +206,7 @@ function isSliceComplete(sliceId: Slice['id'], actions: Action[]): boolean {
 	return latestSliceDeliveryValidationAfter(sliceId, sliceActions, latestPromotion)?.result.evidence.passed === true
 }
 
-function latestCompletedSliceExecutionAgentRun(context: DeliveryContext, slice: Slice): CompletedExecutionAgentRun | null {
+function latestCompletedSliceExecutionAgentRun(context: StoredDeliveryContext, slice: Slice): CompletedExecutionAgentRun | null {
 	return (
 		sliceExecutionAgentRuns(context, slice)
 			.filter((run): run is CompletedExecutionAgentRun => run.completed !== null)
@@ -204,7 +216,7 @@ function latestCompletedSliceExecutionAgentRun(context: DeliveryContext, slice: 
 }
 
 function sliceExecutionAgentRuns(
-	context: DeliveryContext,
+	context: StoredDeliveryContext,
 	slice: Slice,
 ): Array<AgentRun & { purpose: Extract<AgentRun['purpose'], { type: 'execution' }> }> {
 	return context.agentRuns.filter(
@@ -221,11 +233,11 @@ function compareAgentRunsByCompletion(left: CompletedExecutionAgentRun, right: C
 	return byStart !== 0 ? byStart : left.id.localeCompare(right.id)
 }
 
-function correctionRetriesFor(context: DeliveryContext, root: Action, slice: Slice): number {
+function correctionRetriesFor(context: StoredDeliveryContext, root: Action, slice: Slice): number {
 	return correctionRetriesForRoot(context, root.id, slice)
 }
 
-function correctionRetriesForRoot(context: DeliveryContext, rootActionId: string, slice: Slice): number {
+function correctionRetriesForRoot(context: StoredDeliveryContext, rootActionId: string, slice: Slice): number {
 	return context.agentRuns.filter(
 		(run) =>
 			run.purpose.type === 'execution' &&
@@ -504,7 +516,6 @@ if (import.meta.vitest) {
 
 		return getSliceState(
 			{
-				phase: 'stored',
 				delivery,
 				project: tx.projects.records.get(delivery.projectId)!,
 				repository: tx.repositories.records.get(delivery.target.repositoryId)!,
@@ -524,7 +535,7 @@ if (import.meta.vitest) {
 				sliceDependencyLinks: links.filter(
 					(link) =>
 						link.type === 'depends-on' && link.from.type === 'slice' && sliceIds.has(link.from.id) && link.to.type === 'slice',
-				) as DeliveryContext['sliceDependencyLinks'],
+				) as StoredDeliveryContext['sliceDependencyLinks'],
 			},
 			sliceId,
 		)

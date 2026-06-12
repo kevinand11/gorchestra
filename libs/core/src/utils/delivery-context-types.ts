@@ -15,8 +15,7 @@ export interface DeliveryDependencySummary {
 	closedBy: Action | null
 }
 
-export interface DeliveryContext {
-	phase: 'stored'
+export interface StoredDeliveryContext {
 	delivery: Delivery
 	project: Project
 	repository: Repository

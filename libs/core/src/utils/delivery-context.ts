@@ -1,5 +1,5 @@
 import { validateActiveSecret } from './command-storage'
-import type { DeliveryContext, DeliveryDependencySummary } from './delivery-context-types'
+import type { StoredDeliveryContext, DeliveryDependencySummary } from './delivery-context-types'
 import {
 	preflightDeliveryWork,
 	type DeliveryPreflight,
@@ -35,15 +35,14 @@ import { validateCoreServiceOutput } from '../validation'
 import { latestAction } from './work-state/actions'
 import type { DeliveryDependencyLink, SliceDependencyLink, WorkStateDerivationError } from './work-state/types'
 
-export type { DeliveryContext, DeliveryDependencySummary } from './delivery-context-types'
+export type { StoredDeliveryContext, DeliveryDependencySummary } from './delivery-context-types'
 
 export interface ModelProviderResolvedAccess {
 	auth: { type: 'apiKey'; plaintext: string } | null
 	headers: Array<{ name: string; plaintext: string }>
 }
 
-export type RuntimeDeliveryWorkContext = Omit<DeliveryContext, 'phase'> & {
-	phase: 'runtime'
+export type RuntimeDeliveryWorkContext = StoredDeliveryContext & {
 	workConfig: DeliveryWorkConfig
 	executionModel: Model
 	executionModelProvider: ModelProvider
@@ -61,7 +60,7 @@ export type RuntimeDeliveryWorkContextError = DeliveryPreflightError
 export async function buildDeliveryContext(
 	tx: CoreStorageTransaction,
 	deliveryId: Delivery['id'],
-): Promise<Result<DeliveryContext, DeliveryContextError>> {
+): Promise<Result<StoredDeliveryContext, DeliveryContextError>> {
 	const root = await readDeliveryContextRoot(tx, deliveryId)
 	if (!root.ok) return root
 
@@ -341,7 +340,7 @@ function resultValue<TValue>(result: Result<TValue, unknown>): TValue {
 export async function upgradeToRuntimeDeliveryWorkContext(
 	services: CoreServices,
 	tx: CoreStorageTransaction,
-	stored: DeliveryContext,
+	stored: StoredDeliveryContext,
 ): Promise<Result<RuntimeDeliveryWorkContextUpgrade, RuntimeDeliveryWorkContextError>> {
 	const localPreflight = await preflightDeliveryWork(tx, stored.delivery)
 	return localPreflight.ok ? runtimeContextUpgradeForPreflight(services, tx, stored, localPreflight.value) : localPreflight
@@ -350,7 +349,7 @@ export async function upgradeToRuntimeDeliveryWorkContext(
 async function runtimeContextUpgradeForPreflight(
 	services: CoreServices,
 	tx: CoreStorageTransaction,
-	stored: DeliveryContext,
+	stored: StoredDeliveryContext,
 	preflight: DeliveryPreflight,
 ): Promise<Result<RuntimeDeliveryWorkContextUpgrade, RuntimeDeliveryWorkContextError>> {
 	return preflight.type === 'failed'
@@ -361,7 +360,7 @@ async function runtimeContextUpgradeForPreflight(
 async function runtimeContextUpgradeForPassedPreflight(
 	services: CoreServices,
 	tx: CoreStorageTransaction,
-	stored: DeliveryContext,
+	stored: StoredDeliveryContext,
 	preflight: PassedDeliveryPreflight,
 ): Promise<Result<RuntimeDeliveryWorkContextUpgrade, RuntimeDeliveryWorkContextError>> {
 	const modelFacts = await runtimeModelFacts(tx, preflight.modelId)
@@ -372,7 +371,7 @@ async function runtimeContextUpgradeForPassedPreflight(
 }
 
 function runtimeContextUpgradeWithAccess(
-	stored: DeliveryContext,
+	stored: StoredDeliveryContext,
 	preflight: PassedDeliveryPreflight,
 	modelFacts: { model: Model; modelProvider: ModelProvider },
 	access: RuntimeProviderAccess,
@@ -383,7 +382,7 @@ function runtimeContextUpgradeWithAccess(
 }
 
 function okRuntimeDeliveryWorkContext(
-	stored: DeliveryContext,
+	stored: StoredDeliveryContext,
 	preflight: PassedDeliveryPreflight,
 	modelFacts: { model: Model; modelProvider: ModelProvider },
 	access: Extract<RuntimeProviderAccess, { type: 'resolved' }>,
@@ -399,14 +398,13 @@ function okRuntimeDeliveryWorkContext(
 }
 
 function runtimeDeliveryWorkContext(
-	stored: DeliveryContext,
+	stored: StoredDeliveryContext,
 	preflight: PassedDeliveryPreflight,
 	modelFacts: { model: Model; modelProvider: ModelProvider },
 	access: Extract<RuntimeProviderAccess, { type: 'resolved' }>,
 ): RuntimeDeliveryWorkContext {
 	return {
 		...stored,
-		phase: 'runtime',
 		workConfig: preflight.workConfig,
 		executionModel: modelFacts.model,
 		executionModelProvider: modelFacts.modelProvider,
@@ -600,8 +598,8 @@ function validationEvidence(operation: ValidationEvidence['operation']['type'], 
 function deliveryContext(
 	root: DeliveryContextRoot,
 	records: Result<ScopedDeliveryContextRecords, DeliveryContextError>,
-): Result<DeliveryContext, DeliveryContextError> {
-	return records.ok ? { ok: true, value: { phase: 'stored', ...root, ...records.value } } : records
+): Result<StoredDeliveryContext, DeliveryContextError> {
+	return records.ok ? { ok: true, value: { ...root, ...records.value } } : records
 }
 
 if (import.meta.vitest) {
@@ -616,7 +614,7 @@ if (import.meta.vitest) {
 
 			const result = await buildDeliveryContext(options.tx, 'delivery-1')
 
-			expect(result).toMatchObject({ ok: true, value: { phase: 'stored' } })
+			expect(result).toMatchObject({ ok: true, value: { delivery: { id: 'delivery-1' } } })
 			if (result.ok) {
 				expect(result.value.delivery.id).toBe('delivery-1')
 				expect(result.value.project.id).toBe('project-1')
@@ -689,7 +687,6 @@ if (import.meta.vitest) {
 				value: {
 					type: 'runtime-context',
 					context: {
-						phase: 'runtime',
 						workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30000 },
 						executionModel: { id: 'model-1' },
 						sourceControlAccessToken: { type: 'access-token', plaintext: 'github-token' },

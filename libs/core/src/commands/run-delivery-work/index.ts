@@ -12,7 +12,7 @@ import type { CoreRuntime } from '../../runtime'
 import type { CoreServices, CoreStorageTransaction } from '../../services'
 import { buildCommandHandler } from '../../utils/command'
 import { nextId, putRecord, runtimeRecord } from '../../utils/command-storage'
-import { buildDeliveryContext, type DeliveryContext } from '../../utils/delivery-context'
+import { buildDeliveryContext, type StoredDeliveryContext } from '../../utils/delivery-context'
 import {
 	deliveryPreflightChecksPassed,
 	providerBackedDeliveryPreflightInputsStillCurrent,
@@ -77,7 +77,7 @@ async function readSchedulerPreflightPlan(
 async function schedulerPreflightPlanForState(
 	services: CoreServices,
 	tx: CoreStorageTransaction,
-	deliveryContext: DeliveryContext,
+	deliveryContext: StoredDeliveryContext,
 	state: DeliveryWorkState,
 ): Promise<CoreResult<SchedulerPreflightRead, Exclude<Error, InvalidInputError>>> {
 	if (isSchedulerPreflightState(state)) return readProviderBackedDeliveryPreflightPlan(tx, deliveryContext.delivery)
@@ -111,7 +111,9 @@ async function applySchedulerPreflight(
 	return applyCurrentSchedulerPreflight(options, tx, readiness.value.deliveryContext, readiness.value.state, plan, checks)
 }
 
-type SchedulerPreflightWriteReadiness = { type: 'ready'; deliveryContext: DeliveryContext; state: DeliveryWorkState } | { type: 'conflict' }
+type SchedulerPreflightWriteReadiness =
+	| { type: 'ready'; deliveryContext: StoredDeliveryContext; state: DeliveryWorkState }
+	| { type: 'conflict' }
 
 async function schedulerPreflightWriteReadiness(
 	tx: CoreStorageTransaction,
@@ -128,7 +130,7 @@ async function schedulerPreflightWriteReadiness(
 async function currentSchedulerPreflightState(
 	tx: CoreStorageTransaction,
 	deliveryId: string,
-): Promise<CoreResult<{ deliveryContext: DeliveryContext; state: DeliveryWorkState }, Exclude<Error, InvalidInputError>>> {
+): Promise<CoreResult<{ deliveryContext: StoredDeliveryContext; state: DeliveryWorkState }, Exclude<Error, InvalidInputError>>> {
 	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
 	if (!deliveryContext.ok) return deliveryContext
 
@@ -138,7 +140,7 @@ async function currentSchedulerPreflightState(
 
 async function freshSchedulerPreflightReadiness(
 	tx: CoreStorageTransaction,
-	deliveryContext: DeliveryContext,
+	deliveryContext: StoredDeliveryContext,
 	state: DeliveryWorkState,
 	plan: Exclude<SchedulerPreflightRead, { type: 'result' }>,
 ): Promise<CoreResult<SchedulerPreflightWriteReadiness, Exclude<Error, InvalidInputError>>> {
@@ -155,7 +157,7 @@ function schedulerPreflightConflict(): CoreResult<Extract<SchedulerPreflightWrit
 function applyCurrentSchedulerPreflight(
 	services: CoreServices,
 	tx: CoreStorageTransaction,
-	deliveryContext: DeliveryContext,
+	deliveryContext: StoredDeliveryContext,
 	state: DeliveryWorkState,
 	plan: Exclude<SchedulerPreflightRead, { type: 'result' }>,
 	checks: ValidationEvidence[],
@@ -168,7 +170,7 @@ function applyCurrentSchedulerPreflight(
 function schedulerHandlerContext(
 	services: CoreServices,
 	tx: CoreStorageTransaction,
-	deliveryContext: DeliveryContext,
+	deliveryContext: StoredDeliveryContext,
 	plan: Exclude<SchedulerPreflightRead, { type: 'result' }>,
 ) {
 	const resolution = providerBackedDeliveryWorkResolution(plan)

@@ -12,7 +12,7 @@ import type {
 	StorageOperationFailedError,
 } from '../../errors'
 import type { CoreServices, CoreStorageTransaction } from '../../services'
-import type { DeliveryContext } from '../../utils/delivery-context'
+import type { StoredDeliveryContext } from '../../utils/delivery-context'
 import type { Result as CoreResult } from '../../utils/types'
 
 export interface Result {
@@ -55,7 +55,7 @@ export interface RunDeliveryWorkContext {
 }
 
 export interface DeliveryHandlerContext extends RunDeliveryWorkContext {
-	deliveryContext: DeliveryContext
+	deliveryContext: StoredDeliveryContext
 	preflight?: DeliveryWorkResolution
 }
 
