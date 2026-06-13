@@ -20,7 +20,7 @@ type SliceHandlerMap = {
 
 const sliceHandlers: SliceHandlerMap = {
 	complete: noEligibleWork,
-	'needs-delivery-validation': () => handleSliceNeedsDeliveryValidation(),
+	'needs-delivery-validation': (context, slice, state) => handleSliceNeedsDeliveryValidation(context, slice, state),
 	'dependency-blocked': noEligibleWork,
 	'needs-artifact-validation': (context, slice, state) => handleSliceNeedsArtifactValidation(context, slice, state),
 	'correction-blocked': noEligibleWork,

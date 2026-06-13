@@ -13,15 +13,28 @@ interface SliceStateCandidate {
 
 export async function handleDeliverySlicesIncomplete(context: ResolvedDeliveryHandlerContext): Promise<RunDeliveryWorkHandlerResult> {
 	const candidates = sliceStateCandidates(context)
-	if (!candidates.ok) return candidates
+	return candidates.ok ? handleSliceCandidates(context, candidates.value) : candidates
+}
 
-	const validationResult = handleFirstSliceArtifactValidation(context, candidates.value, context.workResolution)
-	if (validationResult !== null) return validationResult
+function handleSliceCandidates(
+	context: ResolvedDeliveryHandlerContext,
+	candidates: SliceStateCandidate[],
+): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
+	const prioritizedResult = handlePrioritizedSliceValidation(context, candidates)
+	if (prioritizedResult !== null) return prioritizedResult
 
-	const capacityResult = capacityCheck(candidates.value, context.workResolution)
-	if (capacityResult !== null) return capacityResult
+	const capacityResult = capacityCheck(candidates, context.workResolution)
+	return capacityResult ?? handleFirstExecutableSlice(context, candidates, context.workResolution)
+}
 
-	return handleFirstExecutableSlice(context, candidates.value, context.workResolution)
+function handlePrioritizedSliceValidation(
+	context: ResolvedDeliveryHandlerContext,
+	candidates: SliceStateCandidate[],
+): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult | null {
+	return (
+		handleFirstSliceDeliveryArtifactValidation(context, candidates, context.workResolution) ??
+		handleFirstSliceArtifactValidation(context, candidates, context.workResolution)
+	)
 }
 
 function sliceStateCandidates(
@@ -45,14 +58,31 @@ function capacityCheck(candidates: SliceStateCandidate[], resolution: DeliveryWo
 		: null
 }
 
+function handleFirstSliceDeliveryArtifactValidation(
+	context: ResolvedDeliveryHandlerContext,
+	candidates: SliceStateCandidate[],
+	resolution: DeliveryWorkResolution,
+): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult | null {
+	return handleFirstSliceState(context, candidates, resolution, 'needs-delivery-validation')
+}
+
 function handleFirstSliceArtifactValidation(
 	context: ResolvedDeliveryHandlerContext,
 	candidates: SliceStateCandidate[],
 	resolution: DeliveryWorkResolution,
 ): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult | null {
-	const validation = candidates.find((candidate) => candidate.state.type === 'needs-artifact-validation')
+	return handleFirstSliceState(context, candidates, resolution, 'needs-artifact-validation')
+}
 
-	return validation === undefined ? null : handleSliceWorkState(context, validation.slice, validation.state, resolution)
+function handleFirstSliceState(
+	context: ResolvedDeliveryHandlerContext,
+	candidates: SliceStateCandidate[],
+	resolution: DeliveryWorkResolution,
+	type: SliceWorkState['type'],
+): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult | null {
+	const candidate = candidates.find((entry) => entry.state.type === type)
+
+	return candidate === undefined ? null : handleSliceWorkState(context, candidate.slice, candidate.state, resolution)
 }
 
 function handleFirstExecutableSlice(
@@ -96,6 +126,29 @@ if (import.meta.vitest) {
 				sliceId: 'slice-executable',
 				mode: { type: 'initial' },
 			})
+		})
+
+		it('validates the first Slice needing delivery validation before artifact validation or executable Slice work', async () => {
+			const options = executableDeliveryFixture()
+			seedSlice(options.tx, 'slice-delivery-validation', 'delivery-1')
+			seedSlice(options.tx, 'slice-artifact-validation', 'delivery-1')
+			seedSlice(options.tx, 'slice-executable', 'delivery-1')
+			seedSliceArtifact(options.tx, 'slice-delivery-validation')
+			seedSliceArtifact(options.tx, 'slice-artifact-validation')
+			seedSliceArtifact(options.tx, 'slice-executable')
+			seedPromotion(options.tx, 'slice-delivery-validation')
+			seedCompletedSliceExecution(options.tx, 'slice-artifact-validation')
+
+			expect(await handleDeliverySlicesIncomplete(await handlerContext(options))).toEqual({
+				ok: true,
+				value: { processedCount: 1, failures: [] },
+			})
+			expect(options.tx.actions.records.get('action-1')?.result).toEqual({
+				type: 'validate-slice-delivery-artifact',
+				sliceId: 'slice-delivery-validation',
+				evidence: validationEvidence('delivery-branch-validation', true, 'No Slice Delivery Artifact validation is configured.'),
+			})
+			expect(options.tx.agentRuns.records.has('agent-run-1')).toBe(false)
 		})
 
 		it('validates the first Slice needing artifact validation before claiming executable Slice work', async () => {
@@ -190,6 +243,25 @@ if (import.meta.vitest) {
 			sliceId,
 			config: { type: 'source-control', sliceBranch: `${sliceId}-branch` },
 			created: stamp,
+		})
+	}
+
+	function seedPromotion(tx: ReturnType<typeof executableDeliveryFixture>['tx'], sliceId: string) {
+		tx.actions.records.set('promote-slice', {
+			id: 'promote-slice',
+			deliveryId: 'delivery-1',
+			performed: { at: '2026-06-10T11:20:00.000Z' },
+			authorized: null,
+			result: {
+				type: 'promote-slice-artifact',
+				sliceId,
+				evidence: {
+					type: 'external-operation',
+					operation: { type: 'merge-review-surface' },
+					passed: true,
+					summary: 'Merged.',
+				},
+			},
 		})
 	}
 
