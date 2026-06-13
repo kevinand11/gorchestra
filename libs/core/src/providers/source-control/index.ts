@@ -3,6 +3,7 @@ import type {
 	GitHubRepository,
 	SourceControlAccessToken,
 	SourceControlArtifactCreation,
+	SourceControlArtifactCreationError,
 	SourceControlCreateDeliveryArtifactInput,
 	SourceControlCreateSliceArtifactInput,
 	SourceControlProviders,
@@ -36,25 +37,30 @@ export function createSourceControlProviders(
 		createDeliveryArtifact(input) {
 			switch (input.repository.config.provider) {
 				case 'github':
-					return createGitHubDeliveryArtifact(github, { ...input, repository: input.repository })
+					return createGitHubDeliveryArtifact(services, github, { ...input, repository: input.repository })
 			}
 		},
 		createSliceArtifact(input) {
 			switch (input.repository.config.provider) {
 				case 'github':
-					return createGitHubSliceArtifact(github, { ...input, repository: input.repository })
+					return createGitHubSliceArtifact(services, github, { ...input, repository: input.repository })
 			}
 		},
 	}
 }
 
 async function createGitHubDeliveryArtifact(
+	services: CoreServices,
 	github: GitHubSourceControlProvider,
 	input: SourceControlCreateDeliveryArtifactInput & { repository: GitHubRepository },
-): Promise<Result<SourceControlArtifactCreation, never>> {
+): Promise<Result<SourceControlArtifactCreation, SourceControlArtifactCreationError>> {
+	const accessToken = await resolveRepositoryAccessToken(services, input.repository.config.secretId)
+	if (!accessToken.ok) return accessToken
+	if (!isAccessToken(accessToken.value)) return { ok: true, value: artifactCreationAccessFailure(accessToken.value) }
+
 	const creation = await github.createArtifactBranch({
 		repository: input.repository,
-		accessToken: input.accessToken,
+		accessToken: accessToken.value,
 		sourceBranch: input.sourceBranch,
 		artifactBranch: input.deliveryBranch,
 	})
@@ -63,12 +69,17 @@ async function createGitHubDeliveryArtifact(
 }
 
 async function createGitHubSliceArtifact(
+	services: CoreServices,
 	github: GitHubSourceControlProvider,
 	input: SourceControlCreateSliceArtifactInput & { repository: GitHubRepository },
-): Promise<Result<SourceControlArtifactCreation, never>> {
+): Promise<Result<SourceControlArtifactCreation, SourceControlArtifactCreationError>> {
+	const accessToken = await resolveRepositoryAccessToken(services, input.repository.config.secretId)
+	if (!accessToken.ok) return accessToken
+	if (!isAccessToken(accessToken.value)) return { ok: true, value: artifactCreationAccessFailure(accessToken.value) }
+
 	const creation = await github.createArtifactBranch({
 		repository: input.repository,
-		accessToken: input.accessToken,
+		accessToken: accessToken.value,
 		sourceBranch: input.sourceBranch,
 		artifactBranch: input.sliceBranch,
 	})
@@ -161,6 +172,16 @@ function gitHubFailureSummary(reason: SourceControlRepositoryPreflightFailureRea
 	return gitHubFailureSummaries[reason.type]
 }
 
+function artifactCreationAccessFailure(preflight: SourceControlRepositoryPreflight): SourceControlArtifactCreation {
+	return preflight.type === 'failed' && preflight.reason.type === 'repository-access-secret-unresolved'
+		? {
+				type: 'failed',
+				reason: { type: 'repository-access-secret-unresolved', secretId: preflight.reason.secretId },
+				summary: 'GitHub repository access Secret value could not be resolved.',
+			}
+		: { type: 'failed', reason: { type: 'provider-unavailable' }, summary: 'GitHub artifact branch operation failed.' }
+}
+
 function unresolvedAccessSecretPreflight(secretId: Id): SourceControlRepositoryPreflight {
 	return gitHubRepositoryPreflight({ type: 'failed', reason: { type: 'repository-access-secret-unresolved', secretId } })
 }
@@ -174,6 +195,7 @@ export type { GitHubSourceControlProvider } from './github'
 export type {
 	SourceControlAccessToken,
 	SourceControlArtifactCreation,
+	SourceControlArtifactCreationError,
 	SourceControlArtifactCreationFailureReason,
 	SourceControlCreateDeliveryArtifactInput,
 	SourceControlCreateSliceArtifactInput,
@@ -228,15 +250,17 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('dispatches resolved Delivery Artifact creation to GitHub', async () => {
+		it('resolves GitHub repository access Secrets for Delivery Artifact creation', async () => {
 			let observedBranch: string | null = null
+			let observedToken: string | null = null
 			const sourceControl = createSourceControlProviders(
-				coreServices(() => Promise.resolve({})),
+				coreServices(() => Promise.resolve({ 'secret-1': 'token' })),
 				{
 					github: {
 						preflightRepository: () => Promise.resolve({ type: 'passed' }),
 						createArtifactBranch(input) {
 							observedBranch = input.artifactBranch
+							observedToken = input.accessToken.plaintext
 							return Promise.resolve({ type: 'passed', mode: 'created', summary: 'created' })
 						},
 					},
@@ -245,13 +269,33 @@ if (import.meta.vitest) {
 
 			const result = await sourceControl.createDeliveryArtifact({
 				repository: gitHubRepository(),
-				accessToken: { type: 'access-token', plaintext: 'token' },
 				sourceBranch: 'main',
 				deliveryBranch: 'delivery-branch',
 			})
 
 			expect(result).toEqual({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } })
 			expect(observedBranch).toBe('delivery-branch')
+			expect(observedToken).toBe('token')
+		})
+
+		it('returns failed artifact creation when the Repository access Secret value is unresolved', async () => {
+			const services = coreServices(() => Promise.resolve({}))
+			const sourceControl = createSourceControlProviders(services, { github: neverCalledGitHubProvider() })
+
+			const result = await sourceControl.createDeliveryArtifact({
+				repository: gitHubRepository(),
+				sourceBranch: 'main',
+				deliveryBranch: 'delivery-branch',
+			})
+
+			expect(result).toEqual({
+				ok: true,
+				value: {
+					type: 'failed',
+					reason: { type: 'repository-access-secret-unresolved', secretId: 'secret-1' },
+					summary: 'GitHub repository access Secret value could not be resolved.',
+				},
+			})
 		})
 
 		it('rejects malformed resolved Secret values as invalid Core Service Output', async () => {

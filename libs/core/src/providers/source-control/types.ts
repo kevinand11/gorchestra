@@ -24,19 +24,18 @@ export type SourceControlRepositoryPreflightError = InvalidCoreServiceOutputErro
 
 export interface SourceControlCreateDeliveryArtifactInput {
 	repository: Repository
-	accessToken: SourceControlAccessToken
 	sourceBranch: string
 	deliveryBranch: string
 }
 
 export interface SourceControlCreateSliceArtifactInput {
 	repository: Repository
-	accessToken: SourceControlAccessToken
 	sourceBranch: string
 	sliceBranch: string
 }
 
 export type SourceControlArtifactCreationFailureReason =
+	| { type: 'repository-access-secret-unresolved'; secretId: Id }
 	| { type: 'provider-authentication-failed' }
 	| { type: 'provider-access-denied' }
 	| { type: 'provider-repository-not-found' }
@@ -49,12 +48,18 @@ export type SourceControlArtifactCreation =
 	| { type: 'passed'; mode: 'created' | 'adopted-existing' | 'fast-forwarded-existing'; summary: string }
 	| { type: 'failed'; reason: SourceControlArtifactCreationFailureReason; summary: string }
 
+export type SourceControlArtifactCreationError = InvalidCoreServiceOutputError
+
 export interface SourceControlProviders {
 	preflightRepository(
 		input: SourceControlRepositoryPreflightInput,
 	): Promise<Result<SourceControlRepositoryPreflight, SourceControlRepositoryPreflightError>>
-	createDeliveryArtifact(input: SourceControlCreateDeliveryArtifactInput): Promise<Result<SourceControlArtifactCreation, never>>
-	createSliceArtifact(input: SourceControlCreateSliceArtifactInput): Promise<Result<SourceControlArtifactCreation, never>>
+	createDeliveryArtifact(
+		input: SourceControlCreateDeliveryArtifactInput,
+	): Promise<Result<SourceControlArtifactCreation, SourceControlArtifactCreationError>>
+	createSliceArtifact(
+		input: SourceControlCreateSliceArtifactInput,
+	): Promise<Result<SourceControlArtifactCreation, SourceControlArtifactCreationError>>
 }
 
 export interface SourceControlAccessToken {

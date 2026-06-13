@@ -291,6 +291,7 @@ function failedArtifactCreationForReason(reason: SourceControlArtifactCreationFa
 }
 
 const artifactCreationFailureSummaries: Record<SourceControlArtifactCreationFailureReason['type'], string> = {
+	'repository-access-secret-unresolved': 'GitHub repository access Secret value could not be resolved.',
 	'provider-authentication-failed': 'GitHub artifact branch authentication failed.',
 	'provider-access-denied': 'GitHub artifact branch access was denied.',
 	'provider-repository-not-found': 'GitHub repository was not found.',

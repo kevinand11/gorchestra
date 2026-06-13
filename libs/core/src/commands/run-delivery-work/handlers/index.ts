@@ -1,5 +1,4 @@
 import { handleDeliveryAwaitingReview } from './delivery-awaiting-review'
-import { handleDeliveryNeedsArtifactCreation } from './delivery-needs-artifact-creation'
 import { handleDeliveryNeedsArtifactValidation } from './delivery-needs-artifact-validation'
 import { handleDeliveryNeedsReviewSurface } from './delivery-needs-review-surface'
 import { handleDeliveryOperationFailed } from './delivery-operation-failed'
@@ -25,7 +24,7 @@ const deliveryHandlers: DeliveryHandlerMap = {
 	unqueued: noEligibleWork,
 	'dependency-blocked': noEligibleWork,
 	'preflight-failed': noEligibleWork,
-	'needs-artifact-creation': () => handleDeliveryNeedsArtifactCreation(),
+	'needs-artifact-creation': noEligibleWork,
 	'slices-incomplete': (context) => handleDeliverySlicesIncomplete(context as ResolvedDeliveryHandlerContext),
 	'delivery-operation-failed': () => handleDeliveryOperationFailed(),
 	'delivery-validation-failed': () => handleDeliveryValidationFailed(),

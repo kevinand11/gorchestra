@@ -1,7 +1,6 @@
 import { noEligibleWork } from './result'
 import { handleSliceAwaitingReview } from './slice-awaiting-review'
 import { handleSliceExecutable } from './slice-executable'
-import { handleSliceNeedsArtifactCreation } from './slice-needs-artifact-creation'
 import { handleSliceNeedsArtifactValidation } from './slice-needs-artifact-validation'
 import { handleSliceNeedsDeliveryValidation } from './slice-needs-delivery-validation'
 import { handleSliceOperationFailed } from './slice-operation-failed'
@@ -27,7 +26,7 @@ const sliceHandlers: SliceHandlerMap = {
 	'correction-blocked': noEligibleWork,
 	'awaiting-review': (_context, slice, state) => handleSliceAwaitingReview(slice, state),
 	'slice-operation-failed': () => handleSliceOperationFailed(),
-	'needs-artifact-creation': () => handleSliceNeedsArtifactCreation(),
+	'needs-artifact-creation': noEligibleWork,
 	executable: (context, slice, state, resolution) => handleSliceExecutable(context, slice, state, resolution),
 }
 
