@@ -1,6 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { handleDeliveryWorkState } from './handlers'
 import {
 	deliveryArtifactCreationClaim,
 	recordDeliveryArtifactCreationResult,
@@ -11,7 +10,6 @@ import {
 	recordDeliveryArtifactValidationResult,
 	type DeliveryArtifactValidationClaim,
 } from './handlers/delivery-needs-artifact-validation'
-import { workedActions } from './handlers/result'
 import {
 	recordSliceArtifactCreationResult,
 	sliceArtifactCreationClaim,
@@ -27,6 +25,19 @@ import {
 	sliceDeliveryArtifactValidationClaim,
 	type SliceDeliveryArtifactValidationClaim,
 } from './handlers/slice-needs-delivery-validation'
+import {
+	applySchedulerPreflightChecks,
+	readFreshSchedulerPreflightReadiness,
+	readSchedulerPreflight,
+	resolvedSchedulerHandlerContext,
+	runSchedulerPreflightChecks,
+	schedulerHandlerContextFromClaim,
+	schedulerPreflightChecksPassed,
+	schedulerPreflightClaimConflict,
+	type ProviderBackedSchedulerPreflightClaim,
+	type ResolvedSchedulerHandlerContext,
+	type SchedulerPreflightWriteReadiness,
+} from './preflight'
 import type { Error, Result } from './types'
 import type { Action } from '../../domain/action'
 import { idPipe, type OperationContext } from '../../domain/commons'
@@ -37,17 +48,7 @@ import type { SourceControlArtifactCreation } from '../../providers/source-contr
 import type { CoreRuntime } from '../../runtime'
 import type { CoreServices, CoreStorageTransaction } from '../../services'
 import { buildCommandHandler } from '../../utils/command'
-import { nextId, putRecord, runtimeRecord } from '../../utils/command-storage'
-import { buildDeliveryContext, type DeliveryContext } from '../../utils/delivery-context'
-import { getDeliveryState } from '../../utils/delivery-context'
-import {
-	deliveryPreflightChecksPassed,
-	providerBackedDeliveryPreflightInputsStillCurrent,
-	providerBackedDeliveryWorkResolution,
-	readProviderBackedDeliveryPreflightPlan,
-	runProviderBackedDeliveryPreflightChecks,
-	type ProviderBackedDeliveryPreflightPlan,
-} from '../../utils/delivery-preflight'
+import type { DeliveryContext } from '../../utils/delivery-context'
 import { withTransaction } from '../../utils/storage'
 import type { Result as CoreResult } from '../../utils/types'
 
@@ -72,85 +73,80 @@ export function createRunDeliveryWorkCommand(runtime: CoreRuntime): Operation {
 }
 
 async function handleRunDeliveryWork(runtime: CoreRuntime, input: Input): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const plan = await withTransaction(runtime.services, (tx) => readSchedulerPreflightPlan(runtime.services, tx, input.deliveryId))
-	if (!plan.ok) return plan
+	const preflight = await withTransaction(runtime.services, (tx) => readSchedulerPreflight(runtime.services, tx, input.deliveryId))
+	if (!preflight.ok) return preflight
 
-	return plan.value.type === 'result'
-		? { ok: true, value: plan.value.result }
-		: runProviderBackedSchedulerWork(runtime, input.deliveryId, plan.value)
+	return preflight.value.type === 'result'
+		? { ok: true, value: preflight.value.result }
+		: runProviderBackedSchedulerWork(runtime, input.deliveryId, preflight.value)
 }
 
 async function runProviderBackedSchedulerWork(
 	runtime: CoreRuntime,
 	deliveryId: string,
-	plan: ProviderBackedSchedulerPreflightRead,
+	preflight: ProviderBackedSchedulerPreflightClaim,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const providerChecks = await runProviderChecks(runtime, plan)
+	const providerChecks = await runSchedulerPreflightChecks(runtime, preflight)
 	if (!providerChecks.ok) return providerChecks
 
-	return deliveryPreflightChecksPassed(providerChecks.value)
-		? runPassedPreflightSchedulerWork(runtime, deliveryId, plan, providerChecks.value)
-		: withTransaction(runtime.services, (tx) => applySchedulerPreflight(runtime.services, tx, deliveryId, plan, providerChecks.value))
+	return schedulerPreflightChecksPassed(providerChecks.value)
+		? runPassedPreflightSchedulerWork(runtime, deliveryId, preflight, providerChecks.value)
+		: withTransaction(runtime.services, (tx) =>
+				applySchedulerPreflightChecks(runtime.services, tx, deliveryId, preflight, providerChecks.value),
+			)
 }
 
 async function runPassedPreflightSchedulerWork(
 	runtime: CoreRuntime,
 	deliveryId: string,
-	plan: ProviderBackedSchedulerPreflightRead,
+	preflight: ProviderBackedSchedulerPreflightClaim,
 	providerChecks: ValidationEvidence[],
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const claim = readArtifactCreationClaim(plan)
+	const claim = readArtifactCreationClaim(preflight)
 	if (!claim.ok) return claim
 
 	return claim.value === null
-		? runPassedPreflightWithoutArtifactCreation(runtime, deliveryId, plan, providerChecks)
-		: runArtifactCreationClaim(runtime, deliveryId, plan, claim.value)
+		? runPassedPreflightWithoutArtifactCreation(runtime, deliveryId, preflight, providerChecks)
+		: runArtifactCreationClaim(runtime, deliveryId, preflight, claim.value)
 }
 
 async function runPassedPreflightWithoutArtifactCreation(
 	runtime: CoreRuntime,
 	deliveryId: string,
-	plan: ProviderBackedSchedulerPreflightRead,
+	preflight: ProviderBackedSchedulerPreflightClaim,
 	providerChecks: ValidationEvidence[],
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const validationClaim = readArtifactValidationClaim(plan)
+	const validationClaim = readArtifactValidationClaim(preflight)
 	if (!validationClaim.ok) return validationClaim
 
 	return validationClaim.value === null
-		? withTransaction(runtime.services, (tx) => applySchedulerPreflight(runtime.services, tx, deliveryId, plan, providerChecks))
-		: applyArtifactValidationClaim(runtime, deliveryId, plan, validationClaim.value)
+		? withTransaction(runtime.services, (tx) =>
+				applySchedulerPreflightChecks(runtime.services, tx, deliveryId, preflight, providerChecks),
+			)
+		: applyArtifactValidationClaim(runtime, deliveryId, preflight, validationClaim.value)
 }
 
 function applyArtifactValidationClaim(
 	runtime: CoreRuntime,
 	deliveryId: string,
-	plan: ProviderBackedSchedulerPreflightRead,
+	preflight: ProviderBackedSchedulerPreflightClaim,
 	claim: ArtifactValidationClaim,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	return withTransaction(runtime.services, (tx) => applyArtifactValidationResult(runtime.services, tx, deliveryId, plan, claim))
+	return withTransaction(runtime.services, (tx) => applyArtifactValidationResult(runtime.services, tx, deliveryId, preflight, claim))
 }
 
 async function runArtifactCreationClaim(
 	runtime: CoreRuntime,
 	deliveryId: string,
-	plan: ProviderBackedSchedulerPreflightRead,
+	preflight: ProviderBackedSchedulerPreflightClaim,
 	claim: ArtifactCreationClaim,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const creation = await runArtifactCreation(runtime, claim)
 	if (!creation.ok) return creation
 
 	return withTransaction(runtime.services, (tx) =>
-		applyArtifactCreationResult(runtime.services, tx, deliveryId, plan, claim, creation.value),
+		applyArtifactCreationResult(runtime.services, tx, deliveryId, preflight, claim, creation.value),
 	)
-}
-
-type SchedulerPreflightRead = { type: 'result'; result: Result } | ProviderBackedSchedulerPreflightRead
-
-type ProviderBackedSchedulerPreflightRead = {
-	type: 'provider-backed'
-	deliveryContext: DeliveryContext
-	state: DeliveryWorkState
-	preflightPlan: ProviderBackedDeliveryPreflightPlan
 }
 
 type ArtifactCreationClaim =
@@ -162,50 +158,10 @@ type ArtifactValidationClaim =
 	| { type: 'slice-artifact'; claim: SliceArtifactValidationClaim }
 	| { type: 'slice-delivery-artifact'; claim: SliceDeliveryArtifactValidationClaim }
 
-async function readSchedulerPreflightPlan(
-	services: CoreServices,
-	tx: CoreStorageTransaction,
-	deliveryId: string,
-): Promise<CoreResult<SchedulerPreflightRead, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
-	if (!deliveryContext.ok) return deliveryContext
-
-	const stateResult = getDeliveryState(deliveryContext.value)
-	return stateResult.ok ? schedulerPreflightPlanForState(services, tx, deliveryContext.value, stateResult.value) : stateResult
-}
-
-async function schedulerPreflightPlanForState(
-	services: CoreServices,
-	tx: CoreStorageTransaction,
-	deliveryContext: DeliveryContext,
-	state: DeliveryWorkState,
-): Promise<CoreResult<SchedulerPreflightRead, Exclude<Error, InvalidInputError>>> {
-	if (isSchedulerPreflightState(state)) {
-		const preflightPlan = await readProviderBackedDeliveryPreflightPlan(tx, deliveryContext)
-		return preflightPlan.ok
-			? { ok: true, value: { type: 'provider-backed', deliveryContext, state, preflightPlan: preflightPlan.value } }
-			: preflightPlan
-	}
-
-	const handled = await handleDeliveryWorkState({ services, tx, deliveryContext }, state)
-	return handled.ok ? { ok: true, value: { type: 'result', result: handled.value } } : handled
-}
-
-function isSchedulerPreflightState(state: DeliveryWorkState): boolean {
-	return !['closed', 'unqueued', 'dependency-blocked', 'preflight-failed', 'ready-to-ship'].includes(state.type)
-}
-
-async function runProviderChecks(
-	runtime: CoreRuntime,
-	plan: ProviderBackedSchedulerPreflightRead,
-): Promise<CoreResult<ValidationEvidence[], Exclude<Error, InvalidInputError>>> {
-	return runProviderBackedDeliveryPreflightChecks(runtime, plan.preflightPlan)
-}
-
 const artifactCreationClaimReaders: Partial<
 	Record<
 		DeliveryWorkState['type'],
-		(plan: ProviderBackedSchedulerPreflightRead) => CoreResult<ArtifactCreationClaim | null, Exclude<Error, InvalidInputError>>
+		(plan: ProviderBackedSchedulerPreflightClaim) => CoreResult<ArtifactCreationClaim | null, Exclude<Error, InvalidInputError>>
 	>
 > = {
 	'needs-artifact-creation': deliveryArtifactCreationClaimFromPlan,
@@ -213,15 +169,15 @@ const artifactCreationClaimReaders: Partial<
 }
 
 function readArtifactCreationClaim(
-	plan: ProviderBackedSchedulerPreflightRead,
+	plan: ProviderBackedSchedulerPreflightClaim,
 ): CoreResult<ArtifactCreationClaim | null, Exclude<Error, InvalidInputError>> {
 	return artifactCreationClaimReaders[plan.state.type]?.(plan) ?? { ok: true, value: null }
 }
 
 function deliveryArtifactCreationClaimFromPlan(
-	plan: ProviderBackedSchedulerPreflightRead,
+	plan: ProviderBackedSchedulerPreflightClaim,
 ): CoreResult<ArtifactCreationClaim, Exclude<Error, InvalidInputError>> {
-	const handlerContext = schedulerHandlerContextFromRead(plan)
+	const handlerContext = schedulerHandlerContextFromClaim(plan)
 	if (!handlerContext.ok) return handlerContext
 
 	const claim = deliveryArtifactCreationClaim(handlerContext.value)
@@ -229,9 +185,9 @@ function deliveryArtifactCreationClaimFromPlan(
 }
 
 function sliceArtifactCreationClaimFromPlan(
-	plan: ProviderBackedSchedulerPreflightRead,
+	plan: ProviderBackedSchedulerPreflightClaim,
 ): CoreResult<ArtifactCreationClaim | null, Exclude<Error, InvalidInputError>> {
-	const handlerContext = schedulerHandlerContextFromRead(plan)
+	const handlerContext = schedulerHandlerContextFromClaim(plan)
 	if (!handlerContext.ok) return handlerContext
 
 	const claim = sliceArtifactCreationClaim(handlerContext.value)
@@ -241,7 +197,7 @@ function sliceArtifactCreationClaimFromPlan(
 const artifactValidationClaimReaders: Partial<
 	Record<
 		DeliveryWorkState['type'],
-		(plan: ProviderBackedSchedulerPreflightRead) => CoreResult<ArtifactValidationClaim | null, Exclude<Error, InvalidInputError>>
+		(plan: ProviderBackedSchedulerPreflightClaim) => CoreResult<ArtifactValidationClaim | null, Exclude<Error, InvalidInputError>>
 	>
 > = {
 	'needs-artifact-validation': deliveryArtifactValidationClaimFromPlan,
@@ -249,17 +205,17 @@ const artifactValidationClaimReaders: Partial<
 }
 
 function readArtifactValidationClaim(
-	plan: ProviderBackedSchedulerPreflightRead,
+	plan: ProviderBackedSchedulerPreflightClaim,
 ): CoreResult<ArtifactValidationClaim | null, Exclude<Error, InvalidInputError>> {
 	return artifactValidationClaimReaders[plan.state.type]?.(plan) ?? { ok: true, value: null }
 }
 
-function deliveryArtifactValidationClaimFromPlan(plan: ProviderBackedSchedulerPreflightRead): CoreResult<ArtifactValidationClaim, never> {
+function deliveryArtifactValidationClaimFromPlan(plan: ProviderBackedSchedulerPreflightClaim): CoreResult<ArtifactValidationClaim, never> {
 	return { ok: true, value: { type: 'delivery-artifact', claim: deliveryArtifactValidationClaim(plan) } }
 }
 
 function sliceValidationClaimFromPlan(
-	plan: ProviderBackedSchedulerPreflightRead,
+	plan: ProviderBackedSchedulerPreflightClaim,
 ): CoreResult<ArtifactValidationClaim | null, Exclude<Error, InvalidInputError>> {
 	const deliveryValidationClaim = sliceDeliveryArtifactValidationClaimFromPlan(plan)
 	if (!deliveryValidationClaim.ok || deliveryValidationClaim.value !== null) return deliveryValidationClaim
@@ -268,35 +224,17 @@ function sliceValidationClaimFromPlan(
 }
 
 function sliceDeliveryArtifactValidationClaimFromPlan(
-	plan: ProviderBackedSchedulerPreflightRead,
+	plan: ProviderBackedSchedulerPreflightClaim,
 ): CoreResult<ArtifactValidationClaim | null, Exclude<Error, InvalidInputError>> {
 	const claim = sliceDeliveryArtifactValidationClaim(plan)
 	return claim.ok ? { ok: true, value: claim.value === null ? null : { type: 'slice-delivery-artifact', claim: claim.value } } : claim
 }
 
 function sliceArtifactValidationClaimFromPlan(
-	plan: ProviderBackedSchedulerPreflightRead,
+	plan: ProviderBackedSchedulerPreflightClaim,
 ): CoreResult<ArtifactValidationClaim | null, Exclude<Error, InvalidInputError>> {
 	const claim = sliceArtifactValidationClaim(plan)
 	return claim.ok ? { ok: true, value: claim.value === null ? null : { type: 'slice-artifact', claim: claim.value } } : claim
-}
-
-function schedulerHandlerContextFromRead(
-	plan: ProviderBackedSchedulerPreflightRead,
-): CoreResult<
-	{ deliveryContext: DeliveryContext; workResolution: NonNullable<ReturnType<typeof providerBackedDeliveryWorkResolution>> },
-	Exclude<Error, InvalidInputError>
-> {
-	const resolution = providerBackedDeliveryWorkResolution(plan.preflightPlan)
-	return resolution === undefined
-		? {
-				ok: false,
-				error: {
-					type: 'invariant-violation',
-					message: 'Delivery Work Resolution is required for scheduler-actionable Delivery work.',
-				},
-			}
-		: { ok: true, value: { deliveryContext: plan.deliveryContext, workResolution: resolution } }
 }
 
 async function runArtifactCreation(
@@ -312,41 +250,41 @@ async function applyArtifactCreationResult(
 	services: CoreServices,
 	tx: CoreStorageTransaction,
 	deliveryId: string,
-	plan: ProviderBackedSchedulerPreflightRead,
+	plan: ProviderBackedSchedulerPreflightClaim,
 	claim: ArtifactCreationClaim,
 	creation: SourceControlArtifactCreation,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const readiness = await schedulerPreflightWriteReadiness(tx, deliveryId, plan.preflightPlan)
+	const readiness = await readFreshSchedulerPreflightReadiness(tx, deliveryId, plan)
 	return readiness.ok ? applyReadyArtifactCreationResult(services, tx, plan, claim, creation, readiness.value) : readiness
 }
 
 function applyReadyArtifactCreationResult(
 	services: CoreServices,
 	tx: CoreStorageTransaction,
-	plan: ProviderBackedSchedulerPreflightRead,
+	plan: ProviderBackedSchedulerPreflightClaim,
 	claim: ArtifactCreationClaim,
 	creation: SourceControlArtifactCreation,
 	readiness: SchedulerPreflightWriteReadiness,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> | CoreResult<Result, Exclude<Error, InvalidInputError>> {
 	return readiness.type === 'conflict'
-		? deliveryClaimConflict()
+		? schedulerPreflightClaimConflict()
 		: recordFreshArtifactCreationResult(services, tx, plan, claim, creation, readiness)
 }
 
 function recordFreshArtifactCreationResult(
 	services: CoreServices,
 	tx: CoreStorageTransaction,
-	plan: ProviderBackedSchedulerPreflightRead,
+	plan: ProviderBackedSchedulerPreflightClaim,
 	claim: ArtifactCreationClaim,
 	creation: SourceControlArtifactCreation,
 	readiness: Extract<SchedulerPreflightWriteReadiness, { type: 'ready' }>,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> | CoreResult<Result, Exclude<Error, InvalidInputError>> {
-	const context = resolvedSchedulerHandlerContext(services, tx, readiness.deliveryContext, plan.preflightPlan)
+	const context = resolvedSchedulerHandlerContext(services, tx, readiness.deliveryContext, plan)
 	return context.ok ? recordArtifactCreationResult(context.value, readiness.state, claim, creation) : context
 }
 
 function recordArtifactCreationResult(
-	context: ReturnType<typeof resolvedSchedulerHandlerContext> extends CoreResult<infer TValue, unknown> ? TValue : never,
+	context: ResolvedSchedulerHandlerContext,
 	state: DeliveryWorkState,
 	claim: ArtifactCreationClaim,
 	creation: SourceControlArtifactCreation,
@@ -356,42 +294,16 @@ function recordArtifactCreationResult(
 		: recordSliceArtifactCreationResult(context, state, claim.claim, creation)
 }
 
-function resolvedSchedulerHandlerContext(
-	services: CoreServices,
-	tx: CoreStorageTransaction,
-	deliveryContext: DeliveryContext,
-	plan: ProviderBackedDeliveryPreflightPlan,
-): CoreResult<
-	{
-		services: CoreServices
-		tx: CoreStorageTransaction
-		deliveryContext: DeliveryContext
-		workResolution: NonNullable<ReturnType<typeof providerBackedDeliveryWorkResolution>>
-	},
-	Exclude<Error, InvalidInputError>
-> {
-	const resolution = providerBackedDeliveryWorkResolution(plan)
-	return resolution === undefined
-		? {
-				ok: false,
-				error: {
-					type: 'invariant-violation',
-					message: 'Delivery Work Resolution is required for scheduler-actionable Delivery work.',
-				},
-			}
-		: { ok: true, value: { services, tx, deliveryContext, workResolution: resolution } }
-}
-
 async function applyArtifactValidationResult(
 	services: CoreServices,
 	tx: CoreStorageTransaction,
 	deliveryId: string,
-	plan: ProviderBackedSchedulerPreflightRead,
+	plan: ProviderBackedSchedulerPreflightClaim,
 	claim: ArtifactValidationClaim,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const readiness = await schedulerPreflightWriteReadiness(tx, deliveryId, plan.preflightPlan)
+	const readiness = await readFreshSchedulerPreflightReadiness(tx, deliveryId, plan)
 	if (!readiness.ok) return readiness
-	if (readiness.value.type === 'conflict') return deliveryClaimConflict()
+	if (readiness.value.type === 'conflict') return schedulerPreflightClaimConflict()
 
 	const context = { services, tx, deliveryContext: readiness.value.deliveryContext }
 	return recordArtifactValidationResult(context, readiness.value.state, claim)
@@ -406,113 +318,6 @@ function recordArtifactValidationResult(
 	if (claim.type === 'slice-artifact') return recordSliceArtifactValidationResult(context, state, claim.claim)
 
 	return recordSliceDeliveryArtifactValidationResult(context, state, claim.claim)
-}
-
-async function applySchedulerPreflight(
-	options: CoreServices,
-	tx: CoreStorageTransaction,
-	deliveryId: string,
-	plan: ProviderBackedSchedulerPreflightRead,
-	checks: ValidationEvidence[],
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const readiness = await schedulerPreflightWriteReadiness(tx, deliveryId, plan.preflightPlan)
-	if (!readiness.ok) return readiness
-	if (readiness.value.type === 'conflict') return deliveryClaimConflict()
-
-	return applyCurrentSchedulerPreflight(options, tx, readiness.value.deliveryContext, readiness.value.state, plan.preflightPlan, checks)
-}
-
-type SchedulerPreflightWriteReadiness = { type: 'ready'; deliveryContext: DeliveryContext; state: DeliveryWorkState } | { type: 'conflict' }
-
-async function schedulerPreflightWriteReadiness(
-	tx: CoreStorageTransaction,
-	deliveryId: string,
-	plan: ProviderBackedDeliveryPreflightPlan,
-): Promise<CoreResult<SchedulerPreflightWriteReadiness, Exclude<Error, InvalidInputError>>> {
-	const current = await currentSchedulerPreflightState(tx, deliveryId)
-	if (!current.ok) return current
-	if (!isSchedulerPreflightState(current.value.state)) return schedulerPreflightConflict()
-
-	return freshSchedulerPreflightReadiness(tx, current.value.deliveryContext, current.value.state, plan)
-}
-
-async function currentSchedulerPreflightState(
-	tx: CoreStorageTransaction,
-	deliveryId: string,
-): Promise<CoreResult<{ deliveryContext: DeliveryContext; state: DeliveryWorkState }, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
-	if (!deliveryContext.ok) return deliveryContext
-
-	const stateResult = getDeliveryState(deliveryContext.value)
-	return stateResult.ok ? { ok: true, value: { deliveryContext: deliveryContext.value, state: stateResult.value } } : stateResult
-}
-
-async function freshSchedulerPreflightReadiness(
-	tx: CoreStorageTransaction,
-	deliveryContext: DeliveryContext,
-	state: DeliveryWorkState,
-	plan: ProviderBackedDeliveryPreflightPlan,
-): Promise<CoreResult<SchedulerPreflightWriteReadiness, Exclude<Error, InvalidInputError>>> {
-	const freshness = await providerBackedDeliveryPreflightInputsStillCurrent(tx, deliveryContext, plan)
-	if (!freshness.ok) return freshness
-
-	return freshness.value ? { ok: true, value: { type: 'ready', deliveryContext, state } } : schedulerPreflightConflict()
-}
-
-function schedulerPreflightConflict(): CoreResult<Extract<SchedulerPreflightWriteReadiness, { type: 'conflict' }>, never> {
-	return { ok: true, value: { type: 'conflict' } }
-}
-
-function applyCurrentSchedulerPreflight(
-	services: CoreServices,
-	tx: CoreStorageTransaction,
-	deliveryContext: DeliveryContext,
-	state: DeliveryWorkState,
-	plan: ProviderBackedDeliveryPreflightPlan,
-	checks: ValidationEvidence[],
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> | CoreResult<Result, Exclude<Error, InvalidInputError>> {
-	return deliveryPreflightChecksPassed(checks)
-		? handleDeliveryWorkState(schedulerHandlerContext(services, tx, deliveryContext, plan), state)
-		: writeFailedPreflightAction(services, tx, deliveryContext.delivery.id, checks)
-}
-
-function schedulerHandlerContext(
-	services: CoreServices,
-	tx: CoreStorageTransaction,
-	deliveryContext: DeliveryContext,
-	plan: ProviderBackedDeliveryPreflightPlan,
-) {
-	const resolution = providerBackedDeliveryWorkResolution(plan)
-	return resolution === undefined ? { services, tx, deliveryContext } : { services, tx, deliveryContext, workResolution: resolution }
-}
-
-function deliveryClaimConflict(): CoreResult<Result, never> {
-	return { ok: true, value: { processedCount: 0, failures: [] } }
-}
-
-async function writeFailedPreflightAction(
-	options: CoreServices,
-	tx: CoreStorageTransaction,
-	deliveryId: string,
-	checks: ValidationEvidence[],
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const actionId = nextId(options, 'action')
-	if (!actionId.ok) return actionId
-
-	const performed = runtimeRecord(options)
-	if (!performed.ok) return performed
-
-	const action: Action = {
-		id: actionId.value,
-		deliveryId,
-		performed: performed.value,
-		authorized: null,
-		result: { type: 'validate-preflight', checks },
-	}
-	const put = await putRecord('action', tx.actions, action.id, action)
-	if (!put.ok) return put
-
-	return workedActions([action.id])
 }
 
 if (import.meta.vitest) {
