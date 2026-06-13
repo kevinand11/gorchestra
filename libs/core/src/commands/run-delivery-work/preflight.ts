@@ -11,7 +11,6 @@ import { nextId, putRecord, runtimeRecord } from '../../utils/command-storage'
 import { buildDeliveryContext, getDeliveryState, type DeliveryContext, type DeliveryWorkResolution } from '../../utils/delivery-context'
 import {
 	deliveryPreflightChecksPassed,
-	providerBackedDeliveryPreflightInputsStillCurrent,
 	providerBackedDeliveryWorkResolution,
 	readProviderBackedDeliveryPreflightPlan,
 	runProviderBackedDeliveryPreflightChecks,
@@ -27,10 +26,6 @@ export type ProviderBackedSchedulerPreflightClaim = {
 	state: DeliveryWorkState
 	preflight: ProviderBackedDeliveryPreflightPlan
 }
-
-export type SchedulerPreflightWriteReadiness =
-	| { type: 'ready'; deliveryContext: DeliveryContext; state: DeliveryWorkState }
-	| { type: 'conflict' }
 
 export interface SchedulerHandlerContext {
 	deliveryContext: DeliveryContext
@@ -68,31 +63,11 @@ export function schedulerPreflightChecksPassed(checks: ValidationEvidence[]): bo
 export async function applySchedulerPreflightChecks(
 	services: CoreServices,
 	tx: CoreStorageTransaction,
-	deliveryId: string,
+	_deliveryId: string,
 	claim: ProviderBackedSchedulerPreflightClaim,
 	checks: ValidationEvidence[],
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const readiness = await readFreshSchedulerPreflightReadiness(tx, deliveryId, claim)
-	if (!readiness.ok) return readiness
-	if (readiness.value.type === 'conflict') return schedulerPreflightClaimConflict()
-
-	return applyCurrentSchedulerPreflight(services, tx, readiness.value.deliveryContext, readiness.value.state, claim.preflight, checks)
-}
-
-export async function readFreshSchedulerPreflightReadiness(
-	tx: CoreStorageTransaction,
-	deliveryId: string,
-	claim: ProviderBackedSchedulerPreflightClaim,
-): Promise<CoreResult<SchedulerPreflightWriteReadiness, Exclude<Error, InvalidInputError>>> {
-	const current = await currentSchedulerPreflightState(tx, deliveryId)
-	if (!current.ok) return current
-	if (!isSchedulerPreflightState(current.value.state)) return schedulerPreflightConflict()
-
-	return freshSchedulerPreflightReadiness(tx, current.value.deliveryContext, current.value.state, claim.preflight)
-}
-
-export function schedulerPreflightClaimConflict(): CoreResult<Result, never> {
-	return { ok: true, value: { processedCount: 0, failures: [] } }
+	return applyCurrentSchedulerPreflight(services, tx, claim.deliveryContext, claim.state, claim.preflight, checks)
 }
 
 export function schedulerHandlerContextFromClaim(
@@ -135,33 +110,6 @@ async function schedulerPreflightForState(
 
 function isSchedulerPreflightState(state: DeliveryWorkState): boolean {
 	return !['closed', 'unqueued', 'dependency-blocked', 'preflight-failed', 'ready-to-ship'].includes(state.type)
-}
-
-async function currentSchedulerPreflightState(
-	tx: CoreStorageTransaction,
-	deliveryId: string,
-): Promise<CoreResult<{ deliveryContext: DeliveryContext; state: DeliveryWorkState }, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
-	if (!deliveryContext.ok) return deliveryContext
-
-	const stateResult = getDeliveryState(deliveryContext.value)
-	return stateResult.ok ? { ok: true, value: { deliveryContext: deliveryContext.value, state: stateResult.value } } : stateResult
-}
-
-async function freshSchedulerPreflightReadiness(
-	tx: CoreStorageTransaction,
-	deliveryContext: DeliveryContext,
-	state: DeliveryWorkState,
-	preflight: ProviderBackedDeliveryPreflightPlan,
-): Promise<CoreResult<SchedulerPreflightWriteReadiness, Exclude<Error, InvalidInputError>>> {
-	const freshness = await providerBackedDeliveryPreflightInputsStillCurrent(tx, deliveryContext, preflight)
-	if (!freshness.ok) return freshness
-
-	return freshness.value ? { ok: true, value: { type: 'ready', deliveryContext, state } } : schedulerPreflightConflict()
-}
-
-function schedulerPreflightConflict(): CoreResult<Extract<SchedulerPreflightWriteReadiness, { type: 'conflict' }>, never> {
-	return { ok: true, value: { type: 'conflict' } }
 }
 
 function applyCurrentSchedulerPreflight(

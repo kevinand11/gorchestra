@@ -13,11 +13,7 @@ import {
 	sliceDeliveryArtifactValidationClaim,
 	type SliceDeliveryArtifactValidationClaim,
 } from './handlers/slice-needs-delivery-validation'
-import {
-	readFreshSchedulerPreflightReadiness,
-	schedulerPreflightClaimConflict,
-	type ProviderBackedSchedulerPreflightClaim,
-} from './preflight'
+import type { ProviderBackedSchedulerPreflightClaim } from './preflight'
 import type { Error, Result } from './types'
 import type { DeliveryWorkState } from '../../domain/delivery'
 import type { InvalidInputError } from '../../errors'
@@ -95,16 +91,12 @@ function sliceArtifactValidationClaimFromPreflight(
 async function applyArtifactValidationResult(
 	services: CoreServices,
 	tx: CoreStorageTransaction,
-	deliveryId: string,
+	_deliveryId: string,
 	preflight: ProviderBackedSchedulerPreflightClaim,
 	claim: ArtifactValidationClaim,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const readiness = await readFreshSchedulerPreflightReadiness(tx, deliveryId, preflight)
-	if (!readiness.ok) return readiness
-	if (readiness.value.type === 'conflict') return schedulerPreflightClaimConflict()
-
-	const context = { services, tx, deliveryContext: readiness.value.deliveryContext }
-	return recordArtifactValidationResult(context, readiness.value.state, claim)
+	const context = { services, tx, deliveryContext: preflight.deliveryContext }
+	return recordArtifactValidationResult(context, preflight.state, claim)
 }
 
 function recordArtifactValidationResult(

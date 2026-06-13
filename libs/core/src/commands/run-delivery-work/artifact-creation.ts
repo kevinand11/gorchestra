@@ -9,13 +9,10 @@ import {
 	type SliceArtifactCreationClaim,
 } from './handlers/slice-needs-artifact-creation'
 import {
-	readFreshSchedulerPreflightReadiness,
 	resolvedSchedulerHandlerContext,
 	schedulerHandlerContextFromClaim,
-	schedulerPreflightClaimConflict,
 	type ProviderBackedSchedulerPreflightClaim,
 	type ResolvedSchedulerHandlerContext,
-	type SchedulerPreflightWriteReadiness,
 } from './preflight'
 import type { Error, Result } from './types'
 import type { DeliveryWorkState } from '../../domain/delivery'
@@ -104,38 +101,13 @@ async function runArtifactCreation(
 async function applyArtifactCreationResult(
 	services: CoreServices,
 	tx: CoreStorageTransaction,
-	deliveryId: string,
+	_deliveryId: string,
 	preflight: ProviderBackedSchedulerPreflightClaim,
 	claim: ArtifactCreationClaim,
 	creation: SourceControlArtifactCreation,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const readiness = await readFreshSchedulerPreflightReadiness(tx, deliveryId, preflight)
-	return readiness.ok ? applyReadyArtifactCreationResult(services, tx, preflight, claim, creation, readiness.value) : readiness
-}
-
-function applyReadyArtifactCreationResult(
-	services: CoreServices,
-	tx: CoreStorageTransaction,
-	preflight: ProviderBackedSchedulerPreflightClaim,
-	claim: ArtifactCreationClaim,
-	creation: SourceControlArtifactCreation,
-	readiness: SchedulerPreflightWriteReadiness,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> | CoreResult<Result, Exclude<Error, InvalidInputError>> {
-	return readiness.type === 'conflict'
-		? schedulerPreflightClaimConflict()
-		: recordFreshArtifactCreationResult(services, tx, preflight, claim, creation, readiness)
-}
-
-function recordFreshArtifactCreationResult(
-	services: CoreServices,
-	tx: CoreStorageTransaction,
-	preflight: ProviderBackedSchedulerPreflightClaim,
-	claim: ArtifactCreationClaim,
-	creation: SourceControlArtifactCreation,
-	readiness: Extract<SchedulerPreflightWriteReadiness, { type: 'ready' }>,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> | CoreResult<Result, Exclude<Error, InvalidInputError>> {
-	const context = resolvedSchedulerHandlerContext(services, tx, readiness.deliveryContext, preflight)
-	return context.ok ? recordArtifactCreationResult(context.value, readiness.state, claim, creation) : context
+	const context = resolvedSchedulerHandlerContext(services, tx, preflight.deliveryContext, preflight)
+	return context.ok ? recordArtifactCreationResult(context.value, preflight.state, claim, creation) : context
 }
 
 function recordArtifactCreationResult(

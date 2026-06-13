@@ -210,23 +210,6 @@ if (import.meta.vitest) {
 			])
 		})
 
-		it('returns claim-conflict when local preflight failure inputs become stale before evidence is written', async () => {
-			const options = providerPreflightFixture()
-			const resolvedWorkConfig = options.tx.portfolioConfig.record!.value.work
-			options.tx.portfolioConfig.record!.value.work = null
-			staleLocalPreflightOnSecondTransaction(options, () => {
-				options.tx.portfolioConfig.record!.value.work = resolvedWorkConfig
-			})
-			const command = createRunDeliveryWorkCommand(
-				createTestCoreRuntime(options, { providers: neverCalledProviderBackedPreflightProviders() }),
-			)
-
-			const result = await command({ deliveryId: 'delivery-1' }, context)
-
-			expect(result).toEqual({ ok: true, value: { processedCount: 0, failures: [] } })
-			expect(options.tx.actions.records.has('action-1')).toBe(false)
-		})
-
 		it('creates the Delivery Artifact through Source Control outside storage transactions', async () => {
 			const options = providerPreflightFixture()
 			const providers = passingProviderBackedPreflightProviders()
@@ -406,77 +389,7 @@ if (import.meta.vitest) {
 				validationEvidence('model-preflight', false, 'Anthropic Messages model was not found.'),
 			])
 		})
-
-		it('returns claim-conflict when artifact creation state changes before writing provider results', async () => {
-			const options = providerPreflightFixture()
-			seedSlice(options.tx, 'slice-1', 'delivery-1')
-			const providers = passingProviderBackedPreflightProviders()
-			providers.sourceControl.createDeliveryArtifact = () => {
-				seedDeliveryArtifact(options)
-				return Promise.resolve({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } })
-			}
-			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options, { providers }))
-
-			const result = await command({ deliveryId: 'delivery-1' }, context)
-
-			expect(result).toEqual({ ok: true, value: { processedCount: 0, failures: [] } })
-			expect(options.tx.actions.records.has('action-1')).toBe(false)
-		})
-
-		it('returns claim-conflict when Slice Delivery Artifact validation state changes before writing validation results', async () => {
-			const options = providerPreflightFixture()
-			seedDeliveryArtifact(options)
-			seedSlice(options.tx, 'slice-1', 'delivery-1')
-			seedSliceArtifact(options, 'slice-1')
-			seedPromotedSlice(options, 'slice-1')
-			staleLocalPreflightOnSecondTransaction(options, () => {
-				seedSliceDeliveryValidation(options, 'existing-slice-delivery-validation', 'slice-1')
-			})
-			const command = createRunDeliveryWorkCommand(
-				createTestCoreRuntime(options, { providers: passingProviderBackedPreflightProviders() }),
-			)
-
-			const result = await command({ deliveryId: 'delivery-1' }, context)
-
-			expectClaimConflictWithoutAction(options, result)
-		})
-
-		it('returns claim-conflict when artifact validation state changes before writing validation results', async () => {
-			const options = providerPreflightFixture()
-			seedCompletedDelivery(options)
-			staleLocalPreflightOnSecondTransaction(options, () => {
-				seedDeliveryValidation(options, 'existing-delivery-validation')
-			})
-			const command = createRunDeliveryWorkCommand(
-				createTestCoreRuntime(options, { providers: passingProviderBackedPreflightProviders() }),
-			)
-
-			const result = await command({ deliveryId: 'delivery-1' }, context)
-
-			expectClaimConflictWithoutAction(options, result)
-		})
-
-		it('returns claim-conflict when preflight inputs change before scheduler work is written', async () => {
-			const options = providerPreflightFixture()
-			seedSelectableModel(options.tx, 'model-2')
-			const providers = passingProviderBackedPreflightProviders()
-			providers.modelProviderProtocols.preflightModel = () => {
-				options.tx.portfolioConfig.record!.value.model.defaultModelId = 'model-2'
-				return Promise.resolve({ ok: true, value: { type: 'passed', summary: 'Anthropic Messages model preflight passed.' } })
-			}
-			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options, { providers }))
-
-			const result = await command({ deliveryId: 'delivery-1' }, context)
-
-			expect(result).toEqual({ ok: true, value: { processedCount: 0, failures: [] } })
-			expect(options.tx.actions.records.has('action-1')).toBe(false)
-		})
 	})
-
-	function expectClaimConflictWithoutAction(options: ReturnType<typeof createTestCoreServices>, result: Awaited<ReturnType<Operation>>) {
-		expect(result).toEqual({ ok: true, value: { processedCount: 0, failures: [] } })
-		expect(options.tx.actions.records.has('action-1')).toBe(false)
-	}
 
 	function expectWorkedPreflightResult(
 		options: ReturnType<typeof createTestCoreServices>,
@@ -485,16 +398,6 @@ if (import.meta.vitest) {
 	) {
 		expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
 		expect(options.tx.actions.records.get('action-1')?.result).toEqual({ type: 'validate-preflight', checks })
-	}
-
-	function staleLocalPreflightOnSecondTransaction(options: ReturnType<typeof createTestCoreServices>, stale: () => void) {
-		const transaction = options.storage.transaction
-		let calls = 0
-		options.storage.transaction = async (fn) => {
-			calls += 1
-			if (calls === 2) stale()
-			return transaction(fn)
-		}
 	}
 
 	function providerPreflightFixture() {
@@ -573,14 +476,6 @@ if (import.meta.vitest) {
 				sliceId,
 				evidence: validationEvidence('delivery-branch-validation', true, 'Valid.'),
 			},
-		})
-	}
-
-	function seedDeliveryValidation(options: ReturnType<typeof providerPreflightFixture>, id: string) {
-		seedAction(options.tx, {
-			id,
-			at: '2026-06-10T12:03:00.000Z',
-			result: { type: 'validate-delivery-artifact', evidence: validationEvidence('delivery-branch-validation', true, 'Valid.') },
 		})
 	}
 
