@@ -1,6 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { runArtifactValidationIfClaimed } from './artifact-validation'
 import { handleDeliveryNeedsArtifactCreation } from './handlers/delivery-needs-artifact-creation'
 import { handleFirstSliceNeedsArtifactCreation } from './handlers/slice-needs-artifact-creation'
 import {
@@ -72,9 +71,6 @@ async function runPassedPreflightSchedulerWork(
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const artifactCreation = await handleArtifactCreation(runtime, preflight)
 	if (artifactCreation !== null) return artifactCreation
-
-	const artifactValidation = await runArtifactValidationIfClaimed(runtime, deliveryId, preflight)
-	if (artifactValidation !== null) return artifactValidation
 
 	return withTransaction(runtime.services, (tx) =>
 		applySchedulerPreflightChecks(runtime.services, tx, deliveryId, preflight, providerChecks),
