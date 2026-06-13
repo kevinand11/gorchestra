@@ -5,17 +5,20 @@ import type { DeliveryWorkState } from '../../../domain/delivery'
 import type { InvariantViolationError } from '../../../errors'
 import { sourceControlDeliveryBranchName } from '../../../providers/source-control/branches'
 import type { SourceControlArtifactCreation, SourceControlCreateDeliveryArtifactInput } from '../../../providers/source-control/types'
+import type { CoreRuntime } from '../../../runtime'
 import { nextId, putRecord, runtimeRecord } from '../../../utils/command-storage'
+import { withTransaction } from '../../../utils/storage'
 import type { Result as CoreResult } from '../../../utils/types'
+import { resolvedSchedulerHandlerContext, type ProviderBackedSchedulerPreflightClaim } from '../preflight'
 import type { ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
 
-export type DeliveryArtifactCreationClaim = SourceControlCreateDeliveryArtifactInput & {
+export type DeliveryArtifactCreationInput = SourceControlCreateDeliveryArtifactInput & {
 	deliveryId: string
 }
 
-export function deliveryArtifactCreationClaim(
+export function deliveryArtifactCreationInput(
 	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext'>,
-): CoreResult<DeliveryArtifactCreationClaim, InvariantViolationError> {
+): CoreResult<DeliveryArtifactCreationInput, InvariantViolationError> {
 	const deliveryBranch = sourceControlDeliveryBranchName(context.deliveryContext.delivery.id)
 	if (!deliveryBranch.ok) return deliveryBranch
 
@@ -30,34 +33,50 @@ export function deliveryArtifactCreationClaim(
 	}
 }
 
+export async function handleDeliveryNeedsArtifactCreation(
+	runtime: CoreRuntime,
+	preflight: ProviderBackedSchedulerPreflightClaim,
+): Promise<RunDeliveryWorkHandlerResult> {
+	const input = deliveryArtifactCreationInput(preflight)
+	if (!input.ok) return input
+
+	const creation = await runtime.providers.sourceControl.createDeliveryArtifact(input.value)
+	if (!creation.ok) return creation
+
+	return withTransaction(runtime.services, async (tx) => {
+		const context = resolvedSchedulerHandlerContext(runtime.services, tx, preflight.deliveryContext, preflight)
+		return context.ok ? recordDeliveryArtifactCreationResult(context.value, preflight.state, input.value, creation.value) : context
+	})
+}
+
 export async function recordDeliveryArtifactCreationResult(
 	context: ResolvedDeliveryHandlerContext,
 	state: DeliveryWorkState,
-	claim: DeliveryArtifactCreationClaim,
+	input: DeliveryArtifactCreationInput,
 	creation: SourceControlArtifactCreation,
 ): Promise<RunDeliveryWorkHandlerResult> {
-	if (!deliveryArtifactCreationStillCurrent(context, state, claim)) return noObservedArtifactCreationWrite()
+	if (!deliveryArtifactCreationStillCurrent(context, state, input)) return noObservedArtifactCreationWrite()
 
 	return creation.type === 'passed'
-		? writePassedDeliveryArtifactCreation(context, claim.deliveryBranch)
+		? writePassedDeliveryArtifactCreation(context, input.deliveryBranch)
 		: writeFailedDeliveryArtifactCreation(context, creation.summary)
 }
 
 function deliveryArtifactCreationStillCurrent(
 	context: ResolvedDeliveryHandlerContext,
 	state: DeliveryWorkState,
-	claim: DeliveryArtifactCreationClaim,
+	input: DeliveryArtifactCreationInput,
 ): boolean {
-	return state.type === 'needs-artifact-creation' && deliveryArtifactClaimMatches(context, claim)
+	return state.type === 'needs-artifact-creation' && deliveryArtifactInputMatches(context, input)
 }
 
-function deliveryArtifactClaimMatches(context: ResolvedDeliveryHandlerContext, claim: DeliveryArtifactCreationClaim): boolean {
+function deliveryArtifactInputMatches(context: ResolvedDeliveryHandlerContext, input: DeliveryArtifactCreationInput): boolean {
 	const delivery = context.deliveryContext.delivery
 	return [
 		context.deliveryContext.deliveryArtifact === null,
-		delivery.id === claim.deliveryId,
+		delivery.id === input.deliveryId,
 		delivery.target.type === 'source-control',
-		delivery.target.targetBranch === claim.sourceBranch,
+		delivery.target.targetBranch === input.sourceBranch,
 	].every(Boolean)
 }
 
@@ -148,10 +167,10 @@ if (import.meta.vitest) {
 	const { createTestCoreServices, localStamp, seedDelivery, seedSelectableModel } = await import('../../../utils/test-helpers')
 
 	describe('Delivery Artifact creation handler', () => {
-		it('builds a deterministic provider claim from the Delivery target branch', async () => {
+		it('builds deterministic provider input from the Delivery target branch', async () => {
 			const context = await handlerContext()
 
-			expect(deliveryArtifactCreationClaim(context)).toEqual({
+			expect(deliveryArtifactCreationInput(context)).toEqual({
 				ok: true,
 				value: {
 					deliveryId: 'delivery-1',
@@ -164,10 +183,10 @@ if (import.meta.vitest) {
 
 		it('stores a Delivery Artifact and Action after provider success', async () => {
 			const context = await handlerContext()
-			const claim = deliveryArtifactCreationClaim(context)
-			if (!claim.ok) throw new Error('Expected claim.')
+			const input = deliveryArtifactCreationInput(context)
+			if (!input.ok) throw new Error('Expected input.')
 
-			const result = await recordDeliveryArtifactCreationResult(context, { type: 'needs-artifact-creation' }, claim.value, {
+			const result = await recordDeliveryArtifactCreationResult(context, { type: 'needs-artifact-creation' }, input.value, {
 				type: 'passed',
 				mode: 'created',
 				summary: 'created',
@@ -188,10 +207,10 @@ if (import.meta.vitest) {
 
 		it('records external-operation failure evidence after provider failure', async () => {
 			const context = await handlerContext()
-			const claim = deliveryArtifactCreationClaim(context)
-			if (!claim.ok) throw new Error('Expected claim.')
+			const input = deliveryArtifactCreationInput(context)
+			if (!input.ok) throw new Error('Expected input.')
 
-			const result = await recordDeliveryArtifactCreationResult(context, { type: 'needs-artifact-creation' }, claim.value, {
+			const result = await recordDeliveryArtifactCreationResult(context, { type: 'needs-artifact-creation' }, input.value, {
 				type: 'failed',
 				reason: { type: 'source-branch-not-found', branch: 'main' },
 				summary: 'GitHub artifact source branch was not found.',

@@ -1,7 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { runArtifactCreationIfClaimed } from './artifact-creation'
 import { runArtifactValidationIfClaimed } from './artifact-validation'
+import { handleDeliveryNeedsArtifactCreation } from './handlers/delivery-needs-artifact-creation'
+import { handleFirstSliceNeedsArtifactCreation } from './handlers/slice-needs-artifact-creation'
 import {
 	applySchedulerPreflightChecks,
 	readSchedulerPreflight,
@@ -69,7 +70,7 @@ async function runPassedPreflightSchedulerWork(
 	preflight: ProviderBackedSchedulerPreflightClaim,
 	providerChecks: ValidationEvidence[],
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const artifactCreation = await runArtifactCreationIfClaimed(runtime, deliveryId, preflight)
+	const artifactCreation = await handleArtifactCreation(runtime, preflight)
 	if (artifactCreation !== null) return artifactCreation
 
 	const artifactValidation = await runArtifactValidationIfClaimed(runtime, deliveryId, preflight)
@@ -78,6 +79,16 @@ async function runPassedPreflightSchedulerWork(
 	return withTransaction(runtime.services, (tx) =>
 		applySchedulerPreflightChecks(runtime.services, tx, deliveryId, preflight, providerChecks),
 	)
+}
+
+function handleArtifactCreation(
+	runtime: CoreRuntime,
+	preflight: ProviderBackedSchedulerPreflightClaim,
+): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>> | null> | CoreResult<Result, Exclude<Error, InvalidInputError>> | null {
+	if (preflight.state.type === 'needs-artifact-creation') return handleDeliveryNeedsArtifactCreation(runtime, preflight)
+	if (preflight.state.type === 'slices-incomplete') return handleFirstSliceNeedsArtifactCreation(runtime, preflight)
+
+	return null
 }
 
 if (import.meta.vitest) {
