@@ -1,6 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { auditStampPipe, idPipe, nonEmptyTrimmedStringPipe, type Id } from './commons'
+import { auditStampPipe, freeFormStringPipe, idPipe, nonEmptyTrimmedStringPipe, type Id } from './commons'
 import {
 	deliveryConfigRecordPipe,
 	type DeliveryConfig,
@@ -8,8 +8,6 @@ import {
 	type DeliveryWorkConfig,
 	type DeliveryWorkConfigResolution,
 } from './config'
-
-export type DeliveryClosedOutcome = 'shipped' | 'abandoned'
 
 /**
  * Derived in priority order: closed, unqueued, dependency-blocked,
@@ -19,7 +17,7 @@ export type DeliveryClosedOutcome = 'shipped' | 'abandoned'
  * ready-to-ship.
  */
 export type DeliveryWorkState =
-	| { type: 'closed'; outcome: DeliveryClosedOutcome; actionId: Id }
+	| { type: 'closed'; outcome: DeliveryClosedOutcome }
 	| { type: 'unqueued' }
 	/** blockedBy contains direct unmet Delivery dependencies only, ordered by dependency accepted time then delivery id. */
 	| { type: 'dependency-blocked'; blockedBy: Id[] }
@@ -49,6 +47,13 @@ export const deliveryIntegrationPipe = v.discriminate((value) => value.type, {
 })
 export type DeliveryIntegration = PipeOutput<typeof deliveryIntegrationPipe>
 
+export const deliveryClosedPipe = v.discriminate((value) => value.type, {
+	shipped: v.object({ type: v.eq('shipped'), shipped: auditStampPipe, integration: deliveryIntegrationPipe }),
+	abandoned: v.object({ type: v.eq('abandoned'), abandoned: auditStampPipe, reason: freeFormStringPipe }),
+})
+export type DeliveryClosed = PipeOutput<typeof deliveryClosedPipe>
+export type DeliveryClosedOutcome = DeliveryClosed['type']
+
 export const deliveryTargetPipe = v.discriminate((value) => value.type, {
 	'source-control': v.object({ type: v.eq('source-control'), repositoryId: idPipe, targetBranch: nonEmptyTrimmedStringPipe }),
 })
@@ -63,6 +68,8 @@ export const deliveryPipe = v.object({
 	target: deliveryTargetPipe,
 	config: v.nullable(deliveryConfigRecordPipe),
 	accepted: auditStampPipe,
+	queued: v.nullable(auditStampPipe),
+	closed: v.nullable(deliveryClosedPipe),
 })
 export type Delivery = PipeOutput<typeof deliveryPipe>
 

@@ -215,10 +215,11 @@ if (import.meta.vitest) {
 		it('rejects closed Deliveries', async () => {
 			const options = createTestCoreServices()
 			seedDelivery(options.tx, 'delivery-1')
-			seedAction(options.tx, 'ship-existing', '2026-06-10T00:00:00.000Z', {
-				type: 'ship-delivery',
+			options.tx.deliveries.records.get('delivery-1')!.closed = {
+				type: 'shipped',
+				shipped: localStamp(),
 				integration: { type: 'observed-artifact-integration', actionId: 'observe-integration' },
-			})
+			}
 			const command = createConfigureDeliveryCommand(createTestCoreRuntime(options))
 
 			const result = await command({ deliveryId: 'delivery-1', config: allNullConfig() }, context)
@@ -229,14 +230,14 @@ if (import.meta.vitest) {
 					type: 'delivery-work-state-mismatch',
 					deliveryId: 'delivery-1',
 					expected: openDeliveryStateTypes,
-					actual: { type: 'closed', outcome: 'shipped', actionId: 'ship-existing' },
+					actual: { type: 'closed', outcome: 'shipped' },
 				},
 			})
 		})
 
 		it('configures a preflight-failed Delivery without clearing the failed preflight Action', async () => {
 			const { command, options } = configureFixture()
-			seedAction(options.tx, 'queue-delivery', '2026-06-10T00:00:00.000Z', { type: 'queue-delivery' })
+			options.tx.deliveries.records.get('delivery-1')!.queued = localStamp()
 			seedAction(options.tx, 'preflight-failed', '2026-06-10T00:01:00.000Z', {
 				type: 'validate-preflight',
 				checks: [validationEvidence('delivery-preflight', false, 'Missing config.')],

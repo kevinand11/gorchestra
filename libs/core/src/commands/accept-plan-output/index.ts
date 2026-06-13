@@ -253,6 +253,8 @@ if (import.meta.vitest) {
 							target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
 							config: null,
 							accepted: localStamp(),
+							queued: null,
+							closed: null,
 						},
 					],
 					slices: [

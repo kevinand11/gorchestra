@@ -16,7 +16,6 @@ import type { DeliveryDependencyLink, SliceDependencyLink } from './work-state/t
 export interface DeliveryDependencySummary {
 	link: DeliveryDependencyLink
 	delivery: Delivery
-	closedBy: Action | null
 }
 
 export interface StoredDeliverySlice {

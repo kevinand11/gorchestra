@@ -163,6 +163,8 @@ export function seedDelivery(tx: MemoryStorageTransaction, id: string) {
 		target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
 		config: null,
 		accepted: stamp,
+		queued: null,
+		closed: null,
 	})
 }
 

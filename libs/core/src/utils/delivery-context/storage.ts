@@ -1,5 +1,5 @@
 import type { DeliveryDependencySummary, StoredDeliveryContext, StoredDeliverySlice } from './types'
-import { compareActions, latestAction } from './work-state/actions'
+import { compareActions } from './work-state/actions'
 import type { DeliveryDependencyLink, SliceDependencyLink, WorkStateDerivationError } from './work-state/types'
 import { actionPipe, type Action } from '../../domain/action'
 import { agentRunPipe, type AgentRun } from '../../domain/agent-run'
@@ -305,16 +305,7 @@ function deliveryDependencySummary(
 		}
 	}
 
-	return { ok: true, value: { link, delivery: dependency, closedBy: latestDeliveryCloseAction(dependency, records.actions) } }
-}
-
-function latestDeliveryCloseAction(delivery: Delivery, actions: Action[]): Action | null {
-	return latestAction(
-		actions.filter(
-			(action) =>
-				action.deliveryId === delivery.id && (action.result.type === 'ship-delivery' || action.result.type === 'abandon-delivery'),
-		),
-	)
+	return { ok: true, value: { link, delivery: dependency } }
 }
 
 function firstFailure<TError>(results: ReadonlyArray<Result<unknown, TError>>): Result<never, TError> | null {
@@ -407,14 +398,14 @@ if (import.meta.vitest) {
 				deliveryId: 'delivery-1',
 				performed: { at: '2026-06-10T12:01:00.000Z' },
 				authorized: null,
-				result: { type: 'queue-delivery' },
+				result: { type: 'validate-preflight', checks: [] },
 			})
 			options.tx.actions.records.set('action-earlier', {
 				id: 'action-earlier',
 				deliveryId: 'delivery-1',
 				performed: { at: '2026-06-10T12:00:00.000Z' },
 				authorized: null,
-				result: { type: 'queue-delivery' },
+				result: { type: 'validate-preflight', checks: [] },
 			})
 
 			const result = await buildStoredDeliveryContext(options.tx, 'delivery-1')

@@ -180,13 +180,7 @@ if (import.meta.vitest) {
 	}
 
 	function seedQueuedDelivery(tx: ReturnType<typeof executableDeliveryFixture>['tx']) {
-		tx.actions.records.set('queue-delivery', {
-			id: 'queue-delivery',
-			deliveryId: 'delivery-1',
-			performed: { at: '2026-06-10T11:00:00.000Z' },
-			authorized: localStamp(),
-			result: { type: 'queue-delivery' },
-		})
+		tx.deliveries.records.get('delivery-1')!.queued = localStamp()
 	}
 
 	function seedDeliveryArtifact(tx: ReturnType<typeof executableDeliveryFixture>['tx']) {

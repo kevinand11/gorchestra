@@ -42,7 +42,7 @@ This root AGENTS.md is the project-wide DOX rail: it gives repo-wide instruction
 
 - Do not export a variable, function, type, or class from a file until another module or public package surface needs it; keep declarations file-local by default.
 - Core lifecycle data shapes use `field: RuntimeRecord` for runtime lifecycle timestamps, direct domain-named `AuditStamp` fields for consumer-authorized operations, and domain-specific embedded records when a lifecycle moment has additional fields.
-- Delivery state transitions that must appear in the Delivery Action timeline are represented as Actions with non-null `authorized` instead of direct Delivery lifecycle fields.
+- Authoritative Delivery lifecycle gates such as queueing and closure live on direct Delivery lifecycle fields with domain-named `AuditStamp` records; non-lifecycle execution facts remain Actions.
 - Embedded records must contain all fields that change atomically with that lifecycle moment, so the model cannot represent half-updated states.
 - Prefer discriminated unions over nullable peer fields when exactly one variant applies.
 - Prefer passing identifiers and inferring authoritative fields inside Core over duplicating inferable values in consumer-facing API inputs, so callers cannot provide contradictory values.

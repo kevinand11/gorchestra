@@ -413,13 +413,7 @@ if (import.meta.vitest) {
 				work: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
 			},
 		}
-		options.tx.actions.records.set('queue-delivery', {
-			id: 'queue-delivery',
-			deliveryId: 'delivery-1',
-			performed: { at: '2026-06-10T11:00:00.000Z' },
-			authorized: localStamp(),
-			result: { type: 'queue-delivery' },
-		})
+		options.tx.deliveries.records.get('delivery-1')!.queued = localStamp()
 
 		return options
 	}

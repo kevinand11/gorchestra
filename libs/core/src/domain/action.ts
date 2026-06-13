@@ -1,17 +1,9 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { auditStampPipe, idPipe, runtimeRecordPipe } from './commons'
-import { deliveryIntegrationPipe } from './delivery'
 import { externalOperationEvidencePipe, validationEvidencePipe } from './evidence'
 
 export const actionResultPipe = v.discriminate((value) => value.type, {
-	'queue-delivery': v.object({ type: v.eq('queue-delivery') }),
-	'ship-delivery': v.object({ type: v.eq('ship-delivery'), integration: deliveryIntegrationPipe }),
-	'abandon-delivery': v.object({
-		type: v.eq('abandon-delivery'),
-		reason: v.string(),
-		cleanupEvidence: v.array(externalOperationEvidencePipe),
-	}),
 	'validate-preflight': v.object({ type: v.eq('validate-preflight'), checks: v.array(validationEvidencePipe) }),
 	'create-delivery-artifact': v.object({ type: v.eq('create-delivery-artifact'), deliveryArtifactId: idPipe }),
 	'create-slice-artifact': v.object({ type: v.eq('create-slice-artifact'), sliceId: idPipe, sliceArtifactId: idPipe }),

@@ -29,6 +29,8 @@ function materializeDelivery(plan: PlanOutputMaterializationPlan, delivery: Plan
 		target: delivery.proposal.target,
 		config: null,
 		accepted: plan.stamp,
+		queued: null,
+		closed: null,
 	}
 }
 

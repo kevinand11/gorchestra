@@ -8,13 +8,7 @@ import type { CoreRuntime } from '../runtime'
 import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { DeliveryActionCommandError } from '../utils/command-errors'
-import {
-	deliveryWorkStateMismatch,
-	prepareAuthorizedAction,
-	putRecord,
-	withTransaction,
-	type DeliveryActionCommandResult,
-} from '../utils/command-storage'
+import { deliveryWorkStateMismatch, putRecordValue, withAuditStampTransaction } from '../utils/command-storage'
 import { buildStoredDeliveryContext } from '../utils/delivery-context'
 import { getDeliveryState } from '../utils/delivery-context'
 import type { Result as CoreResult } from '../utils/types'
@@ -22,11 +16,11 @@ import type { Result as CoreResult } from '../utils/types'
 const shipDeliveryInputPipe = v.object({ deliveryId: idPipe })
 export type Input = PipeOutput<typeof shipDeliveryInputPipe>
 
-export type Result = DeliveryActionCommandResult
+export type Result = Delivery
 
 export type Error = DeliveryActionCommandError
 
-/** Requires Delivery Work State ready-to-ship; records exactly one ship-delivery Action without post-merge validation in v1; duplicate calls fail with delivery-work-state-mismatch. */
+/** Requires Delivery Work State ready-to-ship; sets Delivery.closed without post-merge validation in v1; duplicate calls fail with delivery-work-state-mismatch. */
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createShipDeliveryCommand(runtime: CoreRuntime): Operation {
@@ -34,31 +28,23 @@ export function createShipDeliveryCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('shipDelivery', shipDeliveryInputPipe, (input, context) => handleShipDelivery(options, input, context))
 }
 
-async function handleShipDelivery(
+function handleShipDelivery(
 	options: CoreServices,
 	input: Input,
 	context: OperationContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const authorizedAction = prepareAuthorizedAction(options, context)
-	if (!authorizedAction.ok) return authorizedAction
-
-	return withTransaction(options, (tx) => writeShipDelivery(tx, input, authorizedAction.value.stamp, authorizedAction.value.actionId))
+	return withAuditStampTransaction(options, context, (tx, stamp) => writeShipDelivery(tx, input, stamp))
 }
 
 async function writeShipDelivery(
 	tx: CoreStorageTransaction,
 	input: Input,
 	stamp: AuditStamp,
-	actionId: Id,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const deliveryResult = await requireReadyToShipDelivery(tx, input.deliveryId)
 	if (!deliveryResult.ok) return deliveryResult
 
-	const action = shipDeliveryAction(input.deliveryId, deliveryResult.value.integration, stamp, actionId)
-	const putResult = await putRecord('action', tx.actions, action.id, action)
-	if (!putResult.ok) return putResult
-
-	return { ok: true, value: { delivery: deliveryResult.value.delivery, action } }
+	return putRecordValue('delivery', tx.deliveries, shipDelivery(deliveryResult.value.delivery, deliveryResult.value.integration, stamp))
 }
 
 async function requireReadyToShipDelivery(
@@ -76,14 +62,8 @@ async function requireReadyToShipDelivery(
 		: deliveryWorkStateMismatch(deliveryId, ['ready-to-ship'], deliveryState.value)
 }
 
-function shipDeliveryAction(deliveryId: Id, integration: DeliveryIntegration, stamp: AuditStamp, actionId: Id): Result['action'] {
-	return {
-		id: actionId,
-		deliveryId,
-		performed: { at: stamp.at },
-		authorized: stamp,
-		result: { type: 'ship-delivery', integration },
-	}
+function shipDelivery(delivery: Delivery, integration: DeliveryIntegration, stamp: AuditStamp): Delivery {
+	return { ...delivery, closed: { type: 'shipped', shipped: stamp, integration } }
 }
 
 if (import.meta.vitest) {
@@ -121,30 +101,23 @@ if (import.meta.vitest) {
 			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'delivery', id: 'missing-delivery' } })
 		})
 
-		it('records an authorized ship-delivery Action when a Delivery Review Surface was merged', async () => {
+		it('sets Delivery.closed when a Delivery Review Surface was merged', async () => {
 			const options = createTestCoreServices()
 			seedReadyToShipDelivery(options.tx, { integration: 'review-surface-merged' })
 			const command = createShipDeliveryCommand(createTestCoreRuntime(options))
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
-			expect(result).toEqual({
-				ok: true,
-				value: {
-					delivery: options.tx.deliveries.records.get('delivery-1'),
-					action: {
-						id: 'action-1',
-						deliveryId: 'delivery-1',
-						performed: { at: '2026-06-10T12:00:00.000Z' },
-						authorized: localStamp(),
-						result: {
-							type: 'ship-delivery',
-							integration: { type: 'review-surface-merged', reviewSurfaceId: 'delivery-review' },
-						},
-					},
+			const expected = {
+				...options.tx.deliveries.records.get('delivery-1')!,
+				closed: {
+					type: 'shipped' as const,
+					shipped: localStamp(),
+					integration: { type: 'review-surface-merged' as const, reviewSurfaceId: 'delivery-review' },
 				},
-			})
-			expect(options.tx.actions.records.get('action-1')).toEqual(result.ok ? result.value.action : null)
+			}
+			expect(result).toEqual({ ok: true, value: expected })
+			expect(options.tx.deliveries.records.get('delivery-1')).toEqual(expected)
 		})
 
 		it('records observed artifact integration when no Delivery Review Surface is needed', async () => {
@@ -157,11 +130,9 @@ if (import.meta.vitest) {
 			expect(result).toMatchObject({
 				ok: true,
 				value: {
-					action: {
-						result: {
-							type: 'ship-delivery',
-							integration: { type: 'observed-artifact-integration', actionId: 'observe-integration' },
-						},
+					closed: {
+						type: 'shipped',
+						integration: { type: 'observed-artifact-integration', actionId: 'observe-integration' },
 					},
 				},
 			})
@@ -180,18 +151,16 @@ if (import.meta.vitest) {
 		it('rejects duplicate shipping because closed Deliveries are not ready-to-ship', async () => {
 			const options = createTestCoreServices()
 			seedReadyToShipDelivery(options.tx, { integration: 'observed-artifact-integration' })
-			options.tx.actions.records.set('ship-existing', {
-				id: 'ship-existing',
-				deliveryId: 'delivery-1',
-				performed: { at: '2026-06-10T00:05:00.000Z' },
-				authorized: localStamp(),
-				result: { type: 'ship-delivery', integration: { type: 'observed-artifact-integration', actionId: 'observe-integration' } },
-			})
+			options.tx.deliveries.records.get('delivery-1')!.closed = {
+				type: 'shipped',
+				shipped: localStamp(),
+				integration: { type: 'observed-artifact-integration', actionId: 'observe-integration' },
+			}
 			const command = createShipDeliveryCommand(createTestCoreRuntime(options))
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
-			expectDeliveryWorkStateMismatch(result, { type: 'closed', outcome: 'shipped', actionId: 'ship-existing' })
+			expectDeliveryWorkStateMismatch(result, { type: 'closed', outcome: 'shipped' })
 		})
 	})
 
@@ -219,7 +188,7 @@ if (import.meta.vitest) {
 			config: { type: 'source-control', deliveryBranch: 'delivery/1' },
 			created: stamp,
 		})
-		seedAction(tx, 'queue-delivery', '2026-06-10T00:00:00.000Z', { type: 'queue-delivery' })
+		tx.deliveries.records.get('delivery-1')!.queued = localStamp()
 		seedAction(tx, 'promote-slice', '2026-06-10T00:01:00.000Z', {
 			type: 'promote-slice-artifact',
 			sliceId: 'slice-1',

@@ -1,7 +1,6 @@
 import type { Pipe } from 'valleyed'
 
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './command-errors'
-import type { Action } from '../domain/action'
 import type { ArchivePeriod, AuditStamp, Id, OperationContext } from '../domain/commons'
 import type {
 	DeliveryConfig,
@@ -12,7 +11,7 @@ import type {
 	ProjectConfig,
 	ProjectConfigRecord,
 } from '../domain/config'
-import type { Delivery, DeliveryWorkState } from '../domain/delivery'
+import type { DeliveryWorkState } from '../domain/delivery'
 import { modelPipe, type Model } from '../domain/model'
 import { modelProviderPipe, type ModelProvider, type ModelProviderAuth, type ModelProviderHeader } from '../domain/model-provider'
 import { projectPipe, type Project } from '../domain/project'
@@ -67,11 +66,6 @@ export {
 export type CommandBoundary<TInput> = {
 	input: TInput
 	context: OperationContext
-}
-
-export interface DeliveryActionCommandResult {
-	delivery: Delivery
-	action: Action
 }
 
 type ArchivableRecord = { archivePeriods: ArchivePeriod[] }

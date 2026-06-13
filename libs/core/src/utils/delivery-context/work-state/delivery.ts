@@ -21,7 +21,7 @@ interface DeliveryValidationContext {
 export function getDeliveryState(context: StoredDeliveryContext): Result<DeliveryWorkState, WorkStateDerivationError> {
 	const deliveryActions = deliveryActionsFor(context)
 	const earlyState = firstSyncState([
-		() => immediateDeliveryLifecycleState(deliveryActions),
+		() => immediateDeliveryLifecycleState(context),
 		() => deliveryDependencyState(context),
 		() => deliveryPreflightState(deliveryActions),
 	])
@@ -62,21 +62,10 @@ function deriveDeliveryStateWithArtifact(
 		: deriveCompletedSlicesDeliveryState(context, deliveryActions, deliveryArtifact, latestSliceCompletion.value)
 }
 
-function immediateDeliveryLifecycleState(deliveryActions: Action[]): WorkStateResult<DeliveryWorkState | null> {
-	const closeAction = latestAction(
-		deliveryActions.filter((action) => action.result.type === 'ship-delivery' || action.result.type === 'abandon-delivery'),
-	)
-	if (closeAction !== null) return ok(deliveryClosedState(closeAction))
+function immediateDeliveryLifecycleState(context: StoredDeliveryContext): WorkStateResult<DeliveryWorkState | null> {
+	if (context.delivery.closed !== null) return ok({ type: 'closed', outcome: context.delivery.closed.type })
 
-	return deliveryActions.some((action) => action.result.type === 'queue-delivery') ? ok(null) : ok({ type: 'unqueued' })
-}
-
-function deliveryClosedState(action: Action): DeliveryWorkState {
-	return {
-		type: 'closed',
-		outcome: action.result.type === 'ship-delivery' ? 'shipped' : 'abandoned',
-		actionId: action.id,
-	}
+	return context.delivery.queued === null ? ok({ type: 'unqueued' }) : ok(null)
 }
 
 function deliveryDependencyState(context: StoredDeliveryContext): WorkStateResult<DeliveryWorkState | null> {
@@ -87,7 +76,7 @@ function deliveryDependencyState(context: StoredDeliveryContext): WorkStateResul
 
 function blockedDeliveryIds(context: StoredDeliveryContext): Delivery['id'][] {
 	return context.deliveryDependencies
-		.filter((dependency) => dependency.closedBy === null && !isArchived(dependency.link.archivePeriods))
+		.filter((dependency) => dependency.delivery.closed === null && !isArchived(dependency.link.archivePeriods))
 		.map((dependency) => dependency.delivery)
 		.sort(compareAcceptedThenId)
 		.map((delivery) => delivery.id)
@@ -270,20 +259,21 @@ if (import.meta.vitest) {
 	const slicePromotion = externalOperationEvidence('merge-review-surface', true, 'Merged.')
 
 	describe('getDeliveryState', () => {
-		it('derives closed from the latest close Action', () => {
+		it('derives closed from Delivery.closed', () => {
 			const { tx } = deliveryFixture()
-			seedAction(tx, {
-				id: 'ship-delivery',
-				result: { type: 'ship-delivery', integration: { type: 'observed-artifact-integration', actionId: 'observe-integration' } },
-			})
+			tx.deliveries.records.get('delivery-1')!.closed = {
+				type: 'shipped',
+				shipped: stamp,
+				integration: { type: 'observed-artifact-integration', actionId: 'observe-integration' },
+			}
 
 			expect(deliveryState(tx, 'delivery-1')).toEqual({
 				ok: true,
-				value: { type: 'closed', outcome: 'shipped', actionId: 'ship-delivery' },
+				value: { type: 'closed', outcome: 'shipped' },
 			})
 		})
 
-		it('derives unqueued before a queue-delivery Action exists', () => {
+		it('derives unqueued before Delivery.queued is set', () => {
 			const { tx } = deliveryFixture()
 
 			expect(deliveryState(tx, 'delivery-1')).toEqual({ ok: true, value: { type: 'unqueued' } })
@@ -444,7 +434,7 @@ if (import.meta.vitest) {
 		const core = createTestCoreServices()
 		seedDelivery(core.tx, 'delivery-1')
 		if (options.withSlice === true) seedSlice(core.tx, 'slice-1', 'delivery-1')
-		if (options.queued === true) seedAction(core.tx, { id: 'queue-delivery', result: { type: 'queue-delivery' } })
+		if (options.queued === true) core.tx.deliveries.records.get('delivery-1')!.queued = stamp
 		if (options.withDeliveryArtifact === true) seedDeliveryArtifact(core.tx)
 
 		return core
@@ -547,20 +537,7 @@ if (import.meta.vitest) {
 					link.from.id === delivery.id &&
 					link.to.type === 'delivery',
 			)
-			.map((link) => {
-				const dependency = tx.deliveries.records.get(link.to.id)!
-				return {
-					link,
-					delivery: dependency,
-					closedBy: latestAction(
-						actions.filter(
-							(action) =>
-								action.deliveryId === dependency.id &&
-								(action.result.type === 'ship-delivery' || action.result.type === 'abandon-delivery'),
-						),
-					),
-				}
-			})
+			.map((link) => ({ link, delivery: tx.deliveries.records.get(link.to.id)! }))
 
 		return getDeliveryState({
 			delivery,
