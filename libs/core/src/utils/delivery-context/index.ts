@@ -1,4 +1,4 @@
-export { buildStoredDeliveryContext, type DeliveryContextError } from './storage'
+export { buildDeliveryContext, type DeliveryContextError } from './storage'
 export { resolveDeliveryWork, type DeliveryWorkResolution } from './work-resolution'
 export { getDeliveryState, getSliceState } from './work-state'
-export type { DeliveryDependencySummary, StoredDeliveryContext } from './types'
+export type { DeliveryDependencySummary, DeliveryContext } from './types'

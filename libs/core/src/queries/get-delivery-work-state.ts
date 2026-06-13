@@ -5,7 +5,7 @@ import type { DeliveryWorkState } from '../domain/delivery'
 import type { WorkStateQueryError } from '../errors'
 import type { CoreServices } from '../services'
 import { buildQueryHandler } from './utils'
-import { buildStoredDeliveryContext } from '../utils/delivery-context'
+import { buildDeliveryContext } from '../utils/delivery-context'
 import { getDeliveryState } from '../utils/delivery-context'
 import { withTransaction } from '../utils/storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -19,7 +19,7 @@ export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 export function createGetDeliveryWorkStateQuery(options: CoreServices): Operation {
 	return buildQueryHandler('getDeliveryWorkState', getDeliveryWorkStateInputPipe, (input) =>
 		withTransaction(options, async (tx) => {
-			const context = await buildStoredDeliveryContext(tx, input.deliveryId)
+			const context = await buildDeliveryContext(tx, input.deliveryId)
 			return context.ok ? getDeliveryState(context.value) : context
 		}),
 	)

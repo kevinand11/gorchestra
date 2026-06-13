@@ -1,4 +1,4 @@
-import type { DeliveryDependencySummary, StoredDeliveryContext, StoredDeliverySlice } from './types'
+import type { DeliveryDependencySummary, DeliveryContext, DeliveryContextSlice } from './types'
 import { compareActions } from './work-state/actions'
 import type { DeliveryDependencyLink, SliceDependencyLink, WorkStateDerivationError } from './work-state/types'
 import { actionPipe, type Action } from '../../domain/action'
@@ -20,10 +20,10 @@ import type { Result } from '../types'
 
 export type DeliveryContextError = WorkStateDerivationError
 
-export async function buildStoredDeliveryContext(
+export async function buildDeliveryContext(
 	tx: CoreStorageTransaction,
 	deliveryId: Delivery['id'],
-): Promise<Result<StoredDeliveryContext, DeliveryContextError>> {
+): Promise<Result<DeliveryContext, DeliveryContextError>> {
 	const root = await readDeliveryContextRoot(tx, deliveryId)
 	if (!root.ok) return root
 
@@ -54,7 +54,7 @@ interface DeliveryContextRecords {
 
 interface ScopedDeliveryContextRecords {
 	deliveryArtifact: DeliveryArtifact | null
-	slices: StoredDeliverySlice[]
+	slices: DeliveryContextSlice[]
 	actions: Action[]
 	agentRuns: AgentRun[]
 	reviewSurfaces: ReviewSurface[]
@@ -171,7 +171,7 @@ function scopedDeliveryContextRecords(
 	if (!dependencies.ok) return dependencies
 	const deliveryArtifact = singleDeliveryArtifact(delivery, records.deliveryArtifacts)
 	if (!deliveryArtifact.ok) return deliveryArtifact
-	const slices = storedDeliverySlices(orderedSlices, records)
+	const slices = deliveryContextSlices(orderedSlices, records)
 	if (!slices.ok) return slices
 
 	return {
@@ -203,8 +203,8 @@ function singleDeliveryArtifact(
 	return singleArtifact(matching, `Delivery ${delivery.id} has multiple Delivery Artifacts.`)
 }
 
-function storedDeliverySlices(slices: Slice[], records: DeliveryContextRecords): Result<StoredDeliverySlice[], DeliveryContextError> {
-	const stored: StoredDeliverySlice[] = []
+function deliveryContextSlices(slices: Slice[], records: DeliveryContextRecords): Result<DeliveryContextSlice[], DeliveryContextError> {
+	const stored: DeliveryContextSlice[] = []
 	for (const slice of slices) {
 		const artifact = singleSliceArtifact(slice, records.sliceArtifacts)
 		if (!artifact.ok) return artifact
@@ -322,7 +322,7 @@ function resultValue<TValue>(result: Result<TValue, unknown>): TValue {
 function deliveryContext(
 	root: DeliveryContextRoot,
 	records: Result<ScopedDeliveryContextRecords, DeliveryContextError>,
-): Result<StoredDeliveryContext, DeliveryContextError> {
+): Result<DeliveryContext, DeliveryContextError> {
 	return records.ok ? { ok: true, value: { ...root, ...records.value } } : records
 }
 
@@ -333,11 +333,11 @@ if (import.meta.vitest) {
 	const { createTestCoreServices, localStamp, seedDelivery, seedProject, seedSecret, seedSelectableModel, seedSlice } =
 		await import('../test-helpers')
 
-	describe('buildStoredDeliveryContext', () => {
+	describe('buildDeliveryContext', () => {
 		it('loads root-level Delivery facts and supports derived unqueued state', async () => {
 			const options = storedContextFixture()
 
-			const result = await buildStoredDeliveryContext(options.tx, 'delivery-1')
+			const result = await buildDeliveryContext(options.tx, 'delivery-1')
 
 			expect(result).toMatchObject({ ok: true, value: { delivery: { id: 'delivery-1' } } })
 			if (result.ok) {
@@ -353,7 +353,7 @@ if (import.meta.vitest) {
 			seedSlice(options.tx, 'slice-2', 'delivery-1')
 			seedSlice(options.tx, 'slice-1', 'delivery-1')
 
-			const result = await buildStoredDeliveryContext(options.tx, 'delivery-1')
+			const result = await buildDeliveryContext(options.tx, 'delivery-1')
 
 			expect(result).toMatchObject({
 				ok: true,
@@ -408,7 +408,7 @@ if (import.meta.vitest) {
 				result: { type: 'validate-preflight', checks: [] },
 			})
 
-			const result = await buildStoredDeliveryContext(options.tx, 'delivery-1')
+			const result = await buildDeliveryContext(options.tx, 'delivery-1')
 
 			expect(result).toMatchObject({
 				ok: true,
@@ -441,7 +441,7 @@ if (import.meta.vitest) {
 				created: localStamp(),
 			})
 
-			const result = await buildStoredDeliveryContext(options.tx, 'delivery-1')
+			const result = await buildDeliveryContext(options.tx, 'delivery-1')
 
 			expect(result).toEqual({
 				ok: false,
@@ -465,7 +465,7 @@ if (import.meta.vitest) {
 				created: localStamp(),
 			})
 
-			const result = await buildStoredDeliveryContext(options.tx, 'delivery-1')
+			const result = await buildDeliveryContext(options.tx, 'delivery-1')
 
 			expect(result).toEqual({
 				ok: false,
@@ -477,7 +477,7 @@ if (import.meta.vitest) {
 			const options = storedContextFixture()
 			options.tx.repositories.records.get('repository-1')!.projectId = 'other-project'
 
-			const result = await buildStoredDeliveryContext(options.tx, 'delivery-1')
+			const result = await buildDeliveryContext(options.tx, 'delivery-1')
 
 			expect(result).toEqual({
 				ok: false,
@@ -487,8 +487,8 @@ if (import.meta.vitest) {
 
 		it('returns failed preflight checks when Delivery work needs missing Portfolio Config', async () => {
 			const options = storedContextFixture()
-			const stored = await buildStoredDeliveryContext(options.tx, 'delivery-1')
-			if (!stored.ok) throw new Error('Expected stored context.')
+			const stored = await buildDeliveryContext(options.tx, 'delivery-1')
+			if (!stored.ok) throw new Error('Expected Delivery Context.')
 
 			const result = await resolveDeliveryWork(options.tx, stored.value)
 
@@ -512,8 +512,8 @@ if (import.meta.vitest) {
 			const options = storedContextFixture()
 			seedSelectableModel(options.tx, 'model-1')
 			seedPortfolioConfig(options)
-			const stored = await buildStoredDeliveryContext(options.tx, 'delivery-1')
-			if (!stored.ok) throw new Error('Expected stored context.')
+			const stored = await buildDeliveryContext(options.tx, 'delivery-1')
+			if (!stored.ok) throw new Error('Expected Delivery Context.')
 
 			const result = await resolveDeliveryWork(options.tx, stored.value)
 

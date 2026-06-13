@@ -1,4 +1,4 @@
-import type { StoredDeliveryContext } from './types'
+import type { DeliveryContext } from './types'
 import type { Id } from '../../domain/commons'
 import type { DeliveryWorkConfig, ProjectConfigRecord } from '../../domain/config'
 import type { ValidationEvidence } from '../../domain/evidence'
@@ -58,7 +58,7 @@ const summaries = {
 
 export async function resolveDeliveryWork(
 	tx: CoreStorageTransaction,
-	context: StoredDeliveryContext,
+	context: DeliveryContext,
 ): Promise<Result<DeliveryPreflight, DeliveryPreflightError>> {
 	if (context.portfolioConfig === null) return ok(portfolioConfigMissing())
 
@@ -110,7 +110,7 @@ async function selectedModelProvider(tx: CoreStorageTransaction, providerId: Id)
 }
 
 function resolvedWorkConfig(
-	context: StoredDeliveryContext,
+	context: DeliveryContext,
 	executionModel: Model,
 	executionModelProvider: ModelProvider,
 ): Result<DeliveryPreflight, never> {
@@ -158,7 +158,7 @@ function failedPreflight(summary: string, reason: FailedDeliveryPreflightReason,
 	}
 }
 
-function resolveExecutionModelId(context: StoredDeliveryContext): Id {
+function resolveExecutionModelId(context: DeliveryContext): Id {
 	if (context.portfolioConfig === null) throw new Error('Expected Portfolio Config before resolving execution Model.')
 
 	return firstPresent([
@@ -169,13 +169,13 @@ function resolveExecutionModelId(context: StoredDeliveryContext): Id {
 	])
 }
 
-function resolveDeliveryWorkConfig(context: StoredDeliveryContext): DeliveryWorkConfig | null {
+function resolveDeliveryWorkConfig(context: DeliveryContext): DeliveryWorkConfig | null {
 	if (context.portfolioConfig === null) return null
 
 	return firstOptional([context.delivery.config?.value?.work, context.projectConfig?.value?.work, context.portfolioConfig.value.work])
 }
 
-function unresolvedWorkConfigSnapshot(context: StoredDeliveryContext, executionModel: Model, executionModelProvider: ModelProvider) {
+function unresolvedWorkConfigSnapshot(context: DeliveryContext, executionModel: Model, executionModelProvider: ModelProvider) {
 	return {
 		type: 'work-config-unresolved',
 		executionModel,
@@ -186,7 +186,7 @@ function unresolvedWorkConfigSnapshot(context: StoredDeliveryContext, executionM
 	}
 }
 
-function deliveryWorkConfigValue(delivery: StoredDeliveryContext['delivery']): DeliveryWorkConfig | null {
+function deliveryWorkConfigValue(delivery: DeliveryContext['delivery']): DeliveryWorkConfig | null {
 	return delivery.config === null ? null : (delivery.config.value?.work ?? null)
 }
 

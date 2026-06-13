@@ -9,7 +9,7 @@ import type { CoreServices, CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { DeliveryActionCommandError } from '../utils/command-errors'
 import { deliveryWorkStateMismatch, putRecordValue, withAuditStampTransaction } from '../utils/command-storage'
-import { buildStoredDeliveryContext } from '../utils/delivery-context'
+import { buildDeliveryContext } from '../utils/delivery-context'
 import { getDeliveryState } from '../utils/delivery-context'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -51,7 +51,7 @@ async function requireReadyToShipDelivery(
 	tx: CoreStorageTransaction,
 	deliveryId: Id,
 ): Promise<CoreResult<{ delivery: Delivery; integration: DeliveryIntegration }, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await buildStoredDeliveryContext(tx, deliveryId)
+	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
 	if (!deliveryContext.ok) return deliveryContext
 
 	const deliveryState = getDeliveryState(deliveryContext.value)

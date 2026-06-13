@@ -14,20 +14,20 @@ export interface DeliveryDependencySummary {
 	delivery: Delivery
 }
 
-export interface StoredDeliverySlice {
+export interface DeliveryContextSlice {
 	slice: Slice
 	artifact: SliceArtifact | null
 	dependencyLinks: SliceDependencyLink[]
 }
 
-export interface StoredDeliveryContext {
+export interface DeliveryContext {
 	delivery: Delivery
 	project: Project
 	repository: Repository
 	portfolioConfig: PortfolioConfigRecord | null
 	projectConfig: ProjectConfigRecord | null
 	deliveryArtifact: DeliveryArtifact | null
-	slices: StoredDeliverySlice[]
+	slices: DeliveryContextSlice[]
 	actions: Action[]
 	agentRuns: AgentRun[]
 	reviewSurfaces: ReviewSurface[]

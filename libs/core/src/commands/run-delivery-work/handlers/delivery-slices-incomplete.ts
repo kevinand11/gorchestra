@@ -54,7 +54,7 @@ function handleFirstExecutableSlice(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { buildStoredDeliveryContext } = await import('../../../utils/delivery-context')
+	const { buildDeliveryContext } = await import('../../../utils/delivery-context')
 	const { createTestCoreServices, localStamp, seedDelivery, seedProject, seedSelectableModel, seedSlice, stamp } =
 		await import('../../../utils/test-helpers')
 
@@ -111,7 +111,7 @@ if (import.meta.vitest) {
 	})
 
 	async function handlerContext(options: ReturnType<typeof executableDeliveryFixture>): Promise<ResolvedDeliveryHandlerContext> {
-		const deliveryContext = await buildStoredDeliveryContext(options.tx, 'delivery-1')
+		const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
 		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
 		const workResolution = await resolveDeliveryWork(options.tx, deliveryContext.value)
 		if (!workResolution.ok || workResolution.value.type !== 'passed') throw new Error('Expected Delivery Work Resolution.')

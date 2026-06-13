@@ -10,7 +10,7 @@ import type { Repository } from '../domain/repository'
 import type { ResourceNotFoundError, SecretNotActiveError, StorageOperationFailedError, InvalidCoreServiceOutputError } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorageTransaction } from '../services'
-import type { StoredDeliveryContext } from './delivery-context'
+import type { DeliveryContext } from './delivery-context'
 
 export type {
 	DeliveryPreflight,
@@ -40,7 +40,7 @@ export type ProviderBackedDeliveryPreflightPlan =
 
 export async function readProviderBackedDeliveryPreflightPlan(
 	tx: CoreStorageTransaction,
-	context: StoredDeliveryContext,
+	context: DeliveryContext,
 ): Promise<Result<ProviderBackedDeliveryPreflightPlan, DeliveryPreflightError>> {
 	const localPreflight = await resolveDeliveryWork(tx, context)
 	if (!localPreflight.ok) return localPreflight
@@ -52,7 +52,7 @@ export async function readProviderBackedDeliveryPreflightPlan(
 
 async function readProviderBackedPlanAfterLocalPreflight(
 	tx: CoreStorageTransaction,
-	context: StoredDeliveryContext,
+	context: DeliveryContext,
 	localPreflight: PassedDeliveryPreflight,
 ): Promise<Result<ProviderBackedDeliveryPreflightPlan, DeliveryPreflightError>> {
 	const repository = await readRepositoryPlan(tx, context.repository)
@@ -63,7 +63,7 @@ async function readProviderBackedPlanAfterLocalPreflight(
 }
 
 function providerBackedPlan(
-	context: StoredDeliveryContext,
+	context: DeliveryContext,
 	resolution: PassedDeliveryPreflight,
 	repository: RepositoryDeliveryPreflightPlan,
 	model: ModelDeliveryPreflightPlan,
@@ -103,7 +103,7 @@ export function deliveryPreflightChecksPassed(checks: ValidationEvidence[]): boo
 
 export async function providerBackedDeliveryPreflightInputsStillCurrent(
 	tx: CoreStorageTransaction,
-	context: StoredDeliveryContext,
+	context: DeliveryContext,
 	plan: ProviderBackedDeliveryPreflightPlan,
 ): Promise<Result<boolean, DeliveryPreflightError>> {
 	const current = await readProviderBackedDeliveryPreflightPlan(tx, context)
