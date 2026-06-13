@@ -6,12 +6,22 @@ import {
 	recordDeliveryArtifactCreationResult,
 	type DeliveryArtifactCreationClaim,
 } from './handlers/delivery-needs-artifact-creation'
+import {
+	deliveryArtifactValidationClaim,
+	recordDeliveryArtifactValidationResult,
+	type DeliveryArtifactValidationClaim,
+} from './handlers/delivery-needs-artifact-validation'
 import { workedActions } from './handlers/result'
 import {
 	recordSliceArtifactCreationResult,
 	sliceArtifactCreationClaim,
 	type SliceArtifactCreationClaim,
 } from './handlers/slice-needs-artifact-creation'
+import {
+	recordSliceArtifactValidationResult,
+	sliceArtifactValidationClaim,
+	type SliceArtifactValidationClaim,
+} from './handlers/slice-needs-artifact-validation'
 import type { Error, Result } from './types'
 import type { Action } from '../../domain/action'
 import { idPipe, type OperationContext } from '../../domain/commons'
@@ -88,8 +98,31 @@ async function runPassedPreflightSchedulerWork(
 	if (!claim.ok) return claim
 
 	return claim.value === null
-		? withTransaction(runtime.services, (tx) => applySchedulerPreflight(runtime.services, tx, deliveryId, plan, providerChecks))
+		? runPassedPreflightWithoutArtifactCreation(runtime, deliveryId, plan, providerChecks)
 		: runArtifactCreationClaim(runtime, deliveryId, plan, claim.value)
+}
+
+async function runPassedPreflightWithoutArtifactCreation(
+	runtime: CoreRuntime,
+	deliveryId: string,
+	plan: ProviderBackedSchedulerPreflightRead,
+	providerChecks: ValidationEvidence[],
+): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+	const validationClaim = readArtifactValidationClaim(plan)
+	if (!validationClaim.ok) return validationClaim
+
+	return validationClaim.value === null
+		? withTransaction(runtime.services, (tx) => applySchedulerPreflight(runtime.services, tx, deliveryId, plan, providerChecks))
+		: applyArtifactValidationClaim(runtime, deliveryId, plan, validationClaim.value)
+}
+
+function applyArtifactValidationClaim(
+	runtime: CoreRuntime,
+	deliveryId: string,
+	plan: ProviderBackedSchedulerPreflightRead,
+	claim: ArtifactValidationClaim,
+): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+	return withTransaction(runtime.services, (tx) => applyArtifactValidationResult(runtime.services, tx, deliveryId, plan, claim))
 }
 
 async function runArtifactCreationClaim(
@@ -118,6 +151,10 @@ type ProviderBackedSchedulerPreflightRead = {
 type ArtifactCreationClaim =
 	| { type: 'delivery-artifact'; claim: DeliveryArtifactCreationClaim }
 	| { type: 'slice-artifact'; claim: SliceArtifactCreationClaim }
+
+type ArtifactValidationClaim =
+	| { type: 'delivery-artifact'; claim: DeliveryArtifactValidationClaim }
+	| { type: 'slice-artifact'; claim: SliceArtifactValidationClaim }
 
 async function readSchedulerPreflightPlan(
 	services: CoreServices,
@@ -192,6 +229,33 @@ function sliceArtifactCreationClaimFromPlan(
 	if (!handlerContext.ok) return handlerContext
 
 	const claim = sliceArtifactCreationClaim(handlerContext.value)
+	return claim.ok ? { ok: true, value: claim.value === null ? null : { type: 'slice-artifact', claim: claim.value } } : claim
+}
+
+const artifactValidationClaimReaders: Partial<
+	Record<
+		DeliveryWorkState['type'],
+		(plan: ProviderBackedSchedulerPreflightRead) => CoreResult<ArtifactValidationClaim | null, Exclude<Error, InvalidInputError>>
+	>
+> = {
+	'needs-artifact-validation': deliveryArtifactValidationClaimFromPlan,
+	'slices-incomplete': sliceArtifactValidationClaimFromPlan,
+}
+
+function readArtifactValidationClaim(
+	plan: ProviderBackedSchedulerPreflightRead,
+): CoreResult<ArtifactValidationClaim | null, Exclude<Error, InvalidInputError>> {
+	return artifactValidationClaimReaders[plan.state.type]?.(plan) ?? { ok: true, value: null }
+}
+
+function deliveryArtifactValidationClaimFromPlan(plan: ProviderBackedSchedulerPreflightRead): CoreResult<ArtifactValidationClaim, never> {
+	return { ok: true, value: { type: 'delivery-artifact', claim: deliveryArtifactValidationClaim(plan) } }
+}
+
+function sliceArtifactValidationClaimFromPlan(
+	plan: ProviderBackedSchedulerPreflightRead,
+): CoreResult<ArtifactValidationClaim | null, Exclude<Error, InvalidInputError>> {
+	const claim = sliceArtifactValidationClaim(plan)
 	return claim.ok ? { ok: true, value: claim.value === null ? null : { type: 'slice-artifact', claim: claim.value } } : claim
 }
 
@@ -294,6 +358,23 @@ function resolvedSchedulerHandlerContext(
 				},
 			}
 		: { ok: true, value: { services, tx, deliveryContext, workResolution: resolution } }
+}
+
+async function applyArtifactValidationResult(
+	services: CoreServices,
+	tx: CoreStorageTransaction,
+	deliveryId: string,
+	plan: ProviderBackedSchedulerPreflightRead,
+	claim: ArtifactValidationClaim,
+): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+	const readiness = await schedulerPreflightWriteReadiness(tx, deliveryId, plan.preflightPlan)
+	if (!readiness.ok) return readiness
+	if (readiness.value.type === 'conflict') return deliveryClaimConflict()
+
+	const context = { services, tx, deliveryContext: readiness.value.deliveryContext }
+	return claim.type === 'delivery-artifact'
+		? recordDeliveryArtifactValidationResult(context, readiness.value.state, claim.claim)
+		: recordSliceArtifactValidationResult(context, readiness.value.state, claim.claim)
 }
 
 async function applySchedulerPreflight(
@@ -641,6 +722,57 @@ if (import.meta.vitest) {
 			})
 		})
 
+		it('records no-op Slice Artifact validation after provider-backed preflight passes', async () => {
+			const options = providerPreflightFixture()
+			seedDeliveryArtifact(options)
+			seedSlice(options.tx, 'slice-1', 'delivery-1')
+			seedSliceArtifact(options, 'slice-1')
+			seedCompletedSliceExecution(options, 'slice-1')
+			const command = createRunDeliveryWorkCommand(
+				createTestCoreRuntime(options, { providers: passingProviderBackedPreflightProviders() }),
+			)
+
+			const result = await command({ deliveryId: 'delivery-1' }, context)
+
+			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
+			expect(options.tx.actions.records.get('action-1')?.result).toEqual({
+				type: 'validate-slice-artifact',
+				sliceId: 'slice-1',
+				evidence: validationEvidence('slice-branch-validation', true, 'No Slice Artifact validation is configured.'),
+			})
+		})
+
+		it('records no-op Delivery Artifact validation after provider-backed preflight passes', async () => {
+			const options = providerPreflightFixture()
+			seedCompletedDelivery(options)
+			const command = createRunDeliveryWorkCommand(
+				createTestCoreRuntime(options, { providers: passingProviderBackedPreflightProviders() }),
+			)
+
+			const result = await command({ deliveryId: 'delivery-1' }, context)
+
+			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
+			expect(options.tx.actions.records.get('action-1')?.result).toEqual({
+				type: 'validate-delivery-artifact',
+				evidence: validationEvidence('delivery-branch-validation', true, 'No Delivery Artifact validation is configured.'),
+			})
+		})
+
+		it('records failed provider-backed preflight instead of no-op artifact validation', async () => {
+			const options = providerPreflightFixture()
+			seedCompletedDelivery(options)
+			const command = createRunDeliveryWorkCommand(
+				createTestCoreRuntime(options, { providers: failingProviderBackedPreflightProviders() }),
+			)
+
+			const result = await command({ deliveryId: 'delivery-1' }, context)
+
+			expectWorkedPreflightResult(options, result, [
+				validationEvidence('repository-preflight', false, 'GitHub repository was not found.'),
+				validationEvidence('model-preflight', false, 'Anthropic Messages model was not found.'),
+			])
+		})
+
 		it('returns claim-conflict when artifact creation state changes before writing provider results', async () => {
 			const options = providerPreflightFixture()
 			seedSlice(options.tx, 'slice-1', 'delivery-1')
@@ -650,6 +782,22 @@ if (import.meta.vitest) {
 				return Promise.resolve({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } })
 			}
 			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options, { providers }))
+
+			const result = await command({ deliveryId: 'delivery-1' }, context)
+
+			expect(result).toEqual({ ok: true, value: { processedCount: 0, failures: [] } })
+			expect(options.tx.actions.records.has('action-1')).toBe(false)
+		})
+
+		it('returns claim-conflict when artifact validation state changes before writing validation results', async () => {
+			const options = providerPreflightFixture()
+			seedCompletedDelivery(options)
+			staleLocalPreflightOnSecondTransaction(options, () => {
+				seedDeliveryValidation(options, 'existing-delivery-validation')
+			})
+			const command = createRunDeliveryWorkCommand(
+				createTestCoreRuntime(options, { providers: passingProviderBackedPreflightProviders() }),
+			)
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
@@ -721,6 +869,74 @@ if (import.meta.vitest) {
 		options.tx.deliveries.records.get('delivery-1')!.queued = localStamp()
 
 		return options
+	}
+
+	function seedAction(
+		tx: ReturnType<typeof providerPreflightFixture>['tx'],
+		action: { id: string; at?: string; result: Action['result'] },
+	) {
+		tx.actions.records.set(action.id, {
+			id: action.id,
+			deliveryId: 'delivery-1',
+			performed: { at: action.at ?? '2026-06-10T12:00:00.000Z' },
+			authorized: null,
+			result: action.result,
+		})
+	}
+
+	function seedCompletedDelivery(options: ReturnType<typeof providerPreflightFixture>) {
+		seedDeliveryArtifact(options)
+		seedSlice(options.tx, 'slice-1', 'delivery-1')
+		seedAction(options.tx, {
+			id: 'promote-slice',
+			at: '2026-06-10T12:01:00.000Z',
+			result: {
+				type: 'promote-slice-artifact',
+				sliceId: 'slice-1',
+				evidence: {
+					type: 'external-operation',
+					operation: { type: 'merge-review-surface' },
+					passed: true,
+					summary: 'Merged.',
+				},
+			},
+		})
+		seedAction(options.tx, {
+			id: 'slice-complete',
+			at: '2026-06-10T12:02:00.000Z',
+			result: {
+				type: 'validate-slice-delivery-artifact',
+				sliceId: 'slice-1',
+				evidence: validationEvidence('slice-branch-validation', true, 'Valid.'),
+			},
+		})
+	}
+
+	function seedDeliveryValidation(options: ReturnType<typeof providerPreflightFixture>, id: string) {
+		seedAction(options.tx, {
+			id,
+			at: '2026-06-10T12:03:00.000Z',
+			result: { type: 'validate-delivery-artifact', evidence: validationEvidence('delivery-branch-validation', true, 'Valid.') },
+		})
+	}
+
+	function seedSliceArtifact(options: ReturnType<typeof providerPreflightFixture>, sliceId: string) {
+		options.tx.sliceArtifacts.records.set('slice-artifact-existing', {
+			id: 'slice-artifact-existing',
+			sliceId,
+			config: { type: 'source-control', sliceBranch: 'slice-branch' },
+			created: { at: '2026-06-10T11:00:00.000Z' },
+		})
+	}
+
+	function seedCompletedSliceExecution(options: ReturnType<typeof providerPreflightFixture>, sliceId: string) {
+		options.tx.agentRuns.records.set('agent-run-completed', {
+			id: 'agent-run-completed',
+			agent: { type: 'model', modelId: 'model-1' },
+			purpose: { type: 'execution', deliveryId: 'delivery-1', sliceId, mode: { type: 'initial' } },
+			started: { at: '2026-06-10T11:30:00.000Z' },
+			completed: { at: '2026-06-10T11:40:00.000Z' },
+		})
 	}
 
 	function seedDeliveryArtifact(options: ReturnType<typeof providerPreflightFixture>) {

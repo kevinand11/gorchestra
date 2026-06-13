@@ -29,7 +29,7 @@ const deliveryHandlers: DeliveryHandlerMap = {
 	'delivery-operation-failed': () => handleDeliveryOperationFailed(),
 	'delivery-validation-failed': () => handleDeliveryValidationFailed(),
 	'delivery-review-failed': () => handleDeliveryReviewFailed(),
-	'needs-artifact-validation': () => handleDeliveryNeedsArtifactValidation(),
+	'needs-artifact-validation': (context, state) => handleDeliveryNeedsArtifactValidation(context, state),
 	'needs-review-surface': () => handleDeliveryNeedsReviewSurface(),
 	'awaiting-review': (_context, state) => handleDeliveryAwaitingReview(state),
 	'ready-to-ship': noEligibleWork,

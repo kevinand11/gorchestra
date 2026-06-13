@@ -15,6 +15,9 @@ export async function handleDeliverySlicesIncomplete(context: ResolvedDeliveryHa
 	const candidates = sliceStateCandidates(context)
 	if (!candidates.ok) return candidates
 
+	const validationResult = handleFirstSliceArtifactValidation(context, candidates.value, context.workResolution)
+	if (validationResult !== null) return validationResult
+
 	const capacityResult = capacityCheck(candidates.value, context.workResolution)
 	if (capacityResult !== null) return capacityResult
 
@@ -42,6 +45,16 @@ function capacityCheck(candidates: SliceStateCandidate[], resolution: DeliveryWo
 		: null
 }
 
+function handleFirstSliceArtifactValidation(
+	context: ResolvedDeliveryHandlerContext,
+	candidates: SliceStateCandidate[],
+	resolution: DeliveryWorkResolution,
+): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult | null {
+	const validation = candidates.find((candidate) => candidate.state.type === 'needs-artifact-validation')
+
+	return validation === undefined ? null : handleSliceWorkState(context, validation.slice, validation.state, resolution)
+}
+
 function handleFirstExecutableSlice(
 	context: ResolvedDeliveryHandlerContext,
 	candidates: SliceStateCandidate[],
@@ -55,7 +68,7 @@ function handleFirstExecutableSlice(
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { buildDeliveryContext } = await import('../../../utils/delivery-context')
-	const { createTestCoreServices, localStamp, seedDelivery, seedProject, seedSelectableModel, seedSlice, stamp } =
+	const { createTestCoreServices, localStamp, seedDelivery, seedProject, seedSelectableModel, seedSlice, stamp, validationEvidence } =
 		await import('../../../utils/test-helpers')
 
 	describe('handleDeliverySlicesIncomplete', () => {
@@ -85,7 +98,7 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('returns slice-capacity-full when active slots meet configured capacity', async () => {
+		it('validates the first Slice needing artifact validation before claiming executable Slice work', async () => {
 			const options = executableDeliveryFixture()
 			seedSlice(options.tx, 'slice-active', 'delivery-1')
 			seedSlice(options.tx, 'slice-executable', 'delivery-1')
@@ -95,8 +108,14 @@ if (import.meta.vitest) {
 
 			expect(await handleDeliverySlicesIncomplete(await handlerContext(options))).toEqual({
 				ok: true,
-				value: { processedCount: 0, failures: [] },
+				value: { processedCount: 1, failures: [] },
 			})
+			expect(options.tx.actions.records.get('action-1')?.result).toEqual({
+				type: 'validate-slice-artifact',
+				sliceId: 'slice-active',
+				evidence: validationEvidence('slice-branch-validation', true, 'No Slice Artifact validation is configured.'),
+			})
+			expect(options.tx.agentRuns.records.has('agent-run-1')).toBe(false)
 		})
 
 		it('returns no-eligible-work when no Slice is executable', async () => {

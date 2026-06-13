@@ -6,3 +6,4 @@ Durable follow-up items that are known but intentionally deferred.
 
 - Move same-Delivery worker exclusion into Core with a Core-owned Delivery work lease. The near-term scheduler/consumer runtime must ensure only one worker processes a Delivery at a time, but this should not remain a consumer discipline requirement.
 - Define preflight behavior for resumed incomplete Agent Runs whose stored Model differs from the current selected execution Model. The likely direction is claim-specific preflight that checks the AgentRun's stored Model for resumed work and the current selected execution Model for new Agent Runs.
+- Allow Delivery and Slice Artifact validation to run user-configured validation scripts in the future; until then, artifact validation records a passing no-op Validation Evidence instead of executing external checks.

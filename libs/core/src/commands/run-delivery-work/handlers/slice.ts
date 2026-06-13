@@ -22,7 +22,7 @@ const sliceHandlers: SliceHandlerMap = {
 	complete: noEligibleWork,
 	'needs-delivery-validation': () => handleSliceNeedsDeliveryValidation(),
 	'dependency-blocked': noEligibleWork,
-	'needs-artifact-validation': () => handleSliceNeedsArtifactValidation(),
+	'needs-artifact-validation': (context, slice, state) => handleSliceNeedsArtifactValidation(context, slice, state),
 	'correction-blocked': noEligibleWork,
 	'awaiting-review': (_context, slice, state) => handleSliceAwaitingReview(slice, state),
 	'slice-operation-failed': () => handleSliceOperationFailed(),
