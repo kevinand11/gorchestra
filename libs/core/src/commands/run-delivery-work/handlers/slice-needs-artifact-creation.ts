@@ -1,4 +1,3 @@
-import { actionRecord, externalOperationEvidence, noObservedArtifactCreationWrite } from './artifact-creation-recording'
 import type { Action } from '../../../domain/action'
 import type { SliceArtifact } from '../../../domain/artifact'
 import type { DeliveryWorkState } from '../../../domain/delivery'
@@ -11,8 +10,8 @@ import { nextId, putRecord, runtimeRecord } from '../../../utils/command-storage
 import { getSliceState } from '../../../utils/delivery-context'
 import { withTransaction } from '../../../utils/storage'
 import type { Result as CoreResult } from '../../../utils/types'
-import { resolvedSchedulerHandlerContext, schedulerHandlerContextFromClaim, type ProviderBackedSchedulerPreflightClaim } from '../preflight'
 import type { ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
+import { actionRecord, externalOperationEvidence } from './result'
 
 interface SliceStateCandidate {
 	slice: Slice
@@ -34,55 +33,37 @@ export function sliceArtifactCreationInput(
 	const candidate = candidates.value.find((entry) => entry.state.type === 'needs-artifact-creation')
 	if (candidate === undefined) return { ok: true, value: null }
 
-	return claimForSlice(context, candidate.slice)
+	return sliceArtifactCreationInputForSlice(context, candidate.slice)
 }
 
-export async function handleFirstSliceNeedsArtifactCreation(
+export async function handleSliceNeedsArtifactCreation(
 	runtime: CoreRuntime,
-	preflight: ProviderBackedSchedulerPreflightClaim,
-): Promise<RunDeliveryWorkHandlerResult | null> {
-	const prepared = prepareSliceArtifactCreation(preflight)
-	if (!prepared.ok) return prepared
-	if (prepared.value === null) return null
-
-	return runPreparedSliceArtifactCreation(runtime, preflight, prepared.value)
-}
-
-function prepareSliceArtifactCreation(
-	preflight: ProviderBackedSchedulerPreflightClaim,
-): CoreResult<SliceArtifactCreationInput | null, RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	const context = schedulerHandlerContextFromClaim(preflight)
-	if (!context.ok) return context
-
-	return sliceArtifactCreationInput(context.value)
-}
-
-async function runPreparedSliceArtifactCreation(
-	runtime: CoreRuntime,
-	preflight: ProviderBackedSchedulerPreflightClaim,
-	sliceArtifactCreation: SliceArtifactCreationInput,
+	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'workResolution'>,
+	slice: Slice,
+	_state: Extract<SliceWorkState, { type: 'needs-artifact-creation' }>,
 ): Promise<RunDeliveryWorkHandlerResult> {
-	const creation = await runtime.providers.sourceControl.createSliceArtifact(sliceArtifactCreation)
+	const input = sliceArtifactCreationInputForSlice(context, slice)
+	if (!input.ok) return input
+
+	const creation = await runtime.providers.sourceControl.createSliceArtifact(input.value)
 	if (!creation.ok) return creation
 
-	return withTransaction(runtime.services, async (tx) => {
-		const freshContext = resolvedSchedulerHandlerContext(runtime.services, tx, preflight.deliveryContext, preflight)
-		return freshContext.ok
-			? recordSliceArtifactCreationResult(freshContext.value, preflight.state, sliceArtifactCreation, creation.value)
-			: freshContext
-	})
+	return withTransaction(runtime.services, async (tx) =>
+		recordSliceArtifactCreationResult(
+			{ services: runtime.services, tx, deliveryContext: context.deliveryContext, workResolution: context.workResolution },
+			{ type: 'slices-incomplete' },
+			input.value,
+			creation.value,
+		),
+	)
 }
 
 export async function recordSliceArtifactCreationResult(
 	context: ResolvedDeliveryHandlerContext,
-	deliveryState: DeliveryWorkState,
+	_deliveryState: DeliveryWorkState,
 	input: SliceArtifactCreationInput,
 	creation: SourceControlArtifactCreation,
 ): Promise<RunDeliveryWorkHandlerResult> {
-	const current = sliceArtifactCreationStillCurrent(context, deliveryState, input)
-	if (!current.ok) return current
-	if (!current.value) return noObservedArtifactCreationWrite()
-
 	return creation.type === 'passed'
 		? writePassedSliceArtifactCreation(context, input)
 		: writeFailedSliceArtifactCreation(context, input.sliceId, creation.summary)
@@ -110,7 +91,7 @@ function isActiveSliceSlotState(state: SliceWorkState): boolean {
 	return state.type === 'needs-artifact-validation' || state.type === 'needs-delivery-validation'
 }
 
-function claimForSlice(
+function sliceArtifactCreationInputForSlice(
 	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext'>,
 	slice: Slice,
 ): CoreResult<SliceArtifactCreationInput, InvariantViolationError> {
@@ -132,26 +113,6 @@ function claimForSlice(
 			sliceBranch: sliceBranch.value,
 		},
 	}
-}
-
-function sliceArtifactCreationStillCurrent(
-	context: ResolvedDeliveryHandlerContext,
-	deliveryState: DeliveryWorkState,
-	input: SliceArtifactCreationInput,
-): CoreResult<boolean, RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	if (deliveryState.type !== 'slices-incomplete' || !sliceArtifactInputMatches(context, input)) return { ok: true, value: false }
-
-	const state = getSliceState(context.deliveryContext, input.sliceId)
-	if (!state.ok) return state
-
-	return { ok: true, value: state.value.type === 'needs-artifact-creation' }
-}
-
-function sliceArtifactInputMatches(context: ResolvedDeliveryHandlerContext, input: SliceArtifactCreationInput): boolean {
-	return [
-		context.deliveryContext.delivery.id === input.deliveryId,
-		context.deliveryContext.deliveryArtifact?.config.deliveryBranch === input.sourceBranch,
-	].every(Boolean)
 }
 
 async function writePassedSliceArtifactCreation(

@@ -1,11 +1,12 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { handleDeliveryNeedsArtifactCreation } from './handlers/delivery-needs-artifact-creation'
-import { handleFirstSliceNeedsArtifactCreation } from './handlers/slice-needs-artifact-creation'
+import { handleDeliverySlicesIncomplete } from './handlers/delivery-slices-incomplete'
 import {
 	applySchedulerPreflightChecks,
 	readSchedulerPreflight,
 	runSchedulerPreflightChecks,
+	schedulerHandlerContextFromClaim,
 	schedulerPreflightChecksPassed,
 	type ProviderBackedSchedulerPreflightClaim,
 } from './preflight'
@@ -58,9 +59,7 @@ async function runProviderBackedSchedulerWork(
 
 	return schedulerPreflightChecksPassed(providerChecks.value)
 		? runPassedPreflightSchedulerWork(runtime, deliveryId, preflight, providerChecks.value)
-		: withTransaction(runtime.services, (tx) =>
-				applySchedulerPreflightChecks(runtime.services, tx, deliveryId, preflight, providerChecks.value),
-			)
+		: withTransaction(runtime.services, (tx) => applySchedulerPreflightChecks(runtime, tx, deliveryId, preflight, providerChecks.value))
 }
 
 async function runPassedPreflightSchedulerWork(
@@ -71,20 +70,24 @@ async function runPassedPreflightSchedulerWork(
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const artifactCreation = await handleArtifactCreation(runtime, preflight)
 	if (artifactCreation !== null) return artifactCreation
+	if (preflight.state.type === 'slices-incomplete') return handleSliceWorkPool(runtime, preflight)
 
-	return withTransaction(runtime.services, (tx) =>
-		applySchedulerPreflightChecks(runtime.services, tx, deliveryId, preflight, providerChecks),
-	)
+	return withTransaction(runtime.services, (tx) => applySchedulerPreflightChecks(runtime, tx, deliveryId, preflight, providerChecks))
+}
+
+function handleSliceWorkPool(
+	runtime: CoreRuntime,
+	preflight: ProviderBackedSchedulerPreflightClaim,
+): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> | CoreResult<Result, Exclude<Error, InvalidInputError>> {
+	const context = schedulerHandlerContextFromClaim(preflight)
+	return context.ok ? handleDeliverySlicesIncomplete(runtime, { services: runtime.services, ...context.value }) : context
 }
 
 function handleArtifactCreation(
 	runtime: CoreRuntime,
 	preflight: ProviderBackedSchedulerPreflightClaim,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>> | null> | CoreResult<Result, Exclude<Error, InvalidInputError>> | null {
-	if (preflight.state.type === 'needs-artifact-creation') return handleDeliveryNeedsArtifactCreation(runtime, preflight)
-	if (preflight.state.type === 'slices-incomplete') return handleFirstSliceNeedsArtifactCreation(runtime, preflight)
-
-	return null
+	return preflight.state.type === 'needs-artifact-creation' ? handleDeliveryNeedsArtifactCreation(runtime, preflight) : null
 }
 
 if (import.meta.vitest) {
@@ -287,7 +290,7 @@ if (import.meta.vitest) {
 			seedSlice(options.tx, 'slice-1', 'delivery-1')
 			const providers = passingProviderBackedPreflightProviders()
 			providers.sourceControl.createSliceArtifact = (input) => {
-				expect(options.transactionCalls()).toBe(1)
+				expect(options.transactionCalls()).toBe(2)
 				expect(input.sourceBranch).toBe('delivery-branch')
 				expect(input.sliceBranch).toBe('gorchestra/deliveries/d-ZGVsaXZlcnktMQ/slices/s-c2xpY2UtMQ')
 				return Promise.resolve({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } })
@@ -296,7 +299,7 @@ if (import.meta.vitest) {
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
-			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
+			expect(result).toEqual({ ok: true, value: { processedCount: 2, failures: [] } })
 			expect(options.tx.sliceArtifacts.records.get('slice-artifact-1')?.config).toEqual({
 				type: 'source-control',
 				sliceBranch: 'gorchestra/deliveries/d-ZGVsaXZlcnktMQ/slices/s-c2xpY2UtMQ',
@@ -320,7 +323,7 @@ if (import.meta.vitest) {
 
 			const result = await command({ deliveryId: 'delivery-1' }, context)
 
-			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
+			expect(result).toEqual({ ok: true, value: { processedCount: 2, failures: [] } })
 			expect(options.tx.actions.records.get('action-1')?.result).toEqual({
 				type: 'validate-slice-artifact',
 				sliceId: 'slice-1',

@@ -1,49 +1,14 @@
-import { noConfiguredValidationEvidence, noObservedArtifactValidationWrite, writeValidationAction } from './artifact-validation-recording'
 import type { DeliveryWorkState } from '../../../domain/delivery'
 import type { DeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
-
-const noConfiguredDeliveryValidation = noConfiguredValidationEvidence(
-	'delivery-branch-validation',
-	'No Delivery Artifact validation is configured.',
-)
-
-export interface DeliveryArtifactValidationClaim {
-	deliveryId: string
-}
-
-export function deliveryArtifactValidationClaim(context: Pick<DeliveryHandlerContext, 'deliveryContext'>): DeliveryArtifactValidationClaim {
-	return { deliveryId: context.deliveryContext.delivery.id }
-}
+import { noConfiguredValidationEvidence, writeValidationAction } from './artifact-validation-recording'
 
 export function handleDeliveryNeedsArtifactValidation(
 	context: DeliveryHandlerContext,
-	state: Extract<DeliveryWorkState, { type: 'needs-artifact-validation' }>,
+	_state: Extract<DeliveryWorkState, { type: 'needs-artifact-validation' }>,
 ): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
-	return recordDeliveryArtifactValidationResult(context, state, deliveryArtifactValidationClaim(context))
-}
-
-export function recordDeliveryArtifactValidationResult(
-	context: DeliveryHandlerContext,
-	state: DeliveryWorkState,
-	claim: DeliveryArtifactValidationClaim,
-): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
-	return deliveryArtifactValidationStillCurrent(context, state, claim)
-		? writePassedDeliveryArtifactValidation(context)
-		: noObservedArtifactValidationWrite()
-}
-
-function deliveryArtifactValidationStillCurrent(
-	context: DeliveryHandlerContext,
-	state: DeliveryWorkState,
-	claim: DeliveryArtifactValidationClaim,
-): boolean {
-	return state.type === 'needs-artifact-validation' && context.deliveryContext.delivery.id === claim.deliveryId
-}
-
-function writePassedDeliveryArtifactValidation(context: DeliveryHandlerContext): Promise<RunDeliveryWorkHandlerResult> {
 	return writeValidationAction(context, {
 		type: 'validate-delivery-artifact',
-		evidence: noConfiguredDeliveryValidation,
+		evidence: noConfiguredValidationEvidence('delivery-branch-validation', 'No Delivery Artifact validation is configured.'),
 	})
 }
 

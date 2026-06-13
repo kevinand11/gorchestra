@@ -1,4 +1,3 @@
-import { actionRecord, externalOperationEvidence, noObservedArtifactCreationWrite } from './artifact-creation-recording'
 import type { Action } from '../../../domain/action'
 import type { DeliveryArtifact } from '../../../domain/artifact'
 import type { DeliveryWorkState } from '../../../domain/delivery'
@@ -11,12 +10,13 @@ import { withTransaction } from '../../../utils/storage'
 import type { Result as CoreResult } from '../../../utils/types'
 import { resolvedSchedulerHandlerContext, type ProviderBackedSchedulerPreflightClaim } from '../preflight'
 import type { ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
+import { actionRecord, externalOperationEvidence } from './result'
 
 export type DeliveryArtifactCreationInput = SourceControlCreateDeliveryArtifactInput & {
 	deliveryId: string
 }
 
-export function deliveryArtifactCreationInput(
+function deliveryArtifactCreationInput(
 	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext'>,
 ): CoreResult<DeliveryArtifactCreationInput, InvariantViolationError> {
 	const deliveryBranch = sourceControlDeliveryBranchName(context.deliveryContext.delivery.id)
@@ -51,33 +51,13 @@ export async function handleDeliveryNeedsArtifactCreation(
 
 export async function recordDeliveryArtifactCreationResult(
 	context: ResolvedDeliveryHandlerContext,
-	state: DeliveryWorkState,
+	_state: DeliveryWorkState,
 	input: DeliveryArtifactCreationInput,
 	creation: SourceControlArtifactCreation,
 ): Promise<RunDeliveryWorkHandlerResult> {
-	if (!deliveryArtifactCreationStillCurrent(context, state, input)) return noObservedArtifactCreationWrite()
-
 	return creation.type === 'passed'
 		? writePassedDeliveryArtifactCreation(context, input.deliveryBranch)
 		: writeFailedDeliveryArtifactCreation(context, creation.summary)
-}
-
-function deliveryArtifactCreationStillCurrent(
-	context: ResolvedDeliveryHandlerContext,
-	state: DeliveryWorkState,
-	input: DeliveryArtifactCreationInput,
-): boolean {
-	return state.type === 'needs-artifact-creation' && deliveryArtifactInputMatches(context, input)
-}
-
-function deliveryArtifactInputMatches(context: ResolvedDeliveryHandlerContext, input: DeliveryArtifactCreationInput): boolean {
-	const delivery = context.deliveryContext.delivery
-	return [
-		context.deliveryContext.deliveryArtifact === null,
-		delivery.id === input.deliveryId,
-		delivery.target.type === 'source-control',
-		delivery.target.targetBranch === input.sourceBranch,
-	].every(Boolean)
 }
 
 async function writePassedDeliveryArtifactCreation(

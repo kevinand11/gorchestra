@@ -1,96 +1,16 @@
-import { noConfiguredValidationEvidence, noObservedArtifactValidationWrite, writeValidationAction } from './artifact-validation-recording'
-import type { DeliveryWorkState } from '../../../domain/delivery'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
-import { getSliceState } from '../../../utils/delivery-context'
-import type { Result as CoreResult } from '../../../utils/types'
 import type { DeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
-
-const noConfiguredSliceValidation = noConfiguredValidationEvidence('slice-branch-validation', 'No Slice Artifact validation is configured.')
-
-export interface SliceArtifactValidationClaim {
-	deliveryId: string
-	sliceId: string
-	sliceArtifactId: string
-}
-
-export function sliceArtifactValidationClaim(
-	context: Pick<DeliveryHandlerContext, 'deliveryContext'>,
-): CoreResult<
-	SliceArtifactValidationClaim | null,
-	RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
-> {
-	for (const slice of context.deliveryContext.slices) {
-		const state = getSliceState(context.deliveryContext, slice.slice.id)
-		if (!state.ok) return state
-		if (state.value.type === 'needs-artifact-validation')
-			return { ok: true, value: claimForSliceState(context, slice.slice, state.value) }
-	}
-
-	return { ok: true, value: null }
-}
+import { noConfiguredValidationEvidence, writeValidationAction } from './artifact-validation-recording'
 
 export function handleSliceNeedsArtifactValidation(
 	context: DeliveryHandlerContext,
 	slice: Slice,
-	state: Extract<SliceWorkState, { type: 'needs-artifact-validation' }>,
-): Promise<RunDeliveryWorkHandlerResult> {
-	return writePassedSliceArtifactValidation(context, claimForSliceState(context, slice, state))
-}
-
-export function recordSliceArtifactValidationResult(
-	context: DeliveryHandlerContext,
-	deliveryState: DeliveryWorkState,
-	claim: SliceArtifactValidationClaim,
-): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
-	const current = sliceArtifactValidationStillCurrent(context, deliveryState, claim)
-	if (!current.ok) return current
-
-	return current.value ? writePassedSliceArtifactValidation(context, claim) : noObservedArtifactValidationWrite()
-}
-
-function claimForSliceState(
-	context: Pick<DeliveryHandlerContext, 'deliveryContext'>,
-	slice: Slice,
-	state: Extract<SliceWorkState, { type: 'needs-artifact-validation' }>,
-): SliceArtifactValidationClaim {
-	return {
-		deliveryId: context.deliveryContext.delivery.id,
-		sliceId: slice.id,
-		sliceArtifactId: state.sliceArtifactId,
-	}
-}
-
-function sliceArtifactValidationStillCurrent(
-	context: DeliveryHandlerContext,
-	deliveryState: DeliveryWorkState,
-	claim: SliceArtifactValidationClaim,
-): CoreResult<boolean, RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	if (!deliveryStateMatchesClaim(context, deliveryState, claim)) return { ok: true, value: false }
-
-	const state = getSliceState(context.deliveryContext, claim.sliceId)
-	return state.ok ? { ok: true, value: sliceStateMatchesValidationClaim(state.value, claim) } : state
-}
-
-function deliveryStateMatchesClaim(
-	context: DeliveryHandlerContext,
-	deliveryState: DeliveryWorkState,
-	claim: SliceArtifactValidationClaim,
-): boolean {
-	return deliveryState.type === 'slices-incomplete' && context.deliveryContext.delivery.id === claim.deliveryId
-}
-
-function sliceStateMatchesValidationClaim(state: SliceWorkState, claim: SliceArtifactValidationClaim): boolean {
-	return state.type === 'needs-artifact-validation' && state.sliceArtifactId === claim.sliceArtifactId
-}
-
-function writePassedSliceArtifactValidation(
-	context: DeliveryHandlerContext,
-	claim: SliceArtifactValidationClaim,
+	_state: Extract<SliceWorkState, { type: 'needs-artifact-validation' }>,
 ): Promise<RunDeliveryWorkHandlerResult> {
 	return writeValidationAction(context, {
 		type: 'validate-slice-artifact',
-		sliceId: claim.sliceId,
-		evidence: noConfiguredSliceValidation,
+		sliceId: slice.id,
+		evidence: noConfiguredValidationEvidence('slice-branch-validation', 'No Slice Artifact validation is configured.'),
 	})
 }
 

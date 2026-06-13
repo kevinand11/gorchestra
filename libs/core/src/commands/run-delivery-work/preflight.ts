@@ -61,13 +61,13 @@ export function schedulerPreflightChecksPassed(checks: ValidationEvidence[]): bo
 }
 
 export async function applySchedulerPreflightChecks(
-	services: CoreServices,
+	runtime: CoreRuntime,
 	tx: CoreStorageTransaction,
 	_deliveryId: string,
 	claim: ProviderBackedSchedulerPreflightClaim,
 	checks: ValidationEvidence[],
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	return applyCurrentSchedulerPreflight(services, tx, claim.deliveryContext, claim.state, claim.preflight, checks)
+	return applyCurrentSchedulerPreflight(runtime, tx, claim.deliveryContext, claim.state, claim.preflight, checks)
 }
 
 export function schedulerHandlerContextFromClaim(
@@ -113,7 +113,7 @@ function isSchedulerPreflightState(state: DeliveryWorkState): boolean {
 }
 
 function applyCurrentSchedulerPreflight(
-	services: CoreServices,
+	runtime: CoreRuntime,
 	tx: CoreStorageTransaction,
 	deliveryContext: DeliveryContext,
 	state: DeliveryWorkState,
@@ -121,8 +121,8 @@ function applyCurrentSchedulerPreflight(
 	checks: ValidationEvidence[],
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> | CoreResult<Result, Exclude<Error, InvalidInputError>> {
 	return deliveryPreflightChecksPassed(checks)
-		? handleDeliveryWorkState(schedulerHandlerContext(services, tx, deliveryContext, preflight), state)
-		: writeFailedPreflightAction(services, tx, deliveryContext.delivery.id, checks)
+		? handleDeliveryWorkState(schedulerHandlerContext(runtime.services, tx, deliveryContext, preflight), state, runtime)
+		: writeFailedPreflightAction(runtime.services, tx, deliveryContext.delivery.id, checks)
 }
 
 function schedulerHandlerContext(

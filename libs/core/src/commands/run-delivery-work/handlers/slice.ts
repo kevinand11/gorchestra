@@ -1,34 +1,29 @@
+import type { Slice, SliceWorkState } from '../../../domain/slice'
+import type { DeliveryHandlerContext, DeliveryWorkResolution, RunDeliveryWorkHandlerResult } from '../types'
 import { noEligibleWork } from './result'
 import { handleSliceAwaitingReview } from './slice-awaiting-review'
 import { handleSliceExecutable } from './slice-executable'
 import { handleSliceNeedsArtifactValidation } from './slice-needs-artifact-validation'
 import { handleSliceNeedsDeliveryValidation } from './slice-needs-delivery-validation'
 import { handleSliceOperationFailed } from './slice-operation-failed'
-import type { Slice, SliceWorkState } from '../../../domain/slice'
-import type { DeliveryHandlerContext, DeliveryWorkResolution, RunDeliveryWorkHandlerResult } from '../types'
 
-type SliceStateHandler<TState extends SliceWorkState> = (
-	context: DeliveryHandlerContext,
-	slice: Slice,
-	state: TState,
-	resolution: DeliveryWorkResolution,
-) => Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult
+type NoWorkSliceState = Extract<
+	SliceWorkState,
+	{ type: 'complete' | 'dependency-blocked' | 'correction-blocked' | 'needs-artifact-creation' }
+>
 
-type SliceHandlerMap = {
-	[TState in SliceWorkState as TState['type']]: SliceStateHandler<TState>
-}
+type ValidationSliceState = Extract<SliceWorkState, { type: 'needs-delivery-validation' | 'needs-artifact-validation' }>
 
-const sliceHandlers: SliceHandlerMap = {
-	complete: noEligibleWork,
-	'needs-delivery-validation': (context, slice, state) => handleSliceNeedsDeliveryValidation(context, slice, state),
-	'dependency-blocked': noEligibleWork,
-	'needs-artifact-validation': (context, slice, state) => handleSliceNeedsArtifactValidation(context, slice, state),
-	'correction-blocked': noEligibleWork,
-	'awaiting-review': (_context, slice, state) => handleSliceAwaitingReview(slice, state),
-	'slice-operation-failed': () => handleSliceOperationFailed(),
-	'needs-artifact-creation': noEligibleWork,
-	executable: (context, slice, state, resolution) => handleSliceExecutable(context, slice, state, resolution),
-}
+type RemainingSliceState = Exclude<SliceWorkState, NoWorkSliceState | ValidationSliceState>
+
+const noWorkSliceStateTypes = new Set<SliceWorkState['type']>([
+	'complete',
+	'dependency-blocked',
+	'correction-blocked',
+	'needs-artifact-creation',
+])
+
+const validationSliceStateTypes = new Set<SliceWorkState['type']>(['needs-delivery-validation', 'needs-artifact-validation'])
 
 export function handleSliceWorkState(
 	context: DeliveryHandlerContext,
@@ -36,9 +31,49 @@ export function handleSliceWorkState(
 	state: SliceWorkState,
 	resolution: DeliveryWorkResolution,
 ): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
-	return sliceHandlers[state.type](context, slice, state as never, resolution)
+	if (isNoWorkSliceState(state)) return noEligibleWork()
+	if (isValidationSliceState(state)) return handleSliceValidationWorkState(context, slice, state)
+
+	return handleRemainingSliceWorkState(context, slice, state, resolution)
 }
 
-export function isActiveSliceSlotState(state: SliceWorkState): boolean {
-	return state.type === 'needs-artifact-validation' || state.type === 'needs-delivery-validation'
+function handleSliceValidationWorkState(
+	context: DeliveryHandlerContext,
+	slice: Slice,
+	state: ValidationSliceState,
+): Promise<RunDeliveryWorkHandlerResult> {
+	switch (state.type) {
+		case 'needs-delivery-validation':
+			return handleSliceNeedsDeliveryValidation(context, slice, state)
+		case 'needs-artifact-validation':
+			return handleSliceNeedsArtifactValidation(context, slice, state)
+		default:
+			return state satisfies never
+	}
+}
+
+function handleRemainingSliceWorkState(
+	context: DeliveryHandlerContext,
+	slice: Slice,
+	state: RemainingSliceState,
+	resolution: DeliveryWorkResolution,
+): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
+	switch (state.type) {
+		case 'awaiting-review':
+			return handleSliceAwaitingReview(slice, state)
+		case 'slice-operation-failed':
+			return handleSliceOperationFailed()
+		case 'executable':
+			return handleSliceExecutable(context, slice, state, resolution)
+		default:
+			return state satisfies never
+	}
+}
+
+function isNoWorkSliceState(state: SliceWorkState): state is NoWorkSliceState {
+	return noWorkSliceStateTypes.has(state.type)
+}
+
+function isValidationSliceState(state: SliceWorkState): state is ValidationSliceState {
+	return validationSliceStateTypes.has(state.type)
 }
