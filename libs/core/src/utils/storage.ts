@@ -37,6 +37,23 @@ export async function withTransaction<TValue, TError>(
 	}
 }
 
+export async function withTwoPhaseTransaction<TClaim, TOutside, TValue, TError>(
+	options: CoreServices,
+	phases: {
+		read: (tx: CoreStorageTransaction) => Promise<Result<TClaim, TError>>
+		run: (claim: TClaim) => Promise<Result<TOutside, TError>>
+		write: (tx: CoreStorageTransaction, claim: TClaim, outside: TOutside) => Promise<Result<TValue, TError>>
+	},
+): Promise<Result<TValue, TError | StorageOperationFailedError>> {
+	const claim = await withTransaction(options, phases.read)
+	if (!claim.ok) return claim
+
+	const outside = await phases.run(claim.value)
+	if (!outside.ok) return outside
+
+	return withTransaction(options, (tx) => phases.write(tx, claim.value, outside.value))
+}
+
 export async function getRequiredSingleton<TRecord>(
 	resource: CoreSingletonResource,
 	repository: SingletonRepository<TRecord>,

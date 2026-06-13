@@ -17,7 +17,7 @@ import type {
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
-import { deliveryWorkStateMismatch, prepareAuthorizedAction, putRecord, withTransaction } from '../utils/command-storage'
+import { deliveryWorkStateMismatch, prepareAuthorizedAction, putRecord } from '../utils/command-storage'
 import { buildDeliveryContext, type DeliveryContext } from '../utils/delivery-context'
 import { getDeliveryState } from '../utils/delivery-context'
 import {
@@ -26,6 +26,7 @@ import {
 	runProviderBackedDeliveryPreflightChecks,
 	type ProviderBackedDeliveryPreflightPlan,
 } from '../utils/delivery-preflight'
+import { withTwoPhaseTransaction } from '../utils/storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const retryDeliveryPreflightInputPipe = v.object({ deliveryId: idPipe })
@@ -66,22 +67,19 @@ async function handleRetryDeliveryPreflight(
 	const authorizedAction = prepareAuthorizedAction(runtime.services, context)
 	if (!authorizedAction.ok) return authorizedAction
 
-	const plan = await withTransaction(runtime.services, (tx) => readRetryPreflightPlan(tx, input))
-	if (!plan.ok) return plan
-
-	const checks = await runProviderBackedDeliveryPreflightChecks(runtime, plan.value.plan)
-	if (!checks.ok) return checks
-
-	return withTransaction(runtime.services, (tx) =>
-		writeDeliveryPreflightRetry(
-			tx,
-			input.deliveryId,
-			plan.value.plan,
-			checks.value,
-			authorizedAction.value.stamp,
-			authorizedAction.value.actionId,
-		),
-	)
+	return withTwoPhaseTransaction(runtime.services, {
+		read: (tx) => readRetryPreflightPlan(tx, input),
+		run: (claim) => runProviderBackedDeliveryPreflightChecks(runtime, claim.plan),
+		write: (tx, claim, checks) =>
+			writeDeliveryPreflightRetry(
+				tx,
+				input.deliveryId,
+				claim.plan,
+				checks,
+				authorizedAction.value.stamp,
+				authorizedAction.value.actionId,
+			),
+	})
 }
 
 async function readRetryPreflightPlan(
