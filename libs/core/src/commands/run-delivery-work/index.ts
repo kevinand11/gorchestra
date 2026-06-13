@@ -80,7 +80,7 @@ async function schedulerPreflightPlanForState(
 	deliveryContext: StoredDeliveryContext,
 	state: DeliveryWorkState,
 ): Promise<CoreResult<SchedulerPreflightRead, Exclude<Error, InvalidInputError>>> {
-	if (isSchedulerPreflightState(state)) return readProviderBackedDeliveryPreflightPlan(tx, deliveryContext.delivery)
+	if (isSchedulerPreflightState(state)) return readProviderBackedDeliveryPreflightPlan(tx, deliveryContext)
 
 	const handled = await handleDeliveryWorkState({ services, tx, deliveryContext }, state)
 	return handled.ok ? { ok: true, value: { type: 'result', result: handled.value } } : handled
@@ -144,7 +144,7 @@ async function freshSchedulerPreflightReadiness(
 	state: DeliveryWorkState,
 	plan: Exclude<SchedulerPreflightRead, { type: 'result' }>,
 ): Promise<CoreResult<SchedulerPreflightWriteReadiness, Exclude<Error, InvalidInputError>>> {
-	const freshness = await providerBackedDeliveryPreflightInputsStillCurrent(tx, deliveryContext.delivery, plan)
+	const freshness = await providerBackedDeliveryPreflightInputsStillCurrent(tx, deliveryContext, plan)
 	if (!freshness.ok) return freshness
 
 	return freshness.value ? { ok: true, value: { type: 'ready', deliveryContext, state } } : schedulerPreflightConflict()
@@ -174,7 +174,7 @@ function schedulerHandlerContext(
 	plan: Exclude<SchedulerPreflightRead, { type: 'result' }>,
 ) {
 	const resolution = providerBackedDeliveryWorkResolution(plan)
-	return resolution === undefined ? { services, tx, deliveryContext } : { services, tx, deliveryContext, preflight: resolution }
+	return resolution === undefined ? { services, tx, deliveryContext } : { services, tx, deliveryContext, workResolution: resolution }
 }
 
 function deliveryClaimConflict(): CoreResult<Result, never> {

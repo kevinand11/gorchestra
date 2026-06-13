@@ -39,7 +39,7 @@ function sliceExecutionAgentRun(
 		ok: true,
 		value: executionAgentRun(
 			agentRunId.value,
-			resolution.modelId,
+			resolution.executionModel.id,
 			context.deliveryContext.delivery.id,
 			slice.id,
 			executionModeForState(state),
@@ -121,8 +121,27 @@ if (import.meta.vitest) {
 	})
 
 	const resolution: DeliveryWorkResolution = {
-		modelId: 'model-1',
 		workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
+		executionModel: {
+			id: 'model-1',
+			providerId: 'model-provider-1',
+			name: 'Model',
+			providerModelId: 'provider-model',
+			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
+			updated: null,
+			archivePeriods: [],
+		},
+		executionModelProvider: {
+			id: 'model-provider-1',
+			name: 'Provider',
+			protocol: 'anthropic-messages',
+			baseUrl: 'https://api.anthropic.com',
+			auth: null,
+			headers: [],
+			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
+			updated: null,
+			archivePeriods: [],
+		},
 	}
 
 	async function executableHandlerContext() {

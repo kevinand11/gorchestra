@@ -8,7 +8,8 @@ import { handleDeliverySlicesIncomplete } from './delivery-slices-incomplete'
 import { handleDeliveryValidationFailed } from './delivery-validation-failed'
 import { noEligibleWork } from './result'
 import type { DeliveryWorkState } from '../../../domain/delivery'
-import type { DeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
+import type { InvariantViolationError } from '../../../errors'
+import type { DeliveryHandlerContext, ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
 
 type DeliveryStateHandler<TState extends DeliveryWorkState> = (
 	context: DeliveryHandlerContext,
@@ -25,7 +26,7 @@ const deliveryHandlers: DeliveryHandlerMap = {
 	'dependency-blocked': noEligibleWork,
 	'preflight-failed': noEligibleWork,
 	'needs-artifact-creation': () => handleDeliveryNeedsArtifactCreation(),
-	'slices-incomplete': (context) => handleDeliverySlicesIncomplete(context),
+	'slices-incomplete': (context) => handleDeliverySlicesIncomplete(context as ResolvedDeliveryHandlerContext),
 	'delivery-operation-failed': () => handleDeliveryOperationFailed(),
 	'delivery-validation-failed': () => handleDeliveryValidationFailed(),
 	'delivery-review-failed': () => handleDeliveryReviewFailed(),
@@ -39,5 +40,28 @@ export function handleDeliveryWorkState(
 	context: DeliveryHandlerContext,
 	state: DeliveryWorkState,
 ): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
-	return deliveryHandlers[state.type](context, state as never)
+	const resolved = resolvedContextForState(context, state)
+	if (!resolved.ok) return resolved
+
+	return deliveryHandlers[state.type](resolved.value, state as never)
+}
+
+type DeliveryHandlerContextResolution =
+	| { ok: true; value: DeliveryHandlerContext | ResolvedDeliveryHandlerContext }
+	| { ok: false; error: InvariantViolationError }
+
+function resolvedContextForState(context: DeliveryHandlerContext, state: DeliveryWorkState): DeliveryHandlerContextResolution {
+	return requiresDeliveryWorkResolution(state) && !('workResolution' in context)
+		? {
+				ok: false,
+				error: {
+					type: 'invariant-violation',
+					message: 'Delivery Work Resolution is required for scheduler-actionable Delivery work.',
+				},
+			}
+		: { ok: true, value: context }
+}
+
+function requiresDeliveryWorkResolution(state: DeliveryWorkState): boolean {
+	return !['closed', 'unqueued', 'dependency-blocked', 'preflight-failed', 'ready-to-ship'].includes(state.type)
 }

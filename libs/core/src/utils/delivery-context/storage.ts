@@ -329,7 +329,7 @@ function deliveryContext(
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { getDeliveryState, getSliceState } = await import('./work-state')
-	const { upgradeToRuntimeDeliveryWorkContext } = await import('./runtime')
+	const { resolveDeliveryWork } = await import('./work-resolution')
 	const { createTestCoreServices, localStamp, seedDelivery, seedProject, seedSecret, seedSelectableModel, seedSlice } =
 		await import('../test-helpers')
 
@@ -485,17 +485,17 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('returns failed preflight checks when runtime context needs missing Portfolio Config', async () => {
+		it('returns failed preflight checks when Delivery work needs missing Portfolio Config', async () => {
 			const options = storedContextFixture()
 			const stored = await buildStoredDeliveryContext(options.tx, 'delivery-1')
 			if (!stored.ok) throw new Error('Expected stored context.')
 
-			const result = await upgradeToRuntimeDeliveryWorkContext(options, options.tx, stored.value)
+			const result = await resolveDeliveryWork(options.tx, stored.value)
 
 			expect(result).toMatchObject({
 				ok: true,
 				value: {
-					type: 'failed-preflight',
+					type: 'failed',
 					checks: [
 						{
 							type: 'validation',
@@ -508,25 +508,23 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('resolves runtime Delivery Work Context provider access plaintext', async () => {
+		it('resolves Delivery Work Resolution without provider access plaintext', async () => {
 			const options = storedContextFixture()
 			seedSelectableModel(options.tx, 'model-1')
 			seedPortfolioConfig(options)
-			options.secrets.resolveSecretValues = () => Promise.resolve({ 'secret-1': 'github-token' })
 			const stored = await buildStoredDeliveryContext(options.tx, 'delivery-1')
 			if (!stored.ok) throw new Error('Expected stored context.')
 
-			const result = await upgradeToRuntimeDeliveryWorkContext(options, options.tx, stored.value)
+			const result = await resolveDeliveryWork(options.tx, stored.value)
 
 			expect(result).toMatchObject({
 				ok: true,
 				value: {
-					type: 'runtime-context',
-					context: {
+					type: 'passed',
+					resolution: {
 						workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30000 },
 						executionModel: { id: 'model-1' },
-						sourceControlAccessToken: { type: 'access-token', plaintext: 'github-token' },
-						modelProviderAccess: { auth: null, headers: [] },
+						executionModelProvider: { id: 'model-1-provider' },
 					},
 				},
 			})

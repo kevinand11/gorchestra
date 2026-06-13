@@ -1,10 +1,4 @@
 export { buildStoredDeliveryContext, type DeliveryContextError } from './storage'
-export { upgradeToRuntimeDeliveryWorkContext, type RuntimeDeliveryWorkContextError } from './runtime'
+export { resolveDeliveryWork, type DeliveryWorkResolution } from './work-resolution'
 export { getDeliveryState, getSliceState } from './work-state'
-export type {
-	DeliveryDependencySummary,
-	ModelProviderResolvedAccess,
-	RuntimeDeliveryWorkContext,
-	RuntimeDeliveryWorkContextUpgrade,
-	StoredDeliveryContext,
-} from './types'
+export type { DeliveryDependencySummary, StoredDeliveryContext } from './types'

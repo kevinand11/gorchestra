@@ -1,39 +1,29 @@
-import { resolveDeliveryWork } from './resolution'
 import { noEligibleWork, sliceCapacityFull } from './result'
 import { handleSliceWorkState, isActiveSliceSlotState } from './slice'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
 import type { InvalidInputError } from '../../../errors'
-import { getSliceState } from '../../../utils/delivery-context'
+import { getSliceState, resolveDeliveryWork } from '../../../utils/delivery-context'
 import type { Result as CoreResult } from '../../../utils/types'
-import type { DeliveryHandlerContext, DeliveryWorkResolution, Error, RunDeliveryWorkHandlerResult } from '../types'
+import type { DeliveryWorkResolution, Error, ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
 
 interface SliceStateCandidate {
 	slice: Slice
 	state: SliceWorkState
 }
 
-export async function handleDeliverySlicesIncomplete(context: DeliveryHandlerContext): Promise<RunDeliveryWorkHandlerResult> {
-	const resolution = await deliveryWorkResolution(context)
-	if (!resolution.ok) return resolution
-
+export async function handleDeliverySlicesIncomplete(context: ResolvedDeliveryHandlerContext): Promise<RunDeliveryWorkHandlerResult> {
 	const candidates = sliceStateCandidates(context)
 	if (!candidates.ok) return candidates
 
-	const capacityResult = capacityCheck(candidates.value, resolution.value)
+	const capacityResult = capacityCheck(candidates.value, context.workResolution)
 	if (capacityResult !== null) return capacityResult
 
-	return handleFirstExecutableSlice(context, candidates.value, resolution.value)
+	return handleFirstExecutableSlice(context, candidates.value, context.workResolution)
 }
 
-function deliveryWorkResolution(
-	context: DeliveryHandlerContext,
-): Promise<CoreResult<DeliveryWorkResolution, Exclude<Error, InvalidInputError>>> | CoreResult<DeliveryWorkResolution, never> {
-	return context.preflight === undefined
-		? resolveDeliveryWork(context.tx, context.deliveryContext.delivery)
-		: { ok: true, value: context.preflight }
-}
-
-function sliceStateCandidates(context: DeliveryHandlerContext): CoreResult<SliceStateCandidate[], Exclude<Error, InvalidInputError>> {
+function sliceStateCandidates(
+	context: ResolvedDeliveryHandlerContext,
+): CoreResult<SliceStateCandidate[], Exclude<Error, InvalidInputError>> {
 	const candidates: SliceStateCandidate[] = []
 	for (const slice of context.deliveryContext.slices) {
 		const stateResult = getSliceState(context.deliveryContext, slice.slice.id)
@@ -53,7 +43,7 @@ function capacityCheck(candidates: SliceStateCandidate[], resolution: DeliveryWo
 }
 
 function handleFirstExecutableSlice(
-	context: DeliveryHandlerContext,
+	context: ResolvedDeliveryHandlerContext,
 	candidates: SliceStateCandidate[],
 	resolution: DeliveryWorkResolution,
 ): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
@@ -118,37 +108,20 @@ if (import.meta.vitest) {
 				value: { processedCount: 0, failures: [] },
 			})
 		})
-
-		it('returns invariant violation when called without passing Delivery preflight and Portfolio Config is missing', async () => {
-			const options = executableDeliveryFixture({ portfolioConfig: false })
-			seedSlice(options.tx, 'slice-1', 'delivery-1')
-			seedSliceArtifact(options.tx, 'slice-1')
-
-			expect(await handleDeliverySlicesIncomplete(await handlerContext(options))).toEqual(failedResolutionResult())
-		})
-
-		it('returns invariant violation when called without passing Delivery preflight and Delivery Work Config is unresolved', async () => {
-			const options = executableDeliveryFixture({ workConfig: false })
-			seedSlice(options.tx, 'slice-1', 'delivery-1')
-			seedSliceArtifact(options.tx, 'slice-1')
-
-			expect(await handleDeliverySlicesIncomplete(await handlerContext(options))).toEqual(failedResolutionResult())
-		})
 	})
 
-	async function handlerContext(options: ReturnType<typeof executableDeliveryFixture>): Promise<DeliveryHandlerContext> {
+	async function handlerContext(options: ReturnType<typeof executableDeliveryFixture>): Promise<ResolvedDeliveryHandlerContext> {
 		const deliveryContext = await buildStoredDeliveryContext(options.tx, 'delivery-1')
 		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
+		const workResolution = await resolveDeliveryWork(options.tx, deliveryContext.value)
+		if (!workResolution.ok || workResolution.value.type !== 'passed') throw new Error('Expected Delivery Work Resolution.')
 
-		return { services: options, tx: options.tx, deliveryContext: deliveryContext.value }
-	}
-
-	function errorResult(error: unknown) {
-		return { ok: false, error }
-	}
-
-	function failedResolutionResult() {
-		return errorResult({ type: 'invariant-violation', message: 'Delivery work resolution requires passing Delivery preflight.' })
+		return {
+			services: options,
+			tx: options.tx,
+			deliveryContext: deliveryContext.value,
+			workResolution: workResolution.value.resolution,
+		}
 	}
 
 	function executableDeliveryFixture(options: { portfolioConfig?: boolean; workConfig?: boolean } = {}) {

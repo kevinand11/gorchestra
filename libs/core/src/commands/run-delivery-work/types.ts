@@ -1,8 +1,5 @@
 import type { Id } from '../../domain/commons'
-import type { DeliveryWorkConfig } from '../../domain/config'
 import type {
-	ArchivedModelProviderReferenceError,
-	ArchivedModelReferenceError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
@@ -12,7 +9,7 @@ import type {
 	StorageOperationFailedError,
 } from '../../errors'
 import type { CoreServices, CoreStorageTransaction } from '../../services'
-import type { StoredDeliveryContext } from '../../utils/delivery-context'
+import type { DeliveryWorkResolution, StoredDeliveryContext } from '../../utils/delivery-context'
 import type { Result as CoreResult } from '../../utils/types'
 
 export interface Result {
@@ -45,8 +42,6 @@ export type Error =
 	| SingletonNotFoundError
 	| StorageOperationFailedError
 	| InvariantViolationError
-	| ArchivedModelReferenceError
-	| ArchivedModelProviderReferenceError
 	| NotImplementedError
 
 export interface RunDeliveryWorkContext {
@@ -56,13 +51,13 @@ export interface RunDeliveryWorkContext {
 
 export interface DeliveryHandlerContext extends RunDeliveryWorkContext {
 	deliveryContext: StoredDeliveryContext
-	preflight?: DeliveryWorkResolution
 }
 
-export interface DeliveryWorkResolution {
-	modelId: Id
-	workConfig: DeliveryWorkConfig
+export interface ResolvedDeliveryHandlerContext extends DeliveryHandlerContext {
+	workResolution: DeliveryWorkResolution
 }
+
+export type { DeliveryWorkResolution }
 
 export type RunDeliveryWorkHandlerResult = CoreResult<Result, Exclude<Error, InvalidInputError>>
 
@@ -72,5 +67,3 @@ export type RunDeliveryWorkStorageError =
 	| SingletonNotFoundError
 	| StorageOperationFailedError
 	| InvariantViolationError
-
-export type RunDeliveryWorkResolutionError = RunDeliveryWorkStorageError | ArchivedModelReferenceError | ArchivedModelProviderReferenceError

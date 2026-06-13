@@ -18,7 +18,7 @@ import type { CoreRuntime } from '../runtime'
 import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { deliveryWorkStateMismatch, prepareAuthorizedAction, putRecord, withTransaction } from '../utils/command-storage'
-import { buildStoredDeliveryContext } from '../utils/delivery-context'
+import { buildStoredDeliveryContext, type StoredDeliveryContext } from '../utils/delivery-context'
 import { getDeliveryState } from '../utils/delivery-context'
 import {
 	providerBackedDeliveryPreflightInputsStillCurrent,
@@ -87,12 +87,14 @@ async function handleRetryDeliveryPreflight(
 async function readRetryPreflightPlan(
 	tx: CoreStorageTransaction,
 	input: Input,
-): Promise<CoreResult<{ delivery: Delivery; plan: ProviderBackedDeliveryPreflightPlan }, Exclude<Error, InvalidInputError>>> {
-	const deliveryResult = await requirePreflightFailedDelivery(tx, input.deliveryId)
-	if (!deliveryResult.ok) return deliveryResult
+): Promise<
+	CoreResult<{ deliveryContext: StoredDeliveryContext; plan: ProviderBackedDeliveryPreflightPlan }, Exclude<Error, InvalidInputError>>
+> {
+	const deliveryContext = await requirePreflightFailedDelivery(tx, input.deliveryId)
+	if (!deliveryContext.ok) return deliveryContext
 
-	const plan = await readProviderBackedDeliveryPreflightPlan(tx, deliveryResult.value)
-	return plan.ok ? { ok: true, value: { delivery: deliveryResult.value, plan: plan.value } } : plan
+	const plan = await readProviderBackedDeliveryPreflightPlan(tx, deliveryContext.value)
+	return plan.ok ? { ok: true, value: { deliveryContext: deliveryContext.value, plan: plan.value } } : plan
 }
 
 async function writeDeliveryPreflightRetry(
@@ -103,14 +105,18 @@ async function writeDeliveryPreflightRetry(
 	stamp: AuditStamp,
 	actionId: Id,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const deliveryResult = await requirePreflightFailedDelivery(tx, deliveryId)
-	if (!deliveryResult.ok) return deliveryResult
+	const deliveryContext = await requirePreflightFailedDelivery(tx, deliveryId)
+	if (!deliveryContext.ok) return deliveryContext
 
-	const freshness = await providerBackedDeliveryPreflightInputsStillCurrent(tx, deliveryResult.value, plan)
+	const freshness = await providerBackedDeliveryPreflightInputsStillCurrent(tx, deliveryContext.value, plan)
 	if (!freshness.ok) return freshness
 	if (!freshness.value) return deliveryPreflightClaimConflict(deliveryId)
 
-	return writePreflightAction(tx, deliveryResult.value, preflightAction(deliveryResult.value.id, checks, stamp, actionId))
+	return writePreflightAction(
+		tx,
+		deliveryContext.value.delivery,
+		preflightAction(deliveryContext.value.delivery.id, checks, stamp, actionId),
+	)
 }
 
 function deliveryPreflightClaimConflict(deliveryId: Id): CoreResult<never, DeliveryPreflightClaimConflictError> {
@@ -120,7 +126,7 @@ function deliveryPreflightClaimConflict(deliveryId: Id): CoreResult<never, Deliv
 async function requirePreflightFailedDelivery(
 	tx: CoreStorageTransaction,
 	deliveryId: Id,
-): Promise<CoreResult<Delivery, Exclude<Error, InvalidInputError>>> {
+): Promise<CoreResult<StoredDeliveryContext, Exclude<Error, InvalidInputError>>> {
 	const deliveryContext = await buildStoredDeliveryContext(tx, deliveryId)
 	if (!deliveryContext.ok) return deliveryContext
 
@@ -128,7 +134,7 @@ async function requirePreflightFailedDelivery(
 	if (!deliveryState.ok) return deliveryState
 
 	return deliveryState.value.type === 'preflight-failed'
-		? { ok: true, value: deliveryContext.value.delivery }
+		? { ok: true, value: deliveryContext.value }
 		: deliveryWorkStateMismatch(deliveryId, ['preflight-failed'], deliveryState.value)
 }
 
