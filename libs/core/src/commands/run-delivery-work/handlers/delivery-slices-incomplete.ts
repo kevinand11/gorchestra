@@ -1,6 +1,7 @@
 import { noEligibleWork } from './result'
 import { handleSliceWorkState } from './slice'
 import { handleSliceNeedsArtifactCreation } from './slice-needs-artifact-creation'
+import { handleSliceNeedsReviewSurface } from './slice-needs-review-surface'
 import type { Id } from '../../../domain/commons'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
 import type { InvalidInputError } from '../../../errors'
@@ -28,16 +29,17 @@ interface SliceWorkSelection {
 
 type ActionableSliceWorkState = Extract<
 	SliceWorkState,
-	{ type: 'needs-delivery-validation' | 'needs-artifact-validation' | 'needs-artifact-creation' | 'executable' }
+	{ type: 'needs-delivery-validation' | 'needs-artifact-validation' | 'needs-review-surface' | 'needs-artifact-creation' | 'executable' }
 >
 
-type SliceActionPriority = 0 | 1 | 2 | 3
+type SliceActionPriority = 0 | 1 | 2 | 3 | 4
 
 const sliceActionPriorities = {
 	'needs-delivery-validation': 0,
 	'needs-artifact-validation': 1,
-	'needs-artifact-creation': 2,
-	executable: 3,
+	'needs-review-surface': 2,
+	'needs-artifact-creation': 3,
+	executable: 4,
 } satisfies Record<ActionableSliceWorkState['type'], SliceActionPriority>
 
 interface SliceWorkerPool {
@@ -186,6 +188,7 @@ const sliceOperationKeyDetails: {
 } = {
 	'needs-artifact-validation': (state) => state.sliceArtifactId,
 	'needs-delivery-validation': (state) => state.actionId,
+	'needs-review-surface': (state) => state.sliceArtifactId,
 	'needs-artifact-creation': () => 'current',
 	executable: executableKeyDetail,
 }
@@ -197,6 +200,9 @@ function executableKeyDetail(state: Extract<ActionableSliceWorkState, { type: 'e
 async function processSliceSelection(pool: SliceWorkerPool, selection: SliceWorkSelection): Promise<RunDeliveryWorkHandlerResult> {
 	if (selection.state.type === 'needs-artifact-creation') {
 		return handleSliceNeedsArtifactCreation(pool.runtime, selectionContext(pool, selection), selection.slice, selection.state)
+	}
+	if (selection.state.type === 'needs-review-surface') {
+		return handleSliceNeedsReviewSurface(pool.runtime, selectionContext(pool, selection), selection.slice, selection.state)
 	}
 
 	return withTransaction(pool.runtime.services, async (tx) =>

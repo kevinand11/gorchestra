@@ -1,19 +1,312 @@
-import { notImplemented } from './result'
-import type { RunDeliveryWorkHandlerResult } from '../types'
+import type { Action } from '../../../domain/action'
+import type { ReviewSurface } from '../../../domain/review-surface'
+import type { InvariantViolationError } from '../../../errors'
+import type { SourceControlCreateReviewSurfaceInput, SourceControlReviewSurfaceCreation } from '../../../providers/source-control'
+import type { CoreRuntime } from '../../../runtime'
+import { nextId, putRecord, runtimeRecord } from '../../../utils/command-storage'
+import { withTransaction } from '../../../utils/storage'
+import type { Result as CoreResult } from '../../../utils/types'
+import { resolvedSchedulerHandlerContext, type ProviderBackedSchedulerPreflightClaim } from '../preflight'
+import type { ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
+import { actionRecord, externalOperationEvidence } from './result'
 
-export function handleDeliveryNeedsReviewSurface(): RunDeliveryWorkHandlerResult {
-	return notImplemented('runDeliveryWork.delivery.needs-review-surface')
+type DeliveryReviewSurfaceState = Extract<ProviderBackedSchedulerPreflightClaim['state'], { type: 'needs-review-surface' }>
+
+type DeliveryReviewSurfaceInput = SourceControlCreateReviewSurfaceInput & {
+	deliveryId: string
+	deliveryArtifactId: string
+}
+
+type DeliveryReviewSurfaceClaim = Pick<ProviderBackedSchedulerPreflightClaim, 'deliveryContext'> & { state: DeliveryReviewSurfaceState }
+
+export async function handleDeliveryNeedsReviewSurface(
+	runtime: CoreRuntime,
+	preflight: ProviderBackedSchedulerPreflightClaim,
+): Promise<RunDeliveryWorkHandlerResult> {
+	if (preflight.state.type !== 'needs-review-surface') return deliveryReviewSurfaceStateInvariant()
+
+	const state = preflight.state
+	const input = deliveryReviewSurfaceInput({ deliveryContext: preflight.deliveryContext, state })
+	if (!input.ok) return input
+
+	const creation = await runtime.providers.sourceControl.createReviewSurface(input.value)
+	if (!creation.ok) return creation
+
+	return withTransaction(runtime.services, async (tx) => {
+		const context = resolvedSchedulerHandlerContext(runtime.services, tx, preflight.deliveryContext, preflight)
+		return context.ok ? recordDeliveryReviewSurfaceCreationResult(context.value, state, input.value, creation.value) : context
+	})
+}
+
+function deliveryReviewSurfaceStateInvariant(): RunDeliveryWorkHandlerResult {
+	return {
+		ok: false,
+		error: { type: 'invariant-violation', message: 'Delivery Review Surface creation requires needs-review-surface state.' },
+	}
+}
+
+function deliveryReviewSurfaceInput(claim: DeliveryReviewSurfaceClaim): CoreResult<DeliveryReviewSurfaceInput, InvariantViolationError> {
+	const deliveryArtifact = claim.deliveryContext.deliveryArtifact
+	if (deliveryArtifact === null || deliveryArtifact.id !== claim.state.deliveryArtifactId) {
+		return {
+			ok: false,
+			error: { type: 'invariant-violation', message: 'Delivery Review Surface creation requires the claimed Delivery Artifact.' },
+		}
+	}
+
+	return {
+		ok: true,
+		value: {
+			deliveryId: claim.deliveryContext.delivery.id,
+			deliveryArtifactId: deliveryArtifact.id,
+			repository: claim.deliveryContext.repository,
+			sourceBranch: deliveryArtifact.config.deliveryBranch,
+			targetBranch: claim.deliveryContext.delivery.target.targetBranch,
+			title: claim.deliveryContext.delivery.title,
+		},
+	}
+}
+
+async function recordDeliveryReviewSurfaceCreationResult(
+	context: ResolvedDeliveryHandlerContext,
+	_state: DeliveryReviewSurfaceState,
+	input: DeliveryReviewSurfaceInput,
+	creation: SourceControlReviewSurfaceCreation,
+): Promise<RunDeliveryWorkHandlerResult> {
+	switch (creation.type) {
+		case 'integrated':
+			return writeIntegratedDeliveryArtifactObservation(context, creation.summary)
+		case 'review-surface':
+			return writeDeliveryReviewSurface(context, input, creation)
+		case 'failed':
+			return writeFailedDeliveryReviewSurfaceCreation(context, creation.summary)
+		default: {
+			const exhaustive = creation satisfies never
+			return exhaustive
+		}
+	}
+}
+
+async function writeIntegratedDeliveryArtifactObservation(
+	context: ResolvedDeliveryHandlerContext,
+	summary: string,
+): Promise<RunDeliveryWorkHandlerResult> {
+	const action = actionRecord(context, {
+		type: 'observe-delivery-artifact-integration',
+		evidence: externalOperationEvidence(summary, 'observe-artifact-integration', true),
+	})
+	if (!action.ok) return action
+
+	const put = await putRecord('action', context.tx.actions, action.value.id, action.value)
+	return put.ok ? { ok: true, value: { processedCount: 1, failures: [] } } : put
+}
+
+async function writeDeliveryReviewSurface(
+	context: ResolvedDeliveryHandlerContext,
+	input: DeliveryReviewSurfaceInput,
+	creation: Extract<SourceControlReviewSurfaceCreation, { type: 'review-surface' }>,
+): Promise<RunDeliveryWorkHandlerResult> {
+	const records = deliveryReviewSurfaceRecords(context, input, creation.pullRequestNumber)
+	return records.ok ? putDeliveryReviewSurfaceRecords(context, records.value) : records
+}
+
+function deliveryReviewSurfaceRecords(
+	context: ResolvedDeliveryHandlerContext,
+	input: DeliveryReviewSurfaceInput,
+	pullRequestNumber: number,
+): CoreResult<
+	{ reviewSurface: ReviewSurface; action: Action },
+	RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
+> {
+	const reviewSurfaceId = nextId(context.services, 'review-surface')
+	if (!reviewSurfaceId.ok) return reviewSurfaceId
+
+	const actionId = nextId(context.services, 'action')
+	if (!actionId.ok) return actionId
+
+	const performed = runtimeRecord(context.services)
+	if (!performed.ok) return performed
+
+	return {
+		ok: true,
+		value: {
+			reviewSurface: {
+				id: reviewSurfaceId.value,
+				scope: { type: 'delivery', deliveryId: input.deliveryId, deliveryArtifactId: input.deliveryArtifactId },
+				config: {
+					provider: context.deliveryContext.repository.config.provider,
+					pullRequestNumber,
+					repositoryId: context.deliveryContext.repository.id,
+					sourceBranch: input.sourceBranch,
+					targetBranch: input.targetBranch,
+				},
+				title: input.title,
+				closed: null,
+				created: performed.value,
+			},
+			action: {
+				id: actionId.value,
+				deliveryId: context.deliveryContext.delivery.id,
+				performed: performed.value,
+				authorized: null,
+				result: { type: 'create-delivery-review-surface', reviewSurfaceId: reviewSurfaceId.value },
+			},
+		},
+	}
+}
+
+async function putDeliveryReviewSurfaceRecords(
+	context: ResolvedDeliveryHandlerContext,
+	records: { reviewSurface: ReviewSurface; action: Action },
+): Promise<RunDeliveryWorkHandlerResult> {
+	const surfacePut = await putRecord('review-surface', context.tx.reviewSurfaces, records.reviewSurface.id, records.reviewSurface)
+	if (!surfacePut.ok) return surfacePut
+
+	const actionPut = await putRecord('action', context.tx.actions, records.action.id, records.action)
+	return actionPut.ok ? { ok: true, value: { processedCount: 1, failures: [] } } : actionPut
+}
+
+async function writeFailedDeliveryReviewSurfaceCreation(
+	context: ResolvedDeliveryHandlerContext,
+	summary: string,
+): Promise<RunDeliveryWorkHandlerResult> {
+	const action = actionRecord(context, {
+		type: 'record-delivery-external-operation-failure',
+		evidence: externalOperationEvidence(summary, 'create-review-surface'),
+	})
+	if (!action.ok) return action
+
+	const put = await putRecord('action', context.tx.actions, action.value.id, action.value)
+	if (!put.ok) return put
+
+	return {
+		ok: true,
+		value: {
+			processedCount: 1,
+			failures: [{ scope: { type: 'delivery' }, operation: 'review-surface', summary }],
+		},
+	}
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
+	const { buildDeliveryContext } = await import('../../../utils/delivery-context')
+	const { createTestCoreServices, localStamp, seedDelivery, seedSelectableModel, stamp } = await import('../../../utils/test-helpers')
 
-	describe('handleDeliveryNeedsReviewSurface', () => {
-		it('is a Delivery Review Surface creation stub', () => {
-			expect(handleDeliveryNeedsReviewSurface()).toEqual({
-				ok: false,
-				error: { type: 'not-implemented', operation: 'runDeliveryWork.delivery.needs-review-surface' },
+	describe('Delivery Review Surface creation handler', () => {
+		it('stores a Delivery Review Surface and Action after provider creation', async () => {
+			const context = await handlerContext()
+			const input = deliveryReviewSurfaceInput({ deliveryContext: context.deliveryContext, state: needsReviewSurfaceState() })
+			if (!input.ok) throw new Error('Expected input.')
+
+			const result = await recordDeliveryReviewSurfaceCreationResult(context, needsReviewSurfaceState(), input.value, {
+				type: 'review-surface',
+				mode: 'created',
+				pullRequestNumber: 12,
+				summary: 'created',
+			})
+
+			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
+			expect(context.tx.reviewSurfaces.records.get('review-surface-1')).toEqual({
+				id: 'review-surface-1',
+				scope: { type: 'delivery', deliveryId: 'delivery-1', deliveryArtifactId: 'delivery-artifact-1' },
+				config: {
+					provider: 'github',
+					pullRequestNumber: 12,
+					repositoryId: 'repository-1',
+					sourceBranch: 'delivery-branch',
+					targetBranch: 'main',
+				},
+				title: 'Delivery',
+				closed: null,
+				created: { at: '2026-06-10T12:00:00.000Z' },
+			})
+			expect(context.tx.actions.records.get('action-1')).toEqual({
+				id: 'action-1',
+				deliveryId: 'delivery-1',
+				performed: { at: '2026-06-10T12:00:00.000Z' },
+				authorized: null,
+				result: { type: 'create-delivery-review-surface', reviewSurfaceId: 'review-surface-1' },
+			})
+		})
+
+		it('records observed Delivery Artifact integration after provider integration', async () => {
+			const context = await handlerContext()
+			const input = deliveryReviewSurfaceInput({ deliveryContext: context.deliveryContext, state: needsReviewSurfaceState() })
+			if (!input.ok) throw new Error('Expected input.')
+
+			const result = await recordDeliveryReviewSurfaceCreationResult(context, needsReviewSurfaceState(), input.value, {
+				type: 'integrated',
+				summary: 'Already integrated.',
+			})
+
+			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
+			expect(context.tx.actions.records.get('action-1')?.result).toEqual({
+				type: 'observe-delivery-artifact-integration',
+				evidence: {
+					type: 'external-operation',
+					operation: { type: 'observe-artifact-integration' },
+					passed: true,
+					summary: 'Already integrated.',
+				},
+			})
+		})
+
+		it('records failure Action and result after provider failure', async () => {
+			const context = await handlerContext()
+			const input = deliveryReviewSurfaceInput({ deliveryContext: context.deliveryContext, state: needsReviewSurfaceState() })
+			if (!input.ok) throw new Error('Expected input.')
+
+			const result = await recordDeliveryReviewSurfaceCreationResult(context, needsReviewSurfaceState(), input.value, {
+				type: 'failed',
+				reason: { type: 'provider-unavailable' },
+				summary: 'Failed.',
+			})
+
+			expect(result).toEqual({
+				ok: true,
+				value: {
+					processedCount: 1,
+					failures: [{ scope: { type: 'delivery' }, operation: 'review-surface', summary: 'Failed.' }],
+				},
+			})
+			expect(context.tx.actions.records.get('action-1')?.result).toEqual({
+				type: 'record-delivery-external-operation-failure',
+				evidence: {
+					type: 'external-operation',
+					operation: { type: 'create-review-surface' },
+					passed: false,
+					summary: 'Failed.',
+				},
 			})
 		})
 	})
+
+	function needsReviewSurfaceState(): DeliveryReviewSurfaceState {
+		return { type: 'needs-review-surface', deliveryArtifactId: 'delivery-artifact-1' }
+	}
+
+	async function handlerContext() {
+		const options = createTestCoreServices()
+		seedDelivery(options.tx, 'delivery-1')
+		seedSelectableModel(options.tx, 'model-1')
+		options.tx.deliveries.records.get('delivery-1')!.queued = localStamp()
+		options.tx.deliveryArtifacts.records.set('delivery-artifact-1', {
+			id: 'delivery-artifact-1',
+			deliveryId: 'delivery-1',
+			config: { type: 'source-control', deliveryBranch: 'delivery-branch' },
+			created: stamp,
+		})
+
+		const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
+		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
+
+		const workResolution = {
+			workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
+			executionModel: options.tx.models.records.get('model-1')!,
+			executionModelProvider: options.tx.modelProviders.records.get('model-1-provider')!,
+		}
+
+		return { services: options, tx: options.tx, deliveryContext: deliveryContext.value, workResolution }
+	}
 }

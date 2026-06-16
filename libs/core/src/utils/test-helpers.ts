@@ -59,6 +59,8 @@ export function passingProviderBackedPreflightProviders(): CoreRuntime['provider
 			preflightRepository: () =>
 				Promise.resolve({ ok: true, value: { type: 'passed', summary: 'GitHub repository preflight passed.' } }),
 			createArtifactBranch: () => Promise.resolve({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } }),
+			createReviewSurface: () =>
+				Promise.resolve({ ok: true, value: { type: 'review-surface', mode: 'created', pullRequestNumber: 1, summary: 'created' } }),
 		},
 		modelProviderProtocols: {
 			preflightModel: () =>
@@ -80,6 +82,8 @@ export function failingProviderBackedPreflightProviders(): CoreRuntime['provider
 					},
 				}),
 			createArtifactBranch: () => Promise.resolve({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } }),
+			createReviewSurface: () =>
+				Promise.resolve({ ok: true, value: { type: 'review-surface', mode: 'created', pullRequestNumber: 1, summary: 'created' } }),
 		},
 		modelProviderProtocols: {
 			preflightModel: () =>
@@ -100,6 +104,7 @@ export function neverCalledProviderBackedPreflightProviders(): CoreRuntime['prov
 		sourceControl: {
 			preflightRepository: () => Promise.reject(new Error('Source control should not be called.')),
 			createArtifactBranch: () => Promise.reject(new Error('Source control should not be called.')),
+			createReviewSurface: () => Promise.reject(new Error('Source control should not be called.')),
 		},
 		modelProviderProtocols: { preflightModel: () => Promise.reject(new Error('Model provider should not be called.')) },
 	}

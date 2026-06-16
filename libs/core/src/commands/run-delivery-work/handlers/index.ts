@@ -1,6 +1,5 @@
 import { handleDeliveryAwaitingReview } from './delivery-awaiting-review'
 import { handleDeliveryNeedsArtifactValidation } from './delivery-needs-artifact-validation'
-import { handleDeliveryNeedsReviewSurface } from './delivery-needs-review-surface'
 import { handleDeliveryOperationFailed } from './delivery-operation-failed'
 import { handleDeliveryReviewFailed } from './delivery-review-failed'
 import { handleDeliverySlicesIncomplete } from './delivery-slices-incomplete'
@@ -22,6 +21,7 @@ type FailedDeliveryState = Extract<
 >
 
 type ArtifactOrSliceDeliveryState = Extract<DeliveryWorkState, { type: 'slices-incomplete' | 'needs-artifact-validation' }>
+type ProviderBackedDeliveryState = Extract<DeliveryWorkState, { type: 'needs-review-surface' }>
 type ReviewDeliveryState = Extract<DeliveryWorkState, { type: 'needs-review-surface' | 'awaiting-review' }>
 type RemainingDeliveryState = ArtifactOrSliceDeliveryState | ReviewDeliveryState
 
@@ -46,11 +46,19 @@ export function handleDeliveryWorkState(
 	runtime?: CoreRuntime,
 ): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
 	const resolved = resolvedContextForState(context, state)
-	if (!resolved.ok) return resolved
+	return resolved.ok ? handleResolvedDeliveryWorkState(resolved.value, state, runtime) : resolved
+}
+
+function handleResolvedDeliveryWorkState(
+	context: DeliveryHandlerContext | ResolvedDeliveryHandlerContext,
+	state: DeliveryWorkState,
+	runtime: CoreRuntime | undefined,
+): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
 	if (isNoWorkDeliveryState(state)) return noEligibleWork()
 	if (isFailedDeliveryState(state)) return handleFailedDeliveryWorkState(state)
+	if (isProviderBackedDeliveryState(state)) return providerBackedDeliveryStateInvariant()
 
-	return handleRemainingDeliveryWorkState(resolved.value, state, runtime)
+	return handleRemainingDeliveryWorkState(context, state, runtime)
 }
 
 type DeliveryHandlerContextResolution =
@@ -118,7 +126,7 @@ function handleArtifactOrSliceDeliveryWorkState(
 function handleReviewDeliveryWorkState(state: ReviewDeliveryState): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
 	switch (state.type) {
 		case 'needs-review-surface':
-			return handleDeliveryNeedsReviewSurface()
+			return providerBackedDeliveryStateInvariant()
 		case 'awaiting-review':
 			return handleDeliveryAwaitingReview(state)
 		default: {
@@ -147,6 +155,20 @@ function isArtifactOrSliceDeliveryState(state: RemainingDeliveryState): state is
 
 function isFailedDeliveryState(state: DeliveryWorkState): state is FailedDeliveryState {
 	return failedDeliveryStateTypes.has(state.type)
+}
+
+function isProviderBackedDeliveryState(state: DeliveryWorkState): state is ProviderBackedDeliveryState {
+	return state.type === 'needs-review-surface'
+}
+
+function providerBackedDeliveryStateInvariant(): RunDeliveryWorkHandlerResult {
+	return {
+		ok: false,
+		error: {
+			type: 'invariant-violation',
+			message: 'Provider-backed Delivery work must be handled outside the transactional Delivery Work State dispatcher.',
+		},
+	}
 }
 
 function missingDeliveryWorkRuntime(): RunDeliveryWorkHandlerResult {

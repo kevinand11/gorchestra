@@ -35,7 +35,7 @@ export type DeliveryWorkState =
 	/** All Slices are complete; Delivery Artifact needs Delivery-level validation before review/ship flow can continue. */
 	| { type: 'needs-artifact-validation' }
 	/** Delivery Artifact validation passed and Delivery Review Surface still needs to be created. */
-	| { type: 'needs-review-surface' }
+	| { type: 'needs-review-surface'; deliveryArtifactId: Id }
 	/** Delivery Review Surface exists and is waiting for external review, merge, or observation. */
 	| { type: 'awaiting-review'; reviewSurfaceId: Id }
 	/** Delivery Branch is integrated into the Target Branch; Delivery can be shipped by shipDelivery. */

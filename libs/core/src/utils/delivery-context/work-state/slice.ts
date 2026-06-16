@@ -130,7 +130,7 @@ function deriveSliceStateAfterExecution(
 	sliceActions: Action[],
 ): WorkStateResult<SliceWorkState> {
 	const externalState = firstSyncState([
-		() => sliceReviewState(context, storedSlice.slice),
+		() => sliceReviewWaitingState(context, storedSlice, sliceActions),
 		() => sliceExternalFailureState(sliceActions),
 		() => initialSliceArtifactState(storedSlice),
 		() => failedSliceArtifactValidationState(context, storedSlice.slice, sliceActions),
@@ -139,15 +139,37 @@ function deriveSliceStateAfterExecution(
 	return stateOrElseSync(externalState, () => ok({ type: 'executable', mode: 'initial' }))
 }
 
-function sliceReviewState(context: DeliveryContext, slice: Slice): WorkStateResult<SliceWorkState | null> {
+function sliceReviewWaitingState(
+	context: DeliveryContext,
+	storedSlice: DeliveryContextSlice,
+	sliceActions: Action[],
+): WorkStateResult<SliceWorkState | null> {
+	const validation = latestPassedSliceArtifactValidation(sliceActions)
+	if (validation === null) return ok(null)
+
+	return storedSlice.artifact === null
+		? invariant(`Passed Slice Artifact validation ${validation.id} has no Slice Artifact.`)
+		: sliceReviewStateAfterValidation(context, storedSlice, storedSlice.artifact.id)
+}
+
+function latestPassedSliceArtifactValidation(sliceActions: Action[]): Action | null {
+	const validation = latestAction(sliceActions.filter((action) => action.result.type === 'validate-slice-artifact'))
+	return validation?.result.type === 'validate-slice-artifact' && validation.result.evidence.passed ? validation : null
+}
+
+function sliceReviewStateAfterValidation(
+	context: DeliveryContext,
+	storedSlice: DeliveryContextSlice,
+	sliceArtifactId: string,
+): WorkStateResult<SliceWorkState> {
 	const reviewSurface = currentScopedReviewSurface(
-		context.reviewSurfaces.filter((candidate) => candidate.scope.type === 'slice' && candidate.scope.sliceId === slice.id),
+		context.reviewSurfaces.filter((candidate) => candidate.scope.type === 'slice' && candidate.scope.sliceId === storedSlice.slice.id),
 	)
 	if (!reviewSurface.ok) return reviewSurface
 
 	return reviewSurface.value !== null && reviewSurface.value.closed === null
 		? ok({ type: 'awaiting-review', reviewSurfaceId: reviewSurface.value.id })
-		: ok(null)
+		: ok({ type: 'needs-review-surface', sliceArtifactId })
 }
 
 function sliceExternalFailureState(sliceActions: Action[]): WorkStateResult<SliceWorkState | null> {
@@ -341,16 +363,26 @@ if (import.meta.vitest) {
 			})
 		})
 
+		it('derives needs-review-surface after passed Slice Artifact validation before review exists', () => {
+			const { tx } = sliceFixture({ withSliceArtifact: true })
+			seedSliceArtifactValidation(tx, 'passed-validation', 'slice-1', true)
+
+			expect(sliceState(tx, 'slice-1')).toEqual({
+				ok: true,
+				value: { type: 'needs-review-surface', sliceArtifactId: 'slice-artifact-1' },
+			})
+		})
+
 		it('derives awaiting-review while the current Slice Review Surface is open', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
+			seedSliceArtifactValidation(tx, 'passed-validation', 'slice-1', true)
 			tx.reviewSurfaces.records.set('review-surface-1', {
 				id: 'review-surface-1',
 				scope: { type: 'slice', sliceId: 'slice-1', sliceArtifactId: 'slice-artifact-1' },
 				config: reviewSurfaceConfig(),
 				title: 'Review',
-				body: 'Review body',
 				closed: null,
-				created: stamp,
+				created: { at: stamp.at },
 			})
 
 			expect(sliceState(tx, 'slice-1')).toEqual({

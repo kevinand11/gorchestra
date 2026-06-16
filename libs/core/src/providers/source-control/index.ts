@@ -5,10 +5,13 @@ import type {
 	SourceControlArtifactCreation,
 	SourceControlArtifactCreationError,
 	SourceControlCreateArtifactBranchInput,
+	SourceControlCreateReviewSurfaceInput,
 	SourceControlProviders,
 	SourceControlRepositoryPreflight,
 	SourceControlRepositoryPreflightError,
 	SourceControlRepositoryPreflightFailureReason,
+	SourceControlReviewSurfaceCreation,
+	SourceControlReviewSurfaceCreationError,
 } from './types'
 import type { Id } from '../../domain/commons'
 import type { Repository } from '../../domain/repository'
@@ -39,6 +42,12 @@ export function createSourceControlProviders(
 					return createGitHubArtifactBranch(services, github, { ...input, repository: input.repository })
 			}
 		},
+		createReviewSurface(input) {
+			switch (input.repository.config.provider) {
+				case 'github':
+					return createGitHubReviewSurface(services, github, { ...input, repository: input.repository })
+			}
+		},
 	}
 }
 
@@ -56,6 +65,26 @@ async function createGitHubArtifactBranch(
 		accessToken: accessToken.value,
 		sourceBranch: input.sourceBranch,
 		artifactBranch: input.artifactBranch,
+	})
+
+	return { ok: true, value: creation }
+}
+
+async function createGitHubReviewSurface(
+	services: CoreServices,
+	github: GitHubSourceControlProvider,
+	input: SourceControlCreateReviewSurfaceInput & { repository: GitHubRepository },
+): Promise<Result<SourceControlReviewSurfaceCreation, SourceControlReviewSurfaceCreationError>> {
+	const accessToken = await resolveRepositoryAccessToken(services, input.repository.config.secretId)
+	if (!accessToken.ok) return accessToken
+	if (!isAccessToken(accessToken.value)) return { ok: true, value: reviewSurfaceAccessFailure(accessToken.value) }
+
+	const creation = await github.createReviewSurface({
+		repository: input.repository,
+		accessToken: accessToken.value,
+		sourceBranch: input.sourceBranch,
+		targetBranch: input.targetBranch,
+		title: input.title,
 	})
 
 	return { ok: true, value: creation }
@@ -156,6 +185,16 @@ function artifactCreationAccessFailure(preflight: SourceControlRepositoryPreflig
 		: { type: 'failed', reason: { type: 'provider-unavailable' }, summary: 'GitHub artifact branch operation failed.' }
 }
 
+function reviewSurfaceAccessFailure(preflight: SourceControlRepositoryPreflight): SourceControlReviewSurfaceCreation {
+	return preflight.type === 'failed' && preflight.reason.type === 'repository-access-secret-unresolved'
+		? {
+				type: 'failed',
+				reason: { type: 'repository-access-secret-unresolved', secretId: preflight.reason.secretId },
+				summary: 'GitHub repository access Secret value could not be resolved.',
+			}
+		: { type: 'failed', reason: { type: 'provider-unavailable' }, summary: 'GitHub review surface operation failed.' }
+}
+
 function unresolvedAccessSecretPreflight(secretId: Id): SourceControlRepositoryPreflight {
 	return gitHubRepositoryPreflight({ type: 'failed', reason: { type: 'repository-access-secret-unresolved', secretId } })
 }
@@ -172,14 +211,18 @@ export type {
 	SourceControlArtifactCreationError,
 	SourceControlArtifactCreationFailureReason,
 	SourceControlCreateArtifactBranchInput,
+	SourceControlCreateReviewSurfaceInput,
 	SourceControlProvider,
 	SourceControlProviderCreateArtifactBranchInput,
+	SourceControlProviderCreateReviewSurfaceInput,
 	SourceControlProviderPreflightRepositoryInput,
 	SourceControlProviderRepositoryPreflight,
 	SourceControlProviders,
 	SourceControlRepositoryPreflight,
 	SourceControlRepositoryPreflightError,
 	SourceControlRepositoryPreflightFailureReason,
+	SourceControlReviewSurfaceCreation,
+	SourceControlReviewSurfaceCreationError,
 } from './types'
 
 if (import.meta.vitest) {
@@ -196,6 +239,9 @@ if (import.meta.vitest) {
 						return Promise.resolve({ type: 'passed' })
 					},
 					createArtifactBranch() {
+						throw new Error('GitHub provider should not be called.')
+					},
+					createReviewSurface() {
 						throw new Error('GitHub provider should not be called.')
 					},
 				},
@@ -236,6 +282,9 @@ if (import.meta.vitest) {
 							observedToken = input.accessToken.plaintext
 							return Promise.resolve({ type: 'passed', mode: 'created', summary: 'created' })
 						},
+						createReviewSurface() {
+							throw new Error('GitHub provider should not be called.')
+						},
 					},
 				},
 			)
@@ -248,6 +297,38 @@ if (import.meta.vitest) {
 
 			expect(result).toEqual({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } })
 			expect(observedBranch).toBe('delivery-branch')
+			expect(observedToken).toBe('token')
+		})
+
+		it('resolves GitHub repository access Secrets for Review Surface creation', async () => {
+			let observedToken: string | null = null
+			const sourceControl = createSourceControlProviders(
+				coreServices(() => Promise.resolve({ 'secret-1': 'token' })),
+				{
+					github: {
+						preflightRepository: () => Promise.resolve({ type: 'passed' }),
+						createArtifactBranch() {
+							throw new Error('GitHub provider should not be called.')
+						},
+						createReviewSurface(input) {
+							observedToken = input.accessToken.plaintext
+							return Promise.resolve({ type: 'review-surface', mode: 'created', pullRequestNumber: 1, summary: 'created' })
+						},
+					},
+				},
+			)
+
+			const result = await sourceControl.createReviewSurface({
+				repository: gitHubRepository(),
+				sourceBranch: 'delivery-branch',
+				targetBranch: 'main',
+				title: 'Delivery',
+			})
+
+			expect(result).toEqual({
+				ok: true,
+				value: { type: 'review-surface', mode: 'created', pullRequestNumber: 1, summary: 'created' },
+			})
 			expect(observedToken).toBe('token')
 		})
 
@@ -316,6 +397,9 @@ if (import.meta.vitest) {
 				throw new Error('GitHub provider should not be called.')
 			},
 			createArtifactBranch() {
+				throw new Error('GitHub provider should not be called.')
+			},
+			createReviewSurface() {
 				throw new Error('GitHub provider should not be called.')
 			},
 		}

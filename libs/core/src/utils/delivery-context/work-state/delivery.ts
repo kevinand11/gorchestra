@@ -186,11 +186,12 @@ function deliveryReadyReviewState(
 	const reviewState = deliveryReviewState(reviewSurface.value)
 	if (reviewState !== null) return ok(reviewState)
 
-	return deliveryReviewWaitingState(deliveryActions, latestPassedDeliveryValidation, reviewSurface.value)
+	return deliveryReviewWaitingState(deliveryActions, deliveryArtifact, latestPassedDeliveryValidation, reviewSurface.value)
 }
 
 function deliveryReviewWaitingState(
 	deliveryActions: Action[],
+	deliveryArtifact: DeliveryArtifact,
 	latestPassedDeliveryValidation: Action,
 	reviewSurface: ReviewSurface | null,
 ): WorkStateResult<DeliveryWorkState> {
@@ -198,7 +199,7 @@ function deliveryReviewWaitingState(
 	if (observedIntegration !== null) return ok(deliveryReadyByObservationState(observedIntegration))
 
 	return reviewSurface === null
-		? ok({ type: 'needs-review-surface' })
+		? ok({ type: 'needs-review-surface', deliveryArtifactId: deliveryArtifact.id })
 		: ok({ type: 'awaiting-review', reviewSurfaceId: reviewSurface.id })
 }
 
@@ -368,7 +369,7 @@ if (import.meta.vitest) {
 
 		it('derives delivery-review-failed when the current Delivery Review Surface closed without merge', () => {
 			const { tx } = validatedDeliveryFixture()
-			seedDeliveryReviewSurface(tx, { id: 'delivery-review', closed: { type: 'closed-without-merge', closed: stamp } })
+			seedDeliveryReviewSurface(tx, { id: 'delivery-review', closed: { type: 'closed-without-merge', closed: { at: stamp.at } } })
 
 			expect(deliveryState(tx, 'delivery-1')).toEqual({
 				ok: true,
@@ -385,7 +386,10 @@ if (import.meta.vitest) {
 		it('derives needs-review-surface after passed Delivery Artifact validation before review exists', () => {
 			const { tx } = validatedDeliveryFixture()
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({ ok: true, value: { type: 'needs-review-surface' } })
+			expect(deliveryState(tx, 'delivery-1')).toEqual({
+				ok: true,
+				value: { type: 'needs-review-surface', deliveryArtifactId: 'delivery-artifact-1' },
+			})
 		})
 
 		it('derives awaiting-review while the current Delivery Review Surface is open', () => {
@@ -404,7 +408,7 @@ if (import.meta.vitest) {
 				id: 'delivery-review',
 				closed: {
 					type: 'merged',
-					merged: stamp,
+					merged: { at: stamp.at },
 					config: { type: 'source-control', repositoryId: 'repository-1', sourceBranch: 'delivery', targetBranch: 'main' },
 				},
 			})
@@ -495,9 +499,8 @@ if (import.meta.vitest) {
 				targetBranch: 'main',
 			},
 			title: 'Delivery Review',
-			body: 'Review body',
 			closed: reviewSurface.closed,
-			created: stamp,
+			created: { at: stamp.at },
 		})
 	}
 

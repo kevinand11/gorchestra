@@ -3,10 +3,13 @@ import { Octokit } from '@octokit/rest'
 import type {
 	SourceControlArtifactCreation,
 	SourceControlArtifactCreationFailureReason,
+	SourceControlBranchOperationFailureReason,
 	SourceControlProvider,
 	SourceControlProviderCreateArtifactBranchInput,
+	SourceControlProviderCreateReviewSurfaceInput,
 	SourceControlProviderPreflightRepositoryInput,
 	SourceControlProviderRepositoryPreflight,
+	SourceControlReviewSurfaceCreation,
 } from './types'
 import type { GitHubRepositoryConfig } from '../../domain/repository'
 
@@ -21,6 +24,19 @@ export interface GitHubRepositoryClient {
 	createBranch(input: { owner: string; name: string; branch: string; sha: string }): Promise<void>
 	updateBranch(input: { owner: string; name: string; branch: string; sha: string }): Promise<void>
 	compareCommits(input: { owner: string; name: string; baseSha: string; headSha: string }): Promise<GitHubCompareStatus>
+	listOpenPullRequests(input: {
+		owner: string
+		name: string
+		sourceBranch: string
+		targetBranch: string
+	}): Promise<Array<{ number: number }>>
+	createPullRequest(input: {
+		owner: string
+		name: string
+		sourceBranch: string
+		targetBranch: string
+		title: string
+	}): Promise<{ number: number }>
 }
 
 export type GitHubRepositoryClientFactory = (input: { accessToken: string }) => GitHubRepositoryClient
@@ -38,6 +54,9 @@ export function createGitHubSourceControlProvider(dependencies: GitHubSourceCont
 		},
 		createArtifactBranch(input) {
 			return createArtifactBranch(createRepositoryClient, input)
+		},
+		createReviewSurface(input) {
+			return createReviewSurface(createRepositoryClient, input)
 		},
 	}
 }
@@ -73,6 +92,21 @@ async function createArtifactBranch(
 	return reconcileExistingArtifactBranch(client, repository, input.sourceBranch, input.artifactBranch, source.sha, artifact.sha)
 }
 
+async function createReviewSurface(
+	createRepositoryClient: GitHubRepositoryClientFactory,
+	input: SourceControlProviderCreateReviewSurfaceInput<GitHubRepositoryConfig>,
+): Promise<SourceControlReviewSurfaceCreation> {
+	const client = createRepositoryClient({ accessToken: input.accessToken.plaintext })
+	const repository = { owner: input.repository.config.owner, name: input.repository.config.name }
+	const integration = await branchIntegration(client, repository, input.sourceBranch, input.targetBranch)
+	if (integration.type !== 'not-integrated') return integration
+
+	const existing = await openPullRequest(client, repository, input.sourceBranch, input.targetBranch)
+	if (existing.type !== 'missing') return existing
+
+	return createMissingPullRequest(client, repository, input)
+}
+
 async function readSourceBranchHead(
 	client: GitHubRepositoryClient,
 	repository: { owner: string; name: string },
@@ -95,6 +129,135 @@ async function readArtifactBranchHead(
 	} catch (error) {
 		return { type: 'failed', failure: failedArtifactCreation(error, { operation: 'read-artifact', artifactBranch: branch }) }
 	}
+}
+
+type BranchIntegration = { type: 'not-integrated' } | Extract<SourceControlReviewSurfaceCreation, { type: 'integrated' | 'failed' }>
+
+async function branchIntegration(
+	client: GitHubRepositoryClient,
+	repository: { owner: string; name: string },
+	sourceBranch: string,
+	targetBranch: string,
+): Promise<BranchIntegration> {
+	const heads = await reviewSurfaceBranchHeads(client, repository, sourceBranch, targetBranch)
+	if (!heads.ok) return heads.failure
+
+	return integratedBranchComparison(client, repository, heads.sourceSha, heads.targetSha)
+}
+
+async function reviewSurfaceBranchHeads(
+	client: GitHubRepositoryClient,
+	repository: { owner: string; name: string },
+	sourceBranch: string,
+	targetBranch: string,
+): Promise<
+	| { ok: true; sourceSha: string; targetSha: string }
+	| { ok: false; failure: Extract<SourceControlReviewSurfaceCreation, { type: 'failed' }> }
+> {
+	const source = await readReviewSurfaceBranchHead(client, repository, sourceBranch, 'source')
+	if (!source.ok) return source
+
+	const target = await readReviewSurfaceBranchHead(client, repository, targetBranch, 'target')
+	return target.ok ? { ok: true, sourceSha: source.sha, targetSha: target.sha } : target
+}
+
+async function readReviewSurfaceBranchHead(
+	client: GitHubRepositoryClient,
+	repository: { owner: string; name: string },
+	branch: string,
+	role: 'source' | 'target',
+): Promise<{ ok: true; sha: string } | { ok: false; failure: Extract<SourceControlReviewSurfaceCreation, { type: 'failed' }> }> {
+	try {
+		return { ok: true, sha: await client.getBranchHead({ ...repository, branch }) }
+	} catch (error) {
+		return {
+			ok: false,
+			failure: failedReviewSurfaceCreation(error, { operation: role === 'source' ? 'read-source' : 'read-target', branch }),
+		}
+	}
+}
+
+async function integratedBranchComparison(
+	client: GitHubRepositoryClient,
+	repository: { owner: string; name: string },
+	sourceSha: string,
+	targetSha: string,
+): Promise<BranchIntegration> {
+	try {
+		return integratedComparison(await client.compareCommits({ ...repository, baseSha: targetSha, headSha: sourceSha }))
+	} catch (error) {
+		return failedReviewSurfaceCreation(error, { operation: 'compare' })
+	}
+}
+
+function integratedComparison(comparison: GitHubCompareStatus): BranchIntegration {
+	return comparison === 'identical' || comparison === 'behind'
+		? { type: 'integrated', summary: 'GitHub source branch is already integrated into target branch.' }
+		: { type: 'not-integrated' }
+}
+
+type OpenPullRequest = { type: 'missing' } | Extract<SourceControlReviewSurfaceCreation, { type: 'review-surface' | 'failed' }>
+
+async function openPullRequest(
+	client: GitHubRepositoryClient,
+	repository: { owner: string; name: string },
+	sourceBranch: string,
+	targetBranch: string,
+): Promise<OpenPullRequest> {
+	try {
+		const pullRequest = firstOpenPullRequest(await client.listOpenPullRequests({ ...repository, sourceBranch, targetBranch }))
+		return pullRequest === null ? { type: 'missing' } : adoptedPullRequest(pullRequest.number)
+	} catch (error) {
+		return failedReviewSurfaceCreation(error, { operation: 'list-pull-requests' })
+	}
+}
+
+function firstOpenPullRequest(pullRequests: Array<{ number: number }>): { number: number } | null {
+	return [...pullRequests].sort((left, right) => left.number - right.number)[0] ?? null
+}
+
+function adoptedPullRequest(pullRequestNumber: number): Extract<SourceControlReviewSurfaceCreation, { type: 'review-surface' }> {
+	return {
+		type: 'review-surface',
+		mode: 'adopted-existing',
+		pullRequestNumber,
+		summary: 'GitHub pull request already existed.',
+	}
+}
+
+async function createMissingPullRequest(
+	client: GitHubRepositoryClient,
+	repository: { owner: string; name: string },
+	input: SourceControlProviderCreateReviewSurfaceInput<GitHubRepositoryConfig>,
+): Promise<SourceControlReviewSurfaceCreation> {
+	try {
+		const pullRequest = await client.createPullRequest({
+			...repository,
+			sourceBranch: input.sourceBranch,
+			targetBranch: input.targetBranch,
+			title: input.title,
+		})
+		return createdPullRequest(pullRequest.number)
+	} catch (error) {
+		return createPullRequestFailure(client, repository, input.sourceBranch, input.targetBranch, error)
+	}
+}
+
+function createdPullRequest(pullRequestNumber: number): SourceControlReviewSurfaceCreation {
+	return { type: 'review-surface', mode: 'created', pullRequestNumber, summary: 'GitHub pull request created.' }
+}
+
+async function createPullRequestFailure(
+	client: GitHubRepositoryClient,
+	repository: { owner: string; name: string },
+	sourceBranch: string,
+	targetBranch: string,
+	error: unknown,
+): Promise<SourceControlReviewSurfaceCreation> {
+	if (statusCode(error) !== 422) return failedReviewSurfaceCreation(error, { operation: 'create-pull-request' })
+
+	const existing = await openPullRequest(client, repository, sourceBranch, targetBranch)
+	return existing.type === 'missing' ? failedReviewSurfaceCreation(error, { operation: 'create-pull-request' }) : existing
 }
 
 async function createMissingArtifactBranch(
@@ -209,6 +372,26 @@ function createOctokitRepositoryClient(input: { accessToken: string }): GitHubRe
 			})
 			return gitHubCompareStatus(response.data.status)
 		},
+		async listOpenPullRequests(input) {
+			const response = await octokit.rest.pulls.list({
+				owner: input.owner,
+				repo: input.name,
+				state: 'open',
+				head: `${input.owner}:${input.sourceBranch}`,
+				base: input.targetBranch,
+			})
+			return response.data.map((pullRequest) => ({ number: pullRequest.number }))
+		},
+		async createPullRequest(input) {
+			const response = await octokit.rest.pulls.create({
+				owner: input.owner,
+				repo: input.name,
+				head: input.sourceBranch,
+				base: input.targetBranch,
+				title: input.title,
+			})
+			return { number: response.data.number }
+		},
 	}
 }
 
@@ -282,6 +465,10 @@ function providerUnavailableFailure(): SourceControlArtifactCreationFailureReaso
 	return { type: 'provider-unavailable' }
 }
 
+function reviewSurfaceProviderUnavailableFailure(): SourceControlBranchOperationFailureReason {
+	return { type: 'provider-unavailable' }
+}
+
 function failedArtifactBranchDiverged(branch: string, sourceBranch: string): SourceControlArtifactCreation {
 	return failedArtifactCreationForReason({ type: 'artifact-branch-diverged', branch, sourceBranch })
 }
@@ -296,6 +483,7 @@ const artifactCreationFailureSummaries: Record<SourceControlArtifactCreationFail
 	'provider-access-denied': 'GitHub artifact branch access was denied.',
 	'provider-repository-not-found': 'GitHub repository was not found.',
 	'source-branch-not-found': 'GitHub artifact source branch was not found.',
+	'target-branch-not-found': 'GitHub artifact target branch was not found.',
 	'artifact-branch-diverged': 'GitHub artifact branch diverged from its source branch.',
 	'artifact-branch-update-denied': 'GitHub artifact branch could not be updated.',
 	'provider-unavailable': 'GitHub artifact branch operation failed.',
@@ -303,6 +491,60 @@ const artifactCreationFailureSummaries: Record<SourceControlArtifactCreationFail
 
 function artifactCreationFailureSummary(reason: SourceControlArtifactCreationFailureReason): string {
 	return artifactCreationFailureSummaries[reason.type]
+}
+
+type ReviewSurfaceFailureContext =
+	| { operation: 'read-source'; branch: string }
+	| { operation: 'read-target'; branch: string }
+	| { operation: 'compare' }
+	| { operation: 'list-pull-requests' }
+	| { operation: 'create-pull-request' }
+
+function failedReviewSurfaceCreation(
+	error: unknown,
+	context: ReviewSurfaceFailureContext,
+): Extract<SourceControlReviewSurfaceCreation, { type: 'failed' }> {
+	return failedReviewSurfaceCreationForReason(reviewSurfaceFailureReason(error, context))
+}
+
+function reviewSurfaceFailureReason(error: unknown, context: ReviewSurfaceFailureContext): SourceControlBranchOperationFailureReason {
+	const mapper = reviewSurfaceFailureReasonMappers[statusCode(error) ?? 0] ?? reviewSurfaceProviderUnavailableFailure
+	return mapper(context)
+}
+
+type ReviewSurfaceFailureReasonMapper = (context: ReviewSurfaceFailureContext) => SourceControlBranchOperationFailureReason
+
+const reviewSurfaceFailureReasonMappers: Record<number, ReviewSurfaceFailureReasonMapper> = {
+	401: () => ({ type: 'provider-authentication-failed' }),
+	403: () => ({ type: 'provider-access-denied' }),
+	404: reviewSurfaceNotFoundFailure,
+}
+
+function reviewSurfaceNotFoundFailure(context: ReviewSurfaceFailureContext): SourceControlBranchOperationFailureReason {
+	if (context.operation === 'read-source') return { type: 'source-branch-not-found', branch: context.branch }
+	if (context.operation === 'read-target') return { type: 'target-branch-not-found', branch: context.branch }
+
+	return { type: 'provider-repository-not-found' }
+}
+
+function failedReviewSurfaceCreationForReason(
+	reason: SourceControlBranchOperationFailureReason,
+): Extract<SourceControlReviewSurfaceCreation, { type: 'failed' }> {
+	return { type: 'failed', reason, summary: reviewSurfaceFailureSummary(reason) }
+}
+
+const reviewSurfaceFailureSummaries: Record<SourceControlBranchOperationFailureReason['type'], string> = {
+	'repository-access-secret-unresolved': 'GitHub repository access Secret value could not be resolved.',
+	'provider-authentication-failed': 'GitHub review surface authentication failed.',
+	'provider-access-denied': 'GitHub review surface access was denied.',
+	'provider-repository-not-found': 'GitHub repository was not found.',
+	'source-branch-not-found': 'GitHub review surface source branch was not found.',
+	'target-branch-not-found': 'GitHub review surface target branch was not found.',
+	'provider-unavailable': 'GitHub review surface operation failed.',
+}
+
+function reviewSurfaceFailureSummary(reason: SourceControlBranchOperationFailureReason): string {
+	return reviewSurfaceFailureSummaries[reason.type]
 }
 
 function statusCode(error: unknown): number | null {
@@ -403,6 +645,73 @@ if (import.meta.vitest) {
 				summary: 'GitHub artifact source branch was not found.',
 			})
 		})
+
+		it('reports an integrated review surface when the source branch is already in the target branch', async () => {
+			const client = artifactClient({ sourceSha: 'source-sha', targetSha: 'target-sha', artifactSha: null, comparison: 'behind' })
+			const provider = createGitHubSourceControlProvider({ createRepositoryClient: () => client })
+
+			await expect(provider.createReviewSurface(gitHubReviewSurfaceInput())).resolves.toEqual({
+				type: 'integrated',
+				summary: 'GitHub source branch is already integrated into target branch.',
+			})
+			expect(client.calls.some((call) => call[0] === 'createPullRequest')).toBe(false)
+		})
+
+		it('adopts the lowest-numbered open pull request for a review surface', async () => {
+			const client = artifactClient({
+				sourceSha: 'source-sha',
+				targetSha: 'target-sha',
+				artifactSha: null,
+				comparison: 'ahead',
+				pullRequests: [{ number: 3 }, { number: 2 }],
+			})
+			const provider = createGitHubSourceControlProvider({ createRepositoryClient: () => client })
+
+			await expect(provider.createReviewSurface(gitHubReviewSurfaceInput())).resolves.toEqual({
+				type: 'review-surface',
+				mode: 'adopted-existing',
+				pullRequestNumber: 2,
+				summary: 'GitHub pull request already existed.',
+			})
+		})
+
+		it('creates a pull request for a review surface when branches are not integrated', async () => {
+			const client = artifactClient({
+				sourceSha: 'source-sha',
+				targetSha: 'target-sha',
+				artifactSha: null,
+				comparison: 'ahead',
+				createdPullRequestNumber: 7,
+			})
+			const provider = createGitHubSourceControlProvider({ createRepositoryClient: () => client })
+
+			await expect(provider.createReviewSurface(gitHubReviewSurfaceInput())).resolves.toEqual({
+				type: 'review-surface',
+				mode: 'created',
+				pullRequestNumber: 7,
+				summary: 'GitHub pull request created.',
+			})
+			expect(client.calls).toContainEqual(['createPullRequest', 'main', 'delivery', 'Review'])
+		})
+
+		it('adopts an open pull request after a duplicate create failure', async () => {
+			const client = artifactClient({
+				sourceSha: 'source-sha',
+				targetSha: 'target-sha',
+				artifactSha: null,
+				comparison: 'ahead',
+				pullRequestsAfterCreateFailure: [{ number: 8 }],
+				createPullRequestError: Object.assign(new Error('duplicate'), { status: 422 }),
+			})
+			const provider = createGitHubSourceControlProvider({ createRepositoryClient: () => client })
+
+			await expect(provider.createReviewSurface(gitHubReviewSurfaceInput())).resolves.toEqual({
+				type: 'review-surface',
+				mode: 'adopted-existing',
+				pullRequestNumber: 8,
+				summary: 'GitHub pull request already existed.',
+			})
+		})
 	})
 
 	function gitHubPreflightInput(): SourceControlProviderPreflightRepositoryInput<GitHubRepositoryConfig> {
@@ -418,6 +727,16 @@ if (import.meta.vitest) {
 			accessToken: { type: 'access-token', plaintext: 'token' },
 			sourceBranch: 'main',
 			artifactBranch: 'artifact',
+		}
+	}
+
+	function gitHubReviewSurfaceInput(): SourceControlProviderCreateReviewSurfaceInput<GitHubRepositoryConfig> {
+		return {
+			repository: gitHubRepository(),
+			accessToken: { type: 'access-token', plaintext: 'token' },
+			sourceBranch: 'main',
+			targetBranch: 'delivery',
+			title: 'Review',
 		}
 	}
 
@@ -441,14 +760,24 @@ if (import.meta.vitest) {
 		})
 	}
 
-	function artifactClient(options: { sourceSha: string | Error; artifactSha: string | null; comparison?: GitHubCompareStatus }) {
+	function artifactClient(options: {
+		sourceSha: string | Error
+		artifactSha: string | null
+		targetSha?: string | Error
+		comparison?: GitHubCompareStatus
+		pullRequests?: Array<{ number: number }>
+		pullRequestsAfterCreateFailure?: Array<{ number: number }>
+		createdPullRequestNumber?: number
+		createPullRequestError?: Error
+	}) {
 		const calls: Array<[string, ...string[]]> = []
 		return {
 			calls,
 			getRepository: () => Promise.resolve(),
 			getBranchHead: (input: { branch: string }) => {
 				calls.push(['getBranchHead', input.branch])
-				return options.sourceSha instanceof Error ? Promise.reject(options.sourceSha) : Promise.resolve(options.sourceSha)
+				const sha = input.branch === 'delivery' ? (options.targetSha ?? options.sourceSha) : options.sourceSha
+				return sha instanceof Error ? Promise.reject(sha) : Promise.resolve(sha)
 			},
 			getBranchIfExists: (input: { branch: string }) => {
 				calls.push(['getBranchIfExists', input.branch])
@@ -465,6 +794,20 @@ if (import.meta.vitest) {
 			compareCommits: () => {
 				calls.push(['compareCommits'])
 				return Promise.resolve(options.comparison ?? 'identical')
+			},
+			listOpenPullRequests: (input: { sourceBranch: string; targetBranch: string }) => {
+				calls.push(['listOpenPullRequests', input.sourceBranch, input.targetBranch])
+				return Promise.resolve(
+					calls.some((call) => call[0] === 'createPullRequest')
+						? (options.pullRequestsAfterCreateFailure ?? [])
+						: (options.pullRequests ?? []),
+				)
+			},
+			createPullRequest: (input: { sourceBranch: string; targetBranch: string; title: string }) => {
+				calls.push(['createPullRequest', input.sourceBranch, input.targetBranch, input.title])
+				return options.createPullRequestError === undefined
+					? Promise.resolve({ number: options.createdPullRequestNumber ?? 1 })
+					: Promise.reject(options.createPullRequestError)
 			},
 		} satisfies GitHubRepositoryClient & { calls: Array<[string, ...string[]]> }
 	}

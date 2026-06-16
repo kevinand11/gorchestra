@@ -16,8 +16,8 @@ export type Slice = PipeOutput<typeof slicePipe>
 /**
  * Derived in priority order: complete, needs-delivery-validation,
  * dependency-blocked, needs-artifact-validation, correction-blocked,
- * awaiting-review, slice-operation-failed, needs-artifact-creation, then
- * executable.
+ * needs-review-surface, awaiting-review, slice-operation-failed,
+ * needs-artifact-creation, then executable.
  */
 export interface FailureChain {
 	/** The failed validation or external-operation Action that started the chain. */
@@ -43,6 +43,8 @@ export type SliceWorkState =
 	  }
 	/** actionId points to the latest failed Action that exhausted retries; failureChain.rootActionId points to the first failed Action in the chain. */
 	| { type: 'correction-blocked'; actionId: Id; failureChain: FailureChain }
+	/** Slice Artifact validation passed and Slice Review Surface still needs to be created. */
+	| { type: 'needs-review-surface'; sliceArtifactId: Id }
 	| { type: 'awaiting-review'; reviewSurfaceId: Id }
 	/** Latest Slice-scoped external operation failed before correction could run; explicit manual retry/recovery operation will be added later. */
 	| { type: 'slice-operation-failed'; actionId: Id }

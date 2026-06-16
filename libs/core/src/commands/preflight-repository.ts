@@ -156,6 +156,9 @@ if (import.meta.vitest) {
 						createArtifactBranch() {
 							throw new Error('GitHub provider should not be called.')
 						},
+						createReviewSurface() {
+							throw new Error('GitHub provider should not be called.')
+						},
 					},
 				}),
 				modelProviderProtocols: createTestCoreRuntime(options).providers.modelProviderProtocols,
@@ -177,6 +180,9 @@ if (import.meta.vitest) {
 					github: {
 						preflightRepository: () => Promise.resolve({ type: 'failed', reason: { type: 'provider-repository-not-found' } }),
 						createArtifactBranch() {
+							throw new Error('GitHub provider should not be called.')
+						},
+						createReviewSurface() {
 							throw new Error('GitHub provider should not be called.')
 						},
 					},
@@ -233,6 +239,9 @@ if (import.meta.vitest) {
 				throw new Error('GitHub provider should not be called.')
 			},
 			createArtifactBranch() {
+				throw new Error('GitHub provider should not be called.')
+			},
+			createReviewSurface() {
 				throw new Error('GitHub provider should not be called.')
 			},
 		}

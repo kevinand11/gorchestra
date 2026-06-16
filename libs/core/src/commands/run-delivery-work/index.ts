@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { handleDeliveryNeedsArtifactCreation } from './handlers/delivery-needs-artifact-creation'
+import { handleDeliveryNeedsReviewSurface } from './handlers/delivery-needs-review-surface'
 import { handleDeliverySlicesIncomplete } from './handlers/delivery-slices-incomplete'
 import {
 	applySchedulerPreflightChecks,
@@ -70,6 +71,8 @@ async function runPassedPreflightSchedulerWork(
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const artifactCreation = await handleArtifactCreation(runtime, preflight)
 	if (artifactCreation !== null) return artifactCreation
+	const reviewSurfaceCreation = await handleReviewSurfaceCreation(runtime, preflight)
+	if (reviewSurfaceCreation !== null) return reviewSurfaceCreation
 	if (preflight.state.type === 'slices-incomplete') return handleSliceWorkPool(runtime, preflight)
 
 	return withTransaction(runtime.services, (tx) => applySchedulerPreflightChecks(runtime, tx, deliveryId, preflight, providerChecks))
@@ -88,6 +91,13 @@ function handleArtifactCreation(
 	preflight: ProviderBackedSchedulerPreflightClaim,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>> | null> | CoreResult<Result, Exclude<Error, InvalidInputError>> | null {
 	return preflight.state.type === 'needs-artifact-creation' ? handleDeliveryNeedsArtifactCreation(runtime, preflight) : null
+}
+
+function handleReviewSurfaceCreation(
+	runtime: CoreRuntime,
+	preflight: ProviderBackedSchedulerPreflightClaim,
+): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>> | null> | CoreResult<Result, Exclude<Error, InvalidInputError>> | null {
+	return preflight.state.type === 'needs-review-surface' ? handleDeliveryNeedsReviewSurface(runtime, preflight) : null
 }
 
 if (import.meta.vitest) {
@@ -399,6 +409,95 @@ if (import.meta.vitest) {
 				validationEvidence('model-preflight', false, 'Anthropic Messages model was not found.'),
 			])
 		})
+
+		it('creates a Delivery Review Surface through Source Control outside storage transactions', async () => {
+			const options = providerPreflightFixture()
+			seedCompletedDelivery(options)
+			seedDeliveryValidation(options)
+			const providers = passingProviderBackedPreflightProviders()
+			providers.sourceControl.createReviewSurface = (input) => {
+				expect(options.transactionCalls()).toBe(1)
+				expect(input.sourceBranch).toBe('delivery-branch')
+				expect(input.targetBranch).toBe('main')
+				expect(input.title).toBe('Delivery')
+				return Promise.resolve({
+					ok: true,
+					value: { type: 'review-surface', mode: 'created', pullRequestNumber: 12, summary: 'created' },
+				})
+			}
+			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options, { providers }))
+
+			const result = await command({ deliveryId: 'delivery-1' }, context)
+
+			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
+			expect(options.tx.reviewSurfaces.records.get('review-surface-1')?.scope).toEqual({
+				type: 'delivery',
+				deliveryId: 'delivery-1',
+				deliveryArtifactId: 'delivery-artifact-existing',
+			})
+			expect(options.tx.actions.records.get('action-1')?.result).toEqual({
+				type: 'create-delivery-review-surface',
+				reviewSurfaceId: 'review-surface-1',
+			})
+		})
+
+		it('records observed Delivery Artifact integration when Review Surface creation finds integrated branches', async () => {
+			const options = providerPreflightFixture()
+			seedCompletedDelivery(options)
+			seedDeliveryValidation(options)
+			const providers = passingProviderBackedPreflightProviders()
+			providers.sourceControl.createReviewSurface = () =>
+				Promise.resolve({ ok: true, value: { type: 'integrated', summary: 'Already integrated.' } })
+			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options, { providers }))
+
+			const result = await command({ deliveryId: 'delivery-1' }, context)
+
+			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
+			expect(options.tx.actions.records.get('action-1')?.result).toEqual({
+				type: 'observe-delivery-artifact-integration',
+				evidence: {
+					type: 'external-operation',
+					operation: { type: 'observe-artifact-integration' },
+					passed: true,
+					summary: 'Already integrated.',
+				},
+			})
+		})
+
+		it('creates a Slice Review Surface through Source Control outside storage transactions', async () => {
+			const options = providerPreflightFixture()
+			seedDeliveryArtifact(options)
+			seedSlice(options.tx, 'slice-1', 'delivery-1')
+			seedSliceArtifact(options, 'slice-1')
+			seedCompletedSliceExecution(options, 'slice-1')
+			seedSliceArtifactValidation(options, 'slice-1')
+			const providers = passingProviderBackedPreflightProviders()
+			providers.sourceControl.createReviewSurface = (input) => {
+				expect(options.transactionCalls()).toBe(2)
+				expect(input.sourceBranch).toBe('slice-branch')
+				expect(input.targetBranch).toBe('delivery-branch')
+				expect(input.title).toBe('Slice')
+				return Promise.resolve({
+					ok: true,
+					value: { type: 'review-surface', mode: 'created', pullRequestNumber: 13, summary: 'created' },
+				})
+			}
+			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options, { providers }))
+
+			const result = await command({ deliveryId: 'delivery-1' }, context)
+
+			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
+			expect(options.tx.reviewSurfaces.records.get('review-surface-1')?.scope).toEqual({
+				type: 'slice',
+				sliceId: 'slice-1',
+				sliceArtifactId: 'slice-artifact-existing',
+			})
+			expect(options.tx.actions.records.get('action-1')?.result).toEqual({
+				type: 'create-slice-review-surface',
+				sliceId: 'slice-1',
+				reviewSurfaceId: 'review-surface-1',
+			})
+		})
 	})
 
 	function expectWorkedPreflightResult(
@@ -489,6 +588,17 @@ if (import.meta.vitest) {
 		})
 	}
 
+	function seedDeliveryValidation(options: ReturnType<typeof providerPreflightFixture>) {
+		seedAction(options.tx, {
+			id: 'delivery-validation',
+			at: '2026-06-10T12:03:00.000Z',
+			result: {
+				type: 'validate-delivery-artifact',
+				evidence: validationEvidence('delivery-branch-validation', true, 'Valid.'),
+			},
+		})
+	}
+
 	function seedSliceArtifact(options: ReturnType<typeof providerPreflightFixture>, sliceId: string) {
 		options.tx.sliceArtifacts.records.set('slice-artifact-existing', {
 			id: 'slice-artifact-existing',
@@ -505,6 +615,18 @@ if (import.meta.vitest) {
 			purpose: { type: 'execution', deliveryId: 'delivery-1', sliceId, mode: { type: 'initial' } },
 			started: { at: '2026-06-10T11:30:00.000Z' },
 			completed: { at: '2026-06-10T11:40:00.000Z' },
+		})
+	}
+
+	function seedSliceArtifactValidation(options: ReturnType<typeof providerPreflightFixture>, sliceId: string) {
+		seedAction(options.tx, {
+			id: 'slice-artifact-validation',
+			at: '2026-06-10T11:50:00.000Z',
+			result: {
+				type: 'validate-slice-artifact',
+				sliceId,
+				evidence: validationEvidence('slice-branch-validation', true, 'Valid.'),
+			},
 		})
 	}
 

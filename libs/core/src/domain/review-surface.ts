@@ -1,6 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { auditStampPipe, freeFormStringPipe, idPipe, isoDateTimePipe, nonEmptyTrimmedStringPipe, positiveIntegerPipe } from './commons'
+import { freeFormStringPipe, idPipe, isoDateTimePipe, nonEmptyTrimmedStringPipe, positiveIntegerPipe, runtimeRecordPipe } from './commons'
 
 export const reviewSurfaceScopePipe = v.discriminate((value) => value.type, {
 	slice: v.object({ type: v.eq('slice'), sliceId: idPipe, sliceArtifactId: idPipe }),
@@ -33,9 +33,9 @@ export type ReviewSurfaceMergedConfig = PipeOutput<typeof reviewSurfaceMergedCon
 export type SourceControlReviewSurfaceMergedConfig = Extract<ReviewSurfaceMergedConfig, { type: 'source-control' }>
 
 export const reviewSurfaceClosedPipe = v.discriminate((value) => value.type, {
-	merged: v.object({ type: v.eq('merged'), merged: auditStampPipe, config: reviewSurfaceMergedConfigPipe }),
-	'closed-without-merge': v.object({ type: v.eq('closed-without-merge'), closed: auditStampPipe }),
-	replaced: v.object({ type: v.eq('replaced'), replaced: auditStampPipe, reviewSurfaceId: idPipe }),
+	merged: v.object({ type: v.eq('merged'), merged: runtimeRecordPipe, config: reviewSurfaceMergedConfigPipe }),
+	'closed-without-merge': v.object({ type: v.eq('closed-without-merge'), closed: runtimeRecordPipe }),
+	replaced: v.object({ type: v.eq('replaced'), replaced: runtimeRecordPipe, reviewSurfaceId: idPipe }),
 })
 export type ReviewSurfaceClosed = PipeOutput<typeof reviewSurfaceClosedPipe>
 export type ReviewSurfaceMerged = Extract<ReviewSurfaceClosed, { type: 'merged' }>
@@ -47,9 +47,8 @@ export const reviewSurfacePipe = v.object({
 	scope: reviewSurfaceScopePipe,
 	config: reviewSurfaceConfigPipe,
 	title: nonEmptyTrimmedStringPipe,
-	body: freeFormStringPipe,
 	closed: v.nullable(reviewSurfaceClosedPipe),
-	created: auditStampPipe,
+	created: runtimeRecordPipe,
 })
 export type ReviewSurface = PipeOutput<typeof reviewSurfacePipe>
 

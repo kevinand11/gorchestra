@@ -88,7 +88,7 @@ function sliceCapacityFull(candidates: SliceStateCandidate[], context: Pick<Reso
 }
 
 function isActiveSliceSlotState(state: SliceWorkState): boolean {
-	return state.type === 'needs-artifact-validation' || state.type === 'needs-delivery-validation'
+	return state.type === 'needs-artifact-validation' || state.type === 'needs-delivery-validation' || state.type === 'needs-review-surface'
 }
 
 function sliceArtifactCreationInputForSlice(

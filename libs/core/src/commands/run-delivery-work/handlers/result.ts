@@ -1,6 +1,6 @@
 import type { Action } from '../../../domain/action'
 import type { Id } from '../../../domain/commons'
-import type { ExternalOperationEvidence } from '../../../domain/evidence'
+import type { ExternalOperation, ExternalOperationEvidence } from '../../../domain/evidence'
 import { nextId, runtimeRecord } from '../../../utils/storage'
 import type { Result as CoreResult } from '../../../utils/types'
 import type { RunDeliveryWorkNoObservedChangeTarget } from '../index'
@@ -56,6 +56,10 @@ export function actionRecord(
 	}
 }
 
-export function externalOperationEvidence(summary: string): ExternalOperationEvidence {
-	return { type: 'external-operation', operation: { type: 'create-artifact' }, passed: false, summary }
+export function externalOperationEvidence(
+	summary: string,
+	operation: ExternalOperation['type'] = 'create-artifact',
+	passed = false,
+): ExternalOperationEvidence {
+	return { type: 'external-operation', operation: { type: operation }, passed, summary }
 }

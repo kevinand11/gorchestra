@@ -28,21 +28,39 @@ export interface SourceControlCreateArtifactBranchInput {
 	artifactBranch: string
 }
 
-export type SourceControlArtifactCreationFailureReason =
+export type SourceControlBranchOperationFailureReason =
 	| { type: 'repository-access-secret-unresolved'; secretId: Id }
 	| { type: 'provider-authentication-failed' }
 	| { type: 'provider-access-denied' }
 	| { type: 'provider-repository-not-found' }
 	| { type: 'source-branch-not-found'; branch: string }
+	| { type: 'target-branch-not-found'; branch: string }
+	| { type: 'provider-unavailable' }
+
+export type SourceControlArtifactCreationFailureReason =
+	| SourceControlBranchOperationFailureReason
 	| { type: 'artifact-branch-diverged'; branch: string; sourceBranch: string }
 	| { type: 'artifact-branch-update-denied'; branch: string }
-	| { type: 'provider-unavailable' }
 
 export type SourceControlArtifactCreation =
 	| { type: 'passed'; mode: 'created' | 'adopted-existing' | 'fast-forwarded-existing'; summary: string }
 	| { type: 'failed'; reason: SourceControlArtifactCreationFailureReason; summary: string }
 
 export type SourceControlArtifactCreationError = InvalidCoreServiceOutputError
+
+export interface SourceControlCreateReviewSurfaceInput {
+	repository: Repository
+	sourceBranch: string
+	targetBranch: string
+	title: string
+}
+
+export type SourceControlReviewSurfaceCreation =
+	| { type: 'integrated'; summary: string }
+	| { type: 'review-surface'; mode: 'created' | 'adopted-existing'; pullRequestNumber: number; summary: string }
+	| { type: 'failed'; reason: SourceControlBranchOperationFailureReason; summary: string }
+
+export type SourceControlReviewSurfaceCreationError = InvalidCoreServiceOutputError
 
 export interface SourceControlProviders {
 	preflightRepository(
@@ -51,6 +69,9 @@ export interface SourceControlProviders {
 	createArtifactBranch(
 		input: SourceControlCreateArtifactBranchInput,
 	): Promise<Result<SourceControlArtifactCreation, SourceControlArtifactCreationError>>
+	createReviewSurface(
+		input: SourceControlCreateReviewSurfaceInput,
+	): Promise<Result<SourceControlReviewSurfaceCreation, SourceControlReviewSurfaceCreationError>>
 }
 
 export interface SourceControlAccessToken {
@@ -70,6 +91,14 @@ export interface SourceControlProviderCreateArtifactBranchInput<Config extends R
 	artifactBranch: string
 }
 
+export interface SourceControlProviderCreateReviewSurfaceInput<Config extends RepositoryConfig> {
+	repository: Repository & { config: Config }
+	accessToken: SourceControlAccessToken
+	sourceBranch: string
+	targetBranch: string
+	title: string
+}
+
 export type SourceControlProviderRepositoryPreflight =
 	| { type: 'passed' }
 	| {
@@ -86,6 +115,7 @@ export type SourceControlProviderRepositoryPreflight =
 export interface SourceControlProvider<Config extends RepositoryConfig> {
 	preflightRepository(input: SourceControlProviderPreflightRepositoryInput<Config>): Promise<SourceControlProviderRepositoryPreflight>
 	createArtifactBranch(input: SourceControlProviderCreateArtifactBranchInput<Config>): Promise<SourceControlArtifactCreation>
+	createReviewSurface(input: SourceControlProviderCreateReviewSurfaceInput<Config>): Promise<SourceControlReviewSurfaceCreation>
 }
 
 export type GitHubRepository = Repository & { config: GitHubRepositoryConfig }

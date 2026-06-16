@@ -224,13 +224,12 @@ if (import.meta.vitest) {
 				targetBranch: 'main',
 			},
 			title: 'Delivery',
-			body: 'Review delivery.',
 			closed: {
 				type: 'merged',
-				merged: stamp,
+				merged: { at: stamp.at },
 				config: { type: 'source-control', repositoryId: 'repository-1', sourceBranch: 'delivery/1', targetBranch: 'main' },
 			},
-			created: stamp,
+			created: { at: stamp.at },
 		})
 	}
 
