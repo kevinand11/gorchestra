@@ -310,7 +310,7 @@ if (import.meta.vitest) {
 
 	function createArtifactRuntime(options: ReturnType<typeof executableDeliveryFixture>) {
 		const providers = passingProviderBackedPreflightProviders()
-		providers.sourceControl.createSliceArtifact = () =>
+		providers.sourceControl.createArtifactBranch = () =>
 			Promise.resolve({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } })
 		return createTestCoreRuntime(options, { providers })
 	}

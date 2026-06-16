@@ -30,11 +30,7 @@ if (import.meta.vitest) {
 			const runtime = createCoreRuntime(services)
 
 			expect(runtime.services).toBe(services)
-			expect(Object.keys(runtime.providers.sourceControl)).toEqual([
-				'preflightRepository',
-				'createDeliveryArtifact',
-				'createSliceArtifact',
-			])
+			expect(Object.keys(runtime.providers.sourceControl)).toEqual(['preflightRepository', 'createArtifactBranch'])
 			expect(Object.keys(runtime.providers.modelProviderProtocols)).toEqual(['preflightModel'])
 			expect(typeof runtime.agentRuns.runExecutionAgentRun).toBe('function')
 		})

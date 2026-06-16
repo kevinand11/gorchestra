@@ -223,10 +223,10 @@ if (import.meta.vitest) {
 		it('creates the Delivery Artifact through Source Control outside storage transactions', async () => {
 			const options = providerPreflightFixture()
 			const providers = passingProviderBackedPreflightProviders()
-			providers.sourceControl.createDeliveryArtifact = (input) => {
+			providers.sourceControl.createArtifactBranch = (input) => {
 				expect(options.transactionCalls()).toBe(1)
 				expect(input.sourceBranch).toBe('main')
-				expect(input.deliveryBranch).toBe('gorchestra/deliveries/d-ZGVsaXZlcnktMQ')
+				expect(input.artifactBranch).toBe('gorchestra/deliveries/d-ZGVsaXZlcnktMQ')
 				return Promise.resolve({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } })
 			}
 			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options, { providers }))
@@ -247,7 +247,7 @@ if (import.meta.vitest) {
 		it('records Delivery Artifact creation provider failures', async () => {
 			const options = providerPreflightFixture()
 			const providers = passingProviderBackedPreflightProviders()
-			providers.sourceControl.createDeliveryArtifact = () =>
+			providers.sourceControl.createArtifactBranch = () =>
 				Promise.resolve({
 					ok: true,
 					value: {
@@ -289,10 +289,10 @@ if (import.meta.vitest) {
 			seedDeliveryArtifact(options)
 			seedSlice(options.tx, 'slice-1', 'delivery-1')
 			const providers = passingProviderBackedPreflightProviders()
-			providers.sourceControl.createSliceArtifact = (input) => {
+			providers.sourceControl.createArtifactBranch = (input) => {
 				expect(options.transactionCalls()).toBe(2)
 				expect(input.sourceBranch).toBe('delivery-branch')
-				expect(input.sliceBranch).toBe('gorchestra/deliveries/d-ZGVsaXZlcnktMQ/slices/s-c2xpY2UtMQ')
+				expect(input.artifactBranch).toBe('gorchestra/deliveries/d-ZGVsaXZlcnktMQ/slices/s-c2xpY2UtMQ')
 				return Promise.resolve({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } })
 			}
 			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options, { providers }))

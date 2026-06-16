@@ -3,7 +3,7 @@ import type { DeliveryArtifact } from '../../../domain/artifact'
 import type { DeliveryWorkState } from '../../../domain/delivery'
 import type { InvariantViolationError } from '../../../errors'
 import { sourceControlDeliveryBranchName } from '../../../providers/source-control/branches'
-import type { SourceControlArtifactCreation, SourceControlCreateDeliveryArtifactInput } from '../../../providers/source-control/types'
+import type { SourceControlArtifactCreation, SourceControlCreateArtifactBranchInput } from '../../../providers/source-control/types'
 import type { CoreRuntime } from '../../../runtime'
 import { nextId, putRecord, runtimeRecord } from '../../../utils/command-storage'
 import { withTransaction } from '../../../utils/storage'
@@ -12,7 +12,7 @@ import { resolvedSchedulerHandlerContext, type ProviderBackedSchedulerPreflightC
 import type { ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
 import { actionRecord, externalOperationEvidence } from './result'
 
-export type DeliveryArtifactCreationInput = SourceControlCreateDeliveryArtifactInput & {
+export type DeliveryArtifactCreationInput = SourceControlCreateArtifactBranchInput & {
 	deliveryId: string
 }
 
@@ -28,7 +28,7 @@ function deliveryArtifactCreationInput(
 			deliveryId: context.deliveryContext.delivery.id,
 			repository: context.deliveryContext.repository,
 			sourceBranch: context.deliveryContext.delivery.target.targetBranch,
-			deliveryBranch: deliveryBranch.value,
+			artifactBranch: deliveryBranch.value,
 		},
 	}
 }
@@ -40,7 +40,7 @@ export async function handleDeliveryNeedsArtifactCreation(
 	const input = deliveryArtifactCreationInput(preflight)
 	if (!input.ok) return input
 
-	const creation = await runtime.providers.sourceControl.createDeliveryArtifact(input.value)
+	const creation = await runtime.providers.sourceControl.createArtifactBranch(input.value)
 	if (!creation.ok) return creation
 
 	return withTransaction(runtime.services, async (tx) => {
@@ -56,7 +56,7 @@ export async function recordDeliveryArtifactCreationResult(
 	creation: SourceControlArtifactCreation,
 ): Promise<RunDeliveryWorkHandlerResult> {
 	return creation.type === 'passed'
-		? writePassedDeliveryArtifactCreation(context, input.deliveryBranch)
+		? writePassedDeliveryArtifactCreation(context, input.artifactBranch)
 		: writeFailedDeliveryArtifactCreation(context, creation.summary)
 }
 
@@ -156,7 +156,7 @@ if (import.meta.vitest) {
 					deliveryId: 'delivery-1',
 					repository: context.deliveryContext.repository,
 					sourceBranch: 'main',
-					deliveryBranch: 'gorchestra/deliveries/d-ZGVsaXZlcnktMQ',
+					artifactBranch: 'gorchestra/deliveries/d-ZGVsaXZlcnktMQ',
 				},
 			})
 		})

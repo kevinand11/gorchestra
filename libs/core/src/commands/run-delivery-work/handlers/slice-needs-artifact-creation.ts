@@ -4,7 +4,7 @@ import type { DeliveryWorkState } from '../../../domain/delivery'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
 import type { InvariantViolationError } from '../../../errors'
 import { sourceControlSliceBranchName } from '../../../providers/source-control/branches'
-import type { SourceControlArtifactCreation, SourceControlCreateSliceArtifactInput } from '../../../providers/source-control/types'
+import type { SourceControlArtifactCreation, SourceControlCreateArtifactBranchInput } from '../../../providers/source-control/types'
 import type { CoreRuntime } from '../../../runtime'
 import { nextId, putRecord, runtimeRecord } from '../../../utils/command-storage'
 import { getSliceState } from '../../../utils/delivery-context'
@@ -18,7 +18,7 @@ interface SliceStateCandidate {
 	state: SliceWorkState
 }
 
-export type SliceArtifactCreationInput = SourceControlCreateSliceArtifactInput & {
+export type SliceArtifactCreationInput = SourceControlCreateArtifactBranchInput & {
 	deliveryId: string
 	sliceId: string
 }
@@ -45,7 +45,7 @@ export async function handleSliceNeedsArtifactCreation(
 	const input = sliceArtifactCreationInputForSlice(context, slice)
 	if (!input.ok) return input
 
-	const creation = await runtime.providers.sourceControl.createSliceArtifact(input.value)
+	const creation = await runtime.providers.sourceControl.createArtifactBranch(input.value)
 	if (!creation.ok) return creation
 
 	return withTransaction(runtime.services, async (tx) =>
@@ -110,7 +110,7 @@ function sliceArtifactCreationInputForSlice(
 			sliceId: slice.id,
 			repository: context.deliveryContext.repository,
 			sourceBranch: deliveryArtifact.config.deliveryBranch,
-			sliceBranch: sliceBranch.value,
+			artifactBranch: sliceBranch.value,
 		},
 	}
 }
@@ -193,7 +193,7 @@ function sliceArtifactRecord(
 		value: {
 			id: id.value,
 			sliceId: input.sliceId,
-			config: { type: 'source-control', sliceBranch: input.sliceBranch },
+			config: { type: 'source-control', sliceBranch: input.artifactBranch },
 			created: created.value,
 		},
 	}
@@ -216,7 +216,7 @@ if (import.meta.vitest) {
 					sliceId: 'slice-1',
 					repository: context.deliveryContext.repository,
 					sourceBranch: 'delivery-branch',
-					sliceBranch: 'gorchestra/deliveries/d-ZGVsaXZlcnktMQ/slices/s-c2xpY2UtMQ',
+					artifactBranch: 'gorchestra/deliveries/d-ZGVsaXZlcnktMQ/slices/s-c2xpY2UtMQ',
 				},
 			})
 		})

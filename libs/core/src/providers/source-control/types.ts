@@ -22,16 +22,10 @@ export type SourceControlRepositoryPreflight =
 
 export type SourceControlRepositoryPreflightError = InvalidCoreServiceOutputError
 
-export interface SourceControlCreateDeliveryArtifactInput {
+export interface SourceControlCreateArtifactBranchInput {
 	repository: Repository
 	sourceBranch: string
-	deliveryBranch: string
-}
-
-export interface SourceControlCreateSliceArtifactInput {
-	repository: Repository
-	sourceBranch: string
-	sliceBranch: string
+	artifactBranch: string
 }
 
 export type SourceControlArtifactCreationFailureReason =
@@ -54,11 +48,8 @@ export interface SourceControlProviders {
 	preflightRepository(
 		input: SourceControlRepositoryPreflightInput,
 	): Promise<Result<SourceControlRepositoryPreflight, SourceControlRepositoryPreflightError>>
-	createDeliveryArtifact(
-		input: SourceControlCreateDeliveryArtifactInput,
-	): Promise<Result<SourceControlArtifactCreation, SourceControlArtifactCreationError>>
-	createSliceArtifact(
-		input: SourceControlCreateSliceArtifactInput,
+	createArtifactBranch(
+		input: SourceControlCreateArtifactBranchInput,
 	): Promise<Result<SourceControlArtifactCreation, SourceControlArtifactCreationError>>
 }
 

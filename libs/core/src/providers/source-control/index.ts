@@ -4,8 +4,7 @@ import type {
 	SourceControlAccessToken,
 	SourceControlArtifactCreation,
 	SourceControlArtifactCreationError,
-	SourceControlCreateDeliveryArtifactInput,
-	SourceControlCreateSliceArtifactInput,
+	SourceControlCreateArtifactBranchInput,
 	SourceControlProviders,
 	SourceControlRepositoryPreflight,
 	SourceControlRepositoryPreflightError,
@@ -34,25 +33,19 @@ export function createSourceControlProviders(
 					return preflightGitHubRepository(services, github, input.repository)
 			}
 		},
-		createDeliveryArtifact(input) {
+		createArtifactBranch(input) {
 			switch (input.repository.config.provider) {
 				case 'github':
-					return createGitHubDeliveryArtifact(services, github, { ...input, repository: input.repository })
-			}
-		},
-		createSliceArtifact(input) {
-			switch (input.repository.config.provider) {
-				case 'github':
-					return createGitHubSliceArtifact(services, github, { ...input, repository: input.repository })
+					return createGitHubArtifactBranch(services, github, { ...input, repository: input.repository })
 			}
 		},
 	}
 }
 
-async function createGitHubDeliveryArtifact(
+async function createGitHubArtifactBranch(
 	services: CoreServices,
 	github: GitHubSourceControlProvider,
-	input: SourceControlCreateDeliveryArtifactInput & { repository: GitHubRepository },
+	input: SourceControlCreateArtifactBranchInput & { repository: GitHubRepository },
 ): Promise<Result<SourceControlArtifactCreation, SourceControlArtifactCreationError>> {
 	const accessToken = await resolveRepositoryAccessToken(services, input.repository.config.secretId)
 	if (!accessToken.ok) return accessToken
@@ -62,26 +55,7 @@ async function createGitHubDeliveryArtifact(
 		repository: input.repository,
 		accessToken: accessToken.value,
 		sourceBranch: input.sourceBranch,
-		artifactBranch: input.deliveryBranch,
-	})
-
-	return { ok: true, value: creation }
-}
-
-async function createGitHubSliceArtifact(
-	services: CoreServices,
-	github: GitHubSourceControlProvider,
-	input: SourceControlCreateSliceArtifactInput & { repository: GitHubRepository },
-): Promise<Result<SourceControlArtifactCreation, SourceControlArtifactCreationError>> {
-	const accessToken = await resolveRepositoryAccessToken(services, input.repository.config.secretId)
-	if (!accessToken.ok) return accessToken
-	if (!isAccessToken(accessToken.value)) return { ok: true, value: artifactCreationAccessFailure(accessToken.value) }
-
-	const creation = await github.createArtifactBranch({
-		repository: input.repository,
-		accessToken: accessToken.value,
-		sourceBranch: input.sourceBranch,
-		artifactBranch: input.sliceBranch,
+		artifactBranch: input.artifactBranch,
 	})
 
 	return { ok: true, value: creation }
@@ -197,8 +171,7 @@ export type {
 	SourceControlArtifactCreation,
 	SourceControlArtifactCreationError,
 	SourceControlArtifactCreationFailureReason,
-	SourceControlCreateDeliveryArtifactInput,
-	SourceControlCreateSliceArtifactInput,
+	SourceControlCreateArtifactBranchInput,
 	SourceControlProvider,
 	SourceControlProviderCreateArtifactBranchInput,
 	SourceControlProviderPreflightRepositoryInput,
@@ -250,7 +223,7 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('resolves GitHub repository access Secrets for Delivery Artifact creation', async () => {
+		it('resolves GitHub repository access Secrets for artifact branch creation', async () => {
 			let observedBranch: string | null = null
 			let observedToken: string | null = null
 			const sourceControl = createSourceControlProviders(
@@ -267,10 +240,10 @@ if (import.meta.vitest) {
 				},
 			)
 
-			const result = await sourceControl.createDeliveryArtifact({
+			const result = await sourceControl.createArtifactBranch({
 				repository: gitHubRepository(),
 				sourceBranch: 'main',
-				deliveryBranch: 'delivery-branch',
+				artifactBranch: 'delivery-branch',
 			})
 
 			expect(result).toEqual({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } })
@@ -282,10 +255,10 @@ if (import.meta.vitest) {
 			const services = coreServices(() => Promise.resolve({}))
 			const sourceControl = createSourceControlProviders(services, { github: neverCalledGitHubProvider() })
 
-			const result = await sourceControl.createDeliveryArtifact({
+			const result = await sourceControl.createArtifactBranch({
 				repository: gitHubRepository(),
 				sourceBranch: 'main',
-				deliveryBranch: 'delivery-branch',
+				artifactBranch: 'delivery-branch',
 			})
 
 			expect(result).toEqual({
