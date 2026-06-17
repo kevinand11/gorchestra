@@ -3,7 +3,7 @@
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
-	"packageManager": "pnpm@9.5.0",
+	"packageManager": "pnpm@11.7.0",
 	"scripts": {
 		"lint": "eslint \"libs/**/*.ts\"",
 		"lint:fix": "eslint \"libs/**/*.ts\" --fix",
@@ -23,11 +23,6 @@
 	"lint-staged": {
 		"libs/**/*.ts": "eslint --fix",
 		"*.{ts,tsx,js,cjs,mjs,json,md,yml,yaml}": "prettier --write"
-	},
-	"pnpm": {
-		"overrides": {
-			"valleyed": "4.5.22"
-		}
 	},
 	"devDependencies": {
 		"@commitlint/cli": "^21.0.2",

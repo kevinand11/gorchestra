@@ -1,23 +1,24 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe, nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
-import {
-	modelProviderAuthPipe,
-	modelProviderBaseUrlPipe,
-	modelProviderHeadersPipe,
-	modelProviderPipe,
-	type ModelProvider,
-} from '../domain/model-provider'
+import { modelProviderAuthPipe, modelProviderBaseUrlPipe, modelProviderHeadersPipe, type ModelProvider } from '../domain/model-provider'
 import type {
 	ArchivedSecretReferenceError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
+	InvariantViolationError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import { buildCommandHandler } from '../utils/command'
-import { auditStamp, getRequired, putValidModelProvider, withTransaction } from '../utils/command-storage'
+import {
+	auditStamp,
+	getRequired,
+	updateRecordValue,
+	validateActiveModelProviderSecretReferences,
+	withTransaction,
+} from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const updateModelProviderInputPipe = v.object({
@@ -34,6 +35,7 @@ export type Result = ModelProvider
 export type Error =
 	| InvalidInputError
 	| InvalidCoreServiceOutputError
+	| InvariantViolationError
 	| StorageOperationFailedError
 	| ResourceNotFoundError
 	| ArchivedSecretReferenceError
@@ -41,24 +43,24 @@ export type Error =
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createUpdateModelProviderCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
 	return buildCommandHandler('updateModelProvider', updateModelProviderInputPipe, (input, context) => {
-		const stamp = auditStamp(options, context)
+		const stamp = auditStamp(runtime.values, context)
 		if (!stamp.ok) return Promise.resolve(stamp)
 
-		return withTransaction(options, async (tx): Promise<CoreResult<ModelProvider, Exclude<Error, InvalidInputError>>> => {
-			const existing = await getRequired('model-provider', tx.modelProviders, input.modelProviderId, modelProviderPipe)
+		return withTransaction(runtime.services, async (storage): Promise<CoreResult<ModelProvider, Exclude<Error, InvalidInputError>>> => {
+			const existing = await getRequired('model-provider', storage, input.modelProviderId)
 			if (!existing.ok) return existing
 
-			const provider: ModelProvider = {
-				...existing.value,
+			const validReferences = await validateActiveModelProviderSecretReferences(storage, input.auth, input.headers)
+			if (!validReferences.ok) return validReferences
+
+			return updateRecordValue('model-provider', storage, existing.value.id, {
 				name: input.name,
 				baseUrl: input.baseUrl,
 				auth: input.auth,
 				headers: input.headers,
 				updated: stamp.value,
-			}
-			return putValidModelProvider(tx, provider)
+			})
 		})
 	})
 }

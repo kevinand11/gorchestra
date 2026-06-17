@@ -58,7 +58,13 @@ if (import.meta.vitest) {
 
 		return {
 			options,
-			context: { services: options, tx: options.tx, deliveryContext: deliveryContext.value } satisfies DeliveryHandlerContext,
+			context: {
+				services: options,
+				storage: options.tx,
+				values: options.values,
+				tx: options.tx,
+				deliveryContext: deliveryContext.value,
+			} satisfies DeliveryHandlerContext,
 		}
 	}
 }

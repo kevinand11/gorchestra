@@ -12,7 +12,7 @@ import {
 	modelIdsFromProjectConfigRecord,
 	nextId,
 	normalizeProjectConfigRecordForCreate,
-	putRecordValue,
+	createRecordValue,
 	validateSelectableModels,
 	withTransaction,
 } from '../utils/command-storage'
@@ -32,18 +32,17 @@ export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigComm
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreateProjectCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
 	return buildCommandHandler('createProject', createProjectInputPipe, (input, context) => {
-		const stampResult = auditStamp(options, context)
+		const stampResult = auditStamp(runtime.values, context)
 		if (!stampResult.ok) return Promise.resolve(stampResult)
 
-		const idResult = nextId(options, 'project')
+		const idResult = nextId(runtime.values, 'project')
 		if (!idResult.ok) return Promise.resolve(idResult)
 
-		return withTransaction(options, async (tx): Promise<CoreResult<Project, Exclude<Error, InvalidInputError>>> => {
+		return withTransaction(runtime.services, async (storage): Promise<CoreResult<Project, Exclude<Error, InvalidInputError>>> => {
 			const config = normalizeProjectConfigRecordForCreate(input.config, stampResult.value)
 			if (config !== null) {
-				const referenceValidation = await validateSelectableModels(tx, modelIdsFromProjectConfigRecord(config))
+				const referenceValidation = await validateSelectableModels(storage, modelIdsFromProjectConfigRecord(config))
 				if (!referenceValidation.ok) return referenceValidation
 			}
 
@@ -54,7 +53,7 @@ export function createCreateProjectCommand(runtime: CoreRuntime): Operation {
 				config,
 				created: stampResult.value,
 			}
-			return putRecordValue('project', tx.projects, project)
+			return createRecordValue('project', storage, project)
 		})
 	})
 }

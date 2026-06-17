@@ -8,8 +8,9 @@ import type {
 	SingletonNotFoundError,
 	StorageOperationFailedError,
 } from '../../errors'
-import type { CoreServices, CoreStorageTransaction } from '../../services'
+import type { CoreServices, CoreStorage } from '../../services'
 import type { DeliveryWorkResolution, DeliveryContext } from '../../utils/delivery-context'
+import type { CoreRuntimeValues } from '../../utils/runtime-values'
 import type { Result as CoreResult } from '../../utils/types'
 
 export interface Result {
@@ -46,7 +47,9 @@ export type Error =
 
 export interface RunDeliveryWorkContext {
 	services: CoreServices
-	tx: CoreStorageTransaction
+	storage: CoreStorage
+	values: CoreRuntimeValues
+	tx?: unknown
 }
 
 export interface DeliveryHandlerContext extends RunDeliveryWorkContext {

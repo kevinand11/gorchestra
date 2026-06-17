@@ -42,7 +42,7 @@ export function createRunDeliveryWorkCommand(runtime: CoreRuntime): Operation {
 }
 
 async function handleRunDeliveryWork(runtime: CoreRuntime, input: Input): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const preflight = await withTransaction(runtime.services, (tx) => readSchedulerPreflight(runtime.services, tx, input.deliveryId))
+	const preflight = await withTransaction(runtime.services, (storage) => readSchedulerPreflight(runtime, storage, input.deliveryId))
 	if (!preflight.ok) return preflight
 
 	return preflight.value.type === 'result'
@@ -60,7 +60,9 @@ async function runProviderBackedSchedulerWork(
 
 	return schedulerPreflightChecksPassed(providerChecks.value)
 		? runPassedPreflightSchedulerWork(runtime, deliveryId, preflight, providerChecks.value)
-		: withTransaction(runtime.services, (tx) => applySchedulerPreflightChecks(runtime, tx, deliveryId, preflight, providerChecks.value))
+		: withTransaction(runtime.services, (storage) =>
+				applySchedulerPreflightChecks(runtime, storage, deliveryId, preflight, providerChecks.value),
+			)
 }
 
 async function runPassedPreflightSchedulerWork(
@@ -75,7 +77,9 @@ async function runPassedPreflightSchedulerWork(
 	if (reviewSurfaceCreation !== null) return reviewSurfaceCreation
 	if (preflight.state.type === 'slices-incomplete') return handleSliceWorkPool(runtime, preflight)
 
-	return withTransaction(runtime.services, (tx) => applySchedulerPreflightChecks(runtime, tx, deliveryId, preflight, providerChecks))
+	return withTransaction(runtime.services, (storage) =>
+		applySchedulerPreflightChecks(runtime, storage, deliveryId, preflight, providerChecks),
+	)
 }
 
 function handleSliceWorkPool(
@@ -83,7 +87,14 @@ function handleSliceWorkPool(
 	preflight: ProviderBackedSchedulerPreflightClaim,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> | CoreResult<Result, Exclude<Error, InvalidInputError>> {
 	const context = schedulerHandlerContextFromClaim(preflight)
-	return context.ok ? handleDeliverySlicesIncomplete(runtime, { services: runtime.services, ...context.value }) : context
+	return context.ok
+		? handleDeliverySlicesIncomplete(runtime, {
+				services: runtime.services,
+				storage: runtime.services.storage,
+				values: runtime.values,
+				...context.value,
+			})
+		: context
 }
 
 function handleArtifactCreation(

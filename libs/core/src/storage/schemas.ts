@@ -1,0 +1,294 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
+
+import { Schema, type AnySchema } from 'equipped/orm'
+import { v } from 'valleyed'
+
+import { actionResultPipe, type Action } from '../domain/action'
+import { agentPipe, agentRunPurposePipe, type AgentRun } from '../domain/agent-run'
+import { deliveryArtifactConfigPipe, sliceArtifactConfigPipe, type DeliveryArtifact, type SliceArtifact } from '../domain/artifact'
+import {
+	archivePeriodPipe,
+	auditStampPipe,
+	freeFormStringPipe,
+	idPipe,
+	nonEmptyTrimmedStringPipe,
+	nonNegativeIntegerPipe,
+	runtimeRecordPipe,
+	type Id,
+} from '../domain/commons'
+import {
+	deliveryConfigRecordPipe,
+	planConfigRecordPipe,
+	portfolioConfigPipe,
+	projectConfigRecordPipe,
+	type PortfolioConfigRecord,
+} from '../domain/config'
+import { deliveryClosedPipe, deliveryTargetPipe, type Delivery } from '../domain/delivery'
+import { graphNodeRefPipe, linkTypePipe, type Link } from '../domain/graph'
+import { memoryTypePipe, type Memory } from '../domain/memory'
+import { type Model } from '../domain/model'
+import { modelProviderAuthPipe, modelProviderHeaderPipe, modelProviderProtocolPipe, type ModelProvider } from '../domain/model-provider'
+import { instructionSourcePipe, type Plan } from '../domain/plan'
+import { projectSourcePipe, type Project } from '../domain/project'
+import { repositoryConfigPipe, type Repository } from '../domain/repository'
+import { reviewSurfaceClosedPipe, reviewSurfaceConfigPipe, reviewSurfaceScopePipe, type ReviewSurface } from '../domain/review-surface'
+import { revisionDispositionPipe, revisionScopePipe, type Revision, type RevisionGate } from '../domain/revision'
+import { envNamePipe, secretBindingScopePipe, secretValueRefPipe, type Secret, type SecretBinding } from '../domain/secret'
+import { type Slice } from '../domain/slice'
+import type { CoreIdResource, CoreResource } from '../errors'
+
+export const portfolioConfigStorageId = 'portfolio-config'
+
+const explicitStorageId = new AsyncLocalStorage<Id>()
+const archivePeriodsPipe = v.array(archivePeriodPipe)
+
+export function withExplicitCoreStorageId<T>(id: Id, run: () => Promise<T>): Promise<T> {
+	return explicitStorageId.run(id, run)
+}
+
+export const portfolioConfigSchema = Schema.from('portfolio_config')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('configured', auditStampPipe)
+	.field('value', portfolioConfigPipe)
+	.build()
+
+export const projectSchema = Schema.from('projects')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('title', nonEmptyTrimmedStringPipe)
+	.field('source', projectSourcePipe)
+	.field('config', v.nullable(projectConfigRecordPipe))
+	.field('created', auditStampPipe)
+	.build()
+
+export const repositorySchema = Schema.from('repositories')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('projectId', idPipe)
+	.field('config', repositoryConfigPipe)
+	.field('created', auditStampPipe)
+	.build()
+
+export const modelProviderSchema = Schema.from('model_providers')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('name', nonEmptyTrimmedStringPipe)
+	.field('protocol', modelProviderProtocolPipe)
+	.field('baseUrl', nonEmptyTrimmedStringPipe)
+	.field('auth', v.nullable(modelProviderAuthPipe))
+	.field('headers', v.array(modelProviderHeaderPipe))
+	.field('created', auditStampPipe)
+	.field('updated', v.nullable(auditStampPipe))
+	.field('archivePeriods', archivePeriodsPipe)
+	.build()
+
+export const modelSchema = Schema.from('models')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('providerId', idPipe)
+	.field('name', nonEmptyTrimmedStringPipe)
+	.field('providerModelId', nonEmptyTrimmedStringPipe)
+	.field('created', auditStampPipe)
+	.field('updated', v.nullable(auditStampPipe))
+	.field('archivePeriods', archivePeriodsPipe)
+	.build()
+
+export const planSchema = Schema.from('plans')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('projectId', idPipe)
+	.field('title', nonEmptyTrimmedStringPipe)
+	.field('config', v.nullable(planConfigRecordPipe))
+	.field('created', auditStampPipe)
+	.build()
+
+export const deliverySchema = Schema.from('deliveries')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('projectId', idPipe)
+	.field('planId', idPipe)
+	.field('title', nonEmptyTrimmedStringPipe)
+	.field('target', deliveryTargetPipe)
+	.field('config', v.nullable(deliveryConfigRecordPipe))
+	.field('accepted', auditStampPipe)
+	.field('queued', v.nullable(auditStampPipe))
+	.field('closed', v.nullable(deliveryClosedPipe))
+	.build()
+
+export const sliceSchema = Schema.from('slices')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('deliveryId', idPipe)
+	.field('order', nonNegativeIntegerPipe)
+	.field('title', nonEmptyTrimmedStringPipe)
+	.field('instruction', instructionSourcePipe)
+	.field('accepted', auditStampPipe)
+	.build()
+
+export const linkSchema = Schema.from('links')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('type', linkTypePipe)
+	.field('from', graphNodeRefPipe)
+	.field('to', graphNodeRefPipe)
+	.field('created', auditStampPipe)
+	.field('archivePeriods', archivePeriodsPipe)
+	.build()
+
+export const memorySchema = Schema.from('memories')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('title', nonEmptyTrimmedStringPipe)
+	.field('body', freeFormStringPipe)
+	.field('type', v.nullable(memoryTypePipe))
+	.field('created', auditStampPipe)
+	.build()
+
+export const deliveryArtifactSchema = Schema.from('delivery_artifacts')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('deliveryId', idPipe)
+	.field('config', deliveryArtifactConfigPipe)
+	.field('created', runtimeRecordPipe)
+	.build()
+
+export const sliceArtifactSchema = Schema.from('slice_artifacts')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('sliceId', idPipe)
+	.field('config', sliceArtifactConfigPipe)
+	.field('created', runtimeRecordPipe)
+	.build()
+
+export const actionSchema = Schema.from('actions')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('deliveryId', idPipe)
+	.field('performed', runtimeRecordPipe)
+	.field('authorized', v.nullable(auditStampPipe))
+	.field('result', actionResultPipe)
+	.build()
+
+export const agentRunSchema = Schema.from('agent_runs')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('agent', agentPipe)
+	.field('purpose', agentRunPurposePipe)
+	.field('started', runtimeRecordPipe)
+	.field('completed', v.nullable(runtimeRecordPipe))
+	.build()
+
+export const reviewSurfaceSchema = Schema.from('review_surfaces')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('scope', reviewSurfaceScopePipe)
+	.field('config', reviewSurfaceConfigPipe)
+	.field('title', nonEmptyTrimmedStringPipe)
+	.field('closed', v.nullable(reviewSurfaceClosedPipe))
+	.field('created', runtimeRecordPipe)
+	.build()
+
+export const revisionGateSchema = Schema.from('revision_gates')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('scope', revisionScopePipe)
+	.field('reviewSurfaceId', idPipe)
+	.field('opened', auditStampPipe)
+	.field('closed', v.nullable(auditStampPipe))
+	.field('consumedByRevisionId', v.nullable(idPipe))
+	.build()
+
+export const revisionSchema = Schema.from('revisions')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('revisionGateId', idPipe)
+	.field('scope', revisionScopePipe)
+	.field('instruction', instructionSourcePipe)
+	.field('disposition', revisionDispositionPipe)
+	.field('accepted', auditStampPipe)
+	.build()
+
+export const secretSchema = Schema.from('secrets')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('name', nonEmptyTrimmedStringPipe)
+	.field('valueRef', secretValueRefPipe)
+	.field('created', auditStampPipe)
+	.field('replaced', v.nullable(auditStampPipe))
+	.field('archivePeriods', archivePeriodsPipe)
+	.build()
+
+export const secretBindingSchema = Schema.from('secret_bindings')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('secretId', idPipe)
+	.field('scope', secretBindingScopePipe)
+	.field('envName', envNamePipe)
+	.field('created', auditStampPipe)
+	.field('archivePeriods', archivePeriodsPipe)
+	.build()
+
+export const coreStorageSchemas = [
+	portfolioConfigSchema,
+	projectSchema,
+	repositorySchema,
+	modelProviderSchema,
+	modelSchema,
+	planSchema,
+	deliverySchema,
+	sliceSchema,
+	linkSchema,
+	memorySchema,
+	deliveryArtifactSchema,
+	sliceArtifactSchema,
+	actionSchema,
+	agentRunSchema,
+	reviewSurfaceSchema,
+	revisionGateSchema,
+	revisionSchema,
+	secretSchema,
+	secretBindingSchema,
+] as const satisfies readonly AnySchema[]
+
+export const coreIdResourceSchemas = {
+	project: projectSchema,
+	repository: repositorySchema,
+	'model-provider': modelProviderSchema,
+	model: modelSchema,
+	plan: planSchema,
+	delivery: deliverySchema,
+	slice: sliceSchema,
+	link: linkSchema,
+	memory: memorySchema,
+	'delivery-artifact': deliveryArtifactSchema,
+	'slice-artifact': sliceArtifactSchema,
+	action: actionSchema,
+	'agent-run': agentRunSchema,
+	'review-surface': reviewSurfaceSchema,
+	'revision-gate': revisionGateSchema,
+	revision: revisionSchema,
+	secret: secretSchema,
+	'secret-binding': secretBindingSchema,
+} as const satisfies Record<CoreIdResource, AnySchema>
+
+export const coreResourceSchemas = {
+	'portfolio-config': portfolioConfigSchema,
+	...coreIdResourceSchemas,
+} as const satisfies Record<CoreResource, AnySchema>
+
+export interface CoreIdStorageRecordMap {
+	project: Project
+	repository: Repository
+	'model-provider': ModelProvider
+	model: Model
+	plan: Plan
+	delivery: Delivery
+	slice: Slice
+	link: Link
+	memory: Memory
+	'delivery-artifact': DeliveryArtifact
+	'slice-artifact': SliceArtifact
+	action: Action
+	'agent-run': AgentRun
+	'review-surface': ReviewSurface
+	'revision-gate': RevisionGate
+	revision: Revision
+	secret: Secret
+	'secret-binding': SecretBinding
+}
+
+export interface CoreStorageRecordMap extends CoreIdStorageRecordMap {
+	'portfolio-config': PortfolioConfigRecord & { id: Id }
+}
+
+export type CoreStorageRecord<Resource extends CoreResource> = CoreStorageRecordMap[Resource]
+export type CoreIdStorageRecord<Resource extends CoreIdResource> = CoreIdStorageRecordMap[Resource]
+
+function explicitCoreIdRequired(): Id {
+	const id = explicitStorageId.getStore()
+	if (id === undefined) throw new Error('Core must provide storage record ids explicitly.')
+
+	return id
+}

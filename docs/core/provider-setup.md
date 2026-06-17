@@ -87,7 +87,7 @@ Example Models under those providers:
 
 A provider verification test should arrange Core the same way a Consumer would:
 
-1. Open Core with storage, Secret, sandbox, clock, and ID Core Services.
+1. Open Core with an already-configured CoreStorage Equipped Repo plus Secret and sandbox Core Services.
 2. Store a Secret whose protected value reference points to the deployment's secret store entry.
 3. Configure the provider record with the Secret reference and any header Secret references.
 4. Configure the Repository or Model record using the provider-facing identifier.

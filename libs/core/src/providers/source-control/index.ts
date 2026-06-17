@@ -376,19 +376,24 @@ if (import.meta.vitest) {
 
 	function coreServices(resolveSecretValues: CoreServices['secrets']['resolveSecretValues']): CoreServices {
 		return {
-			storage: {
-				preflight: () => Promise.resolve({ ok: true }),
-				transaction: () => Promise.reject(new Error('Storage should not be called.')),
-			},
+			storage: unusedStorageService(),
 			secrets: {
 				preflight: () => Promise.resolve({ ok: true }),
 				resolveSecrets: () => Promise.resolve([]),
 				resolveSecretValues,
 			},
 			sandbox: { preflight: () => Promise.resolve({ ok: true }) },
-			clock: { now: () => new Date('2026-06-10T12:00:00.000Z') },
-			idGenerator: { next: (brand) => `${brand}-1` },
 		}
+	}
+
+	function unusedStorageService(): CoreServices['storage'] {
+		return {
+			on: () => {
+				throw new Error('Storage should not be called.')
+			},
+			session: () => Promise.reject(new Error('Storage should not be called.')),
+			resolve: () => Promise.reject(new Error('Storage should not be called.')),
+		} as never
 	}
 
 	function neverCalledGitHubProvider(): GitHubSourceControlProvider {

@@ -6,8 +6,8 @@ import type { DeliveryWorkState } from '../../domain/delivery'
 import type { ValidationEvidence } from '../../domain/evidence'
 import type { InvalidInputError } from '../../errors'
 import type { CoreRuntime } from '../../runtime'
-import type { CoreServices, CoreStorageTransaction } from '../../services'
-import { nextId, putRecord, runtimeRecord } from '../../utils/command-storage'
+import type { CoreServices, CoreStorage } from '../../services'
+import { createRecord, nextId, runtimeRecord } from '../../utils/command-storage'
 import { buildDeliveryContext, getDeliveryState, type DeliveryContext, type DeliveryWorkResolution } from '../../utils/delivery-context'
 import {
 	deliveryPreflightChecksPassed,
@@ -34,19 +34,20 @@ export interface SchedulerHandlerContext {
 
 export interface ResolvedSchedulerHandlerContext extends SchedulerHandlerContext {
 	services: CoreServices
-	tx: CoreStorageTransaction
+	storage: CoreStorage
+	values: CoreRuntime['values']
 }
 
 export async function readSchedulerPreflight(
-	services: CoreServices,
-	tx: CoreStorageTransaction,
+	runtime: CoreRuntime,
+	storage: CoreStorage,
 	deliveryId: string,
 ): Promise<CoreResult<SchedulerPreflightRead, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
+	const deliveryContext = await buildDeliveryContext(storage, deliveryId)
 	if (!deliveryContext.ok) return deliveryContext
 
 	const stateResult = getDeliveryState(deliveryContext.value)
-	return stateResult.ok ? schedulerPreflightForState(services, tx, deliveryContext.value, stateResult.value) : stateResult
+	return stateResult.ok ? schedulerPreflightForState(runtime, storage, deliveryContext.value, stateResult.value) : stateResult
 }
 
 export async function runSchedulerPreflightChecks(
@@ -62,12 +63,12 @@ export function schedulerPreflightChecksPassed(checks: ValidationEvidence[]): bo
 
 export async function applySchedulerPreflightChecks(
 	runtime: CoreRuntime,
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	_deliveryId: string,
 	claim: ProviderBackedSchedulerPreflightClaim,
 	checks: ValidationEvidence[],
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	return applyCurrentSchedulerPreflight(runtime, tx, claim.deliveryContext, claim.state, claim.preflight, checks)
+	return applyCurrentSchedulerPreflight(runtime, storage, claim.deliveryContext, claim.state, claim.preflight, checks)
 }
 
 export function schedulerHandlerContextFromClaim(
@@ -80,31 +81,31 @@ export function schedulerHandlerContextFromClaim(
 }
 
 export function resolvedSchedulerHandlerContext(
-	services: CoreServices,
-	tx: CoreStorageTransaction,
+	runtime: CoreRuntime,
+	storage: CoreStorage,
 	deliveryContext: DeliveryContext,
 	claim: ProviderBackedSchedulerPreflightClaim,
 ): CoreResult<ResolvedSchedulerHandlerContext, Exclude<Error, InvalidInputError>> {
 	const resolution = providerBackedDeliveryWorkResolution(claim.preflight)
 	return resolution === undefined
 		? missingSchedulerWorkResolution()
-		: { ok: true, value: { services, tx, deliveryContext, workResolution: resolution } }
+		: { ok: true, value: { services: runtime.services, storage, values: runtime.values, deliveryContext, workResolution: resolution } }
 }
 
 async function schedulerPreflightForState(
-	services: CoreServices,
-	tx: CoreStorageTransaction,
+	runtime: CoreRuntime,
+	storage: CoreStorage,
 	deliveryContext: DeliveryContext,
 	state: DeliveryWorkState,
 ): Promise<CoreResult<SchedulerPreflightRead, Exclude<Error, InvalidInputError>>> {
 	if (isSchedulerPreflightState(state)) {
-		const preflight = await readProviderBackedDeliveryPreflightPlan(tx, deliveryContext)
+		const preflight = await readProviderBackedDeliveryPreflightPlan(storage, deliveryContext)
 		return preflight.ok
 			? { ok: true, value: { type: 'provider-backed', deliveryContext, state, preflight: preflight.value } }
 			: preflight
 	}
 
-	const handled = await handleDeliveryWorkState({ services, tx, deliveryContext }, state)
+	const handled = await handleDeliveryWorkState({ services: runtime.services, storage, values: runtime.values, deliveryContext }, state)
 	return handled.ok ? { ok: true, value: { type: 'result', result: handled.value } } : handled
 }
 
@@ -114,37 +115,39 @@ function isSchedulerPreflightState(state: DeliveryWorkState): boolean {
 
 function applyCurrentSchedulerPreflight(
 	runtime: CoreRuntime,
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	deliveryContext: DeliveryContext,
 	state: DeliveryWorkState,
 	preflight: ProviderBackedDeliveryPreflightPlan,
 	checks: ValidationEvidence[],
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> | CoreResult<Result, Exclude<Error, InvalidInputError>> {
 	return deliveryPreflightChecksPassed(checks)
-		? handleDeliveryWorkState(schedulerHandlerContext(runtime.services, tx, deliveryContext, preflight), state, runtime)
-		: writeFailedPreflightAction(runtime.services, tx, deliveryContext.delivery.id, checks)
+		? handleDeliveryWorkState(schedulerHandlerContext(runtime, storage, deliveryContext, preflight), state, runtime)
+		: writeFailedPreflightAction(runtime, storage, deliveryContext.delivery.id, checks)
 }
 
 function schedulerHandlerContext(
-	services: CoreServices,
-	tx: CoreStorageTransaction,
+	runtime: CoreRuntime,
+	storage: CoreStorage,
 	deliveryContext: DeliveryContext,
 	preflight: ProviderBackedDeliveryPreflightPlan,
 ) {
 	const resolution = providerBackedDeliveryWorkResolution(preflight)
-	return resolution === undefined ? { services, tx, deliveryContext } : { services, tx, deliveryContext, workResolution: resolution }
+	return resolution === undefined
+		? { services: runtime.services, storage, values: runtime.values, deliveryContext }
+		: { services: runtime.services, storage, values: runtime.values, deliveryContext, workResolution: resolution }
 }
 
 async function writeFailedPreflightAction(
-	services: CoreServices,
-	tx: CoreStorageTransaction,
+	runtime: CoreRuntime,
+	storage: CoreStorage,
 	deliveryId: string,
 	checks: ValidationEvidence[],
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const actionId = nextId(services, 'action')
+	const actionId = nextId(runtime.values, 'action')
 	if (!actionId.ok) return actionId
 
-	const performed = runtimeRecord(services)
+	const performed = runtimeRecord(runtime.values)
 	if (!performed.ok) return performed
 
 	const action: Action = {
@@ -154,7 +157,7 @@ async function writeFailedPreflightAction(
 		authorized: null,
 		result: { type: 'validate-preflight', checks },
 	}
-	const put = await putRecord('action', tx.actions, action.id, action)
+	const put = await createRecord('action', storage, action)
 	if (!put.ok) return put
 
 	return workedActions([action.id])

@@ -2,8 +2,8 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe, type OperationContext } from '../domain/commons'
 import type { ValidationEvidence } from '../domain/evidence'
-import { modelPipe, type Model } from '../domain/model'
-import { modelProviderPipe, type ModelProvider, type ModelProviderHeader } from '../domain/model-provider'
+import type { Model } from '../domain/model'
+import type { ModelProvider, ModelProviderHeader } from '../domain/model-provider'
 import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
@@ -14,7 +14,7 @@ import type {
 import { modelProviderProtocolPreflight } from '../providers/model-provider-protocol'
 import type { ModelProviderProtocolPreflightFailureReason } from '../providers/model-provider-protocol/types'
 import type { CoreRuntime } from '../runtime'
-import type { CoreServices, CoreStorageTransaction } from '../services'
+import type { CoreServices, CoreStorage } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { getRequired, isArchived, validateActiveSecret, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -72,17 +72,17 @@ function readModelPreflightReadiness(
 	options: CoreServices,
 	input: Input,
 ): Promise<CoreResult<ModelPreflightReadiness, ModelPreflightLocalError>> {
-	return withTransaction(options, (tx) => readModelPreflightReadinessFromStorage(tx, input.modelId))
+	return withTransaction(options, (storage) => readModelPreflightReadinessFromStorage(storage, input.modelId))
 }
 
 async function readModelPreflightReadinessFromStorage(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	modelId: string,
 ): Promise<CoreResult<ModelPreflightReadiness, ModelPreflightLocalError>> {
-	const facts = await readModelPreflightStorageFacts(tx, modelId)
+	const facts = await readModelPreflightStorageFacts(storage, modelId)
 	if (!facts.ok) return facts
 
-	const activeFacts = await validateActiveModelFacts(tx, facts.value.model, facts.value.modelProvider)
+	const activeFacts = await validateActiveModelFacts(storage, facts.value.model, facts.value.modelProvider)
 	if (!activeFacts.ok) return activeFacts
 	if (activeFacts.value.type === 'failed') return { ok: true, value: activeFacts.value }
 
@@ -90,28 +90,28 @@ async function readModelPreflightReadinessFromStorage(
 }
 
 async function readModelPreflightStorageFacts(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	modelId: string,
 ): Promise<CoreResult<ModelPreflightStorageFacts, ModelPreflightLocalError>> {
-	const model = await getRequired('model', tx.models, modelId, modelPipe)
+	const model = await getRequired('model', storage, modelId)
 	if (!model.ok) return model
 
-	const modelProvider = await getRequired('model-provider', tx.modelProviders, model.value.providerId, modelProviderPipe)
+	const modelProvider = await getRequired('model-provider', storage, model.value.providerId)
 	return modelProvider.ok ? { ok: true, value: { model: model.value, modelProvider: modelProvider.value } } : modelProvider
 }
 
 async function validateActiveModelFacts(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	model: Model,
 	modelProvider: ModelProvider,
 ): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
 	const archivalReadiness = modelArchivalReadiness(model, modelProvider)
 	if (archivalReadiness.type === 'failed') return { ok: true, value: archivalReadiness }
 
-	const authSecret = await validateAuthSecret(tx, modelProvider)
+	const authSecret = await validateAuthSecret(storage, modelProvider)
 	if (!authSecret.ok || authSecret.value.type === 'failed') return authSecret
 
-	return validateHeaderSecrets(tx, modelProvider)
+	return validateHeaderSecrets(storage, modelProvider)
 }
 
 function modelArchivalReadiness(model: Model, modelProvider: ModelProvider): ModelPreflightFactReadiness {
@@ -123,21 +123,21 @@ function modelArchivalReadiness(model: Model, modelProvider: ModelProvider): Mod
 }
 
 async function validateAuthSecret(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	modelProvider: ModelProvider,
 ): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
 	if (modelProvider.auth === null) return { ok: true, value: { type: 'passed' } }
 
-	const secret = await validateActiveSecret(tx, modelProvider.auth.secretId)
+	const secret = await validateActiveSecret(storage, modelProvider.auth.secretId)
 	return secret.ok ? { ok: true, value: { type: 'passed' } } : mapAuthSecretFailure(modelProvider, secret.error)
 }
 
 async function validateHeaderSecrets(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	modelProvider: ModelProvider,
 ): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
 	for (const header of modelProvider.headers) {
-		const secret = await validateActiveSecret(tx, header.valueSecretId)
+		const secret = await validateActiveSecret(storage, header.valueSecretId)
 		if (!secret.ok) return mapHeaderSecretFailure(modelProvider, header, secret.error)
 	}
 

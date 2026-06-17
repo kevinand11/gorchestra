@@ -6,7 +6,7 @@ import { deliveryConfigPipe, type DeliveryConfigRecord } from '../domain/config'
 import type { Delivery, DeliveryWorkState } from '../domain/delivery'
 import type { DeliveryWorkStateMismatchError, InvalidInputError, InvariantViolationError } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import type { CoreServices, CoreStorageTransaction } from '../services'
+import type { CoreStorage } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import {
@@ -14,7 +14,7 @@ import {
 	deliveryWorkStateMismatch,
 	modelIdsFromDeliveryConfigRecord,
 	normalizeDeliveryConfigRecord,
-	putRecord,
+	updateRecordValue,
 	validateSelectableModels,
 	withTransaction,
 } from '../utils/command-storage'
@@ -38,43 +38,42 @@ export type Error =
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createConfigureDeliveryCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
 	return buildCommandHandler('configureDelivery', configureDeliveryInputPipe, (input, context) =>
-		handleConfigureDelivery(options, input, context),
+		handleConfigureDelivery(runtime, input, context),
 	)
 }
 
 async function handleConfigureDelivery(
-	options: CoreServices,
+	runtime: CoreRuntime,
 	input: Input,
 	context: OperationContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const stampResult = auditStamp(options, context)
+	const stampResult = auditStamp(runtime.values, context)
 	if (!stampResult.ok) return stampResult
 
-	return withTransaction(options, (tx) => writeDeliveryConfig(tx, input, stampResult.value))
+	return withTransaction(runtime.services, (storage) => writeDeliveryConfig(storage, input, stampResult.value))
 }
 
 async function writeDeliveryConfig(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	input: Input,
 	stamp: AuditStamp,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const deliveryResult = await requireOpenDelivery(tx, input.deliveryId)
+	const deliveryResult = await requireOpenDelivery(storage, input.deliveryId)
 	if (!deliveryResult.ok) return deliveryResult
 
 	const config = normalizeDeliveryConfigRecord(input.config, stamp)
-	const referenceValidation = await validateSelectableModels(tx, modelIdsFromDeliveryConfigRecord(config))
+	const referenceValidation = await validateSelectableModels(storage, modelIdsFromDeliveryConfigRecord(config))
 	if (!referenceValidation.ok) return referenceValidation
 
-	return writeConfiguredDelivery(tx, deliveryResult.value, config)
+	return writeConfiguredDelivery(storage, deliveryResult.value, config)
 }
 
 async function requireOpenDelivery(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	deliveryId: string,
 ): Promise<CoreResult<Delivery, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
+	const deliveryContext = await buildDeliveryContext(storage, deliveryId)
 	if (!deliveryContext.ok) return deliveryContext
 
 	const deliveryState = getDeliveryState(deliveryContext.value)
@@ -86,15 +85,11 @@ async function requireOpenDelivery(
 }
 
 async function writeConfiguredDelivery(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	existing: Delivery,
 	config: DeliveryConfigRecord,
 ): Promise<CoreResult<Delivery, Exclude<Error, InvalidInputError>>> {
-	const delivery: Delivery = { ...existing, config }
-	const putResult = await putRecord('delivery', tx.deliveries, delivery.id, delivery)
-	if (!putResult.ok) return putResult
-
-	return { ok: true, value: delivery }
+	return updateRecordValue('delivery', storage, existing.id, { config })
 }
 
 function closedDeliveryMismatch(deliveryId: string, actual: DeliveryWorkState): CoreResult<never, DeliveryWorkStateMismatchError> {

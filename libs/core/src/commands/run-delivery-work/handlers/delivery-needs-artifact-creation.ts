@@ -5,7 +5,7 @@ import type { InvariantViolationError } from '../../../errors'
 import { sourceControlDeliveryBranchName } from '../../../providers/source-control/branches'
 import type { SourceControlArtifactCreation, SourceControlCreateArtifactBranchInput } from '../../../providers/source-control/types'
 import type { CoreRuntime } from '../../../runtime'
-import { nextId, putRecord, runtimeRecord } from '../../../utils/command-storage'
+import { createRecord, nextId, runtimeRecord } from '../../../utils/command-storage'
 import { withTransaction } from '../../../utils/storage'
 import type { Result as CoreResult } from '../../../utils/types'
 import { resolvedSchedulerHandlerContext, type ProviderBackedSchedulerPreflightClaim } from '../preflight'
@@ -43,8 +43,8 @@ export async function handleDeliveryNeedsArtifactCreation(
 	const creation = await runtime.providers.sourceControl.createArtifactBranch(input.value)
 	if (!creation.ok) return creation
 
-	return withTransaction(runtime.services, async (tx) => {
-		const context = resolvedSchedulerHandlerContext(runtime.services, tx, preflight.deliveryContext, preflight)
+	return withTransaction(runtime.services, async (storage) => {
+		const context = resolvedSchedulerHandlerContext(runtime, storage, preflight.deliveryContext, preflight)
 		return context.ok ? recordDeliveryArtifactCreationResult(context.value, preflight.state, input.value, creation.value) : context
 	})
 }
@@ -89,10 +89,10 @@ async function putDeliveryArtifactCreationRecords(
 	context: ResolvedDeliveryHandlerContext,
 	records: { artifact: DeliveryArtifact; action: Action },
 ): Promise<RunDeliveryWorkHandlerResult> {
-	const artifactPut = await putRecord('delivery-artifact', context.tx.deliveryArtifacts, records.artifact.id, records.artifact)
+	const artifactPut = await createRecord('delivery-artifact', context.storage, records.artifact)
 	if (!artifactPut.ok) return artifactPut
 
-	const actionPut = await putRecord('action', context.tx.actions, records.action.id, records.action)
+	const actionPut = await createRecord('action', context.storage, records.action)
 	if (!actionPut.ok) return actionPut
 
 	return { ok: true, value: { processedCount: 1, failures: [] } }
@@ -108,7 +108,7 @@ async function writeFailedDeliveryArtifactCreation(
 	})
 	if (!action.ok) return action
 
-	const actionPut = await putRecord('action', context.tx.actions, action.value.id, action.value)
+	const actionPut = await createRecord('action', context.storage, action.value)
 	if (!actionPut.ok) return actionPut
 
 	return {
@@ -124,10 +124,10 @@ function deliveryArtifactRecord(
 	context: ResolvedDeliveryHandlerContext,
 	deliveryBranch: string,
 ): CoreResult<DeliveryArtifact, RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	const id = nextId(context.services, 'delivery-artifact')
+	const id = nextId(context.values, 'delivery-artifact')
 	if (!id.ok) return id
 
-	const created = runtimeRecord(context.services)
+	const created = runtimeRecord(context.values)
 	if (!created.ok) return created
 
 	return {
@@ -232,6 +232,8 @@ if (import.meta.vitest) {
 
 		return {
 			services: options,
+			storage: options.tx,
+			values: options.values,
 			tx: options.tx,
 			deliveryContext: deliveryContext.value,
 			workResolution: {

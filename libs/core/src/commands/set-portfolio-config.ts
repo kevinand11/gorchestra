@@ -9,7 +9,7 @@ import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../
 import {
 	modelIdsFromPortfolioConfig,
 	normalizePortfolioConfig,
-	putSingletonValue,
+	setPortfolioConfig,
 	validateSelectableModels,
 	withAuditStampTransaction,
 } from '../utils/command-storage'
@@ -25,18 +25,18 @@ export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigComm
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createSetPortfolioConfigCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
 	return buildCommandHandler('setPortfolioConfig', setPortfolioConfigInputPipe, (input, context) =>
 		withAuditStampTransaction(
-			options,
+			runtime,
 			context,
-			async (tx, stamp): Promise<CoreResult<PortfolioConfigRecord, Exclude<Error, InvalidInputError>>> => {
+			async (storage, stamp): Promise<CoreResult<PortfolioConfigRecord, Exclude<Error, InvalidInputError>>> => {
 				const config = normalizePortfolioConfig(input.config)
-				const referenceValidation = await validateSelectableModels(tx, modelIdsFromPortfolioConfig(config))
+				const referenceValidation = await validateSelectableModels(storage, modelIdsFromPortfolioConfig(config))
 				if (!referenceValidation.ok) return referenceValidation
 
 				const record: PortfolioConfigRecord = { configured: stamp, value: config }
-				return putSingletonValue('portfolio-config', tx.portfolioConfig, record)
+				const stored = await setPortfolioConfig(storage, record)
+				return stored.ok ? { ok: true, value: { configured: stored.value.configured, value: stored.value.value } } : stored
 			},
 		),
 	)

@@ -2,7 +2,7 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe, type OperationContext } from '../domain/commons'
 import type { ValidationEvidence } from '../domain/evidence'
-import { repositoryPipe, type Repository } from '../domain/repository'
+import type { Repository } from '../domain/repository'
 import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
@@ -11,7 +11,7 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import type { CoreServices, CoreStorageTransaction } from '../services'
+import type { CoreServices, CoreStorage } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { getRequired, validateActiveSecret, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -50,17 +50,17 @@ function readRepositoryPreflightReadiness(
 	options: CoreServices,
 	input: Input,
 ): Promise<CoreResult<RepositoryPreflightReadiness, RepositoryPreflightLocalError>> {
-	return withTransaction(options, (tx) => readRepositoryPreflightReadinessFromStorage(tx, input.repositoryId))
+	return withTransaction(options, (storage) => readRepositoryPreflightReadinessFromStorage(storage, input.repositoryId))
 }
 
 async function readRepositoryPreflightReadinessFromStorage(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	repositoryId: string,
 ): Promise<CoreResult<RepositoryPreflightReadiness, RepositoryPreflightLocalError>> {
-	const repository = await getRequired('repository', tx.repositories, repositoryId, repositoryPipe)
+	const repository = await getRequired('repository', storage, repositoryId)
 	if (!repository.ok) return repository
 
-	const secret = await validateActiveSecret(tx, repository.value.config.secretId)
+	const secret = await validateActiveSecret(storage, repository.value.config.secretId)
 	if (!secret.ok) return mapAccessSecretFailure(repository.value, secret.error)
 
 	return { ok: true, value: { type: 'passed', repository: repository.value } }

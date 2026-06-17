@@ -7,7 +7,8 @@ import type { ExternalOperationEvidence, ValidationEvidence } from './domain/evi
 import type { GraphNodeRef, LinkType } from './domain/graph'
 import type { SecretBindingScope } from './domain/secret'
 
-export type CorePreflightCheckName = 'storage' | 'secrets' | 'sandbox' | 'clock' | 'idGenerator'
+export type CorePreflightCheckName = 'storage' | 'secrets' | 'sandbox'
+export type CoreServiceOutputName = CorePreflightCheckName | 'runtime'
 
 export type CoreInputBoundary = 'core' | 'command' | 'query' | 'snapshot'
 
@@ -25,7 +26,7 @@ export interface NotImplementedError {
 
 export interface InvalidCoreServiceOutputError {
 	type: 'invalid-core-service-output'
-	service: CorePreflightCheckName
+	service: CoreServiceOutputName
 	operation: string
 	pipeError: PipeError
 }
@@ -85,11 +86,10 @@ export interface NotArchivedError {
 
 export type CoreStorageOperation =
 	| { type: 'transaction' }
-	| { type: 'get'; resource: CoreIdResource; id: Id }
-	| { type: 'put'; resource: CoreIdResource; id: Id }
-	| { type: 'get-singleton'; resource: CoreSingletonResource }
-	| { type: 'put-singleton'; resource: CoreSingletonResource }
+	| { type: 'get'; resource: CoreResource; id: Id | null }
 	| { type: 'list'; resource: CoreIdResource }
+	| { type: 'create'; resource: CoreResource; id: Id }
+	| { type: 'update'; resource: CoreResource; id: Id }
 
 export interface StorageOperationFailedError {
 	type: 'storage-operation-failed'

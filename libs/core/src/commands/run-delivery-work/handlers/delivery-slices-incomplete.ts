@@ -6,7 +6,7 @@ import type { Id } from '../../../domain/commons'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
 import type { InvalidInputError } from '../../../errors'
 import type { CoreRuntime } from '../../../runtime'
-import type { CoreStorageTransaction } from '../../../services'
+import type { CoreStorage } from '../../../services'
 import { buildDeliveryContext, getDeliveryState, getSliceState, resolveDeliveryWork } from '../../../utils/delivery-context'
 import { withTransaction } from '../../../utils/storage'
 import type { Result as CoreResult } from '../../../utils/types'
@@ -51,7 +51,7 @@ interface SliceWorkerPool {
 
 export async function handleDeliverySlicesIncomplete(
 	runtime: CoreRuntime,
-	context: Pick<ResolvedDeliveryHandlerContext, 'services' | 'deliveryContext' | 'workResolution'>,
+	context: Pick<ResolvedDeliveryHandlerContext, 'services' | 'storage' | 'values' | 'deliveryContext' | 'workResolution'>,
 ): Promise<RunDeliveryWorkHandlerResult> {
 	const pool: SliceWorkerPool = {
 		runtime,
@@ -91,14 +91,14 @@ async function runNextSliceWork(pool: SliceWorkerPool): Promise<CoreResult<Resul
 async function selectNextSliceWork(
 	pool: SliceWorkerPool,
 ): Promise<CoreResult<SliceWorkSelection | null, Exclude<Error, InvalidInputError>>> {
-	return withTransaction(pool.runtime.services, async (tx) => readSliceWorkSelection(tx, pool))
+	return withTransaction(pool.runtime.services, async (storage) => readSliceWorkSelection(storage, pool))
 }
 
 async function readSliceWorkSelection(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	pool: SliceWorkerPool,
 ): Promise<CoreResult<SliceWorkSelection | null, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await buildDeliveryContext(tx, pool.deliveryId)
+	const deliveryContext = await buildDeliveryContext(storage, pool.deliveryId)
 	if (!deliveryContext.ok) return deliveryContext
 
 	return selectFromDeliveryContext(deliveryContext.value, pool.claimedKeys)
@@ -205,9 +205,9 @@ async function processSliceSelection(pool: SliceWorkerPool, selection: SliceWork
 		return handleSliceNeedsReviewSurface(pool.runtime, selectionContext(pool, selection), selection.slice, selection.state)
 	}
 
-	return withTransaction(pool.runtime.services, async (tx) =>
+	return withTransaction(pool.runtime.services, async (storage) =>
 		handleSliceWorkState(
-			{ services: pool.runtime.services, tx, deliveryContext: selection.deliveryContext },
+			{ services: pool.runtime.services, storage, values: pool.runtime.values, deliveryContext: selection.deliveryContext },
 			selection.slice,
 			selection.state,
 			pool.workResolution,
@@ -329,6 +329,8 @@ if (import.meta.vitest) {
 
 		return {
 			services: options,
+			storage: options.tx,
+			values: options.values,
 			tx: options.tx,
 			deliveryContext: deliveryContext.value,
 			workResolution: workResolution.value.resolution,

@@ -2,11 +2,11 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe, nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
 import { type Model } from '../domain/model'
-import { modelProviderPipe } from '../domain/model-provider'
 import type {
 	ArchivedModelProviderReferenceError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
+	InvariantViolationError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
@@ -18,7 +18,7 @@ import {
 	getRequired,
 	isArchived,
 	nextId,
-	putRecordValue,
+	createRecordValue,
 	withTransaction,
 } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -35,6 +35,7 @@ export type Result = Model
 export type Error =
 	| InvalidInputError
 	| InvalidCoreServiceOutputError
+	| InvariantViolationError
 	| StorageOperationFailedError
 	| ResourceNotFoundError
 	| ArchivedModelProviderReferenceError
@@ -42,16 +43,15 @@ export type Error =
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreateModelCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
 	return buildCommandHandler('createModel', createModelInputPipe, (input, context) => {
-		const stamp = auditStamp(options, context)
+		const stamp = auditStamp(runtime.values, context)
 		if (!stamp.ok) return Promise.resolve(stamp)
 
-		const id = nextId(options, 'model')
+		const id = nextId(runtime.values, 'model')
 		if (!id.ok) return Promise.resolve(id)
 
-		return withTransaction(options, async (tx): Promise<CoreResult<Model, Exclude<Error, InvalidInputError>>> => {
-			const provider = await getRequired('model-provider', tx.modelProviders, input.providerId, modelProviderPipe)
+		return withTransaction(runtime.services, async (storage): Promise<CoreResult<Model, Exclude<Error, InvalidInputError>>> => {
+			const provider = await getRequired('model-provider', storage, input.providerId)
 			if (!provider.ok) return provider
 			if (isArchived(provider.value.archivePeriods)) return archivedModelProviderReference(input.providerId)
 
@@ -64,7 +64,7 @@ export function createCreateModelCommand(runtime: CoreRuntime): Operation {
 				updated: null,
 				archivePeriods: [],
 			}
-			return putRecordValue('model', tx.models, model)
+			return createRecordValue('model', storage, model)
 		})
 	})
 }

@@ -18,8 +18,8 @@ export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createGetSliceWorkStateQuery(options: CoreServices): Operation {
 	return buildQueryHandler('getSliceWorkState', getSliceWorkStateInputPipe, (input) =>
-		withTransaction(options, async (tx) => {
-			const context = await buildDeliveryContext(tx, input.deliveryId)
+		withTransaction(options, async (storage) => {
+			const context = await buildDeliveryContext(storage, input.deliveryId)
 			return context.ok ? getSliceState(context.value, input.sliceId) : context
 		}),
 	)

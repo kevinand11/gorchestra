@@ -2,7 +2,7 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe, type OperationContext } from '../domain/commons'
 import { projectConfigPipe } from '../domain/config'
-import { projectPipe, type Project } from '../domain/project'
+import type { Project } from '../domain/project'
 import type { InvalidInputError } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import { buildCommandHandler } from '../utils/command'
@@ -11,7 +11,7 @@ import {
 	getRequired,
 	modelIdsFromProjectConfigRecord,
 	normalizeProjectConfigRecord,
-	putRecordValue,
+	updateRecordValue,
 	validateSelectableModels,
 	withAuditStampTransaction,
 } from '../utils/command-storage'
@@ -27,19 +27,21 @@ export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigComm
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createSetProjectConfigCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
 	return buildCommandHandler('setProjectConfig', setProjectConfigInputPipe, (input, context) =>
-		withAuditStampTransaction(options, context, async (tx, stamp): Promise<CoreResult<Project, Exclude<Error, InvalidInputError>>> => {
-			const projectResult = await getRequired('project', tx.projects, input.projectId, projectPipe)
-			if (!projectResult.ok) return projectResult
+		withAuditStampTransaction(
+			runtime,
+			context,
+			async (storage, stamp): Promise<CoreResult<Project, Exclude<Error, InvalidInputError>>> => {
+				const projectResult = await getRequired('project', storage, input.projectId)
+				if (!projectResult.ok) return projectResult
 
-			const config = normalizeProjectConfigRecord(input.config, stamp)
-			const referenceValidation = await validateSelectableModels(tx, modelIdsFromProjectConfigRecord(config))
-			if (!referenceValidation.ok) return referenceValidation
+				const config = normalizeProjectConfigRecord(input.config, stamp)
+				const referenceValidation = await validateSelectableModels(storage, modelIdsFromProjectConfigRecord(config))
+				if (!referenceValidation.ok) return referenceValidation
 
-			const project: Project = { ...projectResult.value, config }
-			return putRecordValue('project', tx.projects, project)
-		}),
+				return updateRecordValue('project', storage, projectResult.value.id, { config })
+			},
+		),
 	)
 }
 

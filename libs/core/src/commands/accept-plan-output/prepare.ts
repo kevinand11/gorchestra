@@ -3,12 +3,12 @@ import type { AuditStamp, Id } from '../../domain/commons'
 import type { GraphNodeRef, LinkType } from '../../domain/graph'
 import type { Plan, PlanOutputProposal, ProposedDelivery, ProposedGraphRef, ProposedMemory } from '../../domain/plan'
 import type { InvalidCoreServiceOutputError, InvalidPlanOutputError } from '../../errors'
-import type { CoreServices } from '../../services'
 import { nextId } from '../../utils/command-storage'
+import type { CoreRuntimeValues } from '../../utils/runtime-values'
 import type { Result } from '../../utils/types'
 
 export function prepareMaterializationPlan(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	plan: Plan,
 	stamp: AuditStamp,
 	output: PlanOutputProposal,
@@ -17,28 +17,28 @@ export function prepareMaterializationPlan(
 	const basic = validateBasicOutput(output)
 	if (!basic.ok) return basic
 
-	const deliveries = plannedDeliveries(options, output.proposedDeliveries)
+	const deliveries = plannedDeliveries(values, output.proposedDeliveries)
 	if (!deliveries.ok) return deliveries
 
-	return prepareWithDeliveries(options, plan, stamp, output, existing, deliveries.value)
+	return prepareWithDeliveries(values, plan, stamp, output, existing, deliveries.value)
 }
 
 function prepareWithDeliveries(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	plan: Plan,
 	stamp: AuditStamp,
 	output: PlanOutputProposal,
 	existing: ExistingRefIndex,
 	deliveries: PlannedDelivery[],
 ): Result<PlanOutputMaterializationPlan, InvalidCoreServiceOutputError | InvalidPlanOutputError> {
-	const memories = plannedMemories(options, output.proposedMemories)
+	const memories = plannedMemories(values, output.proposedMemories)
 	if (!memories.ok) return memories
 
-	return prepareWithMemories(options, plan, stamp, output, existing, deliveries, memories.value)
+	return prepareWithMemories(values, plan, stamp, output, existing, deliveries, memories.value)
 }
 
 function prepareWithMemories(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	plan: Plan,
 	stamp: AuditStamp,
 	output: PlanOutputProposal,
@@ -46,7 +46,7 @@ function prepareWithMemories(
 	deliveries: PlannedDelivery[],
 	memories: PlannedMemory[],
 ): Result<PlanOutputMaterializationPlan, InvalidCoreServiceOutputError | InvalidPlanOutputError> {
-	const linkPlan = plannedLinks(options, plan, output, existing, deliveries, memories)
+	const linkPlan = plannedLinks(values, plan, output, existing, deliveries, memories)
 	if (!linkPlan.ok) return linkPlan
 
 	const materializationPlan = { plan, stamp, output, deliveries, memories, ...linkPlan.value }
@@ -67,15 +67,15 @@ function validateBasicOutput(output: PlanOutputProposal): Result<void, InvalidPl
 }
 
 function plannedDeliveries(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	proposedDeliveries: ProposedDelivery[],
 ): Result<PlannedDelivery[], InvalidCoreServiceOutputError> {
 	const deliveries: PlannedDelivery[] = []
 	for (const proposal of proposedDeliveries) {
-		const deliveryId = nextId(options, 'delivery')
+		const deliveryId = nextId(values, 'delivery')
 		if (!deliveryId.ok) return deliveryId
 
-		const slices = plannedSlices(options, proposal, deliveryId.value)
+		const slices = plannedSlices(values, proposal, deliveryId.value)
 		if (!slices.ok) return slices
 		deliveries.push({ proposal, id: deliveryId.value, slices: slices.value })
 	}
@@ -84,13 +84,13 @@ function plannedDeliveries(
 }
 
 function plannedSlices(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	delivery: ProposedDelivery,
 	deliveryId: Id,
 ): Result<PlannedSlice[], InvalidCoreServiceOutputError> {
 	const slices: PlannedSlice[] = []
 	for (const [order, proposal] of delivery.slices.entries()) {
-		const id = nextId(options, 'slice')
+		const id = nextId(values, 'slice')
 		if (!id.ok) return id
 		slices.push({ proposal, id: id.value, deliveryKey: delivery.proposedDeliveryKey, deliveryId, order })
 	}
@@ -99,12 +99,12 @@ function plannedSlices(
 }
 
 function plannedMemories(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	proposedMemories: ProposedMemory[],
 ): Result<PlannedMemory[], InvalidCoreServiceOutputError> {
 	const memories: PlannedMemory[] = []
 	for (const proposal of proposedMemories) {
-		const id = nextId(options, 'memory')
+		const id = nextId(values, 'memory')
 		if (!id.ok) return id
 		memories.push({ proposal, id: id.value })
 	}
@@ -113,7 +113,7 @@ function plannedMemories(
 }
 
 function plannedLinks(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	plan: Plan,
 	output: PlanOutputProposal,
 	existing: ExistingRefIndex,
@@ -126,14 +126,14 @@ function plannedLinks(
 	>,
 	InvalidCoreServiceOutputError | InvalidPlanOutputError
 > {
-	const dependencyLinks = dependencyLinkPlan(options, deliveries)
+	const dependencyLinks = dependencyLinkPlan(values, deliveries)
 	if (!dependencyLinks.ok) return dependencyLinks
 
-	return plannedLinksWithDependencies(options, plan, output, existing, deliveries, memories, dependencyLinks.value)
+	return plannedLinksWithDependencies(values, plan, output, existing, deliveries, memories, dependencyLinks.value)
 }
 
 function plannedLinksWithDependencies(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	plan: Plan,
 	output: PlanOutputProposal,
 	existing: ExistingRefIndex,
@@ -147,9 +147,9 @@ function plannedLinksWithDependencies(
 	>,
 	InvalidCoreServiceOutputError | InvalidPlanOutputError
 > {
-	const memoryLinks = memoryLinkPlan(options, output, existing, deliveries, memories)
+	const memoryLinks = memoryLinkPlan(values, output, existing, deliveries, memories)
 	if (!memoryLinks.ok) return memoryLinks
-	const producedMemoryLinks = producedMemoryLinkPlan(options, plan, memories)
+	const producedMemoryLinks = producedMemoryLinkPlan(values, plan, memories)
 	if (!producedMemoryLinks.ok) return producedMemoryLinks
 
 	return {
@@ -159,52 +159,52 @@ function plannedLinksWithDependencies(
 }
 
 function dependencyLinkPlan(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	deliveries: PlannedDelivery[],
 ): Result<
 	Pick<PlanOutputMaterializationPlan, 'deliveryDependencyLinks' | 'sliceDependencyLinks'>,
 	InvalidCoreServiceOutputError | InvalidPlanOutputError
 > {
-	const deliveryDependencyLinks = deliveryDependencyLinkPlan(options, deliveries)
+	const deliveryDependencyLinks = deliveryDependencyLinkPlan(values, deliveries)
 	if (!deliveryDependencyLinks.ok) return deliveryDependencyLinks
-	const sliceDependencyLinks = sliceDependencyLinkPlan(options, deliveries)
+	const sliceDependencyLinks = sliceDependencyLinkPlan(values, deliveries)
 	return sliceDependencyLinks.ok
 		? { ok: true, value: { deliveryDependencyLinks: deliveryDependencyLinks.value, sliceDependencyLinks: sliceDependencyLinks.value } }
 		: sliceDependencyLinks
 }
 
 function deliveryDependencyLinkPlan(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	deliveries: PlannedDelivery[],
 ): Result<PlannedLink[], InvalidCoreServiceOutputError | InvalidPlanOutputError> {
-	return collectLinks(deliveries, (delivery) => deliveryDependencyLinksForDelivery(options, delivery, deliveries))
+	return collectLinks(deliveries, (delivery) => deliveryDependencyLinksForDelivery(values, delivery, deliveries))
 }
 
 function deliveryDependencyLinksForDelivery(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	delivery: PlannedDelivery,
 	deliveries: PlannedDelivery[],
 ): Result<PlannedLink[], InvalidCoreServiceOutputError | InvalidPlanOutputError> {
 	const existing = collectLinks(delivery.proposal.dependsOnDeliveryIds, (dependencyId) =>
-		deliveryDependencyLink(options, delivery, dependencyId),
+		deliveryDependencyLink(values, delivery, dependencyId),
 	)
 	if (!existing.ok) return existing
 	const proposed = collectLinks(delivery.proposal.dependsOnProposedDeliveryKeys, (key) =>
-		proposedDeliveryDependencyLink(options, delivery, key, deliveries),
+		proposedDeliveryDependencyLink(values, delivery, key, deliveries),
 	)
 	return proposed.ok ? { ok: true, value: [...existing.value, ...proposed.value] } : proposed
 }
 
 function deliveryDependencyLink(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	delivery: PlannedDelivery,
 	dependencyId: Id,
 ): Result<PlannedLink, InvalidCoreServiceOutputError> {
-	return plannedLink(options, 'depends-on', { type: 'delivery', id: delivery.id }, { type: 'delivery', id: dependencyId })
+	return plannedLink(values, 'depends-on', { type: 'delivery', id: delivery.id }, { type: 'delivery', id: dependencyId })
 }
 
 function proposedDeliveryDependencyLink(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	delivery: PlannedDelivery,
 	key: string,
 	deliveries: PlannedDelivery[],
@@ -212,27 +212,27 @@ function proposedDeliveryDependencyLink(
 	const dependency = deliveries.find((candidate) => candidate.proposal.proposedDeliveryKey === key)
 	return dependency === undefined
 		? invalid({ type: 'invalid-plan-output', reason: 'unknown-proposed-delivery-key', proposedDeliveryKey: key })
-		: plannedLink(options, 'depends-on', { type: 'delivery', id: delivery.id }, { type: 'delivery', id: dependency.id })
+		: plannedLink(values, 'depends-on', { type: 'delivery', id: delivery.id }, { type: 'delivery', id: dependency.id })
 }
 
 function sliceDependencyLinkPlan(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	deliveries: PlannedDelivery[],
 ): Result<PlannedLink[], InvalidCoreServiceOutputError | InvalidPlanOutputError> {
 	const slices = deliveries.flatMap((delivery) => delivery.slices)
-	return collectLinks(slices, (slice) => sliceDependencyLinksForSlice(options, slice, slices))
+	return collectLinks(slices, (slice) => sliceDependencyLinksForSlice(values, slice, slices))
 }
 
 function sliceDependencyLinksForSlice(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	slice: PlannedSlice,
 	slices: PlannedSlice[],
 ): Result<PlannedLink[], InvalidCoreServiceOutputError | InvalidPlanOutputError> {
-	return collectLinks(slice.proposal.dependsOnProposedSliceKeys, (key) => proposedSliceDependencyLink(options, slice, key, slices))
+	return collectLinks(slice.proposal.dependsOnProposedSliceKeys, (key) => proposedSliceDependencyLink(values, slice, key, slices))
 }
 
 function proposedSliceDependencyLink(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	slice: PlannedSlice,
 	key: string,
 	slices: PlannedSlice[],
@@ -240,32 +240,32 @@ function proposedSliceDependencyLink(
 	const dependency = slices.find((candidate) => candidate.proposal.proposedSliceKey === key)
 	return dependency === undefined
 		? invalid({ type: 'invalid-plan-output', reason: 'unknown-proposed-slice-key', proposedSliceKey: key })
-		: plannedLink(options, 'depends-on', { type: 'slice', id: slice.id }, { type: 'slice', id: dependency.id })
+		: plannedLink(values, 'depends-on', { type: 'slice', id: slice.id }, { type: 'slice', id: dependency.id })
 }
 
 function memoryLinkPlan(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	output: PlanOutputProposal,
 	existing: ExistingRefIndex,
 	deliveries: PlannedDelivery[],
 	memories: PlannedMemory[],
 ): Result<PlannedLink[], InvalidCoreServiceOutputError | InvalidPlanOutputError> {
-	return collectLinks(memories, (memory) => memoryLinksForMemory(options, output, existing, deliveries, memories, memory))
+	return collectLinks(memories, (memory) => memoryLinksForMemory(values, output, existing, deliveries, memories, memory))
 }
 
 function memoryLinksForMemory(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	output: PlanOutputProposal,
 	existing: ExistingRefIndex,
 	deliveries: PlannedDelivery[],
 	memories: PlannedMemory[],
 	memory: PlannedMemory,
 ): Result<PlannedLink[], InvalidCoreServiceOutputError | InvalidPlanOutputError> {
-	return collectLinks(memory.proposal.links, (link) => memoryLink(options, output, existing, deliveries, memories, memory, link))
+	return collectLinks(memory.proposal.links, (link) => memoryLink(values, output, existing, deliveries, memories, memory, link))
 }
 
 function memoryLink(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	output: PlanOutputProposal,
 	existing: ExistingRefIndex,
 	deliveries: PlannedDelivery[],
@@ -274,16 +274,16 @@ function memoryLink(
 	link: PlannedMemory['proposal']['links'][number],
 ): Result<PlannedLink, InvalidCoreServiceOutputError | InvalidPlanOutputError> {
 	const to = resolveProposedRef(link.to, output, existing, deliveries, memories)
-	return to.ok ? plannedLink(options, link.type, { type: 'memory', id: memory.id }, to.value) : to
+	return to.ok ? plannedLink(values, link.type, { type: 'memory', id: memory.id }, to.value) : to
 }
 
 function producedMemoryLinkPlan(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	plan: Plan,
 	memories: PlannedMemory[],
 ): Result<PlannedLink[], InvalidCoreServiceOutputError | InvalidPlanOutputError> {
 	return collectLinks(memories, (memory) =>
-		plannedLink(options, 'produced', { type: 'plan', id: plan.id }, { type: 'memory', id: memory.id }),
+		plannedLink(values, 'produced', { type: 'plan', id: plan.id }, { type: 'memory', id: memory.id }),
 	)
 }
 
@@ -302,12 +302,12 @@ function collectLinks<TItem>(
 }
 
 function plannedLink(
-	options: CoreServices,
+	values: CoreRuntimeValues,
 	type: PlannedLink['type'],
 	from: PlannedLink['from'],
 	to: PlannedLink['to'],
 ): Result<PlannedLink, InvalidCoreServiceOutputError> {
-	const id = nextId(options, 'link')
+	const id = nextId(values, 'link')
 	return id.ok ? { ok: true, value: { id: id.value, type, from, to } } : id
 }
 

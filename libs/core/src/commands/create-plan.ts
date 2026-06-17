@@ -2,20 +2,19 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe, nonEmptyTrimmedStringPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
 import { planConfigPipe } from '../domain/config'
-import { type Plan } from '../domain/plan'
-import { projectPipe } from '../domain/project'
+import type { Plan } from '../domain/plan'
 import type { InvalidInputError } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import type { CoreServices, CoreStorageTransaction } from '../services'
+import type { CoreStorage } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import {
 	auditStamp,
+	createRecordValue,
 	getRequired,
 	modelIdsFromPlanConfigRecord,
 	nextId,
 	normalizePlanConfigRecord,
-	putRecord,
 	validateSelectableModels,
 	withTransaction,
 } from '../utils/command-storage'
@@ -35,45 +34,41 @@ export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigComm
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreatePlanCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
-	return buildCommandHandler('createPlan', createPlanInputPipe, (input, context) => handleCreatePlan(options, input, context))
+	return buildCommandHandler('createPlan', createPlanInputPipe, (input, context) => handleCreatePlan(runtime, input, context))
 }
 
-async function handleCreatePlan(options: CoreServices, input: Input, context: OperationContext): Promise<CoreResult<Plan, Error>> {
-	const stampResult = auditStamp(options, context)
+async function handleCreatePlan(runtime: CoreRuntime, input: Input, context: OperationContext): Promise<CoreResult<Plan, Error>> {
+	const stampResult = auditStamp(runtime.values, context)
 	if (!stampResult.ok) return stampResult
 
-	const idResult = nextId(options, 'plan')
+	const idResult = nextId(runtime.values, 'plan')
 	if (!idResult.ok) return idResult
 
-	return withTransaction(options, (tx) => writePlan(tx, input, stampResult.value, idResult.value))
+	return withTransaction(runtime.services, (storage) => writePlan(storage, input, stampResult.value, idResult.value))
 }
 
 async function writePlan(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	input: Input,
 	stamp: AuditStamp,
 	planId: Id,
 ): Promise<CoreResult<Plan, Exclude<Error, InvalidInputError>>> {
-	const projectResult = await getRequired('project', tx.projects, input.projectId, projectPipe)
+	const projectResult = await getRequired('project', storage, input.projectId)
 	if (!projectResult.ok) return projectResult
 
 	const config = normalizePlanConfigRecord(input.config, stamp)
-	const configValidation = await validatePlanConfigReferences(tx, config)
+	const configValidation = await validatePlanConfigReferences(storage, config)
 	if (!configValidation.ok) return configValidation
 
 	const plan: Plan = { id: planId, projectId: projectResult.value.id, title: input.title, config, created: stamp }
-	const putResult = await putRecord('plan', tx.plans, plan.id, plan)
-	if (!putResult.ok) return putResult
-
-	return { ok: true, value: plan }
+	return createRecordValue('plan', storage, plan)
 }
 
 async function validatePlanConfigReferences(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	config: ReturnType<typeof normalizePlanConfigRecord>,
 ): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
-	return config === null ? { ok: true, value: undefined } : validateSelectableModels(tx, modelIdsFromPlanConfigRecord(config))
+	return config === null ? { ok: true, value: undefined } : validateSelectableModels(storage, modelIdsFromPlanConfigRecord(config))
 }
 
 if (import.meta.vitest) {

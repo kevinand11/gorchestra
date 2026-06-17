@@ -1,3 +1,3 @@
-# File storage first with Equipped ORM
+# Core storage uses Equipped Repo
 
-Gorchestra v1 starts with file storage through the Equipped ORM abstraction so the product can reach a complete functional v1 before committing to a database backend. This supersedes the earlier SQLite-first idea; Equipped keeps the persistence boundary portable so later storage backends can include in-memory, MongoDB, or Postgres.
+Gorchestra Core storage is backed directly by an Equipped Repo supplied by the Consumer for one already-scoped Portfolio storage boundary. Core owns its storage schemas, storage validation, storage helpers, and exported migration definitions, while Consumers choose the Equipped adapter, configure the Repo for the target Portfolio, and run Core-provided migrations explicitly outside `openCore` using Equipped's Migrator. Core receives the Repo directly rather than a custom storage service with `preflight` and `transaction` functions so Core can own Portfolio persistence semantics without depending on one database implementation.

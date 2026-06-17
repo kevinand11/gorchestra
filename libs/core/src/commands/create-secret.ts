@@ -2,10 +2,10 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
 import { secretValueRefPipe, type Secret } from '../domain/secret'
-import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
+import type { InvalidCoreServiceOutputError, InvalidInputError, InvariantViolationError, StorageOperationFailedError } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import { buildCommandHandler } from '../utils/command'
-import { auditStamp, nextId, putRecordValue, withTransaction } from '../utils/command-storage'
+import { auditStamp, createRecordValue, nextId, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const createSecretInputPipe = v.object({ name: nonEmptyTrimmedStringPipe, valueRef: secretValueRefPipe })
@@ -13,17 +13,16 @@ export type Input = PipeOutput<typeof createSecretInputPipe>
 
 export type Result = Secret
 
-export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
+export type Error = InvalidInputError | InvalidCoreServiceOutputError | InvariantViolationError | StorageOperationFailedError
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreateSecretCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
 	return buildCommandHandler('createSecret', createSecretInputPipe, (input, context) => {
-		const stamp = auditStamp(options, context)
+		const stamp = auditStamp(runtime.values, context)
 		if (!stamp.ok) return Promise.resolve(stamp)
 
-		const id = nextId(options, 'secret')
+		const id = nextId(runtime.values, 'secret')
 		if (!id.ok) return Promise.resolve(id)
 
 		const secret: Secret = {
@@ -36,8 +35,8 @@ export function createCreateSecretCommand(runtime: CoreRuntime): Operation {
 		}
 
 		return withTransaction(
-			options,
-			(tx): Promise<CoreResult<Secret, Exclude<Error, InvalidInputError>>> => putRecordValue('secret', tx.secrets, secret),
+			runtime.services,
+			(storage): Promise<CoreResult<Secret, Exclude<Error, InvalidInputError>>> => createRecordValue('secret', storage, secret),
 		)
 	})
 }

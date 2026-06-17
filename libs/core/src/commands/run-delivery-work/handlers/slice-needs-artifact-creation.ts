@@ -6,7 +6,7 @@ import type { InvariantViolationError } from '../../../errors'
 import { sourceControlSliceBranchName } from '../../../providers/source-control/branches'
 import type { SourceControlArtifactCreation, SourceControlCreateArtifactBranchInput } from '../../../providers/source-control/types'
 import type { CoreRuntime } from '../../../runtime'
-import { nextId, putRecord, runtimeRecord } from '../../../utils/command-storage'
+import { createRecord, nextId, runtimeRecord } from '../../../utils/command-storage'
 import { getSliceState } from '../../../utils/delivery-context'
 import { withTransaction } from '../../../utils/storage'
 import type { Result as CoreResult } from '../../../utils/types'
@@ -48,9 +48,15 @@ export async function handleSliceNeedsArtifactCreation(
 	const creation = await runtime.providers.sourceControl.createArtifactBranch(input.value)
 	if (!creation.ok) return creation
 
-	return withTransaction(runtime.services, async (tx) =>
+	return withTransaction(runtime.services, async (storage) =>
 		recordSliceArtifactCreationResult(
-			{ services: runtime.services, tx, deliveryContext: context.deliveryContext, workResolution: context.workResolution },
+			{
+				services: runtime.services,
+				storage,
+				values: runtime.values,
+				deliveryContext: context.deliveryContext,
+				workResolution: context.workResolution,
+			},
 			{ type: 'slices-incomplete' },
 			input.value,
 			creation.value,
@@ -145,10 +151,10 @@ async function putSliceArtifactCreationRecords(
 	context: ResolvedDeliveryHandlerContext,
 	records: { artifact: SliceArtifact; action: Action },
 ): Promise<RunDeliveryWorkHandlerResult> {
-	const artifactPut = await putRecord('slice-artifact', context.tx.sliceArtifacts, records.artifact.id, records.artifact)
+	const artifactPut = await createRecord('slice-artifact', context.storage, records.artifact)
 	if (!artifactPut.ok) return artifactPut
 
-	const actionPut = await putRecord('action', context.tx.actions, records.action.id, records.action)
+	const actionPut = await createRecord('action', context.storage, records.action)
 	if (!actionPut.ok) return actionPut
 
 	return { ok: true, value: { processedCount: 1, failures: [] } }
@@ -166,7 +172,7 @@ async function writeFailedSliceArtifactCreation(
 	})
 	if (!action.ok) return action
 
-	const actionPut = await putRecord('action', context.tx.actions, action.value.id, action.value)
+	const actionPut = await createRecord('action', context.storage, action.value)
 	if (!actionPut.ok) return actionPut
 
 	return {
@@ -182,10 +188,10 @@ function sliceArtifactRecord(
 	context: ResolvedDeliveryHandlerContext,
 	input: SliceArtifactCreationInput,
 ): CoreResult<SliceArtifact, RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	const id = nextId(context.services, 'slice-artifact')
+	const id = nextId(context.values, 'slice-artifact')
 	if (!id.ok) return id
 
-	const created = runtimeRecord(context.services)
+	const created = runtimeRecord(context.values)
 	if (!created.ok) return created
 
 	return {
@@ -299,15 +305,19 @@ if (import.meta.vitest) {
 		const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
 		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
 
+		const workResolution = {
+			workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
+			executionModel: options.tx.models.records.get('model-1')!,
+			executionModelProvider: options.tx.modelProviders.records.get('model-1-provider')!,
+		}
+
 		return {
 			services: options,
+			storage: options.tx,
+			values: options.values,
 			tx: options.tx,
 			deliveryContext: deliveryContext.value,
-			workResolution: {
-				workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
-				executionModel: options.tx.models.records.get('model-1')!,
-				executionModelProvider: options.tx.modelProviders.records.get('model-1-provider')!,
-			},
+			workResolution,
 		}
 	}
 }

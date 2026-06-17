@@ -9,7 +9,7 @@ import type { ModelProvider, ModelProviderHeader } from '../domain/model-provide
 import type { Repository } from '../domain/repository'
 import type { ResourceNotFoundError, SecretNotActiveError, StorageOperationFailedError, InvalidCoreServiceOutputError } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import type { CoreStorageTransaction } from '../services'
+import type { CoreStorage } from '../services'
 import type { DeliveryContext } from './delivery-context'
 
 export type {
@@ -39,26 +39,26 @@ export type ProviderBackedDeliveryPreflightPlan =
 	  }
 
 export async function readProviderBackedDeliveryPreflightPlan(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	context: DeliveryContext,
 ): Promise<Result<ProviderBackedDeliveryPreflightPlan, DeliveryPreflightError>> {
-	const localPreflight = await resolveDeliveryWork(tx, context)
+	const localPreflight = await resolveDeliveryWork(storage, context)
 	if (!localPreflight.ok) return localPreflight
 
 	return localPreflight.value.type === 'failed'
 		? ok({ type: 'local-failed', checks: localPreflight.value.checks, snapshot: localPreflight.value.snapshot })
-		: readProviderBackedPlanAfterLocalPreflight(tx, context, localPreflight.value)
+		: readProviderBackedPlanAfterLocalPreflight(storage, context, localPreflight.value)
 }
 
 async function readProviderBackedPlanAfterLocalPreflight(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	context: DeliveryContext,
 	localPreflight: PassedDeliveryPreflight,
 ): Promise<Result<ProviderBackedDeliveryPreflightPlan, DeliveryPreflightError>> {
-	const repository = await readRepositoryPlan(tx, context.repository)
+	const repository = await readRepositoryPlan(storage, context.repository)
 	if (!repository.ok) return repository
 
-	const model = await readModelPlan(tx, localPreflight.resolution)
+	const model = await readModelPlan(storage, localPreflight.resolution)
 	return model.ok ? ok(providerBackedPlan(context, localPreflight, repository.value, model.value)) : model
 }
 
@@ -102,11 +102,11 @@ export function deliveryPreflightChecksPassed(checks: ValidationEvidence[]): boo
 }
 
 export async function providerBackedDeliveryPreflightInputsStillCurrent(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	context: DeliveryContext,
 	plan: ProviderBackedDeliveryPreflightPlan,
 ): Promise<Result<boolean, DeliveryPreflightError>> {
-	const current = await readProviderBackedDeliveryPreflightPlan(tx, context)
+	const current = await readProviderBackedDeliveryPreflightPlan(storage, context)
 	return current.ok ? ok(current.value.snapshot === plan.snapshot) : current
 }
 
@@ -115,43 +115,43 @@ export function providerBackedDeliveryWorkResolution(plan: ProviderBackedDeliver
 }
 
 async function readRepositoryPlan(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	repository: Repository,
 ): Promise<Result<RepositoryDeliveryPreflightPlan, DeliveryPreflightError>> {
-	const secret = await validateActiveSecret(tx, repository.config.secretId)
+	const secret = await validateActiveSecret(storage, repository.config.secretId)
 	if (!secret.ok) return mapRepositoryAccessSecretFailure(secret.error)
 
 	return ok({ type: 'provider', repository })
 }
 
 async function readModelPlan(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	resolution: DeliveryWorkResolution,
 ): Promise<Result<ModelDeliveryPreflightPlan, DeliveryPreflightError>> {
-	const authSecret = await readModelProviderAuthSecretCheck(tx, resolution.executionModelProvider)
+	const authSecret = await readModelProviderAuthSecretCheck(storage, resolution.executionModelProvider)
 	if (!authSecret.ok) return authSecret
 	if (authSecret.value !== null) return ok({ type: 'check', check: authSecret.value })
 
-	return readModelProviderHeaderSecretPlan(tx, resolution.executionModel, resolution.executionModelProvider)
+	return readModelProviderHeaderSecretPlan(storage, resolution.executionModel, resolution.executionModelProvider)
 }
 
 async function readModelProviderAuthSecretCheck(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	modelProvider: ModelProvider,
 ): Promise<Result<ValidationEvidence | null, DeliveryPreflightError>> {
 	if (modelProvider.auth === null) return ok(null)
 
-	const secret = await validateActiveSecret(tx, modelProvider.auth.secretId)
+	const secret = await validateActiveSecret(storage, modelProvider.auth.secretId)
 	return secret.ok ? ok(null) : mapModelProviderAuthSecretFailure(modelProvider, secret.error)
 }
 
 async function readModelProviderHeaderSecretPlan(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	model: Model,
 	modelProvider: ModelProvider,
 ): Promise<Result<ModelDeliveryPreflightPlan, DeliveryPreflightError>> {
 	for (const header of modelProvider.headers) {
-		const secret = await validateActiveSecret(tx, header.valueSecretId)
+		const secret = await validateActiveSecret(storage, header.valueSecretId)
 		if (!secret.ok) return mapModelProviderHeaderSecretFailure(modelProvider, header, secret.error)
 	}
 

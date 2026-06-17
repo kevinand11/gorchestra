@@ -15,9 +15,9 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import type { CoreStorageTransaction } from '../services'
+import type { CoreStorage } from '../services'
 import { buildCommandHandler } from '../utils/command'
-import { deliveryWorkStateMismatch, prepareAuthorizedAction, putRecord } from '../utils/command-storage'
+import { createRecord, deliveryWorkStateMismatch, prepareAuthorizedAction } from '../utils/command-storage'
 import { buildDeliveryContext, type DeliveryContext } from '../utils/delivery-context'
 import { getDeliveryState } from '../utils/delivery-context'
 import {
@@ -64,15 +64,15 @@ async function handleRetryDeliveryPreflight(
 	input: Input,
 	context: OperationContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const authorizedAction = prepareAuthorizedAction(runtime.services, context)
+	const authorizedAction = prepareAuthorizedAction(runtime, context)
 	if (!authorizedAction.ok) return authorizedAction
 
 	return withTwoPhaseTransaction(runtime.services, {
-		read: (tx) => readRetryPreflightPlan(tx, input),
+		read: (storage) => readRetryPreflightPlan(storage, input),
 		run: (claim) => runProviderBackedDeliveryPreflightChecks(runtime, claim.plan),
-		write: (tx, claim, checks) =>
+		write: (storage, claim, checks) =>
 			writeDeliveryPreflightRetry(
-				tx,
+				storage,
 				input.deliveryId,
 				claim.plan,
 				checks,
@@ -83,33 +83,33 @@ async function handleRetryDeliveryPreflight(
 }
 
 async function readRetryPreflightPlan(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	input: Input,
 ): Promise<CoreResult<{ deliveryContext: DeliveryContext; plan: ProviderBackedDeliveryPreflightPlan }, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await requirePreflightFailedDelivery(tx, input.deliveryId)
+	const deliveryContext = await requirePreflightFailedDelivery(storage, input.deliveryId)
 	if (!deliveryContext.ok) return deliveryContext
 
-	const plan = await readProviderBackedDeliveryPreflightPlan(tx, deliveryContext.value)
+	const plan = await readProviderBackedDeliveryPreflightPlan(storage, deliveryContext.value)
 	return plan.ok ? { ok: true, value: { deliveryContext: deliveryContext.value, plan: plan.value } } : plan
 }
 
 async function writeDeliveryPreflightRetry(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	deliveryId: Id,
 	plan: ProviderBackedDeliveryPreflightPlan,
 	checks: ValidationEvidence[],
 	stamp: AuditStamp,
 	actionId: Id,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await requirePreflightFailedDelivery(tx, deliveryId)
+	const deliveryContext = await requirePreflightFailedDelivery(storage, deliveryId)
 	if (!deliveryContext.ok) return deliveryContext
 
-	const freshness = await providerBackedDeliveryPreflightInputsStillCurrent(tx, deliveryContext.value, plan)
+	const freshness = await providerBackedDeliveryPreflightInputsStillCurrent(storage, deliveryContext.value, plan)
 	if (!freshness.ok) return freshness
 	if (!freshness.value) return deliveryPreflightClaimConflict(deliveryId)
 
 	return writePreflightAction(
-		tx,
+		storage,
 		deliveryContext.value.delivery,
 		preflightAction(deliveryContext.value.delivery.id, checks, stamp, actionId),
 	)
@@ -120,10 +120,10 @@ function deliveryPreflightClaimConflict(deliveryId: Id): CoreResult<never, Deliv
 }
 
 async function requirePreflightFailedDelivery(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	deliveryId: Id,
 ): Promise<CoreResult<DeliveryContext, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
+	const deliveryContext = await buildDeliveryContext(storage, deliveryId)
 	if (!deliveryContext.ok) return deliveryContext
 
 	const deliveryState = getDeliveryState(deliveryContext.value)
@@ -135,11 +135,11 @@ async function requirePreflightFailedDelivery(
 }
 
 async function writePreflightAction(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	delivery: Delivery,
 	action: Action,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const putResult = await putRecord('action', tx.actions, action.id, action)
+	const putResult = await createRecord('action', storage, action)
 	if (!putResult.ok) return putResult
 
 	return { ok: true, value: { delivery, action } }
@@ -350,7 +350,7 @@ if (import.meta.vitest) {
 
 			expect(await retry(options)).toEqual({
 				ok: false,
-				error: { type: 'storage-operation-failed', operation: { type: 'put', resource: 'action', id: 'action-1' } },
+				error: { type: 'storage-operation-failed', operation: { type: 'create', resource: 'action', id: 'action-1' } },
 			})
 		})
 	})
@@ -391,12 +391,12 @@ if (import.meta.vitest) {
 	}
 
 	function staleLocalPreflightOnSecondTransaction(options: ReturnType<typeof createTestCoreServices>, stale: () => void) {
-		const transaction = options.storage.transaction
+		const session = options.storage.session.bind(options.storage)
 		let calls = 0
-		options.storage.transaction = async (fn) => {
+		options.storage.session = async (fn) => {
 			calls += 1
 			if (calls === 2) stale()
-			return transaction(fn)
+			return session(fn)
 		}
 	}
 

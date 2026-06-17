@@ -1,5 +1,3 @@
-import type { Pipe } from 'valleyed'
-
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './command-errors'
 import type { ArchivePeriod, AuditStamp, Id, OperationContext } from '../domain/commons'
 import type {
@@ -12,11 +10,11 @@ import type {
 	ProjectConfigRecord,
 } from '../domain/config'
 import type { DeliveryWorkState } from '../domain/delivery'
-import { modelPipe, type Model } from '../domain/model'
-import { modelProviderPipe, type ModelProvider, type ModelProviderAuth, type ModelProviderHeader } from '../domain/model-provider'
-import { projectPipe, type Project } from '../domain/project'
-import { repositoryPipe, type RepositoryConfig } from '../domain/repository'
-import { secretPipe, type Secret, type SecretBindingScope } from '../domain/secret'
+import type { Model } from '../domain/model'
+import type { ModelProvider, ModelProviderAuth, ModelProviderHeader } from '../domain/model-provider'
+import type { Project } from '../domain/project'
+import type { RepositoryConfig } from '../domain/repository'
+import type { Secret, SecretBindingScope } from '../domain/secret'
 import type {
 	AlreadyArchivedError,
 	ArchivableCoreResource,
@@ -24,110 +22,116 @@ import type {
 	ArchivedModelReferenceError,
 	ArchivedSecretReferenceError,
 	CoreIdResource,
-	CoreSingletonResource,
 	DeliveryWorkStateMismatchError,
 	DuplicateRepositoryTargetError,
 	DuplicateSecretBindingError,
 	InvalidCoreServiceOutputError,
+	InvariantViolationError,
 	NotArchivedError,
 	ProjectSourceTypeMismatchError,
 	ResourceNotFoundError,
 	SecretNotActiveError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreServices, CoreStorageTransaction, RepositoryTable, SingletonRepository } from '../services'
-import type { StorageBoundaryError } from '../utils/storage'
+import type { CoreRuntime } from '../runtime'
+import type { CoreStorage } from '../services'
 import {
-	auditStamp,
+	createRecord,
 	getRecord,
 	getRequired,
+	getRequiredPortfolioConfig,
 	listRecords,
-	nextId,
 	notFound,
-	putRecord,
-	putSingleton,
+	setPortfolioConfig,
+	updateRecord,
 	withTransaction,
-} from '../utils/storage'
+	type StorageBoundaryError,
+} from '../storage/helpers'
+import type { CoreIdStorageRecord, CoreStorageRecord } from '../storage/schemas'
+import { auditStamp, nextId, runtimeRecord } from '../utils/runtime-values'
 import type { Result } from '../utils/types'
 
 export {
 	auditStamp,
+	createRecord,
+	getRecord,
 	getRequired,
-	getRequiredSingleton,
+	getRequiredPortfolioConfig,
 	listRecords,
 	nextId,
 	notFound,
-	putRecord,
-	putSingleton,
 	runtimeRecord,
+	setPortfolioConfig,
+	updateRecord,
 	withTransaction,
-} from '../utils/storage'
+}
+
+export type { StorageBoundaryError }
 
 export type CommandBoundary<TInput> = {
 	input: TInput
 	context: OperationContext
 }
 
-type ArchivableRecord = { archivePeriods: ArchivePeriod[] }
-
-export async function putRecordValue<TRecord extends { id: Id }>(
-	resource: CoreIdResource,
-	repository: RepositoryTable<TRecord>,
-	record: TRecord,
-): Promise<Result<TRecord, StorageBoundaryError>> {
-	const stored = await putRecord(resource, repository, record.id, record)
-	if (!stored.ok) return stored
-
-	return { ok: true, value: record }
+export async function createRecordValue<Resource extends CoreIdResource>(
+	resource: Resource,
+	storage: CoreStorage,
+	record: CoreIdStorageRecord<Resource>,
+): Promise<Result<CoreIdStorageRecord<Resource>, StorageBoundaryError | InvariantViolationError>> {
+	const stored = await createRecord(resource, storage, record as CoreStorageRecord<Resource>)
+	return stored.ok ? { ok: true, value: stored.value } : stored
 }
 
-export async function putSingletonValue<TRecord>(
-	resource: CoreSingletonResource,
-	repository: SingletonRepository<TRecord>,
-	record: TRecord,
-): Promise<Result<TRecord, StorageBoundaryError>> {
-	const stored = await putSingleton(resource, repository, record)
-	if (!stored.ok) return stored
-
-	return { ok: true, value: record }
-}
-
-export function updateStoredRecordWithAudit<TRecord extends { id: Id }>(
-	options: CoreServices,
-	context: OperationContext,
-	resource: CoreIdResource,
-	repository: (tx: CoreStorageTransaction) => RepositoryTable<TRecord>,
+export async function updateRecordValue<Resource extends CoreIdResource>(
+	resource: Resource,
+	storage: CoreStorage,
 	id: Id,
-	recordPipe: Pipe<unknown, TRecord>,
-	update: (record: TRecord, stamp: AuditStamp) => TRecord,
-): Promise<Result<TRecord, StorageBoundaryError | ResourceNotFoundError>> {
-	return withAuditStampTransaction(options, context, async (tx, stamp) => {
-		const existing = await getRequired(resource, repository(tx), id, recordPipe)
-		if (!existing.ok) return existing
-
-		return putRecordValue(resource, repository(tx), update(existing.value, stamp))
-	})
+	patch: Partial<CoreIdStorageRecord<Resource>>,
+): Promise<Result<CoreIdStorageRecord<Resource>, StorageBoundaryError | InvariantViolationError | ResourceNotFoundError>> {
+	const stored = await updateRecord(resource, storage, id, patch)
+	return stored.ok ? { ok: true, value: stored.value } : stored
 }
 
 export function withAuditStampTransaction<TValue, TError>(
-	options: CoreServices,
+	runtime: CoreRuntime,
 	context: OperationContext,
-	run: (tx: CoreStorageTransaction, stamp: AuditStamp) => Promise<Result<TValue, TError>>,
+	run: (storage: CoreStorage, stamp: AuditStamp) => Promise<Result<TValue, TError>>,
 ): Promise<Result<TValue, TError | InvalidCoreServiceOutputError | StorageOperationFailedError>> {
-	const stamp = auditStamp(options, context)
+	const stamp = auditStamp(runtime.values, context)
 	if (!stamp.ok) return Promise.resolve(stamp)
 
-	return withTransaction(options, (tx) => run(tx, stamp.value))
+	return withTransaction(runtime.services, (storage) => run(storage, stamp.value))
+}
+
+export function updateStoredRecordWithAudit<Resource extends CoreIdResource>(
+	runtime: CoreRuntime,
+	context: OperationContext,
+	resource: Resource,
+	id: Id,
+	update: (record: CoreIdStorageRecord<Resource>, stamp: AuditStamp) => CoreIdStorageRecord<Resource>,
+): Promise<
+	Result<
+		CoreIdStorageRecord<Resource>,
+		StorageBoundaryError | InvariantViolationError | ResourceNotFoundError | InvalidCoreServiceOutputError
+	>
+> {
+	return withAuditStampTransaction(runtime, context, async (storage, stamp) => {
+		const existing = await getRequired(resource, storage, id)
+		if (!existing.ok) return existing
+
+		const updated = update(existing.value, stamp)
+		return updateRecordValue(resource, storage, id, updated)
+	})
 }
 
 export function prepareAuthorizedAction(
-	options: CoreServices,
+	runtime: CoreRuntime,
 	context: OperationContext,
 ): Result<{ stamp: AuditStamp; actionId: Id }, InvalidCoreServiceOutputError> {
-	const stampResult = auditStamp(options, context)
+	const stampResult = auditStamp(runtime.values, context)
 	if (!stampResult.ok) return stampResult
 
-	const actionId = nextId(options, 'action')
+	const actionId = nextId(runtime.values, 'action')
 	if (!actionId.ok) return actionId
 
 	return { ok: true, value: { stamp: stampResult.value, actionId: actionId.value } }
@@ -150,11 +154,11 @@ export function deliveryWorkStateMismatch(
 }
 
 export async function validateSelectableModels(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	modelIds: Id[],
 ): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError>> {
 	for (const modelId of uniqueIds(modelIds)) {
-		const validation = await validateSelectableModel(tx, modelId)
+		const validation = await validateSelectableModel(storage, modelId)
 		if (!validation.ok) return validation
 	}
 
@@ -162,33 +166,33 @@ export async function validateSelectableModels(
 }
 
 async function validateSelectableModel(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	modelId: Id,
 ): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError>> {
-	const modelResult = await getRequired('model', tx.models, modelId, modelPipe)
+	const modelResult = await getRequired('model', storage, modelId)
 	if (!modelResult.ok) return modelResult
 
 	const modelSelectability = validateActiveModel(modelResult.value)
 	if (!modelSelectability.ok) return modelSelectability
 
-	return validateSelectableModelProvider(tx, modelResult.value.providerId)
+	return validateSelectableModelProvider(storage, modelResult.value.providerId)
 }
 
 async function validateSelectableModelProvider(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	providerId: Id,
 ): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError>> {
-	const providerResult = await getRequired('model-provider', tx.modelProviders, providerId, modelProviderPipe)
+	const providerResult = await getRequired('model-provider', storage, providerId)
 	if (!providerResult.ok) return providerResult
 
 	return validateActiveModelProvider(providerResult.value)
 }
 
 export async function validateSourceControlProject(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	projectId: Id,
 ): Promise<Result<Project, StorageBoundaryError | ResourceNotFoundError | ProjectSourceTypeMismatchError>> {
-	const projectResult = await getRequired('project', tx.projects, projectId, projectPipe)
+	const projectResult = await getRequired('project', storage, projectId)
 	if (!projectResult.ok) return projectResult
 	if (projectResult.value.source.type !== 'source-control') {
 		return {
@@ -206,10 +210,10 @@ export async function validateSourceControlProject(
 }
 
 export async function validateActiveSecret(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	secretId: Id,
 ): Promise<Result<Secret, StorageBoundaryError | ResourceNotFoundError | SecretNotActiveError>> {
-	const secretResult = await getRequired('secret', tx.secrets, secretId, secretPipe)
+	const secretResult = await getRequired('secret', storage, secretId)
 	if (!secretResult.ok) return secretResult
 	if (isArchived(secretResult.value.archivePeriods)) {
 		return { ok: false, error: { type: 'secret-not-active', secretId } }
@@ -219,13 +223,13 @@ export async function validateActiveSecret(
 }
 
 export async function validateActiveSecretReferences(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	secretIds: Id[],
 ): Promise<
 	Result<void, ResourceNotFoundError | ArchivedSecretReferenceError | StorageOperationFailedError | InvalidCoreServiceOutputError>
 > {
 	for (const secretId of secretIds) {
-		const validation = await validateActiveSecretReference(tx, secretId)
+		const validation = await validateActiveSecretReference(storage, secretId)
 		if (!validation.ok) return validation
 	}
 
@@ -233,37 +237,41 @@ export async function validateActiveSecretReferences(
 }
 
 export function validateActiveModelProviderSecretReferences(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	auth: ModelProviderAuth | null,
 	headers: ModelProviderHeader[],
 ): Promise<
 	Result<void, ResourceNotFoundError | ArchivedSecretReferenceError | StorageOperationFailedError | InvalidCoreServiceOutputError>
 > {
-	return validateActiveSecretReferences(tx, secretReferencesFromModelProviderConfig(auth, headers))
+	return validateActiveSecretReferences(storage, secretReferencesFromModelProviderConfig(auth, headers))
 }
 
-export async function putValidModelProvider(
-	tx: CoreStorageTransaction,
+export async function createValidModelProvider(
+	storage: CoreStorage,
 	provider: ModelProvider,
 ): Promise<
 	Result<
 		ModelProvider,
-		ResourceNotFoundError | ArchivedSecretReferenceError | StorageOperationFailedError | InvalidCoreServiceOutputError
+		| ResourceNotFoundError
+		| ArchivedSecretReferenceError
+		| StorageOperationFailedError
+		| InvalidCoreServiceOutputError
+		| InvariantViolationError
 	>
 > {
-	const validReferences = await validateActiveModelProviderSecretReferences(tx, provider.auth, provider.headers)
+	const validReferences = await validateActiveModelProviderSecretReferences(storage, provider.auth, provider.headers)
 	if (!validReferences.ok) return validReferences
 
-	return putRecordValue('model-provider', tx.modelProviders, provider)
+	return createRecordValue('model-provider', storage, provider)
 }
 
 async function validateActiveSecretReference(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	secretId: Id,
 ): Promise<
 	Result<void, ResourceNotFoundError | ArchivedSecretReferenceError | StorageOperationFailedError | InvalidCoreServiceOutputError>
 > {
-	const secret = await getRecord('secret', tx.secrets, secretId, secretPipe)
+	const secret = await getRecord('secret', storage, secretId)
 	if (!secret.ok) return secret
 	if (secret.value === null) return notFound('secret', secretId)
 
@@ -271,12 +279,12 @@ async function validateActiveSecretReference(
 }
 
 export async function validateUniqueRepositoryTarget(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	projectId: Id,
 	config: RepositoryConfig,
 	excludeRepositoryId: Id | null,
 ): Promise<Result<void, StorageBoundaryError | DuplicateRepositoryTargetError>> {
-	const repositoriesResult = await listRecords('repository', tx.repositories, repositoryPipe)
+	const repositoriesResult = await listRecords('repository', storage)
 	if (!repositoriesResult.ok) return repositoriesResult
 
 	const target = repositoryTargetKey(config)
@@ -309,27 +317,37 @@ export function isArchived(archivePeriods: ArchivePeriod[]): boolean {
 	return latestPeriod !== undefined && latestPeriod.unarchived === null
 }
 
-export function archiveStoredRecordWithAudit<TRecord extends ArchivableRecord & { id: Id }>(
-	options: CoreServices,
+export function archiveStoredRecordWithAudit<Resource extends ArchivableCoreResource>(
+	runtime: CoreRuntime,
 	context: OperationContext,
-	resource: ArchivableCoreResource,
-	repository: (tx: CoreStorageTransaction) => RepositoryTable<TRecord>,
+	resource: Resource,
 	id: Id,
-	recordPipe: Pipe<unknown, TRecord>,
-): Promise<Result<TRecord, StorageBoundaryError | ResourceNotFoundError | AlreadyArchivedError>> {
+): Promise<
+	Result<CoreIdStorageRecord<Resource>, StorageBoundaryError | InvariantViolationError | ResourceNotFoundError | AlreadyArchivedError>
+> {
 	return withAuditStampTransaction(
-		options,
+		runtime,
 		context,
-		async (tx, stamp): Promise<Result<TRecord, StorageBoundaryError | ResourceNotFoundError | AlreadyArchivedError>> => {
-			const existing = await getRequired(resource, repository(tx), id, recordPipe)
+		async (
+			storage,
+			stamp,
+		): Promise<
+			Result<
+				CoreIdStorageRecord<Resource>,
+				StorageBoundaryError | InvariantViolationError | ResourceNotFoundError | AlreadyArchivedError
+			>
+		> => {
+			const existing = await getRequired(resource, storage, id)
 			if (!existing.ok) return existing
 			if (isArchived(existing.value.archivePeriods)) return { ok: false, error: { type: 'already-archived', resource, id } }
 
-			const archived: TRecord = {
+			const archived: CoreIdStorageRecord<Resource> = {
 				...existing.value,
 				archivePeriods: [...existing.value.archivePeriods, { archived: stamp, unarchived: null }],
 			}
-			const stored = await putRecord(resource, repository(tx), archived.id, archived)
+			const stored = await updateRecordValue(resource, storage, archived.id, { archivePeriods: archived.archivePeriods } as Partial<
+				CoreIdStorageRecord<Resource>
+			>)
 			if (!stored.ok) return stored
 
 			return { ok: true, value: archived }
@@ -337,19 +355,24 @@ export function archiveStoredRecordWithAudit<TRecord extends ArchivableRecord & 
 	)
 }
 
-export function unarchiveStoredRecordWithAudit<TRecord extends ArchivableRecord & { id: Id }>(
-	options: CoreServices,
+export function unarchiveStoredRecordWithAudit<Resource extends ArchivableCoreResource>(
+	runtime: CoreRuntime,
 	context: OperationContext,
-	resource: ArchivableCoreResource,
-	repository: (tx: CoreStorageTransaction) => RepositoryTable<TRecord>,
+	resource: Resource,
 	id: Id,
-	recordPipe: Pipe<unknown, TRecord>,
-): Promise<Result<TRecord, StorageBoundaryError | ResourceNotFoundError | NotArchivedError>> {
+): Promise<
+	Result<CoreIdStorageRecord<Resource>, StorageBoundaryError | InvariantViolationError | ResourceNotFoundError | NotArchivedError>
+> {
 	return withAuditStampTransaction(
-		options,
+		runtime,
 		context,
-		async (tx, stamp): Promise<Result<TRecord, StorageBoundaryError | ResourceNotFoundError | NotArchivedError>> => {
-			const existing = await getRequired(resource, repository(tx), id, recordPipe)
+		async (
+			storage,
+			stamp,
+		): Promise<
+			Result<CoreIdStorageRecord<Resource>, StorageBoundaryError | InvariantViolationError | ResourceNotFoundError | NotArchivedError>
+		> => {
+			const existing = await getRequired(resource, storage, id)
 			if (!existing.ok) return existing
 
 			if (!isArchived(existing.value.archivePeriods)) return { ok: false, error: { type: 'not-archived', resource, id } }
@@ -358,8 +381,10 @@ export function unarchiveStoredRecordWithAudit<TRecord extends ArchivableRecord 
 			const latestPeriod = existing.value.archivePeriods[latestPeriodIndex] as ArchivePeriod
 			const archivePeriods = [...existing.value.archivePeriods]
 			archivePeriods[latestPeriodIndex] = { ...latestPeriod, unarchived: stamp }
-			const unarchived: TRecord = { ...existing.value, archivePeriods }
-			const stored = await putRecord(resource, repository(tx), unarchived.id, unarchived)
+			const unarchived: CoreIdStorageRecord<Resource> = { ...existing.value, archivePeriods }
+			const stored = await updateRecordValue(resource, storage, unarchived.id, { archivePeriods } as Partial<
+				CoreIdStorageRecord<Resource>
+			>)
 			if (!stored.ok) return stored
 
 			return { ok: true, value: unarchived }

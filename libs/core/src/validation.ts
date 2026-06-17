@@ -1,6 +1,6 @@
 import { v, type Pipe, type PipeOutput } from 'valleyed'
 
-import type { CoreInputBoundary, CorePreflightCheckName, InvalidCoreServiceOutputError, InvalidInputError } from './errors'
+import type { CoreInputBoundary, CoreServiceOutputName, InvalidCoreServiceOutputError, InvalidInputError } from './errors'
 import type { Result } from './utils/types'
 
 export function validateCoreInput<TPipe extends Pipe<unknown, unknown>>(
@@ -21,7 +21,7 @@ export function validateCoreInput<TPipe extends Pipe<unknown, unknown>>(
 export function validateCoreServiceOutput<TPipe extends Pipe<unknown, unknown>>(
 	pipe: TPipe,
 	value: unknown,
-	service: CorePreflightCheckName,
+	service: CoreServiceOutputName,
 	operation: string,
 ): Result<PipeOutput<TPipe>, InvalidCoreServiceOutputError> {
 	const result = v.validate(pipe, value)

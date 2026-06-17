@@ -12,12 +12,13 @@ import type {
 	ArchivedSecretReferenceError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
+	InvariantViolationError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import { buildCommandHandler } from '../utils/command'
-import { auditStamp, nextId, putValidModelProvider, withTransaction } from '../utils/command-storage'
+import { auditStamp, createValidModelProvider, nextId, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
 
 const createModelProviderInputPipe = v.object({
@@ -34,6 +35,7 @@ export type Result = ModelProvider
 export type Error =
 	| InvalidInputError
 	| InvalidCoreServiceOutputError
+	| InvariantViolationError
 	| StorageOperationFailedError
 	| ResourceNotFoundError
 	| ArchivedSecretReferenceError
@@ -41,15 +43,14 @@ export type Error =
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreateModelProviderCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
 	return buildCommandHandler('createModelProvider', createModelProviderInputPipe, (input, context) => {
-		const stamp = auditStamp(options, context)
+		const stamp = auditStamp(runtime.values, context)
 		if (!stamp.ok) return Promise.resolve(stamp)
 
-		const id = nextId(options, 'model-provider')
+		const id = nextId(runtime.values, 'model-provider')
 		if (!id.ok) return Promise.resolve(id)
 
-		return withTransaction(options, (tx): Promise<CoreResult<ModelProvider, Exclude<Error, InvalidInputError>>> => {
+		return withTransaction(runtime.services, (storage): Promise<CoreResult<ModelProvider, Exclude<Error, InvalidInputError>>> => {
 			const provider: ModelProvider = {
 				id: id.value,
 				name: input.name,
@@ -62,7 +63,7 @@ export function createCreateModelProviderCommand(runtime: CoreRuntime): Operatio
 				archivePeriods: [],
 			}
 
-			return putValidModelProvider(tx, provider)
+			return createValidModelProvider(storage, provider)
 		})
 	})
 }

@@ -2,15 +2,15 @@ import type { DeliveryContext } from './types'
 import type { Id } from '../../domain/commons'
 import type { DeliveryWorkConfig, ProjectConfigRecord } from '../../domain/config'
 import type { ValidationEvidence } from '../../domain/evidence'
-import { modelPipe, type Model } from '../../domain/model'
-import { modelProviderPipe, type ModelProvider } from '../../domain/model-provider'
+import type { Model } from '../../domain/model'
+import type { ModelProvider } from '../../domain/model-provider'
 import type {
 	InvalidCoreServiceOutputError,
 	InvariantViolationError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../../errors'
-import type { CoreStorageTransaction } from '../../services'
+import type { CoreStorage } from '../../services'
 import { getRequired } from '../storage'
 import type { Result } from '../types'
 
@@ -57,12 +57,12 @@ const summaries = {
 } as const
 
 export async function resolveDeliveryWork(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	context: DeliveryContext,
 ): Promise<Result<DeliveryPreflight, DeliveryPreflightError>> {
 	if (context.portfolioConfig === null) return ok(portfolioConfigMissing())
 
-	const modelFacts = await selectedModelFacts(tx, resolveExecutionModelId(context))
+	const modelFacts = await selectedModelFacts(storage, resolveExecutionModelId(context))
 	if (!modelFacts.ok) return modelFacts
 	if (isFailedDeliveryPreflight(modelFacts.value)) return ok(modelFacts.value)
 
@@ -71,20 +71,20 @@ export async function resolveDeliveryWork(
 
 type SelectedModelFacts = { model: Model; modelProvider: ModelProvider }
 
-async function selectedModelFacts(tx: CoreStorageTransaction, modelId: Id): Promise<PreflightStep<SelectedModelFacts>> {
-	const model = await selectedModel(tx, modelId)
-	return model.ok ? selectedModelFactsAfterModel(tx, model.value) : model
+async function selectedModelFacts(storage: CoreStorage, modelId: Id): Promise<PreflightStep<SelectedModelFacts>> {
+	const model = await selectedModel(storage, modelId)
+	return model.ok ? selectedModelFactsAfterModel(storage, model.value) : model
 }
 
 function selectedModelFactsAfterModel(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	model: Model | FailedDeliveryPreflight,
 ): Promise<PreflightStep<SelectedModelFacts>> | Result<FailedDeliveryPreflight, never> {
-	return isFailedDeliveryPreflight(model) ? ok(model) : selectedModelProviderFacts(tx, model)
+	return isFailedDeliveryPreflight(model) ? ok(model) : selectedModelProviderFacts(storage, model)
 }
 
-async function selectedModelProviderFacts(tx: CoreStorageTransaction, model: Model): Promise<PreflightStep<SelectedModelFacts>> {
-	const modelProvider = await selectedModelProvider(tx, model.providerId)
+async function selectedModelProviderFacts(storage: CoreStorage, model: Model): Promise<PreflightStep<SelectedModelFacts>> {
+	const modelProvider = await selectedModelProvider(storage, model.providerId)
 	return modelProvider.ok ? selectedModelFactsAfterProvider(model, modelProvider.value) : modelProvider
 }
 
@@ -95,15 +95,15 @@ function selectedModelFactsAfterProvider(
 	return isFailedDeliveryPreflight(modelProvider) ? ok(modelProvider) : ok({ model, modelProvider })
 }
 
-async function selectedModel(tx: CoreStorageTransaction, modelId: Id): Promise<PreflightStep<Model>> {
-	const model = await getRequired('model', tx.models, modelId, modelPipe)
+async function selectedModel(storage: CoreStorage, modelId: Id): Promise<PreflightStep<Model>> {
+	const model = await getRequired('model', storage, modelId)
 	if (!model.ok) return model
 
 	return isArchived(model.value) ? ok(modelArchived(modelId)) : ok(model.value)
 }
 
-async function selectedModelProvider(tx: CoreStorageTransaction, providerId: Id): Promise<PreflightStep<ModelProvider>> {
-	const provider = await getRequired('model-provider', tx.modelProviders, providerId, modelProviderPipe)
+async function selectedModelProvider(storage: CoreStorage, providerId: Id): Promise<PreflightStep<ModelProvider>> {
+	const provider = await getRequired('model-provider', storage, providerId)
 	if (!provider.ok) return provider
 
 	return isArchived(provider.value) ? ok(modelProviderArchived(provider.value.id)) : ok(provider.value)

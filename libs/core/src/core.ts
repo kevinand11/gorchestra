@@ -1,7 +1,4 @@
-import { type Pipe } from 'valleyed'
-
 import * as Commands from './commands'
-import { idPipe, isoDateTimePipe } from './domain/commons'
 import type { CorePreflightError, OpenCoreError } from './errors'
 import * as Queries from './queries'
 import { createCoreRuntime } from './runtime'
@@ -15,6 +12,7 @@ import {
 	type CoreServices,
 } from './services'
 import * as Snapshots from './snapshots'
+import { preflightStorage } from './storage/preflight'
 import type { Result } from './utils/types'
 import { validateCoreInput, validateCoreServiceOutput } from './validation'
 
@@ -53,22 +51,18 @@ async function preflightCore(options: CoreServices): Promise<Result<CorePrefligh
 }
 
 async function collectCorePreflightChecks(options: CoreServices): Promise<Result<CorePreflightChecks, CorePreflightError>> {
-	const storage = await preflightCoreService('storage', () => options.storage.preflight())
+	const storage = await preflightStorage(options.storage)
 	const secrets = await preflightCoreService('secrets', () => options.secrets.preflight())
 	const sandbox = await preflightCoreService('sandbox', () => options.sandbox.preflight())
-	const clock = preflightRuntimeService('clock', 'now', () => options.clock.now(), isoDateTimePipe)
-	const idGenerator = preflightRuntimeService('idGenerator', 'next', () => options.idGenerator.next('core-preflight'), idPipe)
-	const failure = firstCorePreflightFailure([storage, secrets, sandbox, clock, idGenerator])
+	const failure = firstCorePreflightFailure([secrets, sandbox])
 	if (failure !== null) return failure
 
 	return {
 		ok: true,
 		value: {
-			storage: resultValue(storage),
+			storage,
 			secrets: resultValue(secrets),
 			sandbox: resultValue(sandbox),
-			clock: resultValue(clock),
-			idGenerator: resultValue(idGenerator),
 		},
 	}
 }
@@ -80,7 +74,7 @@ function firstCorePreflightFailure(results: CorePreflightCheckResult[]): Result<
 }
 
 function corePreflightReport(checks: CorePreflightChecks): CorePreflightReport {
-	const allChecks = [checks.storage, checks.secrets, checks.sandbox, checks.clock, checks.idGenerator]
+	const allChecks = [checks.storage, checks.secrets, checks.sandbox]
 
 	return { passed: allChecks.every((check) => check.ok), checks }
 }
@@ -92,7 +86,7 @@ function resultValue<T>(result: Result<T, unknown>): T {
 }
 
 async function preflightCoreService(
-	service: 'storage' | 'secrets' | 'sandbox',
+	service: 'secrets' | 'sandbox',
 	probe: () => Promise<CoreServicePreflightOutput>,
 ): Promise<Result<CorePreflightCheck, CorePreflightError>> {
 	try {
@@ -109,26 +103,6 @@ async function preflightCoreService(
 	}
 }
 
-function preflightRuntimeService<TPipe extends Pipe<unknown, unknown>>(
-	service: 'clock' | 'idGenerator',
-	operation: string,
-	probe: () => unknown,
-	outputPipe: TPipe,
-): Result<CorePreflightCheck, CorePreflightError> {
-	try {
-		const output = probe()
-		const validation = validateCoreServiceOutput(outputPipe, output, service, operation)
-
-		if (!validation.ok) {
-			return validation
-		}
-
-		return { ok: true, value: { ok: true } }
-	} catch {
-		return { ok: true, value: failedProbeCheck() }
-	}
-}
-
 function preflightCheckFromCoreServiceOutput(output: CoreServicePreflightOutput): CorePreflightCheck {
 	return output.ok ? { ok: true } : { ok: false, reason: 'not-ready', message: output.message }
 }
@@ -139,11 +113,7 @@ function failedProbeCheck(): CorePreflightCheck {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-
-	const storage: CoreServices['storage'] = {
-		preflight: () => Promise.resolve({ ok: true }),
-		transaction: (fn) => fn({} as never),
-	}
+	const { createTestCoreStorage } = await import('./utils/test-helpers')
 
 	const secrets: CoreServices['secrets'] = {
 		preflight: () => Promise.resolve({ ok: true }),
@@ -154,13 +124,7 @@ if (import.meta.vitest) {
 	const sandbox: CoreServices['sandbox'] = { preflight: () => Promise.resolve({ ok: true }) }
 
 	function coreServices(): CoreServices {
-		return {
-			storage,
-			secrets,
-			sandbox,
-			clock: { now: () => new Date('2026-06-09T00:00:00.000Z') },
-			idGenerator: { next: (brand) => `${brand}-1` },
-		}
+		return { storage: createTestCoreStorage(), secrets, sandbox }
 	}
 
 	describe('openCore', () => {
@@ -193,11 +157,14 @@ if (import.meta.vitest) {
 		it('validates Core Service shape without probing service behavior', () => {
 			const options = {
 				storage: {
-					preflight: () => {
-						throw new Error('storage preflight was probed')
+					on: () => {
+						throw new Error('storage on was probed')
 					},
-					transaction: () => {
-						throw new Error('storage transaction was probed')
+					session: () => {
+						throw new Error('storage session was probed')
+					},
+					resolve: () => {
+						throw new Error('storage resolve was probed')
 					},
 				},
 				secrets: {
@@ -216,24 +183,14 @@ if (import.meta.vitest) {
 						throw new Error('sandbox preflight was probed')
 					},
 				},
-				clock: {
-					now: () => {
-						throw new Error('clock was probed')
-					},
-				},
-				idGenerator: {
-					next: () => {
-						throw new Error('id generator was probed')
-					},
-				},
 			}
 
-			expect(openCore(options)).toMatchObject({ ok: true })
+			expect(openCore(options as never)).toMatchObject({ ok: true })
 
 			const invalidSecrets = { ...options.secrets } as { resolveSecrets?: unknown }
 			delete invalidSecrets.resolveSecrets
 
-			expect(openCore({ ...options, secrets: invalidSecrets as never })).toMatchObject({
+			expect(openCore({ ...options, secrets: invalidSecrets as never } as never)).toMatchObject({
 				ok: false,
 				error: {
 					type: 'invalid-input',
@@ -243,13 +200,13 @@ if (import.meta.vitest) {
 				},
 			})
 
-			expect(openCore({ ...options, idGenerator: {} as never })).toMatchObject({
+			expect(openCore({ ...options, storage: { ...options.storage, session: undefined } } as never)).toMatchObject({
 				ok: false,
 				error: {
 					type: 'invalid-input',
 					boundary: 'core',
 					operation: 'openCore',
-					pipeError: { messages: [expect.objectContaining({ path: 'idGenerator.next' })] },
+					pipeError: { messages: [expect.objectContaining({ path: 'storage' })] },
 				},
 			})
 		})
@@ -283,16 +240,10 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('preflights required Core Services and runtime dependencies outside commands and queries', async () => {
+		it('preflights required Core Services outside commands and queries', async () => {
 			const calls: string[] = []
 			const opened = openCore({
-				storage: {
-					...storage,
-					preflight: () => {
-						calls.push('storage')
-						return Promise.resolve({ ok: true })
-					},
-				},
+				storage: createTestCoreStorage(),
 				secrets: {
 					...secrets,
 					preflight: () => {
@@ -304,18 +255,6 @@ if (import.meta.vitest) {
 					preflight: () => {
 						calls.push('sandbox')
 						return Promise.resolve({ ok: true })
-					},
-				},
-				clock: {
-					now: () => {
-						calls.push('clock')
-						return new Date('2026-06-09T00:00:00.000Z')
-					},
-				},
-				idGenerator: {
-					next: (brand) => {
-						calls.push(`idGenerator:${brand}`)
-						return `${brand}-1`
 					},
 				},
 				logger: {
@@ -351,29 +290,16 @@ if (import.meta.vitest) {
 						storage: { ok: true },
 						secrets: { ok: true },
 						sandbox: { ok: true },
-						clock: { ok: true },
-						idGenerator: { ok: true },
 					},
 				},
 			})
-			expect(calls).toEqual(['storage', 'secrets', 'sandbox', 'clock', 'idGenerator:core-preflight'])
+			expect(calls).toEqual(['secrets', 'sandbox'])
 		})
 
 		it('returns failed checks for failed and thrown readiness probes', async () => {
 			const opened = openCore({
 				...coreServices(),
-				storage: { ...storage, preflight: () => Promise.resolve({ ok: false, message: 'storage is offline' }) },
 				secrets: { ...secrets, preflight: () => Promise.reject(new Error('raw secret resolver failure')) },
-				clock: {
-					now: () => {
-						throw new Error('raw clock failure')
-					},
-				},
-				idGenerator: {
-					next: () => {
-						throw new Error('raw id generator failure')
-					},
-				},
 			})
 			expect(opened).toMatchObject({ ok: true })
 			if (!opened.ok) return
@@ -383,42 +309,24 @@ if (import.meta.vitest) {
 				value: {
 					passed: false,
 					checks: {
-						storage: { ok: false, reason: 'not-ready', message: 'storage is offline' },
+						storage: { ok: true },
 						secrets: { ok: false, reason: 'probe-failed', message: null },
 						sandbox: { ok: true },
-						clock: { ok: false, reason: 'probe-failed', message: null },
-						idGenerator: { ok: false, reason: 'probe-failed', message: null },
 					},
 				},
 			})
 		})
 
 		it('returns invalid-core-service-output for malformed readiness outputs', async () => {
-			const malformedStorage = openCore({
+			const malformedSecrets = openCore({
 				...coreServices(),
-				storage: { ...storage, preflight: () => Promise.resolve({ ok: 'yes' }) as never },
+				secrets: { ...secrets, preflight: () => Promise.resolve({ ok: 'yes' }) as never },
 			})
-			expect(malformedStorage).toMatchObject({ ok: true })
-			if (!malformedStorage.ok) return
-			await expect(malformedStorage.value.preflight()).resolves.toMatchObject({
+			expect(malformedSecrets).toMatchObject({ ok: true })
+			if (!malformedSecrets.ok) return
+			await expect(malformedSecrets.value.preflight()).resolves.toMatchObject({
 				ok: false,
-				error: { type: 'invalid-core-service-output', service: 'storage', operation: 'preflight' },
-			})
-
-			const malformedClock = openCore({ ...coreServices(), clock: { now: () => new Date('not a date') } })
-			expect(malformedClock).toMatchObject({ ok: true })
-			if (!malformedClock.ok) return
-			await expect(malformedClock.value.preflight()).resolves.toMatchObject({
-				ok: false,
-				error: { type: 'invalid-core-service-output', service: 'clock', operation: 'now' },
-			})
-
-			const malformedId = openCore({ ...coreServices(), idGenerator: { next: () => '   ' } })
-			expect(malformedId).toMatchObject({ ok: true })
-			if (!malformedId.ok) return
-			await expect(malformedId.value.preflight()).resolves.toMatchObject({
-				ok: false,
-				error: { type: 'invalid-core-service-output', service: 'idGenerator', operation: 'next' },
+				error: { type: 'invalid-core-service-output', service: 'secrets', operation: 'preflight' },
 			})
 		})
 	})

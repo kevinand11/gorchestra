@@ -18,8 +18,8 @@ export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createGetDeliveryWorkStateQuery(options: CoreServices): Operation {
 	return buildQueryHandler('getDeliveryWorkState', getDeliveryWorkStateInputPipe, (input) =>
-		withTransaction(options, async (tx) => {
-			const context = await buildDeliveryContext(tx, input.deliveryId)
+		withTransaction(options, async (storage) => {
+			const context = await buildDeliveryContext(storage, input.deliveryId)
 			return context.ok ? getDeliveryState(context.value) : context
 		}),
 	)

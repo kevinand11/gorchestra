@@ -1,8 +1,8 @@
+import { workedActions } from './result'
 import type { Action } from '../../../domain/action'
 import type { ValidationEvidence, ValidationOperation } from '../../../domain/evidence'
-import { nextId, putRecord, runtimeRecord } from '../../../utils/command-storage'
+import { createRecord, nextId, runtimeRecord } from '../../../utils/command-storage'
 import type { DeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
-import { workedActions } from './result'
 
 export function noConfiguredValidationEvidence(operation: ValidationOperation['type'], summary: string): ValidationEvidence {
 	return { type: 'validation', operation: { type: operation }, passed: true, summary }
@@ -12,10 +12,10 @@ export async function writeValidationAction(
 	context: DeliveryHandlerContext,
 	result: Action['result'],
 ): Promise<RunDeliveryWorkHandlerResult> {
-	const id = nextId(context.services, 'action')
+	const id = nextId(context.values, 'action')
 	if (!id.ok) return id
 
-	const performed = runtimeRecord(context.services)
+	const performed = runtimeRecord(context.values)
 	if (!performed.ok) return performed
 
 	const action: Action = {
@@ -26,7 +26,7 @@ export async function writeValidationAction(
 		result,
 	}
 
-	const put = await putRecord('action', context.tx.actions, action.id, action)
+	const put = await createRecord('action', context.storage, action)
 	if (!put.ok) return put
 
 	return workedActions([action.id])

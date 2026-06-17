@@ -385,16 +385,17 @@ if (import.meta.vitest) {
 			storage: unusedStorageService(),
 			secrets: secretService(resolveSecretValues),
 			sandbox: { preflight: () => Promise.resolve({ ok: true }) },
-			clock: { now: () => new Date('2026-06-10T12:00:00.000Z') },
-			idGenerator: { next: (brand) => `${brand}-1` },
 		}
 	}
 
 	function unusedStorageService(): CoreServices['storage'] {
 		return {
-			preflight: () => Promise.resolve({ ok: true }),
-			transaction: () => Promise.reject(new Error('Storage should not be called.')),
-		}
+			on: () => {
+				throw new Error('Storage should not be called.')
+			},
+			session: () => Promise.reject(new Error('Storage should not be called.')),
+			resolve: () => Promise.reject(new Error('Storage should not be called.')),
+		} as never
 	}
 
 	function secretService(resolveSecretValues: CoreServices['secrets']['resolveSecretValues']): CoreServices['secrets'] {

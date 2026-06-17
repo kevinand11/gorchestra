@@ -3,7 +3,7 @@ import type { ReviewSurface } from '../../../domain/review-surface'
 import type { InvariantViolationError } from '../../../errors'
 import type { SourceControlCreateReviewSurfaceInput, SourceControlReviewSurfaceCreation } from '../../../providers/source-control'
 import type { CoreRuntime } from '../../../runtime'
-import { nextId, putRecord, runtimeRecord } from '../../../utils/command-storage'
+import { createRecord, nextId, runtimeRecord } from '../../../utils/command-storage'
 import { withTransaction } from '../../../utils/storage'
 import type { Result as CoreResult } from '../../../utils/types'
 import { resolvedSchedulerHandlerContext, type ProviderBackedSchedulerPreflightClaim } from '../preflight'
@@ -32,8 +32,8 @@ export async function handleDeliveryNeedsReviewSurface(
 	const creation = await runtime.providers.sourceControl.createReviewSurface(input.value)
 	if (!creation.ok) return creation
 
-	return withTransaction(runtime.services, async (tx) => {
-		const context = resolvedSchedulerHandlerContext(runtime.services, tx, preflight.deliveryContext, preflight)
+	return withTransaction(runtime.services, async (storage) => {
+		const context = resolvedSchedulerHandlerContext(runtime, storage, preflight.deliveryContext, preflight)
 		return context.ok ? recordDeliveryReviewSurfaceCreationResult(context.value, state, input.value, creation.value) : context
 	})
 }
@@ -97,7 +97,7 @@ async function writeIntegratedDeliveryArtifactObservation(
 	})
 	if (!action.ok) return action
 
-	const put = await putRecord('action', context.tx.actions, action.value.id, action.value)
+	const put = await createRecord('action', context.storage, action.value)
 	return put.ok ? { ok: true, value: { processedCount: 1, failures: [] } } : put
 }
 
@@ -118,13 +118,13 @@ function deliveryReviewSurfaceRecords(
 	{ reviewSurface: ReviewSurface; action: Action },
 	RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
 > {
-	const reviewSurfaceId = nextId(context.services, 'review-surface')
+	const reviewSurfaceId = nextId(context.values, 'review-surface')
 	if (!reviewSurfaceId.ok) return reviewSurfaceId
 
-	const actionId = nextId(context.services, 'action')
+	const actionId = nextId(context.values, 'action')
 	if (!actionId.ok) return actionId
 
-	const performed = runtimeRecord(context.services)
+	const performed = runtimeRecord(context.values)
 	if (!performed.ok) return performed
 
 	return {
@@ -159,10 +159,10 @@ async function putDeliveryReviewSurfaceRecords(
 	context: ResolvedDeliveryHandlerContext,
 	records: { reviewSurface: ReviewSurface; action: Action },
 ): Promise<RunDeliveryWorkHandlerResult> {
-	const surfacePut = await putRecord('review-surface', context.tx.reviewSurfaces, records.reviewSurface.id, records.reviewSurface)
+	const surfacePut = await createRecord('review-surface', context.storage, records.reviewSurface)
 	if (!surfacePut.ok) return surfacePut
 
-	const actionPut = await putRecord('action', context.tx.actions, records.action.id, records.action)
+	const actionPut = await createRecord('action', context.storage, records.action)
 	return actionPut.ok ? { ok: true, value: { processedCount: 1, failures: [] } } : actionPut
 }
 
@@ -176,7 +176,7 @@ async function writeFailedDeliveryReviewSurfaceCreation(
 	})
 	if (!action.ok) return action
 
-	const put = await putRecord('action', context.tx.actions, action.value.id, action.value)
+	const put = await createRecord('action', context.storage, action.value)
 	if (!put.ok) return put
 
 	return {
@@ -307,6 +307,13 @@ if (import.meta.vitest) {
 			executionModelProvider: options.tx.modelProviders.records.get('model-1-provider')!,
 		}
 
-		return { services: options, tx: options.tx, deliveryContext: deliveryContext.value, workResolution }
+		return {
+			services: options,
+			storage: options.tx,
+			values: options.values,
+			tx: options.tx,
+			deliveryContext: deliveryContext.value,
+			workResolution,
+		}
 	}
 }

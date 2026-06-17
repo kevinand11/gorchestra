@@ -6,17 +6,18 @@ import type {
 	DuplicateRepositoryTargetError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
+	InvariantViolationError,
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import type { CoreServices, CoreStorageTransaction } from '../services'
+import type { CoreStorage } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { RepositoryCommandReferenceError } from '../utils/command-errors'
 import {
 	auditStamp,
+	createRecordValue,
 	nextId,
 	normalizeRepositoryConfig,
-	putRecord,
 	validateActiveSecret,
 	validateSourceControlProject,
 	validateUniqueRepositoryTarget,
@@ -33,39 +34,39 @@ export type Error =
 	| InvalidInputError
 	| RepositoryCommandReferenceError
 	| DuplicateRepositoryTargetError
+	| InvariantViolationError
 	| StorageOperationFailedError
 	| InvalidCoreServiceOutputError
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreateRepositoryCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
 	return buildCommandHandler('createRepository', createRepositoryInputPipe, (input, context) =>
-		handleCreateRepository(options, input, context),
+		handleCreateRepository(runtime, input, context),
 	)
 }
 
 async function handleCreateRepository(
-	options: CoreServices,
+	runtime: CoreRuntime,
 	input: Input,
 	context: OperationContext,
 ): Promise<CoreResult<Repository, Error>> {
-	const stampResult = auditStamp(options, context)
+	const stampResult = auditStamp(runtime.values, context)
 	if (!stampResult.ok) return stampResult
 
-	const idResult = nextId(options, 'repository')
+	const idResult = nextId(runtime.values, 'repository')
 	if (!idResult.ok) return idResult
 
-	return withTransaction(options, (tx) => writeRepository(tx, input, stampResult.value, idResult.value))
+	return withTransaction(runtime.services, (storage) => writeRepository(storage, input, stampResult.value, idResult.value))
 }
 
 async function writeRepository(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	input: Input,
 	stamp: AuditStamp,
 	repositoryId: Id,
 ): Promise<CoreResult<Repository, Exclude<Error, InvalidInputError>>> {
-	const validation = await validateRepositoryCreate(tx, input)
+	const validation = await validateRepositoryCreate(storage, input)
 	if (!validation.ok) return validation
 
 	const repository: Repository = {
@@ -74,23 +75,17 @@ async function writeRepository(
 		config: normalizeRepositoryConfig(input.config),
 		created: stamp,
 	}
-	const putResult = await putRecord('repository', tx.repositories, repository.id, repository)
-	if (!putResult.ok) return putResult
-
-	return { ok: true, value: repository }
+	return createRecordValue('repository', storage, repository)
 }
 
-async function validateRepositoryCreate(
-	tx: CoreStorageTransaction,
-	input: Input,
-): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
-	const projectValidation = await validateSourceControlProject(tx, input.projectId)
+async function validateRepositoryCreate(storage: CoreStorage, input: Input): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
+	const projectValidation = await validateSourceControlProject(storage, input.projectId)
 	if (!projectValidation.ok) return projectValidation
 
-	const secretValidation = await validateActiveSecret(tx, input.config.secretId)
+	const secretValidation = await validateActiveSecret(storage, input.config.secretId)
 	if (!secretValidation.ok) return secretValidation
 
-	return validateUniqueRepositoryTarget(tx, input.projectId, input.config, null)
+	return validateUniqueRepositoryTarget(storage, input.projectId, input.config, null)
 }
 
 if (import.meta.vitest) {

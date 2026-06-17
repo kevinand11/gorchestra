@@ -1,16 +1,16 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe, type OperationContext } from '../domain/commons'
-import { modelProviderPipe, type ModelProvider } from '../domain/model-provider'
+import { type ModelProvider } from '../domain/model-provider'
 import type {
 	AlreadyArchivedError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
+	InvariantViolationError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { archiveStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -23,18 +23,16 @@ export type Result = ModelProvider
 export type Error =
 	| InvalidInputError
 	| InvalidCoreServiceOutputError
+	| InvariantViolationError
 	| StorageOperationFailedError
 	| ResourceNotFoundError
 	| AlreadyArchivedError
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-const selectModelProviders = (tx: CoreStorageTransaction) => tx.modelProviders
-
 export function createArchiveModelProviderCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
 	return buildCommandHandler('archiveModelProvider', archiveModelProviderInputPipe, (input, context) =>
-		archiveStoredRecordWithAudit(options, context, 'model-provider', selectModelProviders, input.modelProviderId, modelProviderPipe),
+		archiveStoredRecordWithAudit(runtime, context, 'model-provider', input.modelProviderId),
 	)
 }
 

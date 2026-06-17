@@ -12,7 +12,7 @@ import type {
 } from '../errors'
 
 export type ConfigCommandReferenceError = ResourceNotFoundError | ArchivedModelReferenceError | ArchivedModelProviderReferenceError
-export type ConfigCommandStorageError = StorageOperationFailedError | InvalidCoreServiceOutputError
+export type ConfigCommandStorageError = StorageOperationFailedError | InvalidCoreServiceOutputError | InvariantViolationError
 export type RepositoryCommandReferenceError = ResourceNotFoundError | SecretNotActiveError | ProjectSourceTypeMismatchError
 export type DeliveryActionCommandError =
 	| InvalidInputError

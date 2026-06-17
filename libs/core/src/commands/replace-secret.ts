@@ -1,10 +1,15 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe, type OperationContext } from '../domain/commons'
-import { secretPipe, secretValueRefPipe, type Secret } from '../domain/secret'
-import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
+import { secretValueRefPipe, type Secret } from '../domain/secret'
+import type {
+	InvalidCoreServiceOutputError,
+	InvalidInputError,
+	InvariantViolationError,
+	ResourceNotFoundError,
+	StorageOperationFailedError,
+} from '../errors'
 import type { CoreRuntime } from '../runtime'
-import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { updateStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -14,16 +19,18 @@ export type Input = PipeOutput<typeof replaceSecretInputPipe>
 
 export type Result = Secret
 
-export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError | ResourceNotFoundError
+export type Error =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| InvariantViolationError
+	| StorageOperationFailedError
+	| ResourceNotFoundError
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-const selectSecrets = (tx: CoreStorageTransaction) => tx.secrets
-
 export function createReplaceSecretCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
 	return buildCommandHandler('replaceSecret', replaceSecretInputPipe, (input, context) =>
-		updateStoredRecordWithAudit(options, context, 'secret', selectSecrets, input.secretId, secretPipe, (secret, stamp) => ({
+		updateStoredRecordWithAudit(runtime, context, 'secret', input.secretId, (secret, stamp) => ({
 			...secret,
 			valueRef: input.valueRef,
 			replaced: stamp,

@@ -4,7 +4,7 @@ import type { Slice, SliceWorkState } from '../../../domain/slice'
 import type { InvariantViolationError } from '../../../errors'
 import type { SourceControlCreateReviewSurfaceInput, SourceControlReviewSurfaceCreation } from '../../../providers/source-control'
 import type { CoreRuntime } from '../../../runtime'
-import { nextId, putRecord, runtimeRecord } from '../../../utils/command-storage'
+import { createRecord, nextId, runtimeRecord } from '../../../utils/command-storage'
 import { withTransaction } from '../../../utils/storage'
 import type { Result as CoreResult } from '../../../utils/types'
 import type { ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
@@ -30,9 +30,15 @@ export async function handleSliceNeedsReviewSurface(
 	const creation = await runtime.providers.sourceControl.createReviewSurface(input.value)
 	if (!creation.ok) return creation
 
-	return withTransaction(runtime.services, async (tx) =>
+	return withTransaction(runtime.services, async (storage) =>
 		recordSliceReviewSurfaceCreationResult(
-			{ services: runtime.services, tx, deliveryContext: context.deliveryContext, workResolution: context.workResolution },
+			{
+				services: runtime.services,
+				storage,
+				values: runtime.values,
+				deliveryContext: context.deliveryContext,
+				workResolution: context.workResolution,
+			},
 			slice,
 			state,
 			input.value,
@@ -121,7 +127,7 @@ async function writeIntegratedSliceArtifactPromotion(
 	})
 	if (!action.ok) return action
 
-	const put = await putRecord('action', context.tx.actions, action.value.id, action.value)
+	const put = await createRecord('action', context.storage, action.value)
 	return put.ok ? { ok: true, value: { processedCount: 1, failures: [] } } : put
 }
 
@@ -145,7 +151,7 @@ function sliceReviewSurfaceRecords(
 	const identifiers = sliceReviewSurfaceIdentifiers(context)
 	if (!identifiers.ok) return identifiers
 
-	const performed = runtimeRecord(context.services)
+	const performed = runtimeRecord(context.values)
 	if (!performed.ok) return performed
 
 	const reviewSurface = sliceReviewSurfaceRecord(context, input, pullRequestNumber, identifiers.value.reviewSurfaceId, performed.value)
@@ -159,10 +165,10 @@ function sliceReviewSurfaceIdentifiers(
 	{ reviewSurfaceId: string; actionId: string },
 	RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
 > {
-	const reviewSurfaceId = nextId(context.services, 'review-surface')
+	const reviewSurfaceId = nextId(context.values, 'review-surface')
 	if (!reviewSurfaceId.ok) return reviewSurfaceId
 
-	const actionId = nextId(context.services, 'action')
+	const actionId = nextId(context.values, 'action')
 	return actionId.ok ? { ok: true, value: { reviewSurfaceId: reviewSurfaceId.value, actionId: actionId.value } } : actionId
 }
 
@@ -170,10 +176,10 @@ async function putSliceReviewSurfaceRecords(
 	context: ResolvedDeliveryHandlerContext,
 	records: { reviewSurface: ReviewSurface; action: Action },
 ): Promise<RunDeliveryWorkHandlerResult> {
-	const actionPut = await putRecord('action', context.tx.actions, records.action.id, records.action)
+	const actionPut = await createRecord('action', context.storage, records.action)
 	if (!actionPut.ok) return actionPut
 
-	const surfacePut = await putRecord('review-surface', context.tx.reviewSurfaces, records.reviewSurface.id, records.reviewSurface)
+	const surfacePut = await createRecord('review-surface', context.storage, records.reviewSurface)
 	return surfacePut.ok ? { ok: true, value: { processedCount: 1, failures: [] } } : surfacePut
 }
 
@@ -228,7 +234,7 @@ async function writeFailedSliceReviewSurfaceCreation(
 	})
 	if (!action.ok) return action
 
-	const put = await putRecord('action', context.tx.actions, action.value.id, action.value)
+	const put = await createRecord('action', context.storage, action.value)
 	if (!put.ok) return put
 
 	return {
@@ -359,6 +365,8 @@ if (import.meta.vitest) {
 
 		const context = {
 			services: options,
+			storage: options.tx,
+			values: options.values,
 			tx: options.tx,
 			deliveryContext: deliveryContext.value,
 			workResolution: {

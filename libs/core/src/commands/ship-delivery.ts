@@ -5,10 +5,10 @@ import { idPipe, type AuditStamp, type Id, type OperationContext } from '../doma
 import type { Delivery, DeliveryIntegration, DeliveryWorkState } from '../domain/delivery'
 import type { InvalidInputError } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import type { CoreServices, CoreStorageTransaction } from '../services'
+import type { CoreStorage } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { DeliveryActionCommandError } from '../utils/command-errors'
-import { deliveryWorkStateMismatch, putRecordValue, withAuditStampTransaction } from '../utils/command-storage'
+import { deliveryWorkStateMismatch, updateRecordValue, withAuditStampTransaction } from '../utils/command-storage'
 import { buildDeliveryContext } from '../utils/delivery-context'
 import { getDeliveryState } from '../utils/delivery-context'
 import type { Result as CoreResult } from '../utils/types'
@@ -24,34 +24,35 @@ export type Error = DeliveryActionCommandError
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createShipDeliveryCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
-	return buildCommandHandler('shipDelivery', shipDeliveryInputPipe, (input, context) => handleShipDelivery(options, input, context))
+	return buildCommandHandler('shipDelivery', shipDeliveryInputPipe, (input, context) => handleShipDelivery(runtime, input, context))
 }
 
 function handleShipDelivery(
-	options: CoreServices,
+	runtime: CoreRuntime,
 	input: Input,
 	context: OperationContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	return withAuditStampTransaction(options, context, (tx, stamp) => writeShipDelivery(tx, input, stamp))
+	return withAuditStampTransaction(runtime, context, (storage, stamp) => writeShipDelivery(storage, input, stamp))
 }
 
 async function writeShipDelivery(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	input: Input,
 	stamp: AuditStamp,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const deliveryResult = await requireReadyToShipDelivery(tx, input.deliveryId)
+	const deliveryResult = await requireReadyToShipDelivery(storage, input.deliveryId)
 	if (!deliveryResult.ok) return deliveryResult
 
-	return putRecordValue('delivery', tx.deliveries, shipDelivery(deliveryResult.value.delivery, deliveryResult.value.integration, stamp))
+	return updateRecordValue('delivery', storage, deliveryResult.value.delivery.id, {
+		closed: { type: 'shipped', shipped: stamp, integration: deliveryResult.value.integration },
+	})
 }
 
 async function requireReadyToShipDelivery(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	deliveryId: Id,
 ): Promise<CoreResult<{ delivery: Delivery; integration: DeliveryIntegration }, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await buildDeliveryContext(tx, deliveryId)
+	const deliveryContext = await buildDeliveryContext(storage, deliveryId)
 	if (!deliveryContext.ok) return deliveryContext
 
 	const deliveryState = getDeliveryState(deliveryContext.value)
@@ -60,10 +61,6 @@ async function requireReadyToShipDelivery(
 	return deliveryState.value.type === 'ready-to-ship'
 		? { ok: true, value: { delivery: deliveryContext.value.delivery, integration: deliveryState.value.integration } }
 		: deliveryWorkStateMismatch(deliveryId, ['ready-to-ship'], deliveryState.value)
-}
-
-function shipDelivery(delivery: Delivery, integration: DeliveryIntegration, stamp: AuditStamp): Delivery {
-	return { ...delivery, closed: { type: 'shipped', shipped: stamp, integration } }
 }
 
 if (import.meta.vitest) {

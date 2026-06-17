@@ -1,16 +1,16 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe, type OperationContext } from '../domain/commons'
-import { secretPipe, type Secret } from '../domain/secret'
+import { type Secret } from '../domain/secret'
 import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
+	InvariantViolationError,
 	NotArchivedError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import type { CoreStorageTransaction } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { unarchiveStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -23,18 +23,16 @@ export type Result = Secret
 export type Error =
 	| InvalidInputError
 	| InvalidCoreServiceOutputError
+	| InvariantViolationError
 	| StorageOperationFailedError
 	| ResourceNotFoundError
 	| NotArchivedError
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-const selectSecrets = (tx: CoreStorageTransaction) => tx.secrets
-
 export function createUnarchiveSecretCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
 	return buildCommandHandler('unarchiveSecret', unarchiveSecretInputPipe, (input, context) =>
-		unarchiveStoredRecordWithAudit(options, context, 'secret', selectSecrets, input.secretId, secretPipe),
+		unarchiveStoredRecordWithAudit(runtime, context, 'secret', input.secretId),
 	)
 }
 

@@ -1,3 +1,6 @@
+import { Repo } from 'equipped/orm'
+import { InMemoryAdapter } from 'equipped/orm/adapters/in-memory'
+
 import type { Action } from '../domain/action'
 import type { AgentRun } from '../domain/agent-run'
 import type { DeliveryArtifact, SliceArtifact } from '../domain/artifact'
@@ -18,7 +21,30 @@ import type { Secret, SecretBinding } from '../domain/secret'
 import type { Slice } from '../domain/slice'
 import { createCoreProviders } from '../providers'
 import type { CoreRuntime } from '../runtime'
-import type { CoreServices, CoreStorageService, CoreStorageTransaction, RepositoryTable, SingletonRepository } from '../services'
+import type { CoreRuntimeValues } from './runtime-values'
+import type { CoreServices, CoreStorage } from '../services'
+import {
+	actionSchema,
+	agentRunSchema,
+	deliveryArtifactSchema,
+	deliverySchema,
+	linkSchema,
+	memorySchema,
+	modelProviderSchema,
+	modelSchema,
+	planSchema,
+	portfolioConfigSchema,
+	portfolioConfigStorageId,
+	projectSchema,
+	repositorySchema,
+	reviewSurfaceSchema,
+	revisionGateSchema,
+	revisionSchema,
+	secretBindingSchema,
+	secretSchema,
+	sliceArtifactSchema,
+	sliceSchema,
+} from '../storage/schemas'
 
 export const stamp: AuditStamp = { origin: 'imported', at: '2026-06-01T00:00:00.000Z' }
 export const context: OperationContext = {
@@ -44,12 +70,13 @@ export function externalOperationEvidence(
 
 export function createTestCoreRuntime(
 	services = createTestCoreServices(),
-	overrides: { providers?: CoreRuntime['providers']; agentRuns?: CoreRuntime['agentRuns'] } = {},
+	overrides: { providers?: CoreRuntime['providers']; agentRuns?: CoreRuntime['agentRuns']; values?: CoreRuntimeValues } = {},
 ): CoreRuntime {
 	return {
 		services,
 		providers: overrides.providers ?? createCoreProviders(services),
 		agentRuns: overrides.agentRuns ?? { runExecutionAgentRun: () => Promise.resolve() },
+		values: overrides.values ?? services.values,
 	}
 }
 
@@ -110,9 +137,13 @@ export function neverCalledProviderBackedPreflightProviders(): CoreRuntime['prov
 	}
 }
 
-export function createTestCoreServices(): CoreServices & { tx: MemoryStorageTransaction; transactionCalls: () => number } {
-	const storage = createMemoryStorage()
-	const idCounters = new Map<string, number>()
+export function createTestCoreServices(): CoreServices & {
+	tx: TestStorageTransaction
+	values: CoreRuntimeValues
+	transactionCalls: () => number
+} {
+	const storage = createTestCoreStorageWithView()
+	const values = deterministicRuntimeValues()
 
 	return {
 		storage: storage.service,
@@ -122,21 +153,17 @@ export function createTestCoreServices(): CoreServices & { tx: MemoryStorageTran
 			resolveSecretValues: () => Promise.resolve({}),
 		},
 		sandbox: { preflight: () => Promise.resolve({ ok: true }) },
-		clock: { now: () => new Date('2026-06-10T12:00:00.000Z') },
-		idGenerator: {
-			next: (brand: string) => {
-				const next = (idCounters.get(brand) ?? 0) + 1
-				idCounters.set(brand, next)
-
-				return `${brand}-${next}`
-			},
-		},
+		values,
 		tx: storage.tx,
 		transactionCalls: () => storage.transactionCalls,
 	}
 }
 
-export function seedProject(tx: MemoryStorageTransaction, id: string) {
+export function createTestCoreStorage(): CoreStorage {
+	return createTestCoreStorageWithView().service
+}
+
+export function seedProject(tx: TestStorageTransaction, id: string) {
 	tx.projects.records.set(id, {
 		id,
 		title: 'Project',
@@ -146,7 +173,7 @@ export function seedProject(tx: MemoryStorageTransaction, id: string) {
 	})
 }
 
-export function seedDelivery(tx: MemoryStorageTransaction, id: string) {
+export function seedDelivery(tx: TestStorageTransaction, id: string) {
 	if (!tx.projects.records.has('project-1')) seedProject(tx, 'project-1')
 	if (!tx.repositories.records.has('repository-1')) {
 		tx.repositories.records.set('repository-1', {
@@ -170,7 +197,7 @@ export function seedDelivery(tx: MemoryStorageTransaction, id: string) {
 	})
 }
 
-export function seedSlice(tx: MemoryStorageTransaction, id: string, deliveryId: string, order = nextSliceOrder(tx, deliveryId)) {
+export function seedSlice(tx: TestStorageTransaction, id: string, deliveryId: string, order = nextSliceOrder(tx, deliveryId)) {
 	tx.slices.records.set(id, {
 		id,
 		deliveryId,
@@ -181,11 +208,11 @@ export function seedSlice(tx: MemoryStorageTransaction, id: string, deliveryId: 
 	})
 }
 
-function nextSliceOrder(tx: MemoryStorageTransaction, deliveryId: string): number {
+function nextSliceOrder(tx: TestStorageTransaction, deliveryId: string): number {
 	return [...tx.slices.records.values()].filter((slice) => slice.deliveryId === deliveryId).length
 }
 
-export function seedModelProvider(tx: MemoryStorageTransaction, id: string, archived = false) {
+export function seedModelProvider(tx: TestStorageTransaction, id: string, archived = false) {
 	tx.modelProviders.records.set(id, {
 		id,
 		name: 'Provider',
@@ -200,7 +227,7 @@ export function seedModelProvider(tx: MemoryStorageTransaction, id: string, arch
 }
 
 export function seedSelectableModel(
-	tx: MemoryStorageTransaction,
+	tx: TestStorageTransaction,
 	id: string,
 	options: { modelArchived?: boolean; providerArchived?: boolean } = {},
 ) {
@@ -217,7 +244,7 @@ export function seedSelectableModel(
 	})
 }
 
-export function seedSecret(tx: MemoryStorageTransaction, id: string, archived = false) {
+export function seedSecret(tx: TestStorageTransaction, id: string, archived = false) {
 	tx.secrets.records.set(id, {
 		id,
 		name: 'Secret',
@@ -228,36 +255,29 @@ export function seedSecret(tx: MemoryStorageTransaction, id: string, archived = 
 	})
 }
 
-function createMemoryStorage() {
-	let transactionCalls = 0
-	const tx: MemoryStorageTransaction = {
-		portfolioConfig: new MemorySingleton<PortfolioConfigRecord>(),
-		projects: new MemoryTable<Project>(),
-		repositories: new MemoryTable<Repository>(),
-		modelProviders: new MemoryTable<ModelProvider>(),
-		models: new MemoryTable<Model>(),
-		plans: new MemoryTable<Plan>(),
-		deliveries: new MemoryTable<Delivery>(),
-		slices: new MemoryTable<Slice>(),
-		links: new MemoryTable<Link>(),
-		memories: new MemoryTable<Memory>(),
-		deliveryArtifacts: new MemoryTable<DeliveryArtifact>(),
-		sliceArtifacts: new MemoryTable<SliceArtifact>(),
-		actions: new MemoryTable<Action>(),
-		agentRuns: new MemoryTable<AgentRun>(),
-		reviewSurfaces: new MemoryTable<ReviewSurface>(),
-		revisionGates: new MemoryTable<RevisionGate>(),
-		revisions: new MemoryTable<Revision>(),
-		secrets: new MemoryTable<Secret>(),
-		secretBindings: new MemoryTable<SecretBinding>(),
-	}
-	const service: CoreStorageService = {
-		preflight: () => Promise.resolve({ ok: true }),
-		transaction: async <T>(fn: (transaction: CoreStorageTransaction) => Promise<T>): Promise<T> => {
-			transactionCalls += 1
-			return fn(tx)
+function deterministicRuntimeValues(): CoreRuntimeValues {
+	const idCounters = new Map<string, number>()
+	return {
+		now: () => new Date('2026-06-10T12:00:00.000Z'),
+		nextId: (scope = 'id') => {
+			const next = (idCounters.get(scope) ?? 0) + 1
+			idCounters.set(scope, next)
+			return `${scope}-${next}`
 		},
 	}
+}
+
+function createTestCoreStorageWithView() {
+	let transactionCalls = 0
+	const adapter = InMemoryAdapter.create({})
+	const tx = testStorageTransaction(adapter)
+	patchAdapterFailures(adapter, tx, () => {
+		transactionCalls += 1
+	})
+	const service = Repo.from(adapter)
+		.resolve((schema) => ({ table: schema.name }))
+		.build() as CoreStorage
+	attachStorageSurface(tx, service)
 
 	return {
 		service,
@@ -268,75 +288,168 @@ function createMemoryStorage() {
 	}
 }
 
-export type MemoryStorageTransaction = CoreStorageTransaction & {
-	portfolioConfig: MemorySingleton<PortfolioConfigRecord>
-	projects: MemoryTable<Project>
-	repositories: MemoryTable<Repository>
-	modelProviders: MemoryTable<ModelProvider>
-	models: MemoryTable<Model>
-	plans: MemoryTable<Plan>
-	deliveries: MemoryTable<Delivery>
-	slices: MemoryTable<Slice>
-	links: MemoryTable<Link>
-	deliveryArtifacts: MemoryTable<DeliveryArtifact>
-	sliceArtifacts: MemoryTable<SliceArtifact>
-	actions: MemoryTable<Action>
-	agentRuns: MemoryTable<AgentRun>
-	reviewSurfaces: MemoryTable<ReviewSurface>
-	revisionGates: MemoryTable<RevisionGate>
-	revisions: MemoryTable<Revision>
-	secrets: MemoryTable<Secret>
-	secretBindings: MemoryTable<SecretBinding>
+export interface TestStorageTransaction extends CoreStorage {
+	portfolioConfig: TestPortfolioConfig
+	projects: TestTable<Project>
+	repositories: TestTable<Repository>
+	modelProviders: TestTable<ModelProvider>
+	models: TestTable<Model>
+	plans: TestTable<Plan>
+	deliveries: TestTable<Delivery>
+	slices: TestTable<Slice>
+	links: TestTable<Link>
+	memories: TestTable<Memory>
+	deliveryArtifacts: TestTable<DeliveryArtifact>
+	sliceArtifacts: TestTable<SliceArtifact>
+	actions: TestTable<Action>
+	agentRuns: TestTable<AgentRun>
+	reviewSurfaces: TestTable<ReviewSurface>
+	revisionGates: TestTable<RevisionGate>
+	revisions: TestTable<Revision>
+	secrets: TestTable<Secret>
+	secretBindings: TestTable<SecretBinding>
 }
 
-class MemorySingleton<T> implements SingletonRepository<T> {
-	record: T | null = null
-	fail = { get: false, put: false }
+export interface TestTable<TRecord extends { id: Id }> {
+	records: Map<Id, TRecord>
+	fail: { get: boolean; put: boolean; list: boolean }
+}
 
-	get(): Promise<T | null> {
-		if (this.fail.get) {
-			throw new Error('get failed')
-		}
+export interface TestPortfolioConfig {
+	record: PortfolioConfigRecord | null
+	fail: { get: boolean; put: boolean }
+}
 
-		return Promise.resolve(this.record)
-	}
+function testStorageTransaction(adapter: InMemoryAdapter): TestStorageTransaction {
+	return {
+		portfolioConfig: portfolioConfigView(adapter),
+		projects: tableView<Project>(adapter, projectSchema.name),
+		repositories: tableView<Repository>(adapter, repositorySchema.name),
+		modelProviders: tableView<ModelProvider>(adapter, modelProviderSchema.name),
+		models: tableView<Model>(adapter, modelSchema.name),
+		plans: tableView<Plan>(adapter, planSchema.name),
+		deliveries: tableView<Delivery>(adapter, deliverySchema.name),
+		slices: tableView<Slice>(adapter, sliceSchema.name),
+		links: tableView<Link>(adapter, linkSchema.name),
+		memories: tableView<Memory>(adapter, memorySchema.name),
+		deliveryArtifacts: tableView<DeliveryArtifact>(adapter, deliveryArtifactSchema.name),
+		sliceArtifacts: tableView<SliceArtifact>(adapter, sliceArtifactSchema.name),
+		actions: tableView<Action>(adapter, actionSchema.name),
+		agentRuns: tableView<AgentRun>(adapter, agentRunSchema.name),
+		reviewSurfaces: tableView<ReviewSurface>(adapter, reviewSurfaceSchema.name),
+		revisionGates: tableView<RevisionGate>(adapter, revisionGateSchema.name),
+		revisions: tableView<Revision>(adapter, revisionSchema.name),
+		secrets: tableView<Secret>(adapter, secretSchema.name),
+		secretBindings: tableView<SecretBinding>(adapter, secretBindingSchema.name),
+	} as TestStorageTransaction
+}
 
-	put(record: T): Promise<void> {
-		if (this.fail.put) {
-			throw new Error('put failed')
-		}
+function attachStorageSurface(tx: TestStorageTransaction, storage: CoreStorage): void {
+	tx.on = storage.on.bind(storage)
+	tx.session = storage.session.bind(storage)
+	tx.resolve = storage.resolve.bind(storage)
+}
 
-		this.record = record
-		return Promise.resolve()
+function tableView<TRecord extends { id: Id }>(adapter: InMemoryAdapter, table: string): TestTable<TRecord> {
+	return { records: store(adapter, table) as Map<Id, TRecord>, fail: { get: false, put: false, list: false } }
+}
+
+function portfolioConfigView(adapter: InMemoryAdapter): TestPortfolioConfig {
+	const table = store(adapter, portfolioConfigSchema.name) as Map<Id, PortfolioConfigRecord & { id: Id }>
+	return {
+		get record() {
+			const record = table.get(portfolioConfigStorageId)
+			return record === undefined ? null : { configured: record.configured, value: record.value }
+		},
+		set record(record: PortfolioConfigRecord | null) {
+			if (record === null) {
+				table.delete(portfolioConfigStorageId)
+			} else {
+				table.set(portfolioConfigStorageId, { id: portfolioConfigStorageId, ...record })
+			}
+		},
+		fail: { get: false, put: false },
 	}
 }
 
-class MemoryTable<T extends { id: Id }> implements RepositoryTable<T> {
-	records = new Map<Id, T>()
-	fail = { get: false, put: false, list: false }
-
-	get(id: Id): Promise<T | null> {
-		if (this.fail.get) {
-			throw new Error('get failed')
-		}
-
-		return Promise.resolve(this.records.get(id) ?? null)
+function store(adapter: InMemoryAdapter, table: string): Map<string, Record<string, unknown>> {
+	let records = adapter.stores.get(table)
+	if (records === undefined) {
+		records = new Map()
+		adapter.stores.set(table, records)
 	}
 
-	put(record: T): Promise<void> {
-		if (this.fail.put) {
-			throw new Error('put failed')
-		}
+	return records
+}
 
-		this.records.set(record.id, record)
-		return Promise.resolve()
+function patchAdapterFailures(adapter: InMemoryAdapter, tx: TestStorageTransaction, onSession: () => void): void {
+	const tables = failureTables(tx)
+	const findByPk = adapter.findByPk.bind(adapter)
+	adapter.findByPk = (schema, config, pk) => {
+		if (failuresForConfig(tables, config)?.get === true) throw new Error('get failed')
+		return findByPk(schema, config, pk)
 	}
 
-	list(): Promise<T[]> {
-		if (this.fail.list) {
-			throw new Error('list failed')
-		}
-
-		return Promise.resolve([...this.records.values()])
+	const findMany = adapter.findMany.bind(adapter)
+	adapter.findMany = (schema, config, group, options) => {
+		if (failuresForConfig(tables, config)?.list === true) throw new Error('list failed')
+		return findMany(schema, config, group, options)
 	}
+
+	const createMany = adapter.createMany.bind(adapter)
+	adapter.createMany = (schema, config, data) => {
+		if (failuresForConfig(tables, config)?.put === true) throw new Error('put failed')
+		return createMany(schema, config, data)
+	}
+
+	const updateByPk = adapter.updateByPk.bind(adapter)
+	adapter.updateByPk = (schema, config, pk, ops) => {
+		if (failuresForConfig(tables, config)?.put === true) throw new Error('put failed')
+		return updateByPk(schema, config, pk, ops)
+	}
+
+	const updateMany = adapter.updateMany.bind(adapter)
+	adapter.updateMany = (schema, config, group, data) => {
+		if (failuresForConfig(tables, config)?.put === true) throw new Error('put failed')
+		return updateMany(schema, config, group, data)
+	}
+
+	const session = adapter.session.bind(adapter)
+	adapter.session = (fn) => {
+		onSession()
+		return session(fn)
+	}
+}
+
+function failureTables(tx: TestStorageTransaction): Map<string, { get?: boolean; put?: boolean; list?: boolean }> {
+	return new Map([
+		[portfolioConfigSchema.name, tx.portfolioConfig.fail],
+		[projectSchema.name, tx.projects.fail],
+		[repositorySchema.name, tx.repositories.fail],
+		[modelProviderSchema.name, tx.modelProviders.fail],
+		[modelSchema.name, tx.models.fail],
+		[planSchema.name, tx.plans.fail],
+		[deliverySchema.name, tx.deliveries.fail],
+		[sliceSchema.name, tx.slices.fail],
+		[linkSchema.name, tx.links.fail],
+		[memorySchema.name, tx.memories.fail],
+		[deliveryArtifactSchema.name, tx.deliveryArtifacts.fail],
+		[sliceArtifactSchema.name, tx.sliceArtifacts.fail],
+		[actionSchema.name, tx.actions.fail],
+		[agentRunSchema.name, tx.agentRuns.fail],
+		[reviewSurfaceSchema.name, tx.reviewSurfaces.fail],
+		[revisionGateSchema.name, tx.revisionGates.fail],
+		[revisionSchema.name, tx.revisions.fail],
+		[secretSchema.name, tx.secrets.fail],
+		[secretBindingSchema.name, tx.secretBindings.fail],
+	])
+}
+
+function failuresForConfig(
+	tables: Map<string, { get?: boolean; put?: boolean; list?: boolean }>,
+	config: unknown,
+): { get?: boolean; put?: boolean; list?: boolean } | undefined {
+	return typeof config === 'object' && config !== null && typeof (config as { table?: unknown }).table === 'string'
+		? tables.get((config as { table: string }).table)
+		: undefined
 }

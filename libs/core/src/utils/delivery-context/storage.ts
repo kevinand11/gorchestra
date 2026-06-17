@@ -1,33 +1,32 @@
 import type { DeliveryDependencySummary, DeliveryContext, DeliveryContextSlice } from './types'
 import { compareActions } from './work-state/actions'
 import type { DeliveryDependencyLink, SliceDependencyLink, WorkStateDerivationError } from './work-state/types'
-import { actionPipe, type Action } from '../../domain/action'
-import { agentRunPipe, type AgentRun } from '../../domain/agent-run'
-import { deliveryArtifactPipe, sliceArtifactPipe, type DeliveryArtifact, type SliceArtifact } from '../../domain/artifact'
+import type { Action } from '../../domain/action'
+import type { AgentRun } from '../../domain/agent-run'
+import type { DeliveryArtifact, SliceArtifact } from '../../domain/artifact'
 import type { ArchivePeriod, Id } from '../../domain/commons'
-import { portfolioConfigRecordPipe, type PortfolioConfigRecord, type ProjectConfigRecord } from '../../domain/config'
-import { deliveryPipe, type Delivery } from '../../domain/delivery'
-import { linkPipe, type Link } from '../../domain/graph'
-import { projectPipe, type Project } from '../../domain/project'
-import { repositoryPipe, type Repository } from '../../domain/repository'
-import { reviewSurfacePipe, type ReviewSurface } from '../../domain/review-surface'
-import { slicePipe, type Slice } from '../../domain/slice'
+import type { PortfolioConfigRecord, ProjectConfigRecord } from '../../domain/config'
+import type { Delivery } from '../../domain/delivery'
+import type { Link } from '../../domain/graph'
+import type { Project } from '../../domain/project'
+import type { Repository } from '../../domain/repository'
+import type { ReviewSurface } from '../../domain/review-surface'
+import type { Slice } from '../../domain/slice'
 import type { InvalidCoreServiceOutputError, InvariantViolationError, StorageOperationFailedError } from '../../errors'
-import type { CoreStorageTransaction } from '../../services'
-import { validateCoreServiceOutput } from '../../validation'
-import { getRequired, listRecords, notFound } from '../storage'
+import type { CoreStorage } from '../../services'
+import { getPortfolioConfig, getRequired, listRecords, notFound } from '../storage'
 import type { Result } from '../types'
 
 export type DeliveryContextError = WorkStateDerivationError
 
 export async function buildDeliveryContext(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	deliveryId: Delivery['id'],
 ): Promise<Result<DeliveryContext, DeliveryContextError>> {
-	const root = await readDeliveryContextRoot(tx, deliveryId)
+	const root = await readDeliveryContextRoot(storage, deliveryId)
 	if (!root.ok) return root
 
-	const records = await readDeliveryContextRecords(tx)
+	const records = await readDeliveryContextRecords(storage)
 	if (!records.ok) return records
 
 	return deliveryContext(root.value, scopedDeliveryContextRecords(root.value.delivery, records.value))
@@ -62,21 +61,21 @@ interface ScopedDeliveryContextRecords {
 }
 
 async function readDeliveryContextRoot(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	deliveryId: Delivery['id'],
 ): Promise<Result<DeliveryContextRoot, DeliveryContextError>> {
-	const delivery = await getRequired('delivery', tx.deliveries, deliveryId, deliveryPipe)
-	return delivery.ok ? readDeliveryContextRootForDelivery(tx, delivery.value) : delivery
+	const delivery = await getRequired('delivery', storage, deliveryId)
+	return delivery.ok ? readDeliveryContextRootForDelivery(storage, delivery.value) : delivery
 }
 
 async function readDeliveryContextRootForDelivery(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	delivery: Delivery,
 ): Promise<Result<DeliveryContextRoot, DeliveryContextError>> {
 	const [project, repository, portfolioConfig] = await Promise.all([
-		getRequired('project', tx.projects, delivery.projectId, projectPipe),
-		getRequired('repository', tx.repositories, delivery.target.repositoryId, repositoryPipe),
-		readOptionalPortfolioConfig(tx),
+		getRequired('project', storage, delivery.projectId),
+		getRequired('repository', storage, delivery.target.repositoryId),
+		readOptionalPortfolioConfig(storage),
 	])
 	const failure = firstFailure([project, repository, portfolioConfig])
 	if (failure !== null) return failure
@@ -108,23 +107,16 @@ function repositoryProjectBoundary(project: Project, repository: Repository): Re
 }
 
 async function readOptionalPortfolioConfig(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 ): Promise<Result<PortfolioConfigRecord | null, StorageOperationFailedError | InvalidCoreServiceOutputError>> {
-	try {
-		const record = await tx.portfolioConfig.get()
-		if (record === null) return { ok: true, value: null }
+	const record = await getPortfolioConfig(storage)
+	if (!record.ok) return record
 
-		return validateCoreServiceOutput(portfolioConfigRecordPipe, record, 'storage', 'get-singleton:portfolio-config')
-	} catch {
-		return {
-			ok: false,
-			error: { type: 'storage-operation-failed', operation: { type: 'get-singleton', resource: 'portfolio-config' } },
-		}
-	}
+	return { ok: true, value: record.value === null ? null : { configured: record.value.configured, value: record.value.value } }
 }
 
-async function readDeliveryContextRecords(tx: CoreStorageTransaction): Promise<Result<DeliveryContextRecords, DeliveryContextError>> {
-	const records = await readDeliveryContextRecordResults(tx)
+async function readDeliveryContextRecords(storage: CoreStorage): Promise<Result<DeliveryContextRecords, DeliveryContextError>> {
+	const records = await readDeliveryContextRecordResults(storage)
 	const failure = firstFailure(records)
 	return failure ?? okDeliveryContextRecords(records)
 }
@@ -148,16 +140,16 @@ function okDeliveryContextRecords(
 	}
 }
 
-async function readDeliveryContextRecordResults(tx: CoreStorageTransaction) {
+async function readDeliveryContextRecordResults(storage: CoreStorage) {
 	return Promise.all([
-		listRecords('slice', tx.slices, slicePipe),
-		listRecords('link', tx.links, linkPipe),
-		listRecords('action', tx.actions, actionPipe),
-		listRecords('agent-run', tx.agentRuns, agentRunPipe),
-		listRecords('delivery', tx.deliveries, deliveryPipe),
-		listRecords('delivery-artifact', tx.deliveryArtifacts, deliveryArtifactPipe),
-		listRecords('slice-artifact', tx.sliceArtifacts, sliceArtifactPipe),
-		listRecords('review-surface', tx.reviewSurfaces, reviewSurfacePipe),
+		listRecords('slice', storage),
+		listRecords('link', storage),
+		listRecords('action', storage),
+		listRecords('agent-run', storage),
+		listRecords('delivery', storage),
+		listRecords('delivery-artifact', storage),
+		listRecords('slice-artifact', storage),
+		listRecords('review-surface', storage),
 	] as const)
 }
 

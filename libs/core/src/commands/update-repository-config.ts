@@ -1,21 +1,22 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe, type OperationContext } from '../domain/commons'
-import { repositoryConfigPipe, repositoryPipe, type Repository } from '../domain/repository'
+import { repositoryConfigPipe, type Repository } from '../domain/repository'
 import type {
 	DuplicateRepositoryTargetError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
+	InvariantViolationError,
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import type { CoreStorageTransaction } from '../services'
+import type { CoreStorage } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import type { RepositoryCommandReferenceError } from '../utils/command-errors'
 import {
 	getRequired,
 	normalizeRepositoryConfig,
-	putRecord,
+	updateRecordValue,
 	validateActiveSecret,
 	validateSourceControlProject,
 	validateUniqueRepositoryTarget,
@@ -32,55 +33,51 @@ export type Error =
 	| InvalidInputError
 	| RepositoryCommandReferenceError
 	| DuplicateRepositoryTargetError
+	| InvariantViolationError
 	| StorageOperationFailedError
 	| InvalidCoreServiceOutputError
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 export function createUpdateRepositoryConfigCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
 	return buildCommandHandler('updateRepositoryConfig', updateRepositoryConfigInputPipe, (input) =>
-		withTransaction(options, (tx) => updateRepositoryConfig(tx, input)),
+		withTransaction(runtime.services, (storage) => updateRepositoryConfig(storage, input)),
 	)
 }
 
 async function updateRepositoryConfig(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	input: Input,
 ): Promise<CoreResult<Repository, Exclude<Error, InvalidInputError>>> {
-	const repositoryResult = await repositoryForConfigUpdate(tx, input)
+	const repositoryResult = await repositoryForConfigUpdate(storage, input)
 	if (!repositoryResult.ok) return repositoryResult
 
-	const repository: Repository = { ...repositoryResult.value, config: normalizeRepositoryConfig(input.config) }
-	const putResult = await putRecord('repository', tx.repositories, repository.id, repository)
-	if (!putResult.ok) return putResult
-
-	return { ok: true, value: repository }
+	return updateRecordValue('repository', storage, repositoryResult.value.id, { config: normalizeRepositoryConfig(input.config) })
 }
 
 async function repositoryForConfigUpdate(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	input: Input,
 ): Promise<CoreResult<Repository, Exclude<Error, InvalidInputError>>> {
-	const repositoryResult = await getRequired('repository', tx.repositories, input.repositoryId, repositoryPipe)
+	const repositoryResult = await getRequired('repository', storage, input.repositoryId)
 	if (!repositoryResult.ok) return repositoryResult
 
-	const validation = await validateRepositoryConfigUpdate(tx, repositoryResult.value, input)
+	const validation = await validateRepositoryConfigUpdate(storage, repositoryResult.value, input)
 	return validation.ok ? { ok: true, value: repositoryResult.value } : validation
 }
 
 async function validateRepositoryConfigUpdate(
-	tx: CoreStorageTransaction,
+	storage: CoreStorage,
 	repository: Repository,
 	input: Input,
 ): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
-	const projectValidation = await validateSourceControlProject(tx, repository.projectId)
+	const projectValidation = await validateSourceControlProject(storage, repository.projectId)
 	if (!projectValidation.ok) return projectValidation
 
-	const secretValidation = await validateActiveSecret(tx, input.config.secretId)
+	const secretValidation = await validateActiveSecret(storage, input.config.secretId)
 	if (!secretValidation.ok) return secretValidation
 
-	return validateUniqueRepositoryTarget(tx, repository.projectId, input.config, repository.id)
+	return validateUniqueRepositoryTarget(storage, repository.projectId, input.config, repository.id)
 }
 
 if (import.meta.vitest) {

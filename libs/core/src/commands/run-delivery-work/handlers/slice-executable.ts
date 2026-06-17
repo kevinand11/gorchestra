@@ -1,6 +1,6 @@
 import type { AgentRun, ExecutionMode } from '../../../domain/agent-run'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
-import { nextId, putRecord, runtimeRecord } from '../../../utils/command-storage'
+import { createRecord, nextId, runtimeRecord } from '../../../utils/command-storage'
 import type { Result as CoreResult } from '../../../utils/types'
 import type { DeliveryHandlerContext, DeliveryWorkResolution, RunDeliveryWorkHandlerResult } from '../types'
 
@@ -17,7 +17,7 @@ export async function handleSliceExecutable(
 }
 
 async function writeSliceExecutionAgentRun(context: DeliveryHandlerContext, agentRun: AgentRun): Promise<RunDeliveryWorkHandlerResult> {
-	const agentRunPut = await putRecord('agent-run', context.tx.agentRuns, agentRun.id, agentRun)
+	const agentRunPut = await createRecord('agent-run', context.storage, agentRun)
 	if (!agentRunPut.ok) return agentRunPut
 
 	return { ok: true, value: { processedCount: 1, failures: [] } }
@@ -29,10 +29,10 @@ function sliceExecutionAgentRun(
 	state: Extract<SliceWorkState, { type: 'executable' }>,
 	resolution: DeliveryWorkResolution,
 ): CoreResult<AgentRun, RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	const agentRunId = nextId(context.services, 'agent-run')
+	const agentRunId = nextId(context.values, 'agent-run')
 	if (!agentRunId.ok) return agentRunId
 
-	const started = runtimeRecord(context.services)
+	const started = runtimeRecord(context.values)
 	if (!started.ok) return started
 
 	return {
@@ -153,6 +153,6 @@ if (import.meta.vitest) {
 		const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
 		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
 
-		return { services: options, tx: options.tx, deliveryContext: deliveryContext.value }
+		return { services: options, storage: options.tx, values: options.values, tx: options.tx, deliveryContext: deliveryContext.value }
 	}
 }
