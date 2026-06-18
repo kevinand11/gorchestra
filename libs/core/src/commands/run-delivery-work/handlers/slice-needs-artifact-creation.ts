@@ -207,9 +207,7 @@ function sliceArtifactRecord(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { buildDeliveryContext } = await import('../../../utils/delivery-context')
-	const { createTestCoreServices, localStamp, seedDelivery, seedSelectableModel, seedSlice, stamp } =
-		await import('../../../utils/test-helpers')
+	const { createRunDeliveryWorkHandlerTestContext } = await import('./test-utils')
 
 	describe('Slice Artifact creation handler', () => {
 		it('builds deterministic provider input from the Delivery Branch', async () => {
@@ -290,34 +288,6 @@ if (import.meta.vitest) {
 	})
 
 	async function handlerContext() {
-		const options = createTestCoreServices()
-		seedDelivery(options.tx, 'delivery-1')
-		seedSelectableModel(options.tx, 'model-1')
-		seedSlice(options.tx, 'slice-1', 'delivery-1')
-		options.tx.deliveries.records.get('delivery-1')!.queued = localStamp()
-		options.tx.deliveryArtifacts.records.set('delivery-artifact-1', {
-			id: 'delivery-artifact-1',
-			deliveryId: 'delivery-1',
-			config: { type: 'source-control', deliveryBranch: 'delivery-branch' },
-			created: stamp,
-		})
-
-		const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
-		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
-
-		const workResolution = {
-			workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
-			executionModel: options.tx.models.records.get('model-1')!,
-			executionModelProvider: options.tx.modelProviders.records.get('model-1-provider')!,
-		}
-
-		return {
-			services: options,
-			storage: options.tx,
-			values: options.values,
-			tx: options.tx,
-			deliveryContext: deliveryContext.value,
-			workResolution,
-		}
+		return createRunDeliveryWorkHandlerTestContext({ sliceId: 'slice-1' })
 	}
 }
