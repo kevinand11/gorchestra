@@ -32,7 +32,7 @@ import { instructionSourcePipe, type Plan } from '../domain/plan'
 import { projectSourcePipe, type Project } from '../domain/project'
 import { repositoryConfigPipe, type Repository } from '../domain/repository'
 import { reviewSurfaceClosedPipe, reviewSurfaceConfigPipe, reviewSurfaceScopePipe, type ReviewSurface } from '../domain/review-surface'
-import { revisionDispositionPipe, revisionScopePipe, type Revision, type RevisionGate } from '../domain/revision'
+import { revisionDispositionPipe, revisionGateClosedPipe, revisionScopePipe, type Revision, type RevisionGate } from '../domain/revision'
 import { envNamePipe, secretBindingScopePipe, secretValueRefPipe, type Secret, type SecretBinding } from '../domain/secret'
 import { type Slice } from '../domain/slice'
 import type { CoreIdResource, CoreResource } from '../errors'
@@ -179,8 +179,7 @@ export const revisionGateSchema = Schema.from('revision_gates')
 	.field('scope', revisionScopePipe)
 	.field('reviewSurfaceId', idPipe)
 	.field('opened', auditStampPipe)
-	.field('closed', v.nullable(auditStampPipe))
-	.field('consumedByRevisionId', v.nullable(idPipe))
+	.field('closed', v.nullable(revisionGateClosedPipe))
 	.build()
 
 export const revisionSchema = Schema.from('revisions')

@@ -2,7 +2,7 @@ import type { PipeError } from 'valleyed'
 
 import type { AgentRunPurpose } from './domain/agent-run'
 import type { Id } from './domain/commons'
-import type { DeliveryWorkState } from './domain/delivery'
+import type { DeliveryClosedOutcome, DeliveryWorkState } from './domain/delivery'
 import type { ExternalOperationEvidence, ValidationEvidence } from './domain/evidence'
 import type { GraphNodeRef, LinkType } from './domain/graph'
 import type { SecretBindingScope } from './domain/secret'
@@ -192,6 +192,17 @@ export interface RevisionGateClosedError {
 	revisionGateId: Id
 }
 
+export interface DeliveryClosedError {
+	type: 'delivery-closed'
+	deliveryId: Id
+	outcome: DeliveryClosedOutcome
+}
+
+export interface ReviewSurfaceAlreadyMergedError {
+	type: 'review-surface-already-merged'
+	reviewSurfaceId: Id
+}
+
 export interface AgentRunModelUnresolvedError {
 	type: 'agent-run-model-unresolved'
 	purpose: AgentRunPurpose
@@ -229,6 +240,8 @@ export type CoreError =
 	| DeliveryWorkStateMismatchError
 	| InvalidPlanOutputError
 	| RevisionGateClosedError
+	| DeliveryClosedError
+	| ReviewSurfaceAlreadyMergedError
 	| AgentRunModelUnresolvedError
 	| ExternalOperationFailedError
 

@@ -18,13 +18,18 @@ export const revisionOutputProposalPipe = v.object({
 })
 export type RevisionOutputProposal = PipeOutput<typeof revisionOutputProposalPipe>
 
+export const revisionGateClosedPipe = v.discriminate((value) => value.type, {
+	'closed-without-revision': v.object({ type: v.eq('closed-without-revision'), closed: auditStampPipe }),
+	'consumed-by-revision': v.object({ type: v.eq('consumed-by-revision'), consumed: auditStampPipe, revisionId: idPipe }),
+})
+export type RevisionGateClosed = PipeOutput<typeof revisionGateClosedPipe>
+
 export const revisionGatePipe = v.object({
 	id: idPipe,
 	scope: revisionScopePipe,
 	reviewSurfaceId: idPipe,
 	opened: auditStampPipe,
-	closed: v.nullable(auditStampPipe),
-	consumedByRevisionId: v.nullable(idPipe),
+	closed: v.nullable(revisionGateClosedPipe),
 })
 export type RevisionGate = PipeOutput<typeof revisionGatePipe>
 

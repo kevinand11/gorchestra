@@ -285,7 +285,7 @@ A Review Surface for a Delivery Artifact. For Source Control Projects, this is a
 _Avoid_: Delivery PR, review target
 
 **Revision Gate**:
-Human-controlled artifact-scoped authorization that allows Gorchestra to plan revision work in response to fetched Feedback for a Slice Artifact or Delivery Artifact. Opening a Revision Gate starts a revision planning session that may produce Revision Outputs until one is accepted or the gate is closed. Revision Gate does not create or reopen Slices.
+Human-controlled artifact-scoped authorization that allows Gorchestra to plan revision work in response to fetched Feedback for a Slice Artifact or Delivery Artifact. Opening a Revision Gate starts a revision planning session that may produce Revision Outputs until one is accepted or the gate is closed. A Revision Gate remains open until it is explicitly closed without a Revision or consumed by an accepted Revision. Revision Gate does not create or reopen Slices.
 _Avoid_: revisionAllowed, needs-revision, changes-requested, per-comment approval
 
 **Revision Output**:

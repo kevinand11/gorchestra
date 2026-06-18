@@ -81,7 +81,6 @@ export const coreStorageMigrations = [
 				stringField('reviewSurfaceId'),
 				objectField('opened'),
 				nullableObjectField('closed'),
-				nullableStringField('consumedByRevisionId'),
 			]),
 			createTable('revisions', [
 				stringField('revisionGateId'),
