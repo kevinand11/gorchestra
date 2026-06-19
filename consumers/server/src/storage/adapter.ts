@@ -5,7 +5,15 @@ export type ServerStorageAdapter = OrmAdapter &
 	Required<
 		Pick<
 			OrmAdapter,
-			'findByPk' | 'createMany' | 'findMany' | 'session' | 'loadMigrations' | 'recordMigration' | 'applyCreateTable' | 'applyAddIndex'
+			| 'findByPk'
+			| 'createMany'
+			| 'findMany'
+			| 'updateMany'
+			| 'session'
+			| 'loadMigrations'
+			| 'recordMigration'
+			| 'applyCreateTable'
+			| 'applyAddIndex'
 		>
 	>
 

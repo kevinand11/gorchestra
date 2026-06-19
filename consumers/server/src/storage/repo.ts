@@ -94,6 +94,7 @@ if (import.meta.vitest) {
 
 			expect(await storage.adapter.loadMigrations()).toEqual([
 				expect.objectContaining({ id: '2026-06-19-0001-create-server-identity-storage' }),
+				expect.objectContaining({ id: '2026-06-19-0002-create-server-workspace-registry' }),
 			])
 
 			await storage.close()

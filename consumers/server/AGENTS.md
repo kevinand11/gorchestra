@@ -23,6 +23,7 @@ The `consumers/server/` package implements the v1 deployed Server Consumer: Nuxt
 - Server storage code must depend on the generic `ServerStorageAdapter` contract; adapter-specific imports belong only in adapter factory files.
 - Server storage is opened once during application startup; module functions must not open, migrate, close, or implicitly resolve Server storage per operation.
 - Module functions that need Server storage must receive it explicitly as `serverStorage`; module functions that depend on time must receive an explicit `now` value.
+- Workspace registry helpers may create and list Server-owned Workspace, Workspace Member, Workspace Owner role, and Portfolio Registry facts; Core storage provisioning and Selection Cookie mutation belong in higher-level provisioning modules.
 - Test module functions directly with plain inputs and real storage/cache/Core wiring; do not test API endpoints or mock Equipped request/response values for this slice.
 
 ## Work Guidance

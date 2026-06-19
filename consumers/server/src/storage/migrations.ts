@@ -14,13 +14,38 @@ export const serverStorageMigrations = [
 		changes: [
 			createTable('users', [stringField('createdAt')]),
 			createTable('email_authentication_identities', [stringField('userId'), stringField('email'), stringField('createdAt')]),
-			{
-				kind: 'addIndex',
-				table: 'email_authentication_identities',
-				on: ['email'],
-				unique: true,
-				name: 'email_authentication_identities_email_unique',
-			},
+			addUniqueIndex('email_authentication_identities', ['email'], 'email_authentication_identities_email_unique'),
+		],
+	},
+	{
+		id: '2026-06-19-0002-create-server-workspace-registry',
+		tx: true,
+		changes: [
+			createTable('workspaces', [stringField('displayName'), stringField('createdAt')]),
+			createTable('workspace_members', [
+				stringField('workspaceId'),
+				stringField('userId'),
+				stringField('membershipStartedAt'),
+				nullableStringField('membershipEndedAt'),
+			]),
+			createTable('workspace_owner_roles', [
+				stringField('workspaceId'),
+				stringField('workspaceMemberId'),
+				stringField('assignedAt'),
+				nullableStringField('revokedAt'),
+			]),
+			createTable('portfolio_registry_entries', [
+				stringField('workspaceId'),
+				stringField('displayName'),
+				stringField('coreStorageNamespace'),
+				stringField('registeredAt'),
+			]),
+			addUniqueIndex('workspace_members', ['workspaceId', 'userId'], 'workspace_members_workspace_user_unique'),
+			addUniqueIndex(
+				'portfolio_registry_entries',
+				['coreStorageNamespace'],
+				'portfolio_registry_entries_core_storage_namespace_unique',
+			),
 		],
 	},
 ] as const satisfies readonly ServerStorageMigration[]
@@ -33,13 +58,21 @@ function stringField(name: string): ServerFieldSpec {
 	return { name, type: 'string' }
 }
 
+function nullableStringField(name: string): ServerFieldSpec {
+	return { name, type: 'string', nullable: true }
+}
+
+function addUniqueIndex(table: string, on: readonly string[], name: string) {
+	return { kind: 'addIndex' as const, table, on, unique: true, name }
+}
+
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
 	describe('Server storage migrations', () => {
-		it('creates every Server storage schema table in the baseline migration', () => {
-			const baseline = serverStorageMigrations[0]
-			const createdTables = baseline.changes
+		it('creates every Server storage schema table across migrations', () => {
+			const createdTables = serverStorageMigrations
+				.flatMap((migration) => migration.changes)
 				.filter((change) => change.kind === 'createTable')
 				.map((change) => change.name)
 				.sort()
