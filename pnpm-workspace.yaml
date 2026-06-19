@@ -5,6 +5,7 @@ packages:
 allowBuilds:
     '@confluentinc/kafka-javascript': true
     '@google/genai': true
+    '@parcel/watcher': false
     esbuild: true
     msgpackr-extract: true
     protobufjs: true

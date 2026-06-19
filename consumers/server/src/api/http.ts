@@ -16,9 +16,16 @@ export type ServerModuleCookie = Omit<ServerApiResponseCookie, 'value'> & {
 }
 
 export type ServerApiResponseCookies = Record<string, ServerApiResponseCookie>
+export type ResponseCookiesFromModuleCookies<Cookies extends readonly ServerModuleCookie[]> = {
+	[Cookie in Cookies[number] as Cookie['name']]: ServerApiResponseCookie
+}
 
-export function moduleCookiesToResponseCookies(...cookies: ServerModuleCookie[]): ServerApiResponseCookies {
-	return Object.fromEntries(cookies.map((cookie) => [cookie.name, moduleCookieToResponseCookie(cookie)]))
+export function moduleCookiesToResponseCookies<const Cookies extends readonly ServerModuleCookie[]>(
+	...cookies: Cookies
+): ResponseCookiesFromModuleCookies<Cookies> {
+	return Object.fromEntries(
+		cookies.map((cookie) => [cookie.name, moduleCookieToResponseCookie(cookie)]),
+	) as ResponseCookiesFromModuleCookies<Cookies>
 }
 
 export function optionalCookiePipe<const Name extends string>(

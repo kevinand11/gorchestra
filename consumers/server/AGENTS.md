@@ -7,10 +7,10 @@ The `consumers/server/` package implements the v1 deployed Server Consumer: Nuxt
 ## Ownership
 
 - `package.json`, `nuxt.config.ts`, and package-local TypeScript/Vitest config own Server Consumer package tooling.
-- `src/` owns internal API runtime, Server-owned domain/storage, auth/session/selection, Workspace Provisioning, and Core service assembly.
+- `src/` owns all package source code: internal API runtime, Nuxt browser code, Server-owned domain/storage, auth/session/selection, Workspace Provisioning, and Core service assembly.
 - `src/storage/` owns Server-owned JSON ORM schemas, migrations, and repo assembly; it must not contain Core Portfolio facts.
 - `src/modules/` owns application use-case functions; API route handlers should stay thin adapters over these functions.
-- `pages/`, `middleware/`, and `composables/` own Nuxt UI and client-side app concerns.
+- `src/pages/`, `src/middleware/`, and `src/composables/` own Nuxt UI and client-side app concerns.
 
 ## Local Contracts
 
@@ -27,7 +27,8 @@ The `consumers/server/` package implements the v1 deployed Server Consumer: Nuxt
 - Core Portfolio storage assembly belongs under `src/core/`, must receive an explicit data directory at the boundary, and must keep adapter-specific imports in adapter factory files.
 - Workspace Provisioning modules compose Server registry helpers with Core Portfolio storage initialization; they must not mutate Selection Cookies or add API route behavior.
 - Selection access modules validate signed-in User existence, Selection Cookie validity, Active Workspace membership, and Portfolio registry ownership; they must not mutate cookies, refresh Sessions, open Core, or add API route behavior.
-- API route handlers stay thin: parse with Valleyed pipes, translate cookies/body/status through Equipped request/response values, throw Equipped HTTP errors such as `NotAuthenticatedError` and `NotAuthorizedError`, and delegate business behavior to modules.
+- API route handlers stay thin: parse with Valleyed pipes, define response and response-cookie pipes for API docs, translate cookies/body/status through Equipped request/response values, throw Equipped HTTP errors such as `NotAuthenticatedError` and `NotAuthorizedError`, and delegate business behavior to modules.
+- Nuxt UI code lives under `src/` and must call the Server API through `src/composables/` client helpers rather than importing Server modules or Core code directly; use Axios for browser API requests.
 - Test module functions directly with plain inputs and real storage/cache/Core wiring; do not test API endpoints or mock Equipped request/response values for this slice.
 
 ## Work Guidance

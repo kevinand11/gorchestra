@@ -2,10 +2,10 @@ import base from '@k11/configs/eslint/base'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
+	{ ignores: ['coverage/**', '.husky/_/**', '**/.nuxt/**', '**/.output/**'] },
 	...base,
 	...tseslint.configs.recommendedTypeChecked,
 	{
-		ignores: ['coverage/**', '.husky/_/**'],
 		settings: {
 			'import/resolver': {
 				typescript: {

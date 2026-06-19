@@ -6,6 +6,7 @@ import { buildDeleteSelectionCookie, buildSelectionCookie, selectionCookieName }
 import type { ServerApiContext } from '../context'
 import { throwSelectionAccessError, throwSessionAuthenticationError } from '../errors'
 import { jsonObjectPipe, moduleCookiesToResponseCookies, optionalCookiePipe } from '../http'
+import { selectionAccessResponseSchema, selectionClearedResponseSchema, selectionResponseCookieSchema } from '../schemas'
 import { authenticateApiSession, getSessionToken, sessionCookieSchema } from '../session'
 
 const selectionCookieSchema = optionalCookiePipe(selectionCookieName)
@@ -15,22 +16,27 @@ const setSelectionBodySchema = jsonObjectPipe({ workspaceId: nonEmptyStringPipe(
 export function createSelectionApiRouter(context: ServerApiContext): Router<RouteDef> {
 	const router = new Router({ path: '/selection' })
 
-	router.get('/', { schema: { cookies: selectionRequestCookieSchema } })(async (req) => {
+	router.get('/', { schema: { cookies: selectionRequestCookieSchema, response: selectionAccessResponseSchema } })(async (req) => {
 		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 
-		return req.res({
-			body: await resolveSelectionAccess({
-				serverStorage: context.serverStorage,
-				userId: authentication.session.userId,
-				selectionToken: req.cookies[selectionCookieName] ?? null,
-				now: context.now(),
-				signingKey: context.selectionSigningKey,
-			}),
+		return await resolveSelectionAccess({
+			serverStorage: context.serverStorage,
+			userId: authentication.session.userId,
+			selectionToken: req.cookies[selectionCookieName] ?? null,
+			now: context.now(),
+			signingKey: context.selectionSigningKey,
 		})
 	})
 
-	router.post('/', { schema: { body: setSelectionBodySchema, cookies: sessionCookieSchema } })(async (req) => {
+	router.post('/', {
+		schema: {
+			body: setSelectionBodySchema,
+			cookies: sessionCookieSchema,
+			response: selectionAccessResponseSchema,
+			responseCookies: selectionResponseCookieSchema,
+		},
+	})(async (req) => {
 		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 
@@ -60,7 +66,9 @@ export function createSelectionApiRouter(context: ServerApiContext): Router<Rout
 		})
 	})
 
-	router.post('/clear', { schema: { cookies: sessionCookieSchema } })(async (req) => {
+	router.delete('/', {
+		schema: { cookies: sessionCookieSchema, response: selectionClearedResponseSchema, responseCookies: selectionResponseCookieSchema },
+	})(async (req) => {
 		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 
