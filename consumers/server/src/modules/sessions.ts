@@ -1,9 +1,10 @@
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 
-import { v, type Pipe, type PipeOutput } from 'valleyed'
+import { v, type PipeOutput } from 'valleyed'
 
 import { deleteCachedValue, getCachedJson, setCachedJson } from '../cache'
 import { readServerEnv } from '../env'
+import { signJwtPayload, verifySignedJwtPayload } from '../signed-jwt'
 import { normalizeEmailAddress } from './email-otp'
 
 export const sessionCookieName = 'gorchestra_session'
@@ -14,12 +15,6 @@ export const previousSessionTokenGraceSeconds = 30
 function nonEmptyStringPipe() {
 	return v.string().pipe(v.min(1))
 }
-
-const sessionJwtPartsPipe = v
-	.string()
-	.pipe((token) => token.split('.'))
-	.pipe(v.tuple([nonEmptyStringPipe(), nonEmptyStringPipe(), nonEmptyStringPipe()] as const))
-	.pipe(([header, body, signature]) => ({ header, body, signature }))
 
 const sessionJwtPayloadPipe = v
 	.fromJson(
@@ -43,8 +38,6 @@ type CachedServerSession = {
 }
 
 type SessionTokenStatus = 'current' | 'previous-grace'
-
-type JwtParts = PipeOutput<typeof sessionJwtPartsPipe>
 
 export type ServerSession = {
 	userId: string
@@ -243,58 +236,15 @@ function isExpiredSessionPayload(payload: SessionJwtPayload, now: Date): boolean
 }
 
 function signSessionJwt(payload: SessionJwtPayload, signingKey: string): string {
-	const header = encodeJwtPart({ alg: 'HS256', typ: 'JWT' })
-	const body = encodeJwtPart(payload)
-	const unsignedToken = `${header}.${body}`
-	return `${unsignedToken}.${signJwtValue(unsignedToken, signingKey)}`
+	return signJwtPayload(payload, signingKey)
 }
 
 function verifySessionJwt(
 	token: string,
 	signingKey: string,
 ): { verified: true; payload: SessionJwtPayload } | { verified: false; reason: 'invalid-token' } {
-	const parts = parseJwtParts(token)
-	if (!parts) return { verified: false, reason: 'invalid-token' }
-	if (!hasValidJwtSignature(parts, signingKey)) return { verified: false, reason: 'invalid-token' }
-	return getDecodedSessionJwtLookup(parts.body)
-}
-
-function parseJwtParts(token: string): JwtParts | null {
-	return parseWithPipe(sessionJwtPartsPipe, token)
-}
-
-function hasValidJwtSignature(parts: JwtParts, signingKey: string): boolean {
-	return timingSafeEqualText(parts.signature, signJwtValue(`${parts.header}.${parts.body}`, signingKey))
-}
-
-function getDecodedSessionJwtLookup(
-	encodedBody: string,
-): { verified: true; payload: SessionJwtPayload } | { verified: false; reason: 'invalid-token' } {
-	const payload = decodeSessionJwtPayload(encodedBody)
+	const payload = verifySignedJwtPayload({ token, signingKey, payloadPipe: sessionJwtPayloadPipe })
 	return payload ? { verified: true, payload } : { verified: false, reason: 'invalid-token' }
-}
-
-function encodeJwtPart(value: unknown): string {
-	return Buffer.from(JSON.stringify(value)).toString('base64url')
-}
-
-function decodeSessionJwtPayload(encoded: string): SessionJwtPayload | null {
-	return parseWithPipe(sessionJwtPayloadPipe, Buffer.from(encoded, 'base64url').toString('utf8'))
-}
-
-function parseWithPipe<T extends Pipe<unknown, unknown>>(pipe: T, input: unknown): PipeOutput<T> | null {
-	const parsed = v.validate(pipe, input)
-	return parsed.valid ? parsed.value : null
-}
-
-function signJwtValue(value: string, signingKey: string): string {
-	return createHmac('sha256', signingKey).update(value).digest('base64url')
-}
-
-function timingSafeEqualText(a: string, b: string): boolean {
-	const left = Buffer.from(a)
-	const right = Buffer.from(b)
-	return left.length === right.length && timingSafeEqual(left, right)
 }
 
 function sessionFromPayload(payload: SessionJwtPayload): ServerSession {
