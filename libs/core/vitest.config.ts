@@ -5,5 +5,6 @@ export default defineConfig({
 		include: ['src/**/*.{test,spec}.ts'],
 		includeSource: ['src/**/*.ts'],
 		exclude: ['node_modules/**', 'dist/**', 'coverage/**'],
+		pool: 'threads',
 	},
 })

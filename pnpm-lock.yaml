@@ -48,6 +48,15 @@ importers:
                 specifier: ^4.1.8
                 version: 4.1.8(@types/node@25.9.2)(vite@7.3.5(@types/node@25.9.2)(jiti@2.6.1)(yaml@2.9.0))
 
+    consumers/server:
+        dependencies:
+            equipped:
+                specifier: 5.3.0-alpha.0
+                version: 5.3.0-alpha.0(@types/json-schema@7.0.15)
+            valleyed:
+                specifier: 4.5.22
+                version: 4.5.22
+
     libs/core:
         dependencies:
             '@anthropic-ai/sdk':
