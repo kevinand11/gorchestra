@@ -1,5 +1,6 @@
 packages:
     - 'libs/*'
+    - 'consumers/*'
 
 allowBuilds:
     '@confluentinc/kafka-javascript': true

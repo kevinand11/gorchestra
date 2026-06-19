@@ -5,8 +5,8 @@
 	"type": "module",
 	"packageManager": "pnpm@11.7.0",
 	"scripts": {
-		"lint": "eslint \"libs/**/*.ts\"",
-		"lint:fix": "eslint \"libs/**/*.ts\" --fix",
+		"lint": "eslint \"{libs,consumers}/**/*.ts\"",
+		"lint:fix": "eslint \"{libs,consumers}/**/*.ts\" --fix",
 		"format": "prettier --check .",
 		"format:fix": "prettier --write .",
 		"typecheck": "tsc -b --pretty false",
@@ -21,7 +21,7 @@
 		"prepare": "husky"
 	},
 	"lint-staged": {
-		"libs/**/*.ts": "eslint --fix",
+		"{libs,consumers}/**/*.ts": "eslint --fix",
 		"*.{ts,tsx,js,cjs,mjs,json,md,yml,yaml}": "prettier --write"
 	},
 	"devDependencies": {

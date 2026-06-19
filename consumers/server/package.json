@@ -1,0 +1,11 @@
+{
+	"name": "@gorchestra/server",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"test": "vitest run --config vitest.config.ts --passWithNoTests",
+		"typecheck": "tsc -p tsconfig.json --pretty false",
+		"lint": "eslint \"**/*.ts\""
+	}
+}

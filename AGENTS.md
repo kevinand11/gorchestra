@@ -55,5 +55,6 @@ This root AGENTS.md is the project-wide DOX rail: it gives repo-wide instruction
 
 ## Child DOX Index
 
+- `consumers/AGENTS.md` — consumer application package contracts and package child index.
 - `docs/AGENTS.md` — documentation contracts, context docs, ADR rules, and documentation child index.
 - `libs/AGENTS.md` — workspace package contracts and package child index.

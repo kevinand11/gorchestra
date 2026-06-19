@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
 	...base,
-	...tseslint.configs.recommendedTypeChecked.slice(1),
+	...tseslint.configs.recommendedTypeChecked,
 	{
 		ignores: ['coverage/**', '.husky/_/**'],
 		settings: {
@@ -15,7 +15,7 @@ export default tseslint.config(
 		},
 	},
 	{
-		files: ['libs/**/*.ts'],
+		files: ['libs/**/*.ts', 'consumers/**/*.ts'],
 		languageOptions: {
 			parserOptions: {
 				project: './tsconfig.eslint.json',
