@@ -47,6 +47,7 @@ This root AGENTS.md is the project-wide DOX rail: it gives repo-wide instruction
 - Prefer discriminated unions over nullable peer fields when exactly one variant applies.
 - Prefer passing identifiers and inferring authoritative fields inside Core over duplicating inferable values in consumer-facing API inputs, so callers cannot provide contradictory values.
 - For Core-owned provider/runtime behavior and Core Service calls that perform external actions, resolved values should be available at the boundary so service/provider code does not infer, load, or calculate authoritative context itself.
+- Parse and validate external, serialized, or otherwise unknown data through Valleyed pipes rather than hand-written parsing/type guards; use `v.fromJson(v.object(...))` for expected JSON shapes.
 
 ## Verification
 
