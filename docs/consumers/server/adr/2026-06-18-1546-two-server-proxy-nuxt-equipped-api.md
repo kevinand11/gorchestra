@@ -1,0 +1,3 @@
+# Two-server proxy for Nuxt and Equipped API
+
+The Server Consumer runs Nuxt for the browser app and an Equipped Fastify API as separate server processes or ports, with Nuxt/Nitro as the public app runtime and proxy for API requests. Nuxt routes `/api/**` to the internal-only Equipped API port without rewriting the `/api` prefix, and handles all other browser app requests itself. We chose this over a custom Nitro adapter or Fastify-primary wrapper so Gorchestra can use Equipped Server's existing route validation, middleware execution, error handling, OpenAPI registration, and Fastify-backed API rate limiting without local monkey-patching or duplicating Equipped adapter behavior.

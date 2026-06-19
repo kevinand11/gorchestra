@@ -1,0 +1,3 @@
+# Core queries for Portfolio reads
+
+Gorchestra Consumers read Core-owned Portfolio state through explicit Core domain queries rather than consumer-owned storage access, projections, or a generic resource-record API, superseding the narrower read boundary in [Core Orchestration API boundary](../../core/adr/2026-06-10-0208-core-orchestration-api-boundary.md). Consumer route handlers may expose Core command return values as mutation responses, but standalone or follow-up reads use Core queries. We chose this so Server Consumer UI and future consumers stay decoupled from Core storage layout and consistently use Core-owned derivations, accepting that Core will need a broader read/query surface for list, detail, and derived-state views.

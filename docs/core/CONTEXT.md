@@ -25,7 +25,7 @@ A value a Consumer passes through a public core API boundary, including command 
 _Avoid_: payload, request body, port result
 
 **Core Orchestration API**:
-The public Core command/query surface for operations that Core runtime or orchestration behavior needs to enforce Core-owned invariants, perform work, or record lifecycle facts. Consumers may use their own storage access or projections for non-orchestration UI/admin views, but mutations that affect Core invariants or lifecycle facts go through Core commands.
+The public Core command/query surface for operations that read or mutate Core-owned Portfolio state. Consumers use Core queries for standalone reads of Core-owned Portfolio state, and mutations that affect Core invariants or lifecycle facts go through Core commands.
 _Avoid_: UI API, admin API, storage API
 
 **Core Service**:
@@ -209,8 +209,8 @@ An Agent Type where Gorchestra's Core-owned agent loop uses a configured Model t
 _Avoid_: LLM Loop Agent, Pi Agent, Codex Agent, external harness, consumer agent adapter
 
 **Agent Run**:
-One concrete session where an agent carries out goal-directed work for Gorchestra. An Agent Run records its agent as a discriminated value and records its purpose with the domain target it works on, such as a Slice execution purpose with Delivery, Slice, and an execution mode union. Initial Slice execution has no correction root; correction Slice execution records the Failure Chain root it is correcting. Agent Runs may gather information, use tools, edit code, run tests, produce outputs, or request human decisions. Core owns Agent Run behavior; an Agent Run does not own authoritative Delivery or Slice Work State.
-_Avoid_: Mission, Turn, AgentAttempt, actor
+One concrete application-managed session where an agent carries out goal-directed work for Gorchestra. An Agent Run is the session boundary; do not introduce a separate Agent Run Session concept. An Agent Run records its agent as a discriminated value and records its purpose with the domain target it works on, such as a Slice execution purpose with Delivery, Slice, and an execution mode union. Initial Slice execution has no correction root; correction Slice execution records the Failure Chain root it is correcting. Agent Runs may gather information, use tools, edit code, run tests, produce outputs, or request human decisions. Core owns Agent Run behavior; an Agent Run does not own authoritative Delivery or Slice Work State.
+_Avoid_: Mission, Turn, AgentAttempt, Agent Run Session, actor
 
 **Agent Run Sandbox**:
 The isolated environment an Agent Run uses for its work, such as a worktree, temporary files, tools, and runtime environment. Core owns Agent Run orchestration semantics, while consumers provide deployment-specific sandbox primitives such as allocation, execution isolation, resource limits, and cleanup. An Agent Run Sandbox is isolated to one Agent Run; cross-run state must be promoted by Gorchestra evaluation.

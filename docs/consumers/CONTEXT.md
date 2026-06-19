@@ -18,6 +18,6 @@ _Avoid_: portfolio createdBy
 
 ## Relationships
 
-- **Consumers → Core**: Consumers create, open, authorize, protect, and operate Portfolios through the core orchestration model.
+- **Consumers → Core**: Consumers create, open, authorize, protect, operate, and read Portfolios through the core orchestration model.
 - **Server Consumer → Core**: The Server Consumer registers Portfolios inside Workspaces, maps Workspace Owner authority to Portfolio Owner authority for the default Portfolio in v1, and handles server-specific Secret-at-rest protection.
 - **Core → Consumers**: Core owns Portfolio data and portable Portfolio Snapshots; consumers provide user experience, authentication, authorization, and deployment-specific runtime concerns.

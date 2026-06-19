@@ -12,9 +12,69 @@ _Avoid_: Core
 A global app identity in the Server Consumer. A User may have separate Workspace Member identities in different Workspaces.
 _Avoid_: Workspace Member, account
 
+**Authentication Method**:
+A Server Consumer mechanism that verifies control of an external identity before the app treats an actor as a User.
+_Avoid_: Authorization method, permission check
+
+**Authentication Identity**:
+A durable external identity verified by an Authentication Method and associated with one User. A User may have multiple Authentication Identities over time.
+_Avoid_: User, account, login
+
+**Email Authentication Identity**:
+An Authentication Identity for one normalized email address. The normalized email is trimmed and lowercased in full, and each normalized email address belongs to at most one Email Authentication Identity.
+_Avoid_: User email, account email
+
+**Verified Email Address**:
+An email address whose control has been verified by an Authentication Method or asserted as verified by an external authentication provider.
+_Avoid_: Claimed email, contact email
+
+**Email OTP Sign-in**:
+An Authentication Method where control of an email address is proven by submitting a one-time passcode sent to that address.
+_Avoid_: Email authorization, magic link
+
+**Email OTP Challenge**:
+A short-lived Email OTP Sign-in attempt for one normalized email address. An Email OTP Challenge does not create a User or Authentication Identity until the passcode is verified, and only the latest unverified challenge for an email remains valid.
+_Avoid_: Pending User, pending account
+
+**Self-sign-up**:
+A first-party onboarding path where a verified Authentication Identity creates a new User and Session without requiring an invitation. Self-sign-up does not create a Workspace or Portfolio.
+_Avoid_: Workspace provisioning, invited-user creation
+
+**Workspace Provisioning**:
+A user-initiated workflow that creates a Workspace, creates the initiating User's Workspace Member identity and Workspace Owner role, registers the Workspace's Default Portfolio, and selects that new Workspace and Portfolio. In v1, Workspace Provisioning is exposed only when the signed-in User has no accessible Workspace and Portfolio to select.
+_Avoid_: Self-sign-up, Portfolio-only creation
+
+**Session**:
+A server-managed browser sign-in state for one User. A Session does not store Workspace or Portfolio selection and does not itself grant Workspace access or Workspace Owner authority.
+_Avoid_: Authorization token, durable login record, Workspace selection
+
+**Selection Cookie**:
+A server-signed browser-readable cookie that carries the selected Workspace and selected Portfolio for requests. A missing or invalid Selection Cookie means no Workspace or Portfolio is selected, and a Selection Cookie does not grant access; the server validates current Workspace membership and Portfolio registry ownership before using it.
+_Avoid_: Authorization token, Session
+
+**Selection Required**:
+A Server Consumer request state where the signed-in User has no valid Selected Workspace and Selected Portfolio for a Portfolio-scoped request. Page requests redirect to selection, while API requests return a structured Selection Required response.
+_Avoid_: Unauthorized, unauthenticated
+
 **Workspace**:
-The top-level tenancy boundary in the Server Consumer. A Workspace groups members and registers Portfolios.
+The top-level tenancy boundary in the Server Consumer. A Workspace has a non-unique user-facing display name, groups members, and registers Portfolios.
 _Avoid_: Organization, account, team
+
+**Selected Workspace**:
+The Workspace carried by the Selection Cookie for navigation and workspace-scoped requests. A Selected Workspace does not grant access; access still comes from current Workspace membership and roles.
+_Avoid_: Current account, tenant claim
+
+**Selected Portfolio**:
+The Portfolio carried by the Selection Cookie inside the Selected Workspace. A Selected Portfolio does not grant access; v1 Portfolio access still comes from current Workspace membership.
+_Avoid_: Current project space, portfolio claim
+
+**Portfolio Registry Entry**:
+A Server Consumer registration of a Core Portfolio inside a Workspace. The Portfolio Registry Entry owns the Portfolio's non-unique user-facing display name and storage location.
+_Avoid_: Core Portfolio record, Portfolio metadata in Core
+
+**Default Portfolio**:
+The oldest Portfolio registered for a Workspace. The Default Portfolio is administered by the Workspace's Active Workspace Owners.
+_Avoid_: Personal Portfolio, Workspace data
 
 **Workspace Member**:
 A User's durable identity inside a Workspace. Workspace Members are preserved for attribution even when their active membership changes over time.
