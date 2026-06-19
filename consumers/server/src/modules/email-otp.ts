@@ -30,7 +30,7 @@ export type EmailOtpMailService = {
 export type CreateEmailOtpChallengeInput = {
 	email: string
 	mailService?: EmailOtpMailService
-	now?: Date
+	now: Date
 	generateCode?: () => string
 }
 
@@ -41,7 +41,7 @@ export type CreateEmailOtpChallengeResult = {
 export type VerifyEmailOtpChallengeInput = {
 	email: string
 	code: string
-	now?: Date
+	now: Date
 }
 
 export type VerifyEmailOtpChallengeResult =
@@ -75,14 +75,13 @@ export async function verifyEmailOtpChallenge(input: VerifyEmailOtpChallengeInpu
 
 function buildEmailOtpChallenge(input: CreateEmailOtpChallengeInput): EmailOtpChallenge {
 	const normalizedEmail = requireNormalizedEmailAddress(input.email)
-	const now = input.now ?? new Date()
 	const code = getEmailOtpCode(input.generateCode)
 	return {
 		normalizedEmail,
 		code,
 		failedAttempts: 0,
-		issuedAt: now.getTime(),
-		expiresAt: now.getTime() + emailOtpChallengeTtlMs,
+		issuedAt: input.now.getTime(),
+		expiresAt: input.now.getTime() + emailOtpChallengeTtlMs,
 	}
 }
 
@@ -106,10 +105,9 @@ async function sendEmailOtpChallenge(mailService: EmailOtpMailService, challenge
 
 function getVerifyEmailOtpContext(input: VerifyEmailOtpChallengeInput) {
 	const normalizedEmail = requireNormalizedEmailAddress(input.email)
-	const now = input.now ?? new Date()
 	return {
 		code: input.code.trim(),
-		now,
+		now: input.now,
 		cacheKey: getEmailOtpChallengeCacheKey(normalizedEmail),
 	}
 }

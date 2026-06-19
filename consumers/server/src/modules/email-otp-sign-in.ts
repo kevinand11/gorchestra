@@ -1,16 +1,16 @@
 import { createEmailOtpChallenge, type EmailOtpMailMessage, verifyEmailOtpChallenge, type VerifyEmailOtpChallengeResult } from './email-otp'
 import { findEmailAuthenticationIdentityByEmail, getOrCreateUserByVerifiedEmail } from './identities'
 import { createSession, type CreateSessionInput, type CreateSessionResult, verifySessionToken } from './sessions'
-import { openServerStorage, startServerStorage, stopServerStorage, type ServerStorage } from '../storage/repo'
+import type { ServerStorage } from '../storage/repo'
 import type { EmailAuthenticationIdentity, ServerUser } from '../storage/schemas'
 
 type EmailOtpSignInFailureReason = Extract<VerifyEmailOtpChallengeResult, { verified: false }>['reason']
 
 export type VerifyEmailOtpSignInInput = {
+	serverStorage: ServerStorage
 	email: string
 	code: string
-	storage?: ServerStorage
-	now?: Date
+	now: Date
 	signingKey?: string
 	generateSessionId?: () => string
 }
@@ -28,34 +28,26 @@ export type VerifyEmailOtpSignInResult =
 	| { signedIn: false; reason: EmailOtpSignInFailureReason }
 
 export async function verifyEmailOtpSignIn(input: VerifyEmailOtpSignInInput): Promise<VerifyEmailOtpSignInResult> {
-	const verifiedEmail = await verifyEmailOtpChallenge({ email: input.email, code: input.code, ...getOptionalNow(input.now) })
+	const verifiedEmail = await verifyEmailOtpChallenge({ email: input.email, code: input.code, now: input.now })
 	if (!verifiedEmail.verified) return { signedIn: false, reason: verifiedEmail.reason }
 
-	const identity = await getOrCreateUserByVerifiedEmail(buildVerifiedEmailIdentityInput(input, verifiedEmail.normalizedEmail))
+	const identity = await getOrCreateUserByVerifiedEmail({
+		serverStorage: input.serverStorage,
+		email: verifiedEmail.normalizedEmail,
+		now: input.now,
+	})
 	const session = await createSession(buildCreateSessionInput(input, identity.user.id, verifiedEmail.normalizedEmail))
 	return { signedIn: true, ...identity, ...session }
-}
-
-function buildVerifiedEmailIdentityInput(input: VerifyEmailOtpSignInInput, email: string) {
-	return { email, ...getOptionalStorage(input.storage), ...getOptionalNow(input.now) }
 }
 
 function buildCreateSessionInput(input: VerifyEmailOtpSignInInput, userId: string, email: string): CreateSessionInput {
 	return {
 		userId,
 		email,
-		...getOptionalNow(input.now),
+		now: input.now,
 		...getOptionalSigningKey(input.signingKey),
 		...getOptionalGenerateSessionId(input.generateSessionId),
 	}
-}
-
-function getOptionalStorage(storage: ServerStorage | undefined): { storage: ServerStorage } | Record<string, never> {
-	return storage ? { storage } : {}
-}
-
-function getOptionalNow(now: Date | undefined): { now: Date } | Record<string, never> {
-	return now ? { now } : {}
 }
 
 function getOptionalSigningKey(signingKey: string | undefined): { signingKey: string } | Record<string, never> {
@@ -70,25 +62,13 @@ function getOptionalGenerateSessionId(
 
 if (import.meta.vitest) {
 	const { afterEach, describe, expect, it } = import.meta.vitest
-	const { mkdtemp, rm } = await import('node:fs/promises')
-	const { tmpdir } = await import('node:os')
-	const { join } = await import('node:path')
+	const { createTempServerStorageTestHarness } = await import('../testing/server-storage')
 
+	const { cleanupTempServerStorage, withTempServerStorage } = createTempServerStorageTestHarness('gorchestra-server-email-otp-sign-in-')
 	const signingKey = 'test-email-otp-sign-in-session-key'
 	const testNow = new Date('2026-06-19T12:00:00.000Z')
-	let tempDataDirs: string[] = []
 
-	afterEach(async () => {
-		await stopServerStorage()
-		await Promise.all(tempDataDirs.map((path) => rm(path, { recursive: true, force: true })))
-		tempDataDirs = []
-	})
-
-	async function createTempDataDir(): Promise<string> {
-		const dataDir = await mkdtemp(join(tmpdir(), 'gorchestra-server-email-otp-sign-in-'))
-		tempDataDirs.push(dataDir)
-		return dataDir
-	}
+	afterEach(cleanupTempServerStorage)
 
 	function uniqueEmail(): string {
 		return `person-${crypto.randomUUID()}@example.com`
@@ -107,22 +87,13 @@ if (import.meta.vitest) {
 		await createEmailOtpChallenge({ email, generateCode: () => code, mailService: captureMailService([]), now })
 	}
 
-	async function withTempStorage<T>(run: (storage: ServerStorage) => Promise<T>): Promise<T> {
-		const storage = await openServerStorage({ dataDir: await createTempDataDir() })
-		try {
-			return await run(storage)
-		} finally {
-			await storage.close()
-		}
-	}
-
 	async function testVerifiedEmailOtpCreatesUserIdentityAndSession(): Promise<void> {
-		await withTempStorage(async (storage) => {
+		await withTempServerStorage(async (serverStorage) => {
 			const email = uniqueEmail()
 			await createOtp(`  ${email.toUpperCase()}  `, '123456')
 
 			const result = await verifyEmailOtpSignIn({
-				storage,
+				serverStorage,
 				email,
 				code: '123456',
 				now: testNow,
@@ -152,26 +123,26 @@ if (import.meta.vitest) {
 	}
 
 	async function testInvalidEmailOtpDoesNotCreateIdentity(): Promise<void> {
-		await withTempStorage(async (storage) => {
+		await withTempServerStorage(async (serverStorage) => {
 			const email = uniqueEmail()
 			await createOtp(email, '123456')
 
-			expect(await verifyEmailOtpSignIn({ storage, email, code: '000000', now: testNow, signingKey })).toEqual({
+			expect(await verifyEmailOtpSignIn({ serverStorage, email, code: '000000', now: testNow, signingKey })).toEqual({
 				signedIn: false,
 				reason: 'invalid-code',
 			})
-			expect(await findEmailAuthenticationIdentityByEmail({ storage, email })).toBeNull()
+			expect(await findEmailAuthenticationIdentityByEmail({ serverStorage, email })).toBeNull()
 		})
 	}
 
 	async function testEmailOtpSignInIsSingleUse(): Promise<void> {
-		await withTempStorage(async (storage) => {
+		await withTempServerStorage(async (serverStorage) => {
 			const email = uniqueEmail()
 			await createOtp(email, '222222')
 
-			const first = await verifyEmailOtpSignIn({ storage, email, code: '222222', now: testNow, signingKey })
+			const first = await verifyEmailOtpSignIn({ serverStorage, email, code: '222222', now: testNow, signingKey })
 			expect(first.signedIn).toBe(true)
-			expect(await verifyEmailOtpSignIn({ storage, email, code: '222222', now: testNow, signingKey })).toEqual({
+			expect(await verifyEmailOtpSignIn({ serverStorage, email, code: '222222', now: testNow, signingKey })).toEqual({
 				signedIn: false,
 				reason: 'not-found',
 			})
@@ -179,12 +150,12 @@ if (import.meta.vitest) {
 	}
 
 	async function testExistingEmailIdentityUserGetsNewCurrentSession(): Promise<void> {
-		await withTempStorage(async (storage) => {
+		await withTempServerStorage(async (serverStorage) => {
 			const email = uniqueEmail()
 			const secondSignInTime = new Date(testNow.getTime() + 1000)
 			await createOtp(email, '333333')
 			const first = await verifyEmailOtpSignIn({
-				storage,
+				serverStorage,
 				email,
 				code: '333333',
 				now: testNow,
@@ -195,7 +166,7 @@ if (import.meta.vitest) {
 
 			await createOtp(email, '444444', secondSignInTime)
 			const second = await verifyEmailOtpSignIn({
-				storage,
+				serverStorage,
 				email,
 				code: '444444',
 				now: secondSignInTime,
@@ -222,24 +193,6 @@ if (import.meta.vitest) {
 		})
 	}
 
-	async function testUsesStartedServerStorage(): Promise<void> {
-		const storage = await startServerStorage({ dataDir: await createTempDataDir() })
-		const email = uniqueEmail()
-		await createOtp(email, '555555')
-
-		const result = await verifyEmailOtpSignIn({
-			email,
-			code: '555555',
-			now: testNow,
-			signingKey,
-			generateSessionId: () => 'started-storage',
-		})
-
-		expect(result.signedIn).toBe(true)
-		if (!result.signedIn) return
-		expect(await findEmailAuthenticationIdentityByEmail({ storage, email })).toEqual(result.emailAuthenticationIdentity)
-	}
-
 	describe('Email OTP Sign-in', () => {
 		it(
 			'creates a User, Email Authentication Identity, and Session after a verified Email OTP Challenge',
@@ -251,6 +204,5 @@ if (import.meta.vitest) {
 			'reuses an existing Email Authentication Identity User and replaces the current Session',
 			testExistingEmailIdentityUserGetsNewCurrentSession,
 		)
-		it('uses already-started Server storage when storage is not passed explicitly', testUsesStartedServerStorage)
 	})
 }

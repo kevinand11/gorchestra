@@ -1,28 +1,28 @@
 import { normalizeEmailAddress } from './email-otp'
-import { getServerStorage, openServerStorage, stopServerStorage, type ServerStorage } from '../storage/repo'
+import type { ServerStorage } from '../storage/repo'
 import { emailAuthenticationIdentitySchema, userSchema, type EmailAuthenticationIdentity, type ServerUser } from '../storage/schemas'
 
 export type FindEmailAuthenticationIdentityInput = {
+	serverStorage: ServerStorage
 	email: string
-	storage?: ServerStorage
 }
 
 export type CreateUserInput = {
-	storage?: ServerStorage
-	now?: Date
+	serverStorage: ServerStorage
+	now: Date
 }
 
 export type CreateEmailAuthenticationIdentityInput = {
-	storage?: ServerStorage
+	serverStorage: ServerStorage
 	userId: string
 	email: string
-	now?: Date
+	now: Date
 }
 
 export type GetOrCreateUserByVerifiedEmailInput = {
-	storage?: ServerStorage
+	serverStorage: ServerStorage
 	email: string
-	now?: Date
+	now: Date
 }
 
 export type GetOrCreateUserByVerifiedEmailResult = {
@@ -35,16 +35,16 @@ export async function findEmailAuthenticationIdentityByEmail(
 	input: FindEmailAuthenticationIdentityInput,
 ): Promise<EmailAuthenticationIdentity | null> {
 	const email = requireEmailAddress(input.email)
-	return resolveServerStorage(input.storage)
-		.repo.on(emailAuthenticationIdentitySchema)
+	return input.serverStorage.repo
+		.on(emailAuthenticationIdentitySchema)
 		.one()
 		.where((query) => query.eq(emailAuthenticationIdentitySchema.fields.email, email))
 		.find()
 }
 
-export async function createUser(input: CreateUserInput = {}): Promise<ServerUser> {
-	return resolveServerStorage(input.storage)
-		.repo.on(userSchema)
+export async function createUser(input: CreateUserInput): Promise<ServerUser> {
+	return input.serverStorage.repo
+		.on(userSchema)
 		.one()
 		.create({ createdAt: getTimestamp(input.now) })
 }
@@ -53,9 +53,8 @@ export async function createEmailAuthenticationIdentity(
 	input: CreateEmailAuthenticationIdentityInput,
 ): Promise<EmailAuthenticationIdentity> {
 	const email = requireEmailAddress(input.email)
-	const storage = resolveServerStorage(input.storage)
-	await assertEmailAuthenticationIdentityAvailable(storage, email)
-	return storage.repo
+	await assertEmailAuthenticationIdentityAvailable(input.serverStorage, email)
+	return input.serverStorage.repo
 		.on(emailAuthenticationIdentitySchema)
 		.one()
 		.create({
@@ -69,43 +68,38 @@ export async function getOrCreateUserByVerifiedEmail(
 	input: GetOrCreateUserByVerifiedEmailInput,
 ): Promise<GetOrCreateUserByVerifiedEmailResult> {
 	const email = requireEmailAddress(input.email)
-	const storage = resolveServerStorage(input.storage)
-	return storage.repo.session(async () => getOrCreateUserByVerifiedEmailInStorage(storage, email, input.now))
+	return input.serverStorage.repo.session(async () => getOrCreateUserByVerifiedEmailInStorage(input.serverStorage, email, input.now))
 }
 
 async function getOrCreateUserByVerifiedEmailInStorage(
-	storage: ServerStorage,
+	serverStorage: ServerStorage,
 	email: string,
-	now?: Date,
+	now: Date,
 ): Promise<GetOrCreateUserByVerifiedEmailResult> {
-	const existingIdentity = await findEmailAuthenticationIdentityByEmail({ storage, email })
-	if (existingIdentity) return getExistingVerifiedEmailUser(storage, existingIdentity)
+	const existingIdentity = await findEmailAuthenticationIdentityByEmail({ serverStorage, email })
+	if (existingIdentity) return getExistingVerifiedEmailUser(serverStorage, existingIdentity)
 
-	const user = await createUser({ storage, ...getOptionalNow(now) })
+	const user = await createUser({ serverStorage, now })
 	const emailAuthenticationIdentity = await createEmailAuthenticationIdentity({
-		storage,
+		serverStorage,
 		userId: user.id,
 		email,
-		...getOptionalNow(now),
+		now,
 	})
 	return { user, emailAuthenticationIdentity, createdUser: true }
 }
 
 async function getExistingVerifiedEmailUser(
-	storage: ServerStorage,
+	serverStorage: ServerStorage,
 	emailAuthenticationIdentity: EmailAuthenticationIdentity,
 ): Promise<GetOrCreateUserByVerifiedEmailResult> {
-	const user = await storage.repo.on(userSchema).one().id(emailAuthenticationIdentity.userId).required().find()
+	const user = await serverStorage.repo.on(userSchema).one().id(emailAuthenticationIdentity.userId).required().find()
 	return { user, emailAuthenticationIdentity, createdUser: false }
 }
 
-async function assertEmailAuthenticationIdentityAvailable(storage: ServerStorage, email: string): Promise<void> {
-	const existingIdentity = await findEmailAuthenticationIdentityByEmail({ storage, email })
+async function assertEmailAuthenticationIdentityAvailable(serverStorage: ServerStorage, email: string): Promise<void> {
+	const existingIdentity = await findEmailAuthenticationIdentityByEmail({ serverStorage, email })
 	if (existingIdentity) throw new Error('Email Authentication Identity already exists for email')
-}
-
-function resolveServerStorage(storage: ServerStorage | undefined): ServerStorage {
-	return storage ?? getServerStorage()
 }
 
 function requireEmailAddress(email: string): string {
@@ -114,52 +108,29 @@ function requireEmailAddress(email: string): string {
 	return normalizedEmail
 }
 
-function getOptionalNow(now: Date | undefined): Partial<Pick<CreateUserInput, 'now'>> {
-	return now ? { now } : {}
-}
-
-function getTimestamp(now = new Date()): string {
+function getTimestamp(now: Date): string {
 	return now.toISOString()
 }
 
 if (import.meta.vitest) {
 	const { afterEach, describe, expect, it } = import.meta.vitest
-	const { mkdtemp, rm } = await import('node:fs/promises')
-	const { tmpdir } = await import('node:os')
-	const { join } = await import('node:path')
+	const { openServerStorage } = await import('../storage/repo')
+	const { createTempServerStorageTestHarness } = await import('../testing/server-storage')
 
-	let tempDataDirs: string[] = []
+	const { cleanupTempServerStorage, createTempServerDataDir, withTempServerStorage } =
+		createTempServerStorageTestHarness('gorchestra-server-identities-')
 	const testNow = new Date('2026-06-19T12:00:00.000Z')
 
-	afterEach(async () => {
-		await stopServerStorage()
-		await Promise.all(tempDataDirs.map((path) => rm(path, { recursive: true, force: true })))
-		tempDataDirs = []
-	})
-
-	async function createTempDataDir(): Promise<string> {
-		const dataDir = await mkdtemp(join(tmpdir(), 'gorchestra-server-identities-'))
-		tempDataDirs.push(dataDir)
-		return dataDir
-	}
+	afterEach(cleanupTempServerStorage)
 
 	function uniqueEmail(): string {
 		return `person-${crypto.randomUUID()}@example.com`
 	}
 
-	async function withTempStorage<T>(run: (storage: ServerStorage) => Promise<T>): Promise<T> {
-		const storage = await openServerStorage({ dataDir: await createTempDataDir() })
-		try {
-			return await run(storage)
-		} finally {
-			await storage.close()
-		}
-	}
-
 	async function testVerifiedEmailCreatesUserAndIdentity(): Promise<void> {
-		await withTempStorage(async (storage) => {
+		await withTempServerStorage(async (serverStorage) => {
 			const email = uniqueEmail()
-			const result = await getOrCreateUserByVerifiedEmail({ storage, email, now: testNow })
+			const result = await getOrCreateUserByVerifiedEmail({ serverStorage, email, now: testNow })
 
 			expect(result.createdUser).toBe(true)
 			expect(result.user.createdAt).toBe(testNow.toISOString())
@@ -172,10 +143,10 @@ if (import.meta.vitest) {
 	}
 
 	async function testVerifiedEmailReusesExistingIdentityUser(): Promise<void> {
-		await withTempStorage(async (storage) => {
+		await withTempServerStorage(async (serverStorage) => {
 			const email = uniqueEmail()
-			const first = await getOrCreateUserByVerifiedEmail({ storage, email, now: testNow })
-			const second = await getOrCreateUserByVerifiedEmail({ storage, email, now: testNow })
+			const first = await getOrCreateUserByVerifiedEmail({ serverStorage, email, now: testNow })
+			const second = await getOrCreateUserByVerifiedEmail({ serverStorage, email, now: testNow })
 
 			expect(second.createdUser).toBe(false)
 			expect(second.user).toEqual(first.user)
@@ -184,15 +155,15 @@ if (import.meta.vitest) {
 	}
 
 	async function testEmailIdentityPersistsAcrossStorageOpen(): Promise<void> {
-		const dataDir = await createTempDataDir()
+		const dataDir = await createTempServerDataDir()
 		const email = uniqueEmail()
 		const firstStorage = await openServerStorage({ dataDir })
-		const first = await getOrCreateUserByVerifiedEmail({ storage: firstStorage, email, now: testNow })
+		const first = await getOrCreateUserByVerifiedEmail({ serverStorage: firstStorage, email, now: testNow })
 		await firstStorage.close()
 
 		const secondStorage = await openServerStorage({ dataDir })
 		try {
-			const second = await getOrCreateUserByVerifiedEmail({ storage: secondStorage, email, now: testNow })
+			const second = await getOrCreateUserByVerifiedEmail({ serverStorage: secondStorage, email, now: testNow })
 			expect(second).toEqual({ ...first, createdUser: false })
 		} finally {
 			await secondStorage.close()
@@ -200,11 +171,11 @@ if (import.meta.vitest) {
 	}
 
 	async function testVerifiedEmailIsStoredNormalized(): Promise<void> {
-		await withTempStorage(async (storage) => {
-			const result = await getOrCreateUserByVerifiedEmail({ storage, email: '  Person+Ops@Example.COM  ', now: testNow })
+		await withTempServerStorage(async (serverStorage) => {
+			const result = await getOrCreateUserByVerifiedEmail({ serverStorage, email: '  Person+Ops@Example.COM  ', now: testNow })
 
 			expect(result.emailAuthenticationIdentity.email).toBe('person+ops@example.com')
-			expect(await findEmailAuthenticationIdentityByEmail({ storage, email: 'person+ops@example.com' })).toEqual(
+			expect(await findEmailAuthenticationIdentityByEmail({ serverStorage, email: 'person+ops@example.com' })).toEqual(
 				result.emailAuthenticationIdentity,
 			)
 		})

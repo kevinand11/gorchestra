@@ -68,7 +68,7 @@ export type ServerSessionCookie = {
 export type CreateSessionInput = {
 	userId: string
 	email: string
-	now?: Date
+	now: Date
 	signingKey?: string
 	generateSessionId?: () => string
 }
@@ -81,7 +81,7 @@ export type CreateSessionResult = {
 
 export type VerifySessionTokenInput = {
 	token?: string | null
-	now?: Date
+	now: Date
 	signingKey?: string
 }
 
@@ -91,7 +91,7 @@ export type VerifySessionTokenResult =
 
 export type RefreshSessionTokenInput = {
 	token: string
-	now?: Date
+	now: Date
 	signingKey?: string
 	generateSessionId?: () => string
 }
@@ -115,7 +115,7 @@ export async function createSession(input: CreateSessionInput): Promise<CreateSe
 		exp: issuedAt + sessionLifetimeSeconds,
 	}
 	const token = signSessionJwt(payload, getSigningKey(input.signingKey))
-	await storeSessionTokens({ currentToken: token, currentExpiresAt: payload.exp, userId: payload.sub, ...getOptionalNow(input.now) })
+	await storeSessionTokens({ currentToken: token, currentExpiresAt: payload.exp, userId: payload.sub, now: input.now })
 	return { token, session: sessionFromPayload(payload), cookie: buildSessionCookie(token) }
 }
 
@@ -168,7 +168,7 @@ export function buildDeleteSessionCookie(): ServerSessionCookie {
 	}
 }
 
-export function shouldRefreshSession(session: ServerSession, now = new Date()): boolean {
+export function shouldRefreshSession(session: ServerSession, now: Date): boolean {
 	const remainingSeconds = Math.ceil((Date.parse(session.expiresAt) - now.getTime()) / 1000)
 	return remainingSeconds > 0 && remainingSeconds < sessionRefreshThresholdSeconds
 }
@@ -188,9 +188,9 @@ async function createRefreshedSession(input: RefreshSessionTokenInput & { sessio
 		currentToken: token,
 		currentExpiresAt: payload.exp,
 		previousToken: input.token,
-		previousTokenGraceExpiresAt: (input.now ?? new Date()).getTime() + previousSessionTokenGraceSeconds * 1000,
+		previousTokenGraceExpiresAt: input.now.getTime() + previousSessionTokenGraceSeconds * 1000,
 		userId: payload.sub,
-		...getOptionalNow(input.now),
+		now: input.now,
 	})
 	return { token, session: sessionFromPayload(payload), cookie: buildSessionCookie(token) }
 }
@@ -201,7 +201,7 @@ async function storeSessionTokens(input: {
 	previousToken?: string
 	previousTokenGraceExpiresAt?: number
 	userId: string
-	now?: Date
+	now: Date
 }): Promise<void> {
 	const cachedSession: CachedServerSession = { currentToken: input.currentToken }
 	if (input.previousToken && input.previousTokenGraceExpiresAt) {
@@ -224,7 +224,7 @@ function getVerifiedSessionPayload(
 		: { ...payloadLookup, token: input.token }
 }
 
-function getSessionTokenStatus(token: string, cachedSession: CachedServerSession | null, now = new Date()): SessionTokenStatus | null {
+function getSessionTokenStatus(token: string, cachedSession: CachedServerSession | null, now: Date): SessionTokenStatus | null {
 	if (!cachedSession) return null
 	if (isCurrentSessionToken(token, cachedSession)) return 'current'
 	return isPreviousGraceSessionToken(token, cachedSession, now) ? 'previous-grace' : null
@@ -238,7 +238,7 @@ function isPreviousGraceSessionToken(token: string, cachedSession: CachedServerS
 	return token === cachedSession.previousToken && (cachedSession.previousTokenGraceExpiresAt ?? 0) > now.getTime()
 }
 
-function isExpiredSessionPayload(payload: SessionJwtPayload, now?: Date): boolean {
+function isExpiredSessionPayload(payload: SessionJwtPayload, now: Date): boolean {
 	return payload.exp <= getEpochSeconds(now)
 }
 
@@ -326,15 +326,11 @@ function getSessionCacheKey(userId: string): string {
 	return `session:user:${encodeURIComponent(userId)}`
 }
 
-function getEpochSeconds(now = new Date()): number {
+function getEpochSeconds(now: Date): number {
 	return Math.floor(now.getTime() / 1000)
 }
 
-function getOptionalNow(now: Date | undefined): { now: Date } | Record<string, never> {
-	return now ? { now } : {}
-}
-
-function getCacheTtlSeconds(expiresAt: number, now = new Date()): number {
+function getCacheTtlSeconds(expiresAt: number, now: Date): number {
 	return Math.max(1, expiresAt - getEpochSeconds(now))
 }
 
