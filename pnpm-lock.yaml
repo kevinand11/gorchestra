@@ -5,7 +5,7 @@ settings:
     excludeLinksFromLockfile: false
 
 overrides:
-    equipped: 5.3.0-alpha.0
+    equipped: 5.3.0
     valleyed: 4.5.22
 
 importers:
@@ -57,8 +57,8 @@ importers:
                 specifier: ^1.18.0
                 version: 1.18.0
             equipped:
-                specifier: 5.3.0-alpha.0
-                version: 5.3.0-alpha.0(@types/json-schema@7.0.15)
+                specifier: 5.3.0
+                version: 5.3.0(@types/json-schema@7.0.15)
             nuxt:
                 specifier: ^4.4.8
                 version: 4.4.8(@babel/plugin-syntax-jsx@7.29.7(@babel/core@7.29.7))(@babel/plugin-syntax-typescript@7.29.7(@babel/core@7.29.7))(@parcel/watcher@2.5.6)(@types/node@25.9.2)(@vue/compiler-sfc@3.5.38)(cac@6.7.14)(db0@0.3.4)(eslint@9.39.1(jiti@2.7.0))(ioredis@5.11.1)(magicast@0.5.3)(meow@13.2.0)(optionator@0.9.4)(rollup-plugin-visualizer@7.0.1(rollup@4.61.1))(rollup@4.61.1)(srvx@0.11.16)(terser@5.48.0)(typescript@6.0.3)(vite@7.3.5(@types/node@25.9.2)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))(yaml@2.9.0)
@@ -78,8 +78,8 @@ importers:
                 specifier: ^22.0.1
                 version: 22.0.1
             equipped:
-                specifier: 5.3.0-alpha.0
-                version: 5.3.0-alpha.0(@types/json-schema@7.0.15)
+                specifier: 5.3.0
+                version: 5.3.0(@types/json-schema@7.0.15)
             openai:
                 specifier: ^6.42.0
                 version: 6.42.0(ws@8.21.0)
@@ -3129,9 +3129,8 @@ packages:
         resolution: { integrity: sha512-xUtoPkMggbz0MPyPiIWr1Kp4aeWJjDZ6SMvURhimjdZgsRuDplF5/s9hcgGhyXMhs+6vpnuoiZ2kFiu3FMnS8Q== }
         engines: { node: '>=18' }
 
-    equipped@5.3.0-alpha.0:
-        resolution: { integrity: sha512-4rXCDiFZlliNyW6LRMBCOVeoTtnhh4XCkLpWjAOR7KiwVvONlIkBFS4FDOy36MhCu6iOTJq/Q0lea3smFsLHjg== }
-        engines: { node: '>= 20.0.0' }
+    equipped@5.3.0:
+        resolution: { integrity: sha512-Y8g+cXha6/6NWbAmPk0S5jYOL3A71seBPHhx64wNkhAEosOoRboz2zp+NRk2Rirh5oSiI+tNt637vD+Zx55ELg== }
 
     error-ex@1.3.4:
         resolution: { integrity: sha512-sqQamAnR14VgCr1A618A3sGrygcpK+HEbenA/HiEAkkUwcZIIB/tgWqHFxWgOyDh4nB4JCRimh79dR5Ywc9MDQ== }
@@ -9213,7 +9212,7 @@ snapshots:
 
     environment@1.1.0: {}
 
-    equipped@5.3.0-alpha.0(@types/json-schema@7.0.15):
+    equipped@5.3.0(@types/json-schema@7.0.15):
         dependencies:
             '@confluentinc/kafka-javascript': 1.8.0
             '@fastify/cookie': 11.0.2
@@ -9688,7 +9687,7 @@ snapshots:
             once: 1.4.0
             parseurl: 1.3.3
             proxy-addr: 2.0.7
-            qs: 6.14.1
+            qs: 6.15.2
             range-parser: 1.2.1
             router: 2.2.0
             send: 1.2.1
@@ -12227,7 +12226,7 @@ snapshots:
             formidable: 3.5.4
             methods: 1.1.2
             mime: 2.6.0
-            qs: 6.14.1
+            qs: 6.15.2
         transitivePeerDependencies:
             - supports-color
 
