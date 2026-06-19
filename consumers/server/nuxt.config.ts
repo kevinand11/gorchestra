@@ -1,13 +1,9 @@
-const apiHost = process.env.GORCHESTRA_API_HOST ?? '127.0.0.1'
-const apiPort = process.env.GORCHESTRA_API_PORT ?? '3001'
-const apiBaseUrl = `http://${apiHost}:${apiPort}`
-
 type ServerNuxtConfig = {
 	compatibilityDate: string
 	srcDir: string
 	devtools: { enabled: boolean }
 	app: { head: { title: string; meta: { name: string; content: string }[] } }
-	routeRules: Record<string, { proxy: string }>
+	nitro: { preset: string; serveStatic: boolean }
 }
 
 const config: ServerNuxtConfig = {
@@ -20,8 +16,9 @@ const config: ServerNuxtConfig = {
 			meta: [{ name: 'description', content: 'Goal-oriented delivery orchestration' }],
 		},
 	},
-	routeRules: {
-		'/api/**': { proxy: `${apiBaseUrl}/api/**` },
+	nitro: {
+		preset: 'node',
+		serveStatic: true,
 	},
 }
 

@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import { v, type PipeOutput } from 'valleyed'
 
 import { deleteCachedValue, getCachedJson, setCachedJson } from '../cache'
-import { readServerEnv } from '../env'
 import { signJwtPayload, verifySignedJwtPayload } from '../signed-jwt'
 import { normalizeEmailAddress } from './email-otp'
 
@@ -62,7 +61,7 @@ export type CreateSessionInput = {
 	userId: string
 	email: string
 	now: Date
-	signingKey?: string
+	signingKey: string
 	generateSessionId?: () => string
 }
 
@@ -75,7 +74,7 @@ export type CreateSessionResult = {
 export type VerifySessionTokenInput = {
 	token?: string | null
 	now: Date
-	signingKey?: string
+	signingKey: string
 }
 
 export type VerifySessionTokenResult =
@@ -85,7 +84,7 @@ export type VerifySessionTokenResult =
 export type RefreshSessionTokenInput = {
 	token: string
 	now: Date
-	signingKey?: string
+	signingKey: string
 	generateSessionId?: () => string
 }
 
@@ -107,7 +106,7 @@ export async function createSession(input: CreateSessionInput): Promise<CreateSe
 		iat: issuedAt,
 		exp: issuedAt + sessionLifetimeSeconds,
 	}
-	const token = signSessionJwt(payload, getSigningKey(input.signingKey))
+	const token = signSessionJwt(payload, input.signingKey)
 	await storeSessionTokens({ currentToken: token, currentExpiresAt: payload.exp, userId: payload.sub, now: input.now })
 	return { token, session: sessionFromPayload(payload), cookie: buildSessionCookie(token) }
 }
@@ -176,7 +175,7 @@ async function createRefreshedSession(input: RefreshSessionTokenInput & { sessio
 		iat: issuedAt,
 		exp: issuedAt + sessionLifetimeSeconds,
 	}
-	const token = signSessionJwt(payload, getSigningKey(input.signingKey))
+	const token = signSessionJwt(payload, input.signingKey)
 	await storeSessionTokens({
 		currentToken: token,
 		currentExpiresAt: payload.exp,
@@ -210,7 +209,7 @@ function getVerifiedSessionPayload(
 	| { verified: true; token: string; payload: SessionJwtPayload }
 	| { verified: false; reason: 'missing-token' | 'invalid-token' | 'expired' } {
 	if (!input.token) return { verified: false, reason: 'missing-token' }
-	const payloadLookup = verifySessionJwt(input.token, getSigningKey(input.signingKey))
+	const payloadLookup = verifySessionJwt(input.token, input.signingKey)
 	if (!payloadLookup.verified) return payloadLookup
 	return isExpiredSessionPayload(payloadLookup.payload, input.now)
 		? { verified: false, reason: 'expired' }
@@ -255,10 +254,6 @@ function sessionFromPayload(payload: SessionJwtPayload): ServerSession {
 		issuedAt: new Date(payload.iat * 1000).toISOString(),
 		expiresAt: new Date(payload.exp * 1000).toISOString(),
 	}
-}
-
-function getSigningKey(signingKey?: string): string {
-	return signingKey ?? readServerEnv().GORCHESTRA_SESSION_JWT_SIGNING_KEY
 }
 
 function requireUserId(userId: string): string {

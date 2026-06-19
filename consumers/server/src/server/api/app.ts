@@ -17,8 +17,10 @@ export function createServerApiRouter(context: ServerApiContext): Router<RouteDe
 export function createServerApiServer(context: ServerApiContext, env: ServerEnv): FastifyServer {
 	ensureServerInstance()
 	const server = FastifyServer.create({
-		port: env.GORCHESTRA_API_PORT,
+		port: env.GORCHESTRA_PORT,
+		cors: { origin: true, credentials: true },
 		healthPath: '/api/health',
+		openapi: { docsPath: '/api/__docs' },
 		requests: {
 			log: process.env.NODE_ENV !== 'test',
 			rateLimit: { enabled: false },

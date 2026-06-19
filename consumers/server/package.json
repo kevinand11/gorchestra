@@ -6,7 +6,8 @@
 	"scripts": {
 		"dev": "nuxt dev",
 		"build": "nuxt build",
-		"preview": "nuxt preview",
+		"start": "tsx src/server/start.ts",
+		"preview": "pnpm run start",
 		"test": "vitest run --config vitest.config.ts --passWithNoTests",
 		"typecheck": "tsc -p tsconfig.json --pretty false",
 		"lint": "eslint \"**/*.ts\""
@@ -17,5 +18,8 @@
 		"equipped": "latest",
 		"nuxt": "^4.4.8",
 		"valleyed": "latest"
+	},
+	"devDependencies": {
+		"tsx": "^4.22.4"
 	}
 }

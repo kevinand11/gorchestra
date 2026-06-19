@@ -2,13 +2,13 @@
 
 ## Purpose
 
-The `consumers/server/` package implements the v1 deployed Server Consumer: Nuxt browser app, internal Equipped API, authentication, Sessions, Workspace and Portfolio selection, Workspace Provisioning, and Server-to-Core runtime assembly.
+The `consumers/server/` package implements the v1 deployed Server Consumer: Nuxt browser app, Equipped Fastify API, authentication, Sessions, Workspace and Portfolio selection, Workspace Provisioning, and Server-to-Core runtime assembly.
 
 ## Ownership
 
 - `package.json`, `nuxt.config.ts`, and package-local TypeScript/Vitest config own Server Consumer package tooling.
 - `src/` owns all package source code and is split by runtime boundary.
-- `src/server/` owns server-only code: internal Equipped API runtime, Server-owned domain/storage, auth/session/selection, Workspace Provisioning, and Core service assembly.
+- `src/server/` owns server-only code: Equipped Fastify public runtime, Server-owned domain/storage, auth/session/selection, Workspace Provisioning, and Core service assembly.
 - `src/client/` owns Nuxt browser code: pages, middleware, composables, and app shell.
 - `src/shared/` owns browser-safe cross-boundary contracts only; do not place server runtime, storage, Core, or secret-handling code there.
 - `src/server/storage/` owns Server-owned JSON ORM schemas, migrations, and repo assembly; it must not contain Core Portfolio facts.
@@ -38,7 +38,7 @@ The `consumers/server/` package implements the v1 deployed Server Consumer: Nuxt
 
 - Keep files focused and test service logic independently from route wiring.
 - Use cache-backed OTP and Session state; use Equipped JSON ORM for durable Server-owned state.
-- Keep Nuxt public runtime and internal Equipped API process boundaries explicit.
+- In production/start, Equipped Fastify owns the single public listener on `GORCHESTRA_PORT`; `/api/**` remains Equipped-owned, and Nuxt/Nitro handles non-API fallback through its built Node listener. Dev one-listener/HMR wiring is deferred.
 
 ## Verification
 

@@ -1,6 +1,5 @@
 import { Migrator, Repo } from 'equipped/orm'
 
-import { readServerEnv } from '../env'
 import { ensureServerInstance } from '../instance'
 import type { ServerStorageAdapter, ServerStorageAdapterFactory, ServerStorageBackend } from './adapter'
 import { createDefaultServerStorageBackend } from './json-adapter'
@@ -15,14 +14,14 @@ export type ServerStorage = {
 }
 
 export type OpenServerStorageInput = {
-	dataDir?: string
+	dataDir: string
 	adapterFactory?: ServerStorageAdapterFactory
 }
 
 let activeServerStorage: ServerStorage | null = null
 let activeServerStorageStartup: Promise<ServerStorage> | null = null
 
-export async function startServerStorage(input: OpenServerStorageInput = {}): Promise<ServerStorage> {
+export async function startServerStorage(input: OpenServerStorageInput): Promise<ServerStorage> {
 	if (activeServerStorage) return activeServerStorage
 	activeServerStorageStartup ??= openServerStorage(input)
 		.then((storage) => {
@@ -48,10 +47,9 @@ export async function stopServerStorage(): Promise<void> {
 	await storage?.close()
 }
 
-export async function openServerStorage(input: OpenServerStorageInput = {}): Promise<ServerStorage> {
+export async function openServerStorage(input: OpenServerStorageInput): Promise<ServerStorage> {
 	ensureServerInstance()
-	const dataDir = input.dataDir ?? readServerEnv().GORCHESTRA_DATA_DIR
-	const backend = await (input.adapterFactory ?? createDefaultServerStorageBackend)({ dataDir })
+	const backend = await (input.adapterFactory ?? createDefaultServerStorageBackend)({ dataDir: input.dataDir })
 	const repo = createServerStorageRepo(backend)
 	await Migrator.from<ServerStorageAdapter>(repo, backend.adapter).migrations(serverStorageMigrations).build().up()
 

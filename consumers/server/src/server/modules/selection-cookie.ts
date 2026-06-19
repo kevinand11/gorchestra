@@ -1,6 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { readServerEnv } from '../env'
 import { signJwtPayload, verifySignedJwtPayload } from '../signed-jwt'
 
 export const selectionCookieName = 'gorchestra_selection'
@@ -46,7 +45,7 @@ export type BuildSelectionCookieInput = {
 	workspaceId: string
 	portfolioId: string
 	now: Date
-	signingKey?: string
+	signingKey: string
 }
 
 export type BuildSelectionCookieResult = {
@@ -58,7 +57,7 @@ export type BuildSelectionCookieResult = {
 export type VerifySelectionTokenInput = {
 	token?: string | null
 	now: Date
-	signingKey?: string
+	signingKey: string
 }
 
 export type VerifySelectionTokenResult =
@@ -74,7 +73,7 @@ export function buildSelectionCookie(input: BuildSelectionCookieInput): BuildSel
 		iat: issuedAt,
 		exp: issuedAt + selectionLifetimeSeconds,
 	}
-	const token = signSelectionJwt(payload, getSigningKey(input.signingKey))
+	const token = signSelectionJwt(payload, input.signingKey)
 	return { token, selection: selectionFromPayload(payload), cookie: buildSelectionTokenCookie(token) }
 }
 
@@ -112,7 +111,7 @@ function getVerifiedSelectionPayload(
 	input: VerifySelectionTokenInput,
 ): { verified: true; payload: SelectionJwtPayload } | { verified: false; reason: 'missing-token' | 'invalid-token' | 'expired' } {
 	if (!input.token) return { verified: false, reason: 'missing-token' }
-	const payloadLookup = verifySelectionJwt(input.token, getSigningKey(input.signingKey))
+	const payloadLookup = verifySelectionJwt(input.token, input.signingKey)
 	if (!payloadLookup.verified) return payloadLookup
 	return isExpiredSelectionPayload(payloadLookup.payload, input.now) ? { verified: false, reason: 'expired' } : payloadLookup
 }
@@ -136,10 +135,6 @@ function selectionFromPayload(payload: SelectionJwtPayload): SelectedPortfolio {
 		issuedAt: new Date(payload.iat * 1000).toISOString(),
 		expiresAt: new Date(payload.exp * 1000).toISOString(),
 	}
-}
-
-function getSigningKey(signingKey?: string): string {
-	return signingKey ?? readServerEnv().GORCHESTRA_SELECTION_COOKIE_SIGNING_KEY
 }
 
 function requireIdentifier(value: string, message: string): string {
