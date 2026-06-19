@@ -9,6 +9,7 @@
 		"lint": "eslint \"**/*.ts\""
 	},
 	"dependencies": {
+		"@gorchestra/core": "workspace:*",
 		"equipped": "latest",
 		"valleyed": "latest"
 	}

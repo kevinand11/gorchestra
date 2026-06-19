@@ -24,6 +24,8 @@ The `consumers/server/` package implements the v1 deployed Server Consumer: Nuxt
 - Server storage is opened once during application startup; module functions must not open, migrate, close, or implicitly resolve Server storage per operation.
 - Module functions that need Server storage must receive it explicitly as `serverStorage`; module functions that depend on time must receive an explicit `now` value.
 - Workspace registry helpers may create and list Server-owned Workspace, Workspace Member, Workspace Owner role, and Portfolio Registry facts; Core storage provisioning and Selection Cookie mutation belong in higher-level provisioning modules.
+- Core Portfolio storage assembly belongs under `src/core/`, must receive an explicit data directory at the boundary, and must keep adapter-specific imports in adapter factory files.
+- Workspace Provisioning modules compose Server registry helpers with Core Portfolio storage initialization; they must not mutate Selection Cookies or add API route behavior.
 - Test module functions directly with plain inputs and real storage/cache/Core wiring; do not test API endpoints or mock Equipped request/response values for this slice.
 
 ## Work Guidance

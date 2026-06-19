@@ -9,7 +9,7 @@ function nonEmptyStringPipe() {
 const signedJwtPartsPipe = v
 	.string()
 	.pipe((token) => token.split('.'))
-	.pipe(v.tuple([nonEmptyStringPipe(), nonEmptyStringPipe(), nonEmptyStringPipe()] as const))
+	.pipe(v.tuple([nonEmptyStringPipe(), nonEmptyStringPipe(), nonEmptyStringPipe()]))
 	.pipe(([header, body, signature]) => ({ header, body, signature }))
 
 type SignedJwtParts = PipeOutput<typeof signedJwtPartsPipe>
