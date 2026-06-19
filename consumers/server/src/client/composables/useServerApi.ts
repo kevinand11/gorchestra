@@ -1,108 +1,16 @@
 import axios, { type AxiosError } from 'axios'
 
-type ServerSession = {
-	userId: string
-	email: string
-	sessionId: string
-	issuedAt: string
-	expiresAt: string
-}
-
-type Workspace = {
-	id: string
-	displayName: string
-	createdAt: string
-}
-
-type WorkspaceMember = {
-	id: string
-	workspaceId: string
-	userId: string
-	membershipStartedAt: string
-	membershipEndedAt: string | null
-}
-
-type WorkspaceOwnerRole = {
-	id: string
-	workspaceId: string
-	workspaceMemberId: string
-	assignedAt: string
-	revokedAt: string | null
-}
-
-type PortfolioRegistryEntry = {
-	id: string
-	workspaceId: string
-	displayName: string
-	coreStorageNamespace: string
-	registeredAt: string
-}
-
-type SelectedPortfolio = {
-	workspaceId: string
-	portfolioId: string
-	issuedAt: string
-	expiresAt: string
-}
-
-type AccessibleWorkspacePortfolio = {
-	workspace: Workspace
-	workspaceMember: WorkspaceMember
-	portfolio: PortfolioRegistryEntry
-	activeWorkspaceOwnerRole: WorkspaceOwnerRole | null
-}
-
-type SessionStatusResponse =
-	| { authenticated: true; session: ServerSession; tokenStatus: 'current' | 'previous-grace'; refreshRecommended: boolean }
-	| { authenticated: false; reason: 'missing-token' | 'invalid-token' | 'expired' | 'not-current' }
-
-type EmailOtpChallengeResponse = { requested: true }
-
-type EmailOtpSignInResponse = {
-	signedIn: true
-	user: { id: string; createdAt: string }
-	emailAuthenticationIdentity: { id: string; userId: string; email: string; createdAt: string }
-	createdUser: boolean
-	session: ServerSession
-}
-
-type RefreshedSessionResponse = { refreshed: true; session: ServerSession }
-
-type SignedOutResponse = { signedOut: true }
-
-type WorkspacePortfoliosResponse = { workspacePortfolios: AccessibleWorkspacePortfolio[] }
-
-type ProvisionedWorkspaceResponse = {
-	provisioned: true
-	workspace: Workspace
-	workspaceMember: WorkspaceMember
-	workspaceOwnerRole: WorkspaceOwnerRole
-	portfolio: PortfolioRegistryEntry
-	selection: SelectedPortfolio
-}
-
-type SelectionAccessResponse =
-	| {
-			selected: true
-			selection: SelectedPortfolio
-			workspace: Workspace
-			workspaceMember: WorkspaceMember
-			portfolio: PortfolioRegistryEntry
-			activeWorkspaceOwnerRole: WorkspaceOwnerRole | null
-	  }
-	| {
-			selected: false
-			reason:
-				| 'missing-token'
-				| 'invalid-token'
-				| 'expired'
-				| 'user-not-found'
-				| 'workspace-not-found'
-				| 'not-active-member'
-				| 'portfolio-not-found'
-	  }
-
-type SelectionClearedResponse = { selected: false; reason: 'cleared' }
+import type {
+	EmailOtpChallengeResponse,
+	EmailOtpSignInResponse,
+	ProvisionedWorkspaceResponse,
+	RefreshedSessionResponse,
+	SelectionAccessResponse,
+	SelectionClearedResponse,
+	SessionStatusResponse,
+	SignedOutResponse,
+	WorkspacePortfoliosResponse,
+} from '../../shared/api'
 
 const client = axios.create({ baseURL: '/api', withCredentials: true })
 

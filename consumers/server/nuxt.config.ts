@@ -12,7 +12,7 @@ type ServerNuxtConfig = {
 
 const config: ServerNuxtConfig = {
 	compatibilityDate: '2026-06-18',
-	srcDir: 'src',
+	srcDir: 'src/client',
 	devtools: { enabled: false },
 	app: {
 		head: {

@@ -48,7 +48,9 @@ export function createAuthApiRouter(context: ServerApiContext): Router<RouteDef>
 		return req.res({ body: result, cookies: moduleCookiesToResponseCookies(result.cookie) })
 	})
 
-	router.get('/session', { schema: { cookies: sessionCookieSchema, response: sessionAuthenticationResponseSchema } })(async (req) => authenticateApiSession(context, getSessionToken(req.cookies)))
+	router.get('/session', { schema: { cookies: sessionCookieSchema, response: sessionAuthenticationResponseSchema } })(async (req) =>
+		authenticateApiSession(context, getSessionToken(req.cookies)),
+	)
 
 	router.post('/refresh', {
 		schema: { cookies: sessionCookieSchema, response: refreshedSessionResponseSchema, responseCookies: sessionResponseCookieSchema },
