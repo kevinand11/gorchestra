@@ -1,21 +1,21 @@
 import { Router, type RouteDef } from 'equipped/server'
 import { v } from 'valleyed'
 
-import type { ServerApiContext } from './context'
-import { throwSelectionAccessError, throwSessionAuthenticationError } from './errors'
-import { jsonObjectPipe, moduleCookiesToResponseCookies, optionalCookiePipe } from './http'
-import { authenticateApiSession, getSessionToken, sessionCookieSchema } from './session'
-import { resolveSelectionAccess, validateWorkspacePortfolioAccess } from '../modules/selection-access'
-import { buildDeleteSelectionCookie, buildSelectionCookie, selectionCookieName } from '../modules/selection-cookie'
+import { resolveSelectionAccess, validateWorkspacePortfolioAccess } from '../../modules/selection-access'
+import { buildDeleteSelectionCookie, buildSelectionCookie, selectionCookieName } from '../../modules/selection-cookie'
+import type { ServerApiContext } from '../context'
+import { throwSelectionAccessError, throwSessionAuthenticationError } from '../errors'
+import { jsonObjectPipe, moduleCookiesToResponseCookies, optionalCookiePipe } from '../http'
+import { authenticateApiSession, getSessionToken, sessionCookieSchema } from '../session'
 
 const selectionCookieSchema = optionalCookiePipe(selectionCookieName)
 const selectionRequestCookieSchema = v.merge(sessionCookieSchema, selectionCookieSchema)
 const setSelectionBodySchema = jsonObjectPipe({ workspaceId: nonEmptyStringPipe(), portfolioId: nonEmptyStringPipe() })
 
 export function createSelectionApiRouter(context: ServerApiContext): Router<RouteDef> {
-	const router = new Router({ path: '/api' })
+	const router = new Router({ path: '/selection' })
 
-	router.get('selection', { schema: { cookies: selectionRequestCookieSchema } })(async (req) => {
+	router.get('/', { schema: { cookies: selectionRequestCookieSchema } })(async (req) => {
 		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 
@@ -30,7 +30,7 @@ export function createSelectionApiRouter(context: ServerApiContext): Router<Rout
 		})
 	})
 
-	router.post('selection', { schema: { body: setSelectionBodySchema, cookies: sessionCookieSchema } })(async (req) => {
+	router.post('/', { schema: { body: setSelectionBodySchema, cookies: sessionCookieSchema } })(async (req) => {
 		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 
@@ -60,7 +60,7 @@ export function createSelectionApiRouter(context: ServerApiContext): Router<Rout
 		})
 	})
 
-	router.post('selection/clear', { schema: { cookies: sessionCookieSchema } })(async (req) => {
+	router.post('/clear', { schema: { cookies: sessionCookieSchema } })(async (req) => {
 		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 

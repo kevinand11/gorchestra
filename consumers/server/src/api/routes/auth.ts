@@ -1,9 +1,11 @@
 import { Router, type RouteDef } from 'equipped/server'
 import { v } from 'valleyed'
 
-import type { ServerApiContext } from './context'
-import { throwBadRequest, throwSessionAuthenticationError } from './errors'
-import { moduleCookiesToResponseCookies, jsonObjectPipe } from './http'
+import { createEmailOtpChallenge } from '../../modules/email-otp'
+import { verifyEmailOtpSignIn } from '../../modules/email-otp-sign-in'
+import type { ServerApiContext } from '../context'
+import { throwBadRequest, throwSessionAuthenticationError } from '../errors'
+import { jsonObjectPipe, moduleCookiesToResponseCookies } from '../http'
 import {
 	authenticateApiSession,
 	getSessionToken,
@@ -11,22 +13,20 @@ import {
 	revokeApiSessionIfAuthenticated,
 	sessionCookieSchema,
 	signedOutResponseCookies,
-} from './session'
-import { createEmailOtpChallenge } from '../modules/email-otp'
-import { verifyEmailOtpSignIn } from '../modules/email-otp-sign-in'
+} from '../session'
 
 const emailOtpChallengeBodySchema = jsonObjectPipe({ email: nonEmptyStringPipe() })
 const emailOtpSignInBodySchema = jsonObjectPipe({ email: nonEmptyStringPipe(), code: nonEmptyStringPipe() })
 
 export function createAuthApiRouter(context: ServerApiContext): Router<RouteDef> {
-	const router = new Router({ path: '/api' })
+	const router = new Router({ path: '/auth' })
 
-	router.post('auth/email-otp/challenges', { schema: { body: emailOtpChallengeBodySchema } })(async (req) => {
+	router.post('/email-otp/challenges', { schema: { body: emailOtpChallengeBodySchema } })(async (req) => {
 		const result = await createEmailOtpChallenge({ email: req.body.email, now: context.now() })
 		return req.res({ body: result })
 	})
 
-	router.post('auth/email-otp/sign-in', { schema: { body: emailOtpSignInBodySchema } })(async (req) => {
+	router.post('/email-otp/sign-in', { schema: { body: emailOtpSignInBodySchema } })(async (req) => {
 		const result = await verifyEmailOtpSignIn({
 			serverStorage: context.serverStorage,
 			email: req.body.email,
@@ -38,18 +38,18 @@ export function createAuthApiRouter(context: ServerApiContext): Router<RouteDef>
 		return req.res({ body: result, cookies: moduleCookiesToResponseCookies(result.cookie) })
 	})
 
-	router.get('session', { schema: { cookies: sessionCookieSchema } })(async (req) => {
+	router.get('/session', { schema: { cookies: sessionCookieSchema } })(async (req) => {
 		const result = await authenticateApiSession(context, getSessionToken(req.cookies))
 		return req.res({ body: result })
 	})
 
-	router.post('session/refresh', { schema: { cookies: sessionCookieSchema } })(async (req) => {
+	router.post('/refresh', { schema: { cookies: sessionCookieSchema } })(async (req) => {
 		const result = await refreshApiSession(context, getSessionToken(req.cookies))
 		if (!result.refreshed) return throwRefreshSessionError(result.reason)
 		return req.res({ body: result, cookies: moduleCookiesToResponseCookies(result.cookie) })
 	})
 
-	router.post('session/logout', { schema: { cookies: sessionCookieSchema } })(async (req) => {
+	router.post('/session/logout', { schema: { cookies: sessionCookieSchema } })(async (req) => {
 		await revokeApiSessionIfAuthenticated(context, getSessionToken(req.cookies))
 		return req.res({ body: { signedOut: true }, cookies: signedOutResponseCookies() })
 	})

@@ -1,13 +1,13 @@
 import { Router, type RouteDef } from 'equipped/server'
 import { v } from 'valleyed'
 
-import type { ServerApiContext } from './context'
-import { throwNotAuthorized, throwSessionAuthenticationError } from './errors'
-import { jsonObjectPipe, moduleCookiesToResponseCookies } from './http'
-import { authenticateApiSession, getSessionToken, sessionCookieSchema } from './session'
-import { buildSelectionCookie } from '../modules/selection-cookie'
-import { provisionWorkspaceWithDefaultPortfolio } from '../modules/workspace-provisioning'
-import { listAccessibleWorkspacePortfolios } from '../modules/workspaces'
+import { buildSelectionCookie } from '../../modules/selection-cookie'
+import { provisionWorkspaceWithDefaultPortfolio } from '../../modules/workspace-provisioning'
+import { listAccessibleWorkspacePortfolios } from '../../modules/workspaces'
+import type { ServerApiContext } from '../context'
+import { throwNotAuthorized, throwSessionAuthenticationError } from '../errors'
+import { jsonObjectPipe, moduleCookiesToResponseCookies } from '../http'
+import { authenticateApiSession, getSessionToken, sessionCookieSchema } from '../session'
 
 const provisionDefaultWorkspaceBodySchema = jsonObjectPipe({
 	workspaceDisplayName: displayNamePipe(),
@@ -15,9 +15,9 @@ const provisionDefaultWorkspaceBodySchema = jsonObjectPipe({
 })
 
 export function createWorkspaceApiRouter(context: ServerApiContext): Router<RouteDef> {
-	const router = new Router({ path: '/api' })
+	const router = new Router({ path: '/workspaces' })
 
-	router.get('workspace-portfolios', { schema: { cookies: sessionCookieSchema } })(async (req) => {
+	router.get('/portfolios', { schema: { cookies: sessionCookieSchema } })(async (req) => {
 		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 
@@ -31,7 +31,7 @@ export function createWorkspaceApiRouter(context: ServerApiContext): Router<Rout
 		})
 	})
 
-	router.post('workspaces/provision-default', { schema: { body: provisionDefaultWorkspaceBodySchema, cookies: sessionCookieSchema } })(
+	router.post('/provision-default', { schema: { body: provisionDefaultWorkspaceBodySchema, cookies: sessionCookieSchema } })(
 		async (req) => {
 			const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 			if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)

@@ -1,15 +1,15 @@
 import { Router, type RouteDef } from 'equipped/server'
 import { FastifyServer } from 'equipped/server/adapters/fastify'
 
-import { createAuthApiRouter } from './auth-routes'
-import type { ServerApiContext } from './context'
-import { createSelectionApiRouter } from './selection-routes'
-import { createWorkspaceApiRouter } from './workspace-routes'
 import type { ServerEnv } from '../env'
 import { ensureServerInstance } from '../instance'
+import type { ServerApiContext } from './context'
+import { createAuthApiRouter } from './routes/auth'
+import { createSelectionApiRouter } from './routes/selection'
+import { createWorkspaceApiRouter } from './routes/workspace'
 
 export function createServerApiRouter(context: ServerApiContext): Router<RouteDef> {
-	const router = new Router()
+	const router = new Router({ path: '/api' })
 	router.nest(createAuthApiRouter(context), createWorkspaceApiRouter(context), createSelectionApiRouter(context))
 	return router
 }
