@@ -30,7 +30,7 @@ The `consumers/server/` package implements the v1 deployed Server Consumer: Nuxt
 - Core Portfolio storage assembly belongs under `src/server/core/`, must receive an explicit data directory at the boundary, and must keep adapter-specific imports in adapter factory files.
 - Workspace Provisioning modules compose Server registry helpers with Core Portfolio storage initialization; they must not mutate Selection Cookies or add API route behavior.
 - Selection access modules validate signed-in User existence, Selection Cookie validity, Active Workspace membership, and Portfolio registry ownership; they must not mutate cookies, refresh Sessions, open Core, or add API route behavior.
-- API route handlers stay thin: parse with Valleyed pipes, define response and response-cookie pipes for API docs, translate cookies/body/status through Equipped request/response values, throw Equipped HTTP errors such as `NotAuthenticatedError` and `NotAuthorizedError`, and delegate business behavior to modules.
+- API route handlers stay thin: parse with Valleyed pipes, define response and response-cookie pipes for API docs, type-check response pipes against shared DTO contracts, translate cookies/body/status through Equipped request/response values, throw Equipped HTTP errors such as `NotAuthenticatedError` and `NotAuthorizedError`, and delegate business behavior to modules.
 - Nuxt UI code lives under `src/client/` and must call the Server API through `src/client/composables/` client helpers rather than importing Server modules or Core code directly; use Axios for browser API requests.
 - Test module functions directly with plain inputs and real storage/cache/Core wiring; do not test API endpoints or mock Equipped request/response values for this slice.
 
