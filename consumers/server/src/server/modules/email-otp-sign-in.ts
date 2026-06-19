@@ -11,7 +11,7 @@ export type VerifyEmailOtpSignInInput = {
 	email: string
 	code: string
 	now: Date
-	signingKey?: string
+	signingKey: string
 	generateSessionId?: () => string
 }
 
@@ -45,13 +45,9 @@ function buildCreateSessionInput(input: VerifyEmailOtpSignInInput, userId: strin
 		userId,
 		email,
 		now: input.now,
-		...getOptionalSigningKey(input.signingKey),
+		signingKey: input.signingKey,
 		...getOptionalGenerateSessionId(input.generateSessionId),
 	}
-}
-
-function getOptionalSigningKey(signingKey: string | undefined): { signingKey: string } | Record<string, never> {
-	return signingKey ? { signingKey } : {}
 }
 
 function getOptionalGenerateSessionId(

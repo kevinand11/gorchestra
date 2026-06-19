@@ -41,7 +41,7 @@ export type ResolveSelectionAccessInput = {
 	userId: string
 	selectionToken?: string | null
 	now: Date
-	signingKey?: string
+	signingKey: string
 }
 
 export type SelectionAccessFailureReason = 'missing-token' | 'invalid-token' | 'expired' | WorkspacePortfolioAccessFailureReason
@@ -146,7 +146,7 @@ function buildVerifySelectionTokenInput(input: ResolveSelectionAccessInput): Par
 	return {
 		token: input.selectionToken ?? null,
 		now: input.now,
-		...(input.signingKey !== undefined ? { signingKey: input.signingKey } : {}),
+		signingKey: input.signingKey,
 	}
 }
 

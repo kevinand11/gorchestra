@@ -1,9 +1,15 @@
-import { NotFoundError } from 'equipped/errors'
+import { EquippedError, NotFoundError } from 'equipped/errors'
 import type { RawResponseHandler, RawResponseHandled, ServerNotFoundHandler } from 'equipped/server'
 
 export function createServerConsumerNotFoundHandler(nuxtListener: RawResponseHandler): ServerNotFoundHandler {
+	return createDeferredServerConsumerNotFoundHandler(() => nuxtListener)
+}
+
+export function createDeferredServerConsumerNotFoundHandler(getNuxtListener: () => RawResponseHandler | null): ServerNotFoundHandler {
 	return ({ request, respondWithRaw }) => {
 		if (isEquippedApiPath(request.path)) throw new NotFoundError(`Route ${request.path} not found`)
+		const nuxtListener = getNuxtListener()
+		if (!nuxtListener) throw new EquippedError('Nuxt listener is not ready', {})
 		return respondWithRaw(nuxtListener)
 	}
 }
@@ -39,6 +45,17 @@ if (import.meta.vitest) {
 				rawHandled,
 			)
 			expect(respondWithRaw).toHaveBeenCalledWith(nuxtListener)
+		})
+
+		it('rejects non-api fallback before the deferred Nuxt listener is ready', () => {
+			const handler = createDeferredServerConsumerNotFoundHandler(() => null)
+
+			expect(() =>
+				handler({
+					request: { path: '/' } as Parameters<ServerNotFoundHandler>[0]['request'],
+					respondWithRaw: vi.fn(() => Promise.resolve(rawHandled)),
+				}),
+			).toThrow('Nuxt listener is not ready')
 		})
 	})
 }

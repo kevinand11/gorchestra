@@ -38,7 +38,7 @@ The `consumers/server/` package implements the v1 deployed Server Consumer: Nuxt
 
 - Keep files focused and test service logic independently from route wiring.
 - Use cache-backed OTP and Session state; use Equipped JSON ORM for durable Server-owned state.
-- In production/start, Equipped Fastify owns the single public listener on `GORCHESTRA_PORT`; `/api/**` remains Equipped-owned, and Nuxt/Nitro handles non-API fallback through its built Node listener. Dev one-listener/HMR wiring is deferred.
+- In production/start/dev, Equipped Fastify owns the single public listener on `GORCHESTRA_PORT`; `/api/**` remains Equipped-owned, production/start delegates non-API fallback to the built Nuxt/Nitro Node listener, and dev delegates non-API fallback/HMR to a programmatic Nuxt dev runtime attached through Equipped's before-listen hook.
 
 ## Verification
 
