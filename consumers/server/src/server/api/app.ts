@@ -22,7 +22,7 @@ export function createServerApiServer(context: ServerApiContext, env: ServerEnv)
 		healthPath: '/api/health',
 		openapi: { docsPath: '/api/__docs' },
 		requests: {
-			log: process.env.NODE_ENV !== 'test',
+			log: false,
 			rateLimit: { enabled: false },
 			slowdown: { enabled: false },
 		},

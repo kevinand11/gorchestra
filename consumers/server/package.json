@@ -1,16 +1,12 @@
 {
 	"name": "@gorchestra/server",
-	"version": "0.0.0",
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "tsx src/server/dev.ts",
+		"dev": "tsx watch --env-file-if-exists=.env src/server/index.ts --dev",
 		"build": "nuxt build",
-		"start": "tsx src/server/start.ts",
-		"preview": "pnpm run start",
-		"test": "vitest run --config vitest.config.ts --passWithNoTests",
-		"typecheck": "tsc -p tsconfig.json --pretty false",
-		"lint": "eslint \"**/*.ts\""
+		"start": "tsx --env-file-if-exists=.env src/server/index.ts",
+		"test": "vitest run --config vitest.config.ts"
 	},
 	"dependencies": {
 		"@gorchestra/core": "workspace:*",
