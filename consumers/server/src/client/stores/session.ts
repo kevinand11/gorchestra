@@ -12,11 +12,11 @@ import type {
 } from '../../shared/api'
 import { useServerApi, type ServerApi } from '../composables/useServerApi'
 
-export type ClientSelectionState = SelectionAccessResponse | SelectionClearedResponse
+export type ClientSelectionState = SelectionAccessResponse
 
 export type SessionStoreState = {
 	session: SessionStatusResponse | null
-	workspacePortfolios: WorkspacePortfoliosResponse['workspacePortfolios']
+	workspacePortfolios: WorkspacePortfoliosResponse
 	selection: ClientSelectionState | null
 }
 
@@ -40,7 +40,7 @@ function isSelectedPortfolio(selection: ClientSelectionState | null): boolean {
 
 export const useSessionStore = defineStore('session', () => {
 	const session = ref<SessionStatusResponse | null>(null)
-	const workspacePortfolios = ref<WorkspacePortfoliosResponse['workspacePortfolios']>([])
+	const workspacePortfolios = ref<WorkspacePortfoliosResponse>([])
 	const selection = ref<ClientSelectionState | null>(null)
 
 	const isAuthenticated = computed((): boolean => isAuthenticatedSession(session.value))
@@ -61,7 +61,7 @@ export const useSessionStore = defineStore('session', () => {
 		if (!response.authenticated) return
 
 		const [workspacePortfoliosResponse, selectionResponse] = await Promise.all([api.listWorkspacePortfolios(), api.getSelection()])
-		workspacePortfolios.value = workspacePortfoliosResponse.workspacePortfolios
+		workspacePortfolios.value = workspacePortfoliosResponse
 		selection.value = selectionResponse
 	}
 
@@ -116,7 +116,7 @@ export const useSessionStore = defineStore('session', () => {
 
 	async function clearSelection(api: ServerApi = useServerApi()): Promise<SelectionClearedResponse> {
 		const response = await api.clearSelection()
-		selection.value = response
+		selection.value = null
 		return response
 	}
 

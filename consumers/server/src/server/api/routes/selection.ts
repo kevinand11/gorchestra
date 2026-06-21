@@ -1,4 +1,4 @@
-import { Router, type RouteDef } from 'equipped/server'
+import { Router, StatusCodes, type RouteDef } from 'equipped/server'
 import { v } from 'valleyed'
 
 import { resolveSelectionAccess, validateWorkspacePortfolioAccess } from '../../modules/selection-access'
@@ -67,13 +67,19 @@ export function createSelectionApiRouter(context: ServerApiContext): Router<Rout
 	})
 
 	router.delete('/', {
-		schema: { cookies: sessionCookieSchema, response: selectionClearedResponseSchema, responseCookies: selectionResponseCookieSchema },
+		schema: {
+			cookies: sessionCookieSchema,
+			response: selectionClearedResponseSchema,
+			responseCookies: selectionResponseCookieSchema,
+			defaultStatusCode: StatusCodes.NoContent,
+		},
 	})(async (req) => {
 		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 
 		return req.res({
-			body: { selected: false, reason: 'cleared' },
+			status: StatusCodes.NoContent,
+			body: undefined,
 			cookies: moduleCookiesToResponseCookies(buildDeleteSelectionCookie()),
 		})
 	})

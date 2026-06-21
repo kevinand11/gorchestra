@@ -1,4 +1,4 @@
-import { Router, type RouteDef } from 'equipped/server'
+import { Router, StatusCodes, type RouteDef } from 'equipped/server'
 import { v } from 'valleyed'
 
 import { createEmailOtpChallenge } from '../../modules/email-otp'
@@ -30,9 +30,12 @@ const emailOtpSignInBodySchema = jsonObjectPipe({ email: nonEmptyStringPipe(), c
 export function createAuthApiRouter(context: ServerApiContext): Router<RouteDef> {
 	const router = new Router({ path: '/auth' })
 
-	router.post('/email-otp/challenges', { schema: { body: emailOtpChallengeBodySchema, response: emailOtpChallengeResponseSchema } })(
-		async (req) => createEmailOtpChallenge({ email: req.body.email, now: context.now() }),
-	)
+	router.post('/email-otp/challenges', {
+		schema: { body: emailOtpChallengeBodySchema, response: emailOtpChallengeResponseSchema, defaultStatusCode: StatusCodes.NoContent },
+	})(async (req) => {
+		await createEmailOtpChallenge({ email: req.body.email, now: context.now() })
+		return req.res({ status: StatusCodes.NoContent, body: undefined })
+	})
 
 	router.post('/email-otp/sign-in', {
 		schema: { body: emailOtpSignInBodySchema, response: emailOtpSignInResponseSchema, responseCookies: sessionResponseCookieSchema },
@@ -45,7 +48,15 @@ export function createAuthApiRouter(context: ServerApiContext): Router<RouteDef>
 			signingKey: context.sessionSigningKey,
 		})
 		if (!result.signedIn) throwBadRequest(`Email OTP Sign-in failed: ${result.reason}`)
-		return req.res({ body: result, cookies: moduleCookiesToResponseCookies(result.cookie) })
+		return req.res({
+			body: {
+				user: result.user,
+				emailAuthenticationIdentity: result.emailAuthenticationIdentity,
+				createdUser: result.createdUser,
+				session: result.session,
+			},
+			cookies: moduleCookiesToResponseCookies(result.cookie),
+		})
 	})
 
 	router.get('/session', { schema: { cookies: sessionCookieSchema, response: sessionAuthenticationResponseSchema } })(async (req) =>
@@ -57,14 +68,19 @@ export function createAuthApiRouter(context: ServerApiContext): Router<RouteDef>
 	})(async (req) => {
 		const result = await refreshApiSession(context, getSessionToken(req.cookies))
 		if (!result.refreshed) return throwRefreshSessionError(result.reason)
-		return req.res({ body: result, cookies: moduleCookiesToResponseCookies(result.cookie) })
+		return req.res({ body: result.session, cookies: moduleCookiesToResponseCookies(result.cookie) })
 	})
 
 	router.delete('/session', {
-		schema: { cookies: sessionCookieSchema, response: signedOutResponseSchema, responseCookies: signedOutResponseCookieSchema },
+		schema: {
+			cookies: sessionCookieSchema,
+			response: signedOutResponseSchema,
+			responseCookies: signedOutResponseCookieSchema,
+			defaultStatusCode: StatusCodes.NoContent,
+		},
 	})(async (req) => {
 		await revokeApiSessionIfAuthenticated(context, getSessionToken(req.cookies))
-		return req.res({ body: { signedOut: true }, cookies: signedOutResponseCookies() })
+		return req.res({ status: StatusCodes.NoContent, body: undefined, cookies: signedOutResponseCookies() })
 	})
 
 	return router

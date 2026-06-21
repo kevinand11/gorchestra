@@ -2,6 +2,7 @@ import { v, type Pipe, type PipeOutput } from 'valleyed'
 
 import type {
 	AccessibleWorkspacePortfolio,
+	EmptyResponse,
 	EmailAuthenticationIdentity,
 	EmailOtpChallengeResponse,
 	EmailOtpSignInResponse,
@@ -120,11 +121,12 @@ export const accessibleWorkspacePortfolioResponseSchema = responseSchema<Accessi
 	}),
 )
 
-export const emailOtpChallengeResponseSchema = responseSchema<EmailOtpChallengeResponse>()(v.object({ requested: v.is(true as const) }))
+export const noContentResponseSchema = responseSchema<EmptyResponse>()(v.any<EmptyResponse>())
+
+export const emailOtpChallengeResponseSchema = responseSchema<EmailOtpChallengeResponse>()(noContentResponseSchema)
 
 export const emailOtpSignInResponseSchema = responseSchema<EmailOtpSignInResponse>()(
 	v.object({
-		signedIn: v.is(true as const),
 		user: serverUserResponseSchema,
 		emailAuthenticationIdentity: emailAuthenticationIdentityResponseSchema,
 		createdUser: v.boolean(),
@@ -147,24 +149,16 @@ export const sessionAuthenticationResponseSchema = responseSchema<SessionStatusR
 	]),
 )
 
-export const refreshedSessionResponseSchema = responseSchema<RefreshedSessionResponse>()(
-	v.object({
-		refreshed: v.is(true as const),
-		session: sessionResponseSchema,
-	}),
-)
+export const refreshedSessionResponseSchema = responseSchema<RefreshedSessionResponse>()(sessionResponseSchema)
 
-export const signedOutResponseSchema = responseSchema<SignedOutResponse>()(v.object({ signedOut: v.is(true as const) }))
+export const signedOutResponseSchema = responseSchema<SignedOutResponse>()(noContentResponseSchema)
 
 export const workspacePortfoliosResponseSchema = responseSchema<WorkspacePortfoliosResponse>()(
-	v.object({
-		workspacePortfolios: v.array(accessibleWorkspacePortfolioResponseSchema),
-	}),
+	v.array(accessibleWorkspacePortfolioResponseSchema),
 )
 
 export const provisionedWorkspaceResponseSchema = responseSchema<ProvisionedWorkspaceResponse>()(
 	v.object({
-		provisioned: v.is(true as const),
 		workspace: workspaceResponseSchema,
 		workspaceMember: workspaceMemberResponseSchema,
 		workspaceOwnerRole: workspaceOwnerRoleResponseSchema,
@@ -198,12 +192,7 @@ export const selectionAccessResponseSchema = responseSchema<SelectionAccessRespo
 	]),
 )
 
-export const selectionClearedResponseSchema = responseSchema<SelectionClearedResponse>()(
-	v.object({
-		selected: v.is(false as const),
-		reason: v.is('cleared' as const),
-	}),
-)
+export const selectionClearedResponseSchema = responseSchema<SelectionClearedResponse>()(noContentResponseSchema)
 
 export const sessionResponseCookieSchema = v.object({ [sessionCookieName]: v.string() })
 export const selectionResponseCookieSchema = v.object({ [selectionCookieName]: v.string() })

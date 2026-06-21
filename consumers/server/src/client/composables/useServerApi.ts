@@ -70,7 +70,8 @@ export function createServerApi(options: ServerApiOptions = {}) {
 
 	return {
 		async requestEmailOtp(email: string): Promise<EmailOtpChallengeResponse> {
-			return getResponseData(await client.post<EmailOtpChallengeResponse>('/auth/email-otp/challenges', { email }))
+			await client.post('/auth/email-otp/challenges', { email })
+			return undefined
 		},
 		async verifyEmailOtpSignIn(email: string, code: string): Promise<EmailOtpSignInResponse> {
 			return getResponseData(await client.post<EmailOtpSignInResponse>('/auth/email-otp/sign-in', { email, code }))
@@ -82,7 +83,8 @@ export function createServerApi(options: ServerApiOptions = {}) {
 			return getResponseData(await client.post<RefreshedSessionResponse>('/auth/refresh'))
 		},
 		async logout(): Promise<SignedOutResponse> {
-			return getResponseData(await client.delete<SignedOutResponse>('/auth/session'))
+			await client.delete('/auth/session')
+			return undefined
 		},
 		async listWorkspacePortfolios(): Promise<WorkspacePortfoliosResponse> {
 			return getResponseData(await client.get<WorkspacePortfoliosResponse>('/workspaces/portfolios'))
@@ -100,7 +102,8 @@ export function createServerApi(options: ServerApiOptions = {}) {
 			return getResponseData(await client.post<SelectionAccessResponse>('/selection', { workspaceId, portfolioId }))
 		},
 		async clearSelection(): Promise<SelectionClearedResponse> {
-			return getResponseData(await client.delete<SelectionClearedResponse>('/selection/'))
+			await client.delete('/selection/')
+			return undefined
 		},
 	}
 }

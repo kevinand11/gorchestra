@@ -66,24 +66,24 @@ export type SessionStatusResponse =
 	| { authenticated: true; session: ServerSession; tokenStatus: 'current' | 'previous-grace'; refreshRecommended: boolean }
 	| { authenticated: false; reason: 'missing-token' | 'invalid-token' | 'expired' | 'not-current' }
 
-export type EmailOtpChallengeResponse = { requested: true }
+export type EmptyResponse = undefined
+
+export type EmailOtpChallengeResponse = EmptyResponse
 
 export type EmailOtpSignInResponse = {
-	signedIn: true
 	user: ServerUser
 	emailAuthenticationIdentity: EmailAuthenticationIdentity
 	createdUser: boolean
 	session: ServerSession
 }
 
-export type RefreshedSessionResponse = { refreshed: true; session: ServerSession }
+export type RefreshedSessionResponse = ServerSession
 
-export type SignedOutResponse = { signedOut: true }
+export type SignedOutResponse = EmptyResponse
 
-export type WorkspacePortfoliosResponse = { workspacePortfolios: AccessibleWorkspacePortfolio[] }
+export type WorkspacePortfoliosResponse = AccessibleWorkspacePortfolio[]
 
 export type ProvisionedWorkspaceResponse = {
-	provisioned: true
 	workspace: Workspace
 	workspaceMember: WorkspaceMember
 	workspaceOwnerRole: WorkspaceOwnerRole
@@ -111,4 +111,4 @@ export type SelectionAccessResponse =
 	  }
 	| { selected: false; reason: SelectionAccessFailureReason }
 
-export type SelectionClearedResponse = { selected: false; reason: 'cleared' }
+export type SelectionClearedResponse = EmptyResponse

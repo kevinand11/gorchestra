@@ -22,12 +22,10 @@ export function createWorkspaceApiRouter(context: ServerApiContext): Router<Rout
 		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 
-		return {
-			workspacePortfolios: await listAccessibleWorkspacePortfolios({
-				serverStorage: context.serverStorage,
-				userId: authentication.session.userId,
-			}),
-		}
+		return await listAccessibleWorkspacePortfolios({
+			serverStorage: context.serverStorage,
+			userId: authentication.session.userId,
+		})
 	})
 
 	router.post('/provision-default', {
@@ -64,7 +62,7 @@ export function createWorkspaceApiRouter(context: ServerApiContext): Router<Rout
 			signingKey: context.selectionSigningKey,
 		})
 		return req.res({
-			body: { provisioned: true, ...provisioned, selection: selection.selection },
+			body: { ...provisioned, selection: selection.selection },
 			cookies: moduleCookiesToResponseCookies(selection.cookie),
 		})
 	})
