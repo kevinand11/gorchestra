@@ -74,6 +74,9 @@ importers:
             valleyed:
                 specifier: 4.5.22
                 version: 4.5.22
+            vue:
+                specifier: ^3.5.38
+                version: 3.5.38(typescript@6.0.3)
         devDependencies:
             tsx:
                 specifier: ^4.22.4

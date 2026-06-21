@@ -41,6 +41,7 @@ The `consumers/server/` package implements the v1 deployed Server Consumer: Nuxt
 - In production/start/dev, Equipped Fastify owns the single public listener on `GORCHESTRA_PORT`; `/api/**` remains Equipped-owned, production/start delegates non-API fallback to the built Nuxt/Nitro Node listener, and dev delegates non-API fallback/HMR to a programmatic Nuxt dev runtime attached through Equipped's before-listen hook.
 - Nuxt client navigation uses `/sign-in` for Email OTP authentication, `/select` for Workspace/Portfolio selection and first Workspace Provisioning, `/app` for selected-Portfolio app state, and `/` as an auth/selection redirect landing route.
 - Client Session, accessible Workspace/Portfolio, and Selection state belongs in the Pinia Session store; pages register route guards explicitly with `definePageMeta`, using inline middleware for one-off page redirects and named middleware only for reusable guards. Route middleware must run in both Nuxt server and browser environments, and client API helpers must forward request cookies for server-side route checks.
+- Client source must explicitly import Vue APIs such as `ref`, `computed`, and lifecycle hooks instead of relying on Nuxt auto-imports; Nuxt page macros and route helpers may remain Nuxt-inferred.
 
 ## Verification
 
