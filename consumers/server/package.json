@@ -10,10 +10,12 @@
 	},
 	"dependencies": {
 		"@gorchestra/core": "workspace:*",
+		"@pinia/nuxt": "^0.11.3",
 		"axios": "^1.18.0",
 		"equipped": "latest",
 		"h3": "1.15.11",
 		"nuxt": "^4.4.8",
+		"pinia": "^3.0.4",
 		"valleyed": "latest"
 	},
 	"devDependencies": {

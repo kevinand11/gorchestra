@@ -7,3 +7,22 @@
 		</section>
 	</main>
 </template>
+
+<script setup lang="ts">
+import { useSessionStore } from '../stores/session'
+
+definePageMeta({
+	middleware: [
+		async () => {
+			if (typeof window === 'undefined') return
+			const sessionStore = useSessionStore()
+			try {
+				await sessionStore.loadAuthenticatedState()
+				return navigateTo(sessionStore.homePath)
+			} catch {
+				return navigateTo('/sign-in')
+			}
+		},
+	],
+})
+</script>

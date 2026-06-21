@@ -37,44 +37,24 @@
 </template>
 
 <script setup lang="ts">
-const api = useServerApi()
+import { createPageActionRunner } from '../composables/page-action'
+import { useSessionStore } from '../stores/session'
+
+definePageMeta({ middleware: ['has-selection'] })
+
+const sessionStore = useSessionStore()
 
 const busy = ref(false)
 const message = ref('')
 const errorMessage = ref('')
-const selection = ref<Awaited<ReturnType<typeof api.getSelection>> | null>(null)
-
-onMounted(loadAppSelection)
-
-async function loadAppSelection(): Promise<void> {
-	await runAction(async () => {
-		const currentSelection = await api.getSelection()
-		if (!currentSelection.selected) {
-			await navigateTo('/select')
-			return
-		}
-		selection.value = currentSelection
-	})
-}
+const runAction = createPageActionRunner({ busy, errorMessage, getErrorMessage: sessionStore.errorMessage })
+const selection = computed(() => sessionStore.selection)
 
 async function logout(): Promise<void> {
 	await runAction(async () => {
-		await api.logout()
-		selection.value = null
+		await sessionStore.logout()
 		message.value = 'Signed out.'
 		await navigateTo('/sign-in')
 	})
-}
-
-async function runAction(action: () => Promise<void>): Promise<void> {
-	busy.value = true
-	errorMessage.value = ''
-	try {
-		await action()
-	} catch (error) {
-		errorMessage.value = api.errorMessage(error)
-	} finally {
-		busy.value = false
-	}
 }
 </script>

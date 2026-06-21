@@ -60,28 +60,33 @@
 </template>
 
 <script setup lang="ts">
-const api = useServerApi()
+import { createPageActionRunner } from '../composables/page-action'
+import { useSessionStore } from '../stores/session'
+
+definePageMeta({ middleware: ['is-authenticated'] })
+
+const sessionStore = useSessionStore()
 
 const busy = ref(false)
 const message = ref('')
 const errorMessage = ref('')
+const runAction = createPageActionRunner({ busy, errorMessage, getErrorMessage: sessionStore.errorMessage })
 const workspaceDisplayName = ref('Delivery Ops')
 const portfolioDisplayName = ref('Main Portfolio')
-const workspacePortfolios = ref<Awaited<ReturnType<typeof api.listWorkspacePortfolios>>['workspacePortfolios']>([])
-const selection = ref<Awaited<ReturnType<typeof api.getSelection>> | null>(null)
+const workspacePortfolios = computed(() => sessionStore.workspacePortfolios)
+const selection = computed(() => sessionStore.selection)
 
 onMounted(refreshSelectionPage)
 
 async function refreshSelectionPage(): Promise<void> {
 	await runAction(async () => {
-		workspacePortfolios.value = (await api.listWorkspacePortfolios()).workspacePortfolios
-		selection.value = await api.getSelection()
+		await sessionStore.loadAuthenticatedState()
 	})
 }
 
 async function provisionWorkspace(): Promise<void> {
 	await runAction(async () => {
-		await api.provisionDefaultWorkspace({
+		await sessionStore.provisionDefaultWorkspace({
 			workspaceDisplayName: workspaceDisplayName.value,
 			portfolioDisplayName: portfolioDisplayName.value,
 		})
@@ -92,7 +97,7 @@ async function provisionWorkspace(): Promise<void> {
 
 async function selectPortfolio(workspaceId: string, portfolioId: string): Promise<void> {
 	await runAction(async () => {
-		selection.value = await api.setSelection(workspaceId, portfolioId)
+		await sessionStore.setSelection(workspaceId, portfolioId)
 		message.value = 'Selection updated.'
 		await navigateTo('/app')
 	})
@@ -100,30 +105,16 @@ async function selectPortfolio(workspaceId: string, portfolioId: string): Promis
 
 async function clearSelection(): Promise<void> {
 	await runAction(async () => {
-		selection.value = await api.clearSelection()
+		await sessionStore.clearSelection()
 		message.value = 'Selection cleared.'
 	})
 }
 
 async function logout(): Promise<void> {
 	await runAction(async () => {
-		await api.logout()
-		workspacePortfolios.value = []
-		selection.value = null
+		await sessionStore.logout()
 		message.value = 'Signed out.'
 		await navigateTo('/sign-in')
 	})
-}
-
-async function runAction(action: () => Promise<void>): Promise<void> {
-	busy.value = true
-	errorMessage.value = ''
-	try {
-		await action()
-	} catch (error) {
-		errorMessage.value = api.errorMessage(error)
-	} finally {
-		busy.value = false
-	}
 }
 </script>

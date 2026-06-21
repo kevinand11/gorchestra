@@ -31,18 +31,37 @@
 </template>
 
 <script setup lang="ts">
-const api = useServerApi()
+import { createPageActionRunner } from '../composables/page-action'
+import { useSessionStore } from '../stores/session'
+
+definePageMeta({
+	middleware: [
+		async () => {
+			if (typeof window === 'undefined') return
+			const sessionStore = useSessionStore()
+			try {
+				await sessionStore.loadAuthenticatedState()
+			} catch {
+				return
+			}
+			if (sessionStore.isAuthenticated) return navigateTo(sessionStore.homePath)
+		},
+	],
+})
+
+const sessionStore = useSessionStore()
 
 const busy = ref(false)
 const message = ref('')
 const errorMessage = ref('')
+const runAction = createPageActionRunner({ busy, errorMessage, getErrorMessage: sessionStore.errorMessage })
 const email = ref('')
 const code = ref('')
 const challengeRequested = ref(false)
 
 async function requestEmailOtp(): Promise<void> {
 	await runAction(async () => {
-		await api.requestEmailOtp(email.value)
+		await sessionStore.requestEmailOtp(email.value)
 		challengeRequested.value = true
 		message.value = 'Sign-in code sent. Check the server mail output for the development OTP.'
 	})
@@ -50,23 +69,11 @@ async function requestEmailOtp(): Promise<void> {
 
 async function verifyEmailOtp(): Promise<void> {
 	await runAction(async () => {
-		await api.verifyEmailOtpSignIn(email.value, code.value)
+		await sessionStore.verifyEmailOtpSignIn(email.value, code.value)
 		code.value = ''
 		challengeRequested.value = false
 		message.value = 'Signed in.'
-		await navigateTo('/')
+		await navigateTo(sessionStore.homePath)
 	})
-}
-
-async function runAction(action: () => Promise<void>): Promise<void> {
-	busy.value = true
-	errorMessage.value = ''
-	try {
-		await action()
-	} catch (error) {
-		errorMessage.value = api.errorMessage(error)
-	} finally {
-		busy.value = false
-	}
 }
 </script>
