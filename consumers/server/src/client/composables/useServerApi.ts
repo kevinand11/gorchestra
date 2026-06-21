@@ -18,11 +18,19 @@ export type ServerApiOptions = {
 }
 
 type ServerApiOptionsResolver = () => ServerApiOptions | null
+type PreconditionRequiredHandler = () => void | Promise<void>
+
+const preconditionRequiredStatusCode = 428
 
 let serverApiOptionsResolver: ServerApiOptionsResolver | null = null
+let preconditionRequiredHandler: PreconditionRequiredHandler | null = null
 
 export function setServerApiOptionsResolver(resolver: ServerApiOptionsResolver): void {
 	serverApiOptionsResolver = resolver
+}
+
+export function setPreconditionRequiredHandler(handler: PreconditionRequiredHandler): void {
+	preconditionRequiredHandler = handler
 }
 
 export function useServerApi() {
@@ -52,6 +60,13 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		withCredentials: true,
 		...(options.headers === undefined ? {} : { headers: options.headers }),
 	})
+	client.interceptors.response.use(
+		(response) => response,
+		async (error: unknown) => {
+			if (shouldHandlePreconditionRequired(error)) await preconditionRequiredHandler?.()
+			throw error
+		},
+	)
 
 	return {
 		async requestEmailOtp(email: string): Promise<EmailOtpChallengeResponse> {
@@ -94,4 +109,32 @@ export type ServerApi = ReturnType<typeof createServerApi>
 
 function getResponseData<T>(response: { data: T }): T {
 	return response.data
+}
+
+function shouldHandlePreconditionRequired(error: unknown): boolean {
+	return typeof window !== 'undefined' && getHttpStatusCode(error) === preconditionRequiredStatusCode
+}
+
+function getHttpStatusCode(error: unknown): number | null {
+	const status = getNestedValue(error, ['response', 'status'])
+	return typeof status === 'number' ? status : null
+}
+
+function getNestedValue(source: unknown, path: string[]): unknown {
+	return path.reduce<unknown>((value, key) => {
+		if (typeof value !== 'object' || value === null || !(key in value)) return undefined
+		return value[key as keyof typeof value]
+	}, source)
+}
+
+if (import.meta.vitest) {
+	const { describe, expect, it } = import.meta.vitest
+
+	describe('Server API precondition handling', () => {
+		it('extracts Axios HTTP status codes', () => {
+			expect(getHttpStatusCode({ response: { status: 428 } })).toBe(428)
+			expect(getHttpStatusCode({ response: { status: '428' } })).toBeNull()
+			expect(getHttpStatusCode(new Error('network'))).toBeNull()
+		})
+	})
 }

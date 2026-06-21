@@ -53,7 +53,7 @@ A server-signed browser-readable cookie that carries the selected Workspace and 
 _Avoid_: Authorization token, Session
 
 **Selection Required**:
-A Server Consumer request state where the signed-in User has no valid Selected Workspace and Selected Portfolio for a Portfolio-scoped request. Page requests redirect to selection, while API requests return a structured Selection Required response.
+A Server Consumer request state where the signed-in User has no valid Selected Workspace and Selected Portfolio for a Portfolio-scoped request. Page requests redirect to selection, while Portfolio-scoped API requests fail with HTTP 428 Precondition Required so browser clients can redirect to selection. The Selection introspection API still returns structured selection state.
 _Avoid_: Unauthorized, unauthenticated
 
 **Workspace**:

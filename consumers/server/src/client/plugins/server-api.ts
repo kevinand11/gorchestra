@@ -1,8 +1,11 @@
-import { defineNuxtPlugin, tryUseNuxtApp, useRequestHeaders, useRequestURL } from 'nuxt/app'
+import { defineNuxtPlugin, navigateTo, tryUseNuxtApp, useRequestHeaders, useRequestURL } from 'nuxt/app'
 
-import { setServerApiOptionsResolver } from '../composables/useServerApi'
+import { setPreconditionRequiredHandler, setServerApiOptionsResolver } from '../composables/useServerApi'
 
-export default defineNuxtPlugin(() => {
+export default defineNuxtPlugin((nuxtApp) => {
+	setPreconditionRequiredHandler(() => {
+		void nuxtApp.runWithContext(() => navigateTo('/select'))
+	})
 	setServerApiOptionsResolver(() => {
 		if (typeof window !== 'undefined' || tryUseNuxtApp() === null) return null
 
