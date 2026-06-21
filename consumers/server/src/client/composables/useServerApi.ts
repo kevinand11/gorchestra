@@ -17,8 +17,17 @@ export type ServerApiOptions = {
 	headers?: { cookie: string }
 }
 
+type ServerApiOptionsResolver = () => ServerApiOptions | null
+
+let serverApiOptionsResolver: ServerApiOptionsResolver | null = null
+
+export function setServerApiOptionsResolver(resolver: ServerApiOptionsResolver): void {
+	serverApiOptionsResolver = resolver
+}
+
 export function useServerApi() {
-	return createServerApi()
+	if (typeof window !== 'undefined') return createServerApi()
+	return createServerApi(serverApiOptionsResolver?.() ?? {})
 }
 
 export function createServerApi(options: ServerApiOptions = {}) {

@@ -32,7 +32,6 @@
 
 <script setup lang="ts">
 import { createPageActionRunner } from '../composables/page-action'
-import { useRequestServerApi } from '../composables/useRequestServerApi'
 import { useSessionStore } from '../stores/session'
 
 definePageMeta({
@@ -40,7 +39,7 @@ definePageMeta({
 		async () => {
 			const sessionStore = useSessionStore()
 			try {
-				await sessionStore.loadAuthenticatedState(useRequestServerApi())
+				await sessionStore.loadAuthenticatedState()
 			} catch {
 				return
 			}
