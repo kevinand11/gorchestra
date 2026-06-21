@@ -21,7 +21,7 @@
 				</p>
 				<div class="actions">
 					<NuxtLink class="button-link" to="/select">Change selection</NuxtLink>
-					<button type="button" class="secondary" :disabled="isLoggingOut" @click="logoutAction.execute()">Sign out</button>
+					<button type="button" class="secondary" :disabled="isLoggingOut" @click="logout()">Sign out</button>
 				</div>
 				<p v-if="logoutError" class="error">{{ logoutError }}</p>
 			</article>
@@ -43,10 +43,12 @@ definePageMeta({ middleware: ['has-selection'] })
 const sessionStore = useSessionStore()
 
 const selection = computed(() => sessionStore.selection)
-const logoutAction = useApiAction(async () => {
+const {
+	isLoading: isLoggingOut,
+	error: logoutError,
+	execute: logout,
+} = useApiAction(async () => {
 	await sessionStore.logout()
 	await navigateTo('/sign-in')
 })
-const isLoggingOut = logoutAction.isLoading
-const logoutError = logoutAction.error
 </script>

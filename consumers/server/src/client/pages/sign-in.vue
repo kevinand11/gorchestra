@@ -8,7 +8,7 @@
 
 		<section class="card">
 			<h2>Email OTP Sign-in</h2>
-			<form class="stack" @submit.prevent="requestEmailOtpAction.execute()">
+			<form class="stack" @submit.prevent="requestEmailOtp()">
 				<label>
 					Email address
 					<input v-model="email" type="email" autocomplete="email" required placeholder="person@example.com" />
@@ -17,7 +17,7 @@
 				<p v-if="requestEmailOtpError" class="error">{{ requestEmailOtpError }}</p>
 			</form>
 
-			<form v-if="challengeRequested" class="stack" @submit.prevent="verifyEmailOtpAction.execute()">
+			<form v-if="challengeRequested" class="stack" @submit.prevent="verifyEmailOtp()">
 				<label>
 					Six-digit code
 					<input v-model="code" inputmode="numeric" autocomplete="one-time-code" required placeholder="123456" />
@@ -49,20 +49,23 @@ const email = ref('')
 const code = ref('')
 const challengeRequested = ref(false)
 
-const requestEmailOtpAction = useApiAction(async () => {
+const {
+	isLoading: isRequestingEmailOtp,
+	error: requestEmailOtpError,
+	execute: requestEmailOtp,
+} = useApiAction(async () => {
 	await sessionStore.requestEmailOtp(email.value)
 	challengeRequested.value = true
 })
 
-const verifyEmailOtpAction = useApiAction(async () => {
+const {
+	isLoading: isVerifyingEmailOtp,
+	error: verifyEmailOtpError,
+	execute: verifyEmailOtp,
+} = useApiAction(async () => {
 	await sessionStore.verifyEmailOtpSignIn(email.value, code.value)
 	code.value = ''
 	challengeRequested.value = false
 	await navigateTo(sessionStore.homePath)
 })
-
-const isRequestingEmailOtp = requestEmailOtpAction.isLoading
-const isVerifyingEmailOtp = verifyEmailOtpAction.isLoading
-const requestEmailOtpError = requestEmailOtpAction.error
-const verifyEmailOtpError = verifyEmailOtpAction.error
 </script>

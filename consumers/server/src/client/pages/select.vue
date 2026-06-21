@@ -14,7 +14,7 @@
 		<section v-else-if="workspacePortfolios.length === 0" class="card">
 			<h2>Provision your first Workspace</h2>
 			<p>No accessible Workspace and Portfolio is available yet.</p>
-			<form class="stack" @submit.prevent="provisionWorkspaceAction.execute()">
+			<form class="stack" @submit.prevent="provisionWorkspace()">
 				<label>
 					Workspace display name
 					<input v-model="workspaceDisplayName" required placeholder="Delivery Ops" />
@@ -64,13 +64,13 @@
 						type="button"
 						class="secondary"
 						:disabled="isClearingSelection || !selection?.selected"
-						@click="clearSelectionAction.execute()">
+						@click="clearSelection()">
 						Clear selection
 					</button>
 					<p v-if="clearSelectionError" class="error">{{ clearSelectionError }}</p>
 				</div>
 				<div>
-					<button type="button" class="secondary" :disabled="isLoggingOut" @click="logoutAction.execute()">Sign out</button>
+					<button type="button" class="secondary" :disabled="isLoggingOut" @click="logout()">Sign out</button>
 					<p v-if="logoutError" class="error">{{ logoutError }}</p>
 				</div>
 			</div>
@@ -92,14 +92,18 @@ const selectingPortfolioKey = ref('')
 const workspacePortfolios = computed(() => sessionStore.workspacePortfolios)
 const selection = computed(() => sessionStore.selection)
 
-const refreshSelectionPageAction = useFetchAction(
+const { isLoading: isLoadingInitialSelection, hasExecuted: hasLoadedInitialSelection } = useFetchAction(
 	async () => {
 		await sessionStore.loadAuthenticatedState()
 	},
 	{ dedupeKey: 'select-page-session-state' },
 )
 
-const provisionWorkspaceAction = useApiAction(async () => {
+const {
+	isLoading: isProvisioningWorkspace,
+	error: provisionWorkspaceError,
+	execute: provisionWorkspace,
+} = useApiAction(async () => {
 	await sessionStore.provisionDefaultWorkspace({
 		workspaceDisplayName: workspaceDisplayName.value,
 		portfolioDisplayName: portfolioDisplayName.value,
@@ -107,42 +111,45 @@ const provisionWorkspaceAction = useApiAction(async () => {
 	await navigateTo('/app')
 })
 
-const selectPortfolioAction = useApiAction(async (workspaceId: string, portfolioId: string) => {
+const {
+	isLoading: isSelectingPortfolio,
+	error: selectPortfolioError,
+	execute: executeSelectPortfolio,
+} = useApiAction(async (workspaceId: string, portfolioId: string) => {
 	await sessionStore.setSelection(workspaceId, portfolioId)
 	await navigateTo('/app')
 })
 
 async function selectPortfolio(workspaceId: string, portfolioId: string): Promise<void> {
 	selectingPortfolioKey.value = portfolioActionKey(workspaceId, portfolioId)
-	await selectPortfolioAction.execute(workspaceId, portfolioId)
+	await executeSelectPortfolio(workspaceId, portfolioId)
 }
 
-const clearSelectionAction = useApiAction(async () => {
+const {
+	isLoading: isClearingSelection,
+	error: clearSelectionError,
+	execute: clearSelection,
+} = useApiAction(async () => {
 	await sessionStore.clearSelection()
 })
 
-const logoutAction = useApiAction(async () => {
+const {
+	isLoading: isLoggingOut,
+	error: logoutError,
+	execute: logout,
+} = useApiAction(async () => {
 	await sessionStore.logout()
 	await navigateTo('/sign-in')
 })
 
-const isInitialSelectionLoading = computed(
-	() => refreshSelectionPageAction.isLoading.value && !refreshSelectionPageAction.hasExecuted.value,
-)
-const isProvisioningWorkspace = provisionWorkspaceAction.isLoading
-const provisionWorkspaceError = provisionWorkspaceAction.error
-const isSelectingPortfolio = selectPortfolioAction.isLoading
-const isClearingSelection = clearSelectionAction.isLoading
-const clearSelectionError = clearSelectionAction.error
-const isLoggingOut = logoutAction.isLoading
-const logoutError = logoutAction.error
+const isInitialSelectionLoading = computed(() => isLoadingInitialSelection.value && !hasLoadedInitialSelection.value)
 
 function isSelectingThisPortfolio(workspaceId: string, portfolioId: string): boolean {
-	return selectPortfolioAction.isLoading.value && selectingPortfolioKey.value === portfolioActionKey(workspaceId, portfolioId)
+	return isSelectingPortfolio.value && selectingPortfolioKey.value === portfolioActionKey(workspaceId, portfolioId)
 }
 
 function portfolioSelectionError(workspaceId: string, portfolioId: string): string {
-	return selectingPortfolioKey.value === portfolioActionKey(workspaceId, portfolioId) ? selectPortfolioAction.error.value : ''
+	return selectingPortfolioKey.value === portfolioActionKey(workspaceId, portfolioId) ? selectPortfolioError.value : ''
 }
 
 function portfolioActionKey(workspaceId: string, portfolioId: string): string {
