@@ -1,18 +1,6 @@
 import axios from 'axios'
 
-import { createRouteContractAxiosClient } from './server-api-route-client'
-import type {
-	EmailOtpChallengeResponse,
-	EmailOtpSignInResponse,
-	PortfolioProjectsResponse,
-	ProvisionedWorkspaceResponse,
-	RefreshedSessionResponse,
-	SelectionAccessResponse,
-	SelectionClearedResponse,
-	SessionStatusResponse,
-	SignedOutResponse,
-	WorkspacePortfoliosResponse,
-} from '../../shared/api'
+import { createRouteContractAxiosClient } from '../utils/server-api-route-client'
 
 export type ServerApiOptions = {
 	baseURL?: string
@@ -72,40 +60,37 @@ export function createServerApi(options: ServerApiOptions = {}) {
 	const routes = createRouteContractAxiosClient(client)
 
 	return {
-		async requestEmailOtp(email: string): Promise<EmailOtpChallengeResponse> {
+		async requestEmailOtp(email: string) {
 			return routes.request('post', '/api/auth/email-otp/challenges', { body: { email } })
 		},
-		async verifyEmailOtpSignIn(email: string, code: string): Promise<EmailOtpSignInResponse> {
+		async verifyEmailOtpSignIn(email: string, code: string) {
 			return routes.request('post', '/api/auth/email-otp/sign-in', { body: { email, code } })
 		},
-		async getSession(): Promise<SessionStatusResponse> {
+		async getSession() {
 			return routes.request('get', '/api/auth/session')
 		},
-		async refreshSession(): Promise<RefreshedSessionResponse> {
+		async refreshSession() {
 			return routes.request('post', '/api/auth/refresh')
 		},
-		async logout(): Promise<SignedOutResponse> {
+		async logout() {
 			return routes.request('delete', '/api/auth/session')
 		},
-		async listWorkspacePortfolios(): Promise<WorkspacePortfoliosResponse> {
+		async listWorkspacePortfolios() {
 			return routes.request('get', '/api/workspaces/portfolios')
 		},
-		async listProjects(): Promise<PortfolioProjectsResponse> {
+		async listProjects() {
 			return routes.request('get', '/api/portfolio/projects')
 		},
-		async provisionDefaultWorkspace(input: {
-			workspaceDisplayName: string
-			portfolioDisplayName: string
-		}): Promise<ProvisionedWorkspaceResponse> {
+		async provisionDefaultWorkspace(input: { workspaceDisplayName: string; portfolioDisplayName: string }) {
 			return routes.request('post', '/api/workspaces/provision-default', { body: input })
 		},
-		async getSelection(): Promise<SelectionAccessResponse> {
+		async getSelection() {
 			return routes.request('get', '/api/selection')
 		},
-		async setSelection(workspaceId: string, portfolioId: string): Promise<SelectionAccessResponse> {
+		async setSelection(workspaceId: string, portfolioId: string) {
 			return routes.request('post', '/api/selection', { body: { workspaceId, portfolioId } })
 		},
-		async clearSelection(): Promise<SelectionClearedResponse> {
+		async clearSelection() {
 			return routes.request('delete', '/api/selection')
 		},
 	}

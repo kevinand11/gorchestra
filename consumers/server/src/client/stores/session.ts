@@ -1,16 +1,15 @@
 import { defineStore } from 'pinia'
 
-import type {
-	EmailOtpChallengeResponse,
-	EmailOtpSignInResponse,
-	ProvisionedWorkspaceResponse,
-	SelectionAccessResponse,
-	SelectionClearedResponse,
-	SessionStatusResponse,
-	SignedOutResponse,
-	WorkspacePortfoliosResponse,
-} from '../../shared/api'
 import { useServerApi, type ServerApi } from '../composables/useServerApi'
+
+type SessionStatusResponse = Awaited<ReturnType<ServerApi['getSession']>>
+type WorkspacePortfoliosResponse = Awaited<ReturnType<ServerApi['listWorkspacePortfolios']>>
+type SelectionAccessResponse = Awaited<ReturnType<ServerApi['getSelection']>>
+type EmailOtpChallengeResponse = Awaited<ReturnType<ServerApi['requestEmailOtp']>>
+type EmailOtpSignInResponse = Awaited<ReturnType<ServerApi['verifyEmailOtpSignIn']>>
+type ProvisionedWorkspaceResponse = Awaited<ReturnType<ServerApi['provisionDefaultWorkspace']>>
+type SelectionClearedResponse = Awaited<ReturnType<ServerApi['clearSelection']>>
+type SignedOutResponse = Awaited<ReturnType<ServerApi['logout']>>
 
 export type ClientSelectionState = SelectionAccessResponse
 
@@ -209,7 +208,7 @@ if (import.meta.vitest) {
 				id: 'portfolio-1',
 				workspaceId: 'workspace-1',
 				displayName: 'Portfolio',
-				coreStorageNamespace: 'portfolios/test',
+				coreStorageNamespace: 'portfolios/portfolio-1',
 				registeredAt: '2026-06-19T00:00:00.000Z',
 			},
 			activeWorkspaceOwnerRole: null,

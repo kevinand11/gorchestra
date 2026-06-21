@@ -6,11 +6,14 @@ import type {
 	DefaultParams,
 	DefaultQuery,
 	RouteContract,
+	RouteContractOf,
 	RouteInput,
 	RouteOutput,
 } from 'equipped/server'
 
-import type { ServerApiRouteContract } from '../../shared/server-api-contract'
+import type { createServerApiServer } from '../../server/api/app'
+
+type ServerRouteContract = RouteContractOf<ReturnType<typeof createServerApiServer>>
 
 type AxiosRouteTransport = {
 	request<T = unknown>(config: AxiosRequestConfig): Promise<{ data: T; status: number }>
@@ -46,7 +49,7 @@ type HeadersInput<Input> = 'headers' extends keyof Input
 	? OptionalWhenDefault<'headers', Input['headers'], DefaultHeaders>
 	: EmptyRouteInput
 
-export type ClientRouteInput<
+type ClientRouteInput<
 	Contract extends RouteContract,
 	Method extends RouteMethod<Contract>,
 	Path extends RoutePath<Contract, Method>,
@@ -64,7 +67,7 @@ const apiPathPrefix = '/api'
 const noContentStatusCode = 204
 const routeParamPrimitiveTypes = new Set(['string', 'number', 'boolean', 'bigint'])
 
-export function createRouteContractAxiosClient<Contract extends RouteContract = ServerApiRouteContract>(client: AxiosRouteTransport) {
+export function createRouteContractAxiosClient<Contract extends RouteContract = ServerRouteContract>(client: AxiosRouteTransport) {
 	return {
 		async request<Method extends RouteMethod<Contract>, Path extends RoutePath<Contract, Method>>(
 			method: Method,

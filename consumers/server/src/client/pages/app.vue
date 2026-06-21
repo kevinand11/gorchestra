@@ -52,12 +52,13 @@
 </template>
 
 <script setup lang="ts">
-import type { ListedProject } from '../../shared/api'
 import { useApiAction, useFetchAction } from '../composables/action-state'
-import { useServerApi } from '../composables/useServerApi'
+import { useServerApi, type ServerApi } from '../composables/useServerApi'
 import { useSessionStore } from '../stores/session'
 
 definePageMeta({ middleware: ['has-selection'] })
+
+type ListedProject = Awaited<ReturnType<ServerApi['listProjects']>>[number]
 
 const sessionStore = useSessionStore()
 const serverApi = useServerApi()

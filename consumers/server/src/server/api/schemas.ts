@@ -1,28 +1,5 @@
-import { v, type Pipe, type PipeOutput } from 'valleyed'
+import { v } from 'valleyed'
 
-import type {
-	AccessibleWorkspacePortfolio,
-	EmptyResponse,
-	EmailAuthenticationIdentity,
-	EmailOtpChallengeResponse,
-	EmailOtpSignInResponse,
-	ListedProject,
-	PortfolioProjectsResponse,
-	PortfolioRegistryEntry,
-	ProvisionedWorkspaceResponse,
-	RefreshedSessionResponse,
-	SelectedPortfolio,
-	SelectionAccessResponse,
-	SelectionClearedResponse,
-	ServerSession,
-	ServerUser,
-	SessionStatusResponse,
-	SignedOutResponse,
-	Workspace,
-	WorkspaceMember,
-	WorkspaceOwnerRole,
-	WorkspacePortfoliosResponse,
-} from '../../shared/api'
 import { selectionCookieName } from '../modules/selection-cookie'
 import { sessionCookieName } from '../modules/sessions'
 
@@ -34,97 +11,69 @@ const integerPipe = v.number().pipe(v.int())
 const positiveIntegerPipe = integerPipe.pipe(v.gte(1))
 const nonNegativeIntegerPipe = integerPipe.pipe(v.gte(0))
 
-type ExactResponsePipe<Expected, Schema extends Pipe<unknown, unknown>> = [PipeOutput<Schema>] extends [Expected]
-	? [Expected] extends [PipeOutput<Schema>]
-		? Schema
-		: never
-	: never
+export const serverUserResponseSchema = v.object({
+	id: idPipe,
+	createdAt: isoDateTimePipe,
+})
 
-function responseSchema<Expected>() {
-	return <Schema extends Pipe<unknown, unknown>>(schema: ExactResponsePipe<Expected, Schema>): Schema => schema
-}
+export const emailAuthenticationIdentityResponseSchema = v.object({
+	id: idPipe,
+	userId: idPipe,
+	email: emailPipe,
+	createdAt: isoDateTimePipe,
+})
 
-export const serverUserResponseSchema = responseSchema<ServerUser>()(
-	v.object({
-		id: idPipe,
-		createdAt: isoDateTimePipe,
-	}),
-)
+export const sessionResponseSchema = v.object({
+	userId: idPipe,
+	email: emailPipe,
+	sessionId: idPipe,
+	issuedAt: isoDateTimePipe,
+	expiresAt: isoDateTimePipe,
+})
 
-export const emailAuthenticationIdentityResponseSchema = responseSchema<EmailAuthenticationIdentity>()(
-	v.object({
-		id: idPipe,
-		userId: idPipe,
-		email: emailPipe,
-		createdAt: isoDateTimePipe,
-	}),
-)
+export const workspaceResponseSchema = v.object({
+	id: idPipe,
+	displayName: nonEmptyStringPipe,
+	createdAt: isoDateTimePipe,
+})
 
-export const sessionResponseSchema = responseSchema<ServerSession>()(
-	v.object({
-		userId: idPipe,
-		email: emailPipe,
-		sessionId: idPipe,
-		issuedAt: isoDateTimePipe,
-		expiresAt: isoDateTimePipe,
-	}),
-)
+export const workspaceMemberResponseSchema = v.object({
+	id: idPipe,
+	workspaceId: idPipe,
+	userId: idPipe,
+	membershipStartedAt: isoDateTimePipe,
+	membershipEndedAt: v.nullable(isoDateTimePipe),
+})
 
-export const workspaceResponseSchema = responseSchema<Workspace>()(
-	v.object({
-		id: idPipe,
-		displayName: nonEmptyStringPipe,
-		createdAt: isoDateTimePipe,
-	}),
-)
+export const workspaceOwnerRoleResponseSchema = v.object({
+	id: idPipe,
+	workspaceId: idPipe,
+	workspaceMemberId: idPipe,
+	assignedAt: isoDateTimePipe,
+	revokedAt: v.nullable(isoDateTimePipe),
+})
 
-export const workspaceMemberResponseSchema = responseSchema<WorkspaceMember>()(
-	v.object({
-		id: idPipe,
-		workspaceId: idPipe,
-		userId: idPipe,
-		membershipStartedAt: isoDateTimePipe,
-		membershipEndedAt: v.nullable(isoDateTimePipe),
-	}),
-)
+export const portfolioRegistryEntryResponseSchema = v.object({
+	id: idPipe,
+	workspaceId: idPipe,
+	displayName: nonEmptyStringPipe,
+	coreStorageNamespace: nonEmptyStringPipe,
+	registeredAt: isoDateTimePipe,
+})
 
-export const workspaceOwnerRoleResponseSchema = responseSchema<WorkspaceOwnerRole>()(
-	v.object({
-		id: idPipe,
-		workspaceId: idPipe,
-		workspaceMemberId: idPipe,
-		assignedAt: isoDateTimePipe,
-		revokedAt: v.nullable(isoDateTimePipe),
-	}),
-)
+export const selectedPortfolioResponseSchema = v.object({
+	workspaceId: idPipe,
+	portfolioId: idPipe,
+	issuedAt: isoDateTimePipe,
+	expiresAt: isoDateTimePipe,
+})
 
-export const portfolioRegistryEntryResponseSchema = responseSchema<PortfolioRegistryEntry>()(
-	v.object({
-		id: idPipe,
-		workspaceId: idPipe,
-		displayName: nonEmptyStringPipe,
-		coreStorageNamespace: nonEmptyStringPipe,
-		registeredAt: isoDateTimePipe,
-	}),
-)
-
-export const selectedPortfolioResponseSchema = responseSchema<SelectedPortfolio>()(
-	v.object({
-		workspaceId: idPipe,
-		portfolioId: idPipe,
-		issuedAt: isoDateTimePipe,
-		expiresAt: isoDateTimePipe,
-	}),
-)
-
-export const accessibleWorkspacePortfolioResponseSchema = responseSchema<AccessibleWorkspacePortfolio>()(
-	v.object({
-		workspace: workspaceResponseSchema,
-		workspaceMember: workspaceMemberResponseSchema,
-		portfolio: portfolioRegistryEntryResponseSchema,
-		activeWorkspaceOwnerRole: v.nullable(workspaceOwnerRoleResponseSchema),
-	}),
-)
+export const accessibleWorkspacePortfolioResponseSchema = v.object({
+	workspace: workspaceResponseSchema,
+	workspaceMember: workspaceMemberResponseSchema,
+	portfolio: portfolioRegistryEntryResponseSchema,
+	activeWorkspaceOwnerRole: v.nullable(workspaceOwnerRoleResponseSchema),
+})
 
 const localActorRefResponseSchema = v.object({ type: v.string(), id: v.string() })
 const auditStampResponseSchema = v.discriminate((value) => value.origin, {
@@ -168,89 +117,77 @@ const repositoryResponseSchema = v.object({
 const listedProjectSourceResponseSchema = v.discriminate((value) => value.type, {
 	'source-control': v.object({ type: v.is('source-control' as const), repositories: v.array(repositoryResponseSchema) }),
 })
-export const listedProjectResponseSchema = responseSchema<ListedProject>()(
+export const listedProjectResponseSchema = v.object({
+	id: idPipe,
+	title: nonEmptyStringPipe,
+	source: listedProjectSourceResponseSchema,
+	config: v.nullable(projectConfigRecordResponseSchema),
+	created: auditStampResponseSchema,
+})
+export const portfolioProjectsResponseSchema = v.array(listedProjectResponseSchema)
+
+export const noContentResponseSchema = v.any<undefined>()
+
+export const emailOtpChallengeResponseSchema = noContentResponseSchema
+
+export const emailOtpSignInResponseSchema = v.object({
+	user: serverUserResponseSchema,
+	emailAuthenticationIdentity: emailAuthenticationIdentityResponseSchema,
+	createdUser: v.boolean(),
+	session: sessionResponseSchema,
+})
+
+export const sessionAuthenticationResponseSchema = v.or([
 	v.object({
-		id: idPipe,
-		title: nonEmptyStringPipe,
-		source: listedProjectSourceResponseSchema,
-		config: v.nullable(projectConfigRecordResponseSchema),
-		created: auditStampResponseSchema,
-	}),
-)
-export const portfolioProjectsResponseSchema = responseSchema<PortfolioProjectsResponse>()(v.array(listedProjectResponseSchema))
-
-export const noContentResponseSchema = responseSchema<EmptyResponse>()(v.any<EmptyResponse>())
-
-export const emailOtpChallengeResponseSchema = responseSchema<EmailOtpChallengeResponse>()(noContentResponseSchema)
-
-export const emailOtpSignInResponseSchema = responseSchema<EmailOtpSignInResponse>()(
-	v.object({
-		user: serverUserResponseSchema,
-		emailAuthenticationIdentity: emailAuthenticationIdentityResponseSchema,
-		createdUser: v.boolean(),
+		authenticated: v.is(true as const),
 		session: sessionResponseSchema,
+		tokenStatus: v.in(['current', 'previous-grace'] as const),
+		refreshRecommended: v.boolean(),
 	}),
-)
-
-export const sessionAuthenticationResponseSchema = responseSchema<SessionStatusResponse>()(
-	v.or([
-		v.object({
-			authenticated: v.is(true as const),
-			session: sessionResponseSchema,
-			tokenStatus: v.in(['current', 'previous-grace'] as const),
-			refreshRecommended: v.boolean(),
-		}),
-		v.object({
-			authenticated: v.is(false as const),
-			reason: v.in(['missing-token', 'invalid-token', 'expired', 'not-current'] as const),
-		}),
-	]),
-)
-
-export const refreshedSessionResponseSchema = responseSchema<RefreshedSessionResponse>()(sessionResponseSchema)
-
-export const signedOutResponseSchema = responseSchema<SignedOutResponse>()(noContentResponseSchema)
-
-export const workspacePortfoliosResponseSchema = responseSchema<WorkspacePortfoliosResponse>()(
-	v.array(accessibleWorkspacePortfolioResponseSchema),
-)
-
-export const provisionedWorkspaceResponseSchema = responseSchema<ProvisionedWorkspaceResponse>()(
 	v.object({
+		authenticated: v.is(false as const),
+		reason: v.in(['missing-token', 'invalid-token', 'expired', 'not-current'] as const),
+	}),
+])
+
+export const refreshedSessionResponseSchema = sessionResponseSchema
+
+export const signedOutResponseSchema = noContentResponseSchema
+
+export const workspacePortfoliosResponseSchema = v.array(accessibleWorkspacePortfolioResponseSchema)
+
+export const provisionedWorkspaceResponseSchema = v.object({
+	workspace: workspaceResponseSchema,
+	workspaceMember: workspaceMemberResponseSchema,
+	workspaceOwnerRole: workspaceOwnerRoleResponseSchema,
+	portfolio: portfolioRegistryEntryResponseSchema,
+	selection: selectedPortfolioResponseSchema,
+})
+
+export const selectionAccessResponseSchema = v.or([
+	v.object({
+		selected: v.is(true as const),
+		selection: selectedPortfolioResponseSchema,
 		workspace: workspaceResponseSchema,
 		workspaceMember: workspaceMemberResponseSchema,
-		workspaceOwnerRole: workspaceOwnerRoleResponseSchema,
 		portfolio: portfolioRegistryEntryResponseSchema,
-		selection: selectedPortfolioResponseSchema,
+		activeWorkspaceOwnerRole: v.nullable(workspaceOwnerRoleResponseSchema),
 	}),
-)
+	v.object({
+		selected: v.is(false as const),
+		reason: v.in([
+			'missing-token',
+			'invalid-token',
+			'expired',
+			'user-not-found',
+			'workspace-not-found',
+			'not-active-member',
+			'portfolio-not-found',
+		] as const),
+	}),
+])
 
-export const selectionAccessResponseSchema = responseSchema<SelectionAccessResponse>()(
-	v.or([
-		v.object({
-			selected: v.is(true as const),
-			selection: selectedPortfolioResponseSchema,
-			workspace: workspaceResponseSchema,
-			workspaceMember: workspaceMemberResponseSchema,
-			portfolio: portfolioRegistryEntryResponseSchema,
-			activeWorkspaceOwnerRole: v.nullable(workspaceOwnerRoleResponseSchema),
-		}),
-		v.object({
-			selected: v.is(false as const),
-			reason: v.in([
-				'missing-token',
-				'invalid-token',
-				'expired',
-				'user-not-found',
-				'workspace-not-found',
-				'not-active-member',
-				'portfolio-not-found',
-			] as const),
-		}),
-	]),
-)
-
-export const selectionClearedResponseSchema = responseSchema<SelectionClearedResponse>()(noContentResponseSchema)
+export const selectionClearedResponseSchema = noContentResponseSchema
 
 export const sessionResponseCookieSchema = v.object({ [sessionCookieName]: v.string() })
 export const selectionResponseCookieSchema = v.object({ [selectionCookieName]: v.string() })
