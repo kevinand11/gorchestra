@@ -100,10 +100,12 @@ import UiShell from '../components/ui/UiShell.vue'
 import UiText from '../components/ui/UiText.vue'
 import { useApiAction, useFetchAction } from '../composables/action-state'
 import { useSessionStore } from '../stores/session'
+import { useToastStore } from '../stores/toasts'
 
 definePageMeta({ middleware: ['is-authenticated'] })
 
 const sessionStore = useSessionStore()
+const toastStore = useToastStore()
 
 const workspaceDisplayName = ref('Delivery Ops')
 const portfolioDisplayName = ref('Main Portfolio')
@@ -127,6 +129,7 @@ const {
 		workspaceDisplayName: workspaceDisplayName.value,
 		portfolioDisplayName: portfolioDisplayName.value,
 	})
+	toastStore.success({ title: 'Workspace created and Portfolio selected.' })
 	await navigateTo('/app')
 })
 
@@ -136,6 +139,7 @@ const {
 	execute: executeSelectPortfolio,
 } = useApiAction(async (workspaceId: string, portfolioId: string) => {
 	await sessionStore.setSelection(workspaceId, portfolioId)
+	toastStore.success({ title: 'Portfolio selected.' })
 	await navigateTo('/app')
 })
 
@@ -150,6 +154,7 @@ const {
 	execute: clearSelection,
 } = useApiAction(async () => {
 	await sessionStore.clearSelection()
+	toastStore.info({ title: 'Selection cleared.' })
 })
 
 const {

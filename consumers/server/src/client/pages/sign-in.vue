@@ -39,6 +39,7 @@ import UiShell from '../components/ui/UiShell.vue'
 import UiText from '../components/ui/UiText.vue'
 import { useApiAction } from '../composables/action-state'
 import { useSessionStore } from '../stores/session'
+import { useToastStore } from '../stores/toasts'
 
 definePageMeta({
 	middleware: [
@@ -51,6 +52,7 @@ definePageMeta({
 })
 
 const sessionStore = useSessionStore()
+const toastStore = useToastStore()
 
 const email = ref('')
 const code = ref('')
@@ -63,6 +65,7 @@ const {
 } = useApiAction(async () => {
 	await sessionStore.requestEmailOtp(email.value)
 	challengeRequested.value = true
+	toastStore.success({ title: 'Sign-in code sent.', body: 'Check your email for the six-digit code.' })
 })
 
 const {
