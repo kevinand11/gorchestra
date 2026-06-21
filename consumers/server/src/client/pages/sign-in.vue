@@ -1,35 +1,42 @@
 <template>
-	<main class="shell">
-		<section class="hero">
-			<p class="eyebrow">Gorchestra Server Consumer</p>
-			<h1>Sign in with Email OTP.</h1>
-			<p>Verify control of your email address before selecting a Workspace and Portfolio.</p>
-		</section>
+	<UiShell>
+		<UiHero>
+			<UiText as="p" tone="primary" class="font-bold uppercase tracking-[0.16em]">Gorchestra Server Consumer</UiText>
+			<UiHeading as="h1" size="hero">Sign in with Email OTP.</UiHeading>
+			<UiText size="lede" tone="muted">Verify control of your email address before selecting a Workspace and Portfolio.</UiText>
+		</UiHero>
 
-		<section class="card">
-			<h2>Email OTP Sign-in</h2>
-			<form class="stack" @submit.prevent="requestEmailOtp()">
-				<label>
+		<UiCard>
+			<UiHeading as="h2" size="section" class="mb-4">Email OTP Sign-in</UiHeading>
+			<form class="grid max-w-[520px] gap-4" @submit.prevent="requestEmailOtp()">
+				<label class="grid gap-2 font-bold text-dim">
 					Email address
-					<input v-model="email" type="email" autocomplete="email" required placeholder="person@example.com" />
+					<UiInput v-model="email" type="email" autocomplete="email" required placeholder="person@example.com" />
 				</label>
-				<button type="submit" :disabled="isRequestingEmailOtp">Send sign-in code</button>
-				<p v-if="requestEmailOtpError" class="error">{{ requestEmailOtpError }}</p>
+				<UiButton type="submit" :loading="isRequestingEmailOtp">Send sign-in code</UiButton>
+				<UiText v-if="requestEmailOtpError" tone="error">{{ requestEmailOtpError }}</UiText>
 			</form>
 
-			<form v-if="challengeRequested" class="stack" @submit.prevent="verifyEmailOtp()">
-				<label>
+			<form v-if="challengeRequested" class="mt-6 grid max-w-[520px] gap-4" @submit.prevent="verifyEmailOtp()">
+				<label class="grid gap-2 font-bold text-dim">
 					Six-digit code
-					<input v-model="code" inputmode="numeric" autocomplete="one-time-code" required placeholder="123456" />
+					<UiInput v-model="code" inputmode="numeric" autocomplete="one-time-code" required placeholder="123456" />
 				</label>
-				<button type="submit" :disabled="isVerifyingEmailOtp">Verify and continue</button>
-				<p v-if="verifyEmailOtpError" class="error">{{ verifyEmailOtpError }}</p>
+				<UiButton type="submit" :loading="isVerifyingEmailOtp">Verify and continue</UiButton>
+				<UiText v-if="verifyEmailOtpError" tone="error">{{ verifyEmailOtpError }}</UiText>
 			</form>
-		</section>
-	</main>
+		</UiCard>
+	</UiShell>
 </template>
 
 <script setup lang="ts">
+import UiButton from '../components/ui/UiButton.vue'
+import UiCard from '../components/ui/UiCard.vue'
+import UiHeading from '../components/ui/UiHeading.vue'
+import UiHero from '../components/ui/UiHero.vue'
+import UiInput from '../components/ui/UiInput.vue'
+import UiShell from '../components/ui/UiShell.vue'
+import UiText from '../components/ui/UiText.vue'
 import { useApiAction } from '../composables/action-state'
 import { useSessionStore } from '../stores/session'
 

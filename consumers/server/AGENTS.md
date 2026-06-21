@@ -35,6 +35,8 @@ The `consumers/server/` package implements the v1 deployed Server Consumer: Nuxt
 - Equipped Router and Server registrations must preserve returned builder values so Route Contracts stay type-tracked; route factories should return one direct builder chain rather than breaking route registration into intermediate `withX` router variables, and nest/add one router at a time rather than using ignored mutations or variadic composition.
 - Do not add browser/server DTO mirror files for Server API responses; client response types must flow from Equipped Route Contracts through `useServerApi()`, and named client types should derive from `ServerApi` method return types.
 - Nuxt UI code lives under `src/client/` and must call the Server API through `src/client/composables/` client helpers rather than importing Server modules or Core code directly; use Axios for browser API requests.
+- Client styling uses Tailwind CSS v4 through the Vite plugin and CSS-first `@theme` tokens in `src/client/assets/css/main.css`; keep configurable visual values in semantic Tailwind tokens following the Stranerd-style naming pattern (`body`, `card`, `input`, `primary`, `secondary`, status colors, and `*-contrast`).
+- Local UI components under `src/client/components/ui/` should be explicitly imported by pages/components by convention instead of relying on Nuxt component auto-imports.
 - Test module functions directly with plain inputs and real storage/cache/Core wiring; do not test API endpoints or mock Equipped request/response values for this slice.
 
 ## Work Guidance

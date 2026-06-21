@@ -1,57 +1,74 @@
 <template>
-	<main class="shell">
-		<section class="hero">
-			<p class="eyebrow">Selected Portfolio</p>
-			<h1>Ready for Core work.</h1>
-			<p>Project, Plan, and Delivery views will land after Core read routes are added.</p>
-		</section>
+	<UiShell>
+		<UiHero>
+			<UiText as="p" tone="primary" class="font-bold uppercase tracking-[0.16em]">Selected Portfolio</UiText>
+			<UiHeading as="h1" size="hero">Ready for Core work.</UiHeading>
+			<UiText size="lede" tone="muted">Project, Plan, and Delivery views will land after Core read routes are added.</UiText>
+		</UiHero>
 
-		<section v-if="selection?.selected" class="grid">
-			<article class="card accent">
-				<h2>{{ selection.workspace.displayName }} / {{ selection.portfolio.displayName }}</h2>
-				<p class="muted">Portfolio registry id: {{ selection.portfolio.id }}</p>
-				<p class="muted">Core storage namespace: {{ selection.portfolio.coreStorageNamespace }}</p>
-			</article>
+		<section v-if="selection?.selected" class="grid gap-5">
+			<UiCard tone="accent">
+				<UiHeading as="h2" size="section">{{ selection.workspace.displayName }} / {{ selection.portfolio.displayName }}</UiHeading>
+				<UiText tone="muted">Portfolio registry id: {{ selection.portfolio.id }}</UiText>
+				<UiText tone="muted">Core storage namespace: {{ selection.portfolio.coreStorageNamespace }}</UiText>
+			</UiCard>
 
-			<article class="card">
-				<h2>Projects</h2>
-				<p v-if="isLoadingProjects && !hasLoadedProjects" class="muted">Loading Projects…</p>
-				<p v-else-if="projectsError" class="error">{{ projectsError }}</p>
-				<p v-else-if="projects.length === 0" class="muted">No Projects yet.</p>
-				<ul v-else class="portfolio-list">
-					<li v-for="project in projects" :key="project.id">
+			<UiCard>
+				<UiHeading as="h2" size="section" class="mb-3">Projects</UiHeading>
+				<UiText v-if="isLoadingProjects && !hasLoadedProjects" tone="muted">Loading Projects…</UiText>
+				<UiText v-else-if="projectsError" tone="error">{{ projectsError }}</UiText>
+				<UiText v-else-if="projects.length === 0" tone="muted">No Projects yet.</UiText>
+				<ul v-else class="grid list-none gap-3 p-0">
+					<li
+						v-for="project in projects"
+						:key="project.id"
+						class="flex items-center justify-between gap-3 rounded-list-item border border-dimmer bg-dimmer p-3.5">
 						<div>
 							<strong>{{ project.title }}</strong>
-							<span>Project id: {{ project.id }}</span>
-							<span>Source: {{ project.source.type }}</span>
-							<span v-if="project.source.repositories.length === 0">No Repositories configured.</span>
-							<span v-for="repository in project.source.repositories" :key="repository.id">
+							<UiText as="span" tone="muted">Project id: {{ project.id }}</UiText>
+							<UiText as="span" tone="muted">Source: {{ project.source.type }}</UiText>
+							<UiText v-if="project.source.repositories.length === 0" as="span" tone="muted">
+								No Repositories configured.
+							</UiText>
+							<UiText v-for="repository in project.source.repositories" :key="repository.id" as="span" tone="muted">
 								{{ repository.config.provider }}: {{ repository.config.owner }}/{{ repository.config.name }}
-							</span>
+							</UiText>
 						</div>
 					</li>
 				</ul>
-			</article>
+			</UiCard>
 
-			<article class="card">
-				<h2>Portfolio actions</h2>
-				<p>This app route loads selected Portfolio Projects through an explicit Core query boundary.</p>
-				<div class="actions">
-					<NuxtLink class="button-link" to="/select">Change selection</NuxtLink>
-					<button type="button" class="secondary" :disabled="isLoggingOut" @click="logout()">Sign out</button>
+			<UiCard>
+				<UiHeading as="h2" size="section" class="mb-2">Portfolio actions</UiHeading>
+				<UiText tone="muted">This app route loads selected Portfolio Projects through an explicit Core query boundary.</UiText>
+				<div class="mt-4 flex flex-wrap items-start gap-3">
+					<NuxtLink
+						class="inline-flex items-center justify-center rounded-pill bg-primary px-5 py-3 font-extrabold text-primary-contrast no-underline transition hover:brightness-110"
+						to="/select">
+						Change selection
+					</NuxtLink>
+					<div class="grid gap-2">
+						<UiButton type="button" variant="secondary" :loading="isLoggingOut" @click="logout()">Sign out</UiButton>
+						<UiText v-if="logoutError" tone="error">{{ logoutError }}</UiText>
+					</div>
 				</div>
-				<p v-if="logoutError" class="error">{{ logoutError }}</p>
-			</article>
+			</UiCard>
 		</section>
 
-		<section v-else class="card">
-			<h2>Checking selection…</h2>
-			<p class="muted">The app route requires a selected Workspace and Portfolio.</p>
-		</section>
-	</main>
+		<UiCard v-else>
+			<UiHeading as="h2" size="section">Checking selection…</UiHeading>
+			<UiText tone="muted">The app route requires a selected Workspace and Portfolio.</UiText>
+		</UiCard>
+	</UiShell>
 </template>
 
 <script setup lang="ts">
+import UiButton from '../components/ui/UiButton.vue'
+import UiCard from '../components/ui/UiCard.vue'
+import UiHeading from '../components/ui/UiHeading.vue'
+import UiHero from '../components/ui/UiHero.vue'
+import UiShell from '../components/ui/UiShell.vue'
+import UiText from '../components/ui/UiText.vue'
 import { useApiAction, useFetchAction } from '../composables/action-state'
 import { useServerApi, type ServerApi } from '../composables/useServerApi'
 import { useSessionStore } from '../stores/session'

@@ -1,3 +1,4 @@
+import tailwindcss from '@tailwindcss/vite'
 import { defineNuxtConfig, type NuxtConfig } from 'nuxt/config'
 
 export default defineNuxtConfig({
@@ -11,11 +12,13 @@ export default defineNuxtConfig({
 		},
 	},
 	modules: ['@pinia/nuxt'],
+	css: ['~/assets/css/main.css'],
 	nitro: {
 		preset: 'node',
 		serveStatic: true,
 	},
 	vite: {
+		plugins: [tailwindcss()],
 		optimizeDeps: {
 			include: ['axios'],
 		},

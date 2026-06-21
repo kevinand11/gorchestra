@@ -19,6 +19,8 @@
 		"valleyed": "latest"
 	},
 	"devDependencies": {
+		"@tailwindcss/vite": "^4.3.1",
+		"tailwindcss": "^4.3.1",
 		"tsx": "^4.22.4"
 	}
 }

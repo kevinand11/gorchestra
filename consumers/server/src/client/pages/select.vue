@@ -1,84 +1,103 @@
 <template>
-	<main class="shell">
-		<section class="hero">
-			<p class="eyebrow">Workspace and Portfolio</p>
-			<h1>Select the Portfolio you want to use.</h1>
-			<p>Selection is explicit and revalidated by the Server API before Portfolio-scoped work.</p>
-		</section>
+	<UiShell>
+		<UiHero>
+			<UiText as="p" tone="primary" class="font-bold uppercase tracking-[0.16em]">Workspace and Portfolio</UiText>
+			<UiHeading as="h1" size="hero">Select the Portfolio you want to use.</UiHeading>
+			<UiText size="lede" tone="muted">Selection is explicit and revalidated by the Server API before Portfolio-scoped work.</UiText>
+		</UiHero>
 
-		<section v-if="isInitialSelectionLoading" class="card">
-			<h2>Loading your Workspaces…</h2>
-			<p class="muted">Checking your accessible Workspaces and selected Portfolio.</p>
-		</section>
+		<UiCard v-if="isInitialSelectionLoading">
+			<UiHeading as="h2" size="section">Loading your Workspaces…</UiHeading>
+			<UiText tone="muted">Checking your accessible Workspaces and selected Portfolio.</UiText>
+		</UiCard>
 
-		<section v-else-if="workspacePortfolios.length === 0" class="card">
-			<h2>Provision your first Workspace</h2>
-			<p>No accessible Workspace and Portfolio is available yet.</p>
-			<form class="stack" @submit.prevent="provisionWorkspace()">
-				<label>
+		<UiCard v-else-if="workspacePortfolios.length === 0">
+			<UiHeading as="h2" size="section" class="mb-2">Provision your first Workspace</UiHeading>
+			<UiText tone="muted">No accessible Workspace and Portfolio is available yet.</UiText>
+			<form class="mt-4 grid max-w-[520px] gap-4" @submit.prevent="provisionWorkspace()">
+				<label class="grid gap-2 font-bold text-dim">
 					Workspace display name
-					<input v-model="workspaceDisplayName" required placeholder="Delivery Ops" />
+					<UiInput v-model="workspaceDisplayName" required placeholder="Delivery Ops" />
 				</label>
-				<label>
+				<label class="grid gap-2 font-bold text-dim">
 					Portfolio display name
-					<input v-model="portfolioDisplayName" required placeholder="Main Portfolio" />
+					<UiInput v-model="portfolioDisplayName" required placeholder="Main Portfolio" />
 				</label>
-				<button type="submit" :disabled="isProvisioningWorkspace">Create Workspace and select Default Portfolio</button>
-				<p v-if="provisionWorkspaceError" class="error">{{ provisionWorkspaceError }}</p>
+				<UiButton type="submit" :loading="isProvisioningWorkspace">Create Workspace and select Default Portfolio</UiButton>
+				<UiText v-if="provisionWorkspaceError" tone="error">{{ provisionWorkspaceError }}</UiText>
 			</form>
-		</section>
+		</UiCard>
 
-		<section v-else class="card">
-			<div class="row">
+		<UiCard v-else>
+			<div class="flex items-center justify-between gap-4">
 				<div>
-					<h2>Available Portfolios</h2>
-					<p v-if="selection?.selected" class="success">
+					<UiHeading as="h2" size="section">Available Portfolios</UiHeading>
+					<UiText v-if="selection?.selected" tone="success">
 						Selected {{ selection.workspace.displayName }} / {{ selection.portfolio.displayName }}
-					</p>
-					<p v-else class="muted">Selection required: {{ selection?.reason ?? 'not loaded' }}</p>
+					</UiText>
+					<UiText v-else tone="muted">Selection required: {{ selection?.reason ?? 'not loaded' }}</UiText>
 				</div>
-				<NuxtLink v-if="selection?.selected" class="button-link secondary" to="/app">Go to app</NuxtLink>
+				<NuxtLink
+					v-if="selection?.selected"
+					class="inline-flex items-center justify-center rounded-pill border border-dimmer bg-secondary px-5 py-3 font-extrabold text-secondary-contrast no-underline transition hover:brightness-110"
+					to="/app">
+					Go to app
+				</NuxtLink>
 			</div>
 
-			<ul class="portfolio-list">
-				<li v-for="access in workspacePortfolios" :key="`${access.workspace.id}:${access.portfolio.id}`">
+			<ul class="mt-6 grid list-none gap-3 p-0">
+				<li
+					v-for="access in workspacePortfolios"
+					:key="`${access.workspace.id}:${access.portfolio.id}`"
+					class="flex items-center justify-between gap-3 rounded-list-item border border-dimmer bg-dimmer p-3.5">
 					<div>
 						<strong>{{ access.workspace.displayName }}</strong>
-						<span>{{ access.portfolio.displayName }}</span>
+						<UiText as="span" tone="muted">{{ access.portfolio.displayName }}</UiText>
 					</div>
-					<button
-						type="button"
-						:disabled="isSelectingPortfolio"
-						@click="selectPortfolio(access.workspace.id, access.portfolio.id)">
-						{{ isSelectingThisPortfolio(access.workspace.id, access.portfolio.id) ? 'Selecting…' : 'Select' }}
-					</button>
-					<p v-if="portfolioSelectionError(access.workspace.id, access.portfolio.id)" class="error">
-						{{ portfolioSelectionError(access.workspace.id, access.portfolio.id) }}
-					</p>
+					<div class="grid justify-items-end gap-2">
+						<UiButton
+							type="button"
+							:disabled="isSelectingPortfolio"
+							:loading="isSelectingThisPortfolio(access.workspace.id, access.portfolio.id)"
+							@click="selectPortfolio(access.workspace.id, access.portfolio.id)">
+							{{ isSelectingThisPortfolio(access.workspace.id, access.portfolio.id) ? 'Selecting…' : 'Select' }}
+						</UiButton>
+						<UiText v-if="portfolioSelectionError(access.workspace.id, access.portfolio.id)" tone="error" size="helper">
+							{{ portfolioSelectionError(access.workspace.id, access.portfolio.id) }}
+						</UiText>
+					</div>
 				</li>
 			</ul>
 
-			<div class="actions">
-				<div>
-					<button
+			<div class="mt-6 flex flex-wrap items-start gap-3">
+				<div class="grid gap-2">
+					<UiButton
 						type="button"
-						class="secondary"
-						:disabled="isClearingSelection || !selection?.selected"
+						variant="secondary"
+						:loading="isClearingSelection"
+						:disabled="!selection?.selected"
 						@click="clearSelection()">
 						Clear selection
-					</button>
-					<p v-if="clearSelectionError" class="error">{{ clearSelectionError }}</p>
+					</UiButton>
+					<UiText v-if="clearSelectionError" tone="error">{{ clearSelectionError }}</UiText>
 				</div>
-				<div>
-					<button type="button" class="secondary" :disabled="isLoggingOut" @click="logout()">Sign out</button>
-					<p v-if="logoutError" class="error">{{ logoutError }}</p>
+				<div class="grid gap-2">
+					<UiButton type="button" variant="secondary" :loading="isLoggingOut" @click="logout()">Sign out</UiButton>
+					<UiText v-if="logoutError" tone="error">{{ logoutError }}</UiText>
 				</div>
 			</div>
-		</section>
-	</main>
+		</UiCard>
+	</UiShell>
 </template>
 
 <script setup lang="ts">
+import UiButton from '../components/ui/UiButton.vue'
+import UiCard from '../components/ui/UiCard.vue'
+import UiHeading from '../components/ui/UiHeading.vue'
+import UiHero from '../components/ui/UiHero.vue'
+import UiInput from '../components/ui/UiInput.vue'
+import UiShell from '../components/ui/UiShell.vue'
+import UiText from '../components/ui/UiText.vue'
 import { useApiAction, useFetchAction } from '../composables/action-state'
 import { useSessionStore } from '../stores/session'
 
