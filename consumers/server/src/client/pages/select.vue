@@ -6,8 +6,6 @@
 			<p>Selection is explicit and revalidated by the Server API before Portfolio-scoped work.</p>
 		</section>
 
-		<section v-if="pageError" class="error">{{ pageError }}</section>
-
 		<section v-if="isInitialSelectionLoading" class="card">
 			<h2>Loading your Workspaces…</h2>
 			<p class="muted">Checking your accessible Workspaces and selected Portfolio.</p>
@@ -25,7 +23,8 @@
 					Portfolio display name
 					<input v-model="portfolioDisplayName" required placeholder="Main Portfolio" />
 				</label>
-				<button type="submit" :disabled="isUserActionLoading">Create Workspace and select Default Portfolio</button>
+				<button type="submit" :disabled="isProvisioningWorkspace">Create Workspace and select Default Portfolio</button>
+				<p v-if="provisionWorkspaceError" class="error">{{ provisionWorkspaceError }}</p>
 			</form>
 		</section>
 
@@ -49,22 +48,31 @@
 					</div>
 					<button
 						type="button"
-						:disabled="isUserActionLoading"
-						@click="selectPortfolioAction.execute(access.workspace.id, access.portfolio.id)">
-						Select
+						:disabled="isSelectingPortfolio"
+						@click="selectPortfolio(access.workspace.id, access.portfolio.id)">
+						{{ isSelectingThisPortfolio(access.workspace.id, access.portfolio.id) ? 'Selecting…' : 'Select' }}
 					</button>
+					<p v-if="portfolioSelectionError(access.workspace.id, access.portfolio.id)" class="error">
+						{{ portfolioSelectionError(access.workspace.id, access.portfolio.id) }}
+					</p>
 				</li>
 			</ul>
 
 			<div class="actions">
-				<button
-					type="button"
-					class="secondary"
-					:disabled="isUserActionLoading || !selection?.selected"
-					@click="clearSelectionAction.execute()">
-					Clear selection
-				</button>
-				<button type="button" class="secondary" :disabled="isUserActionLoading" @click="logoutAction.execute()">Sign out</button>
+				<div>
+					<button
+						type="button"
+						class="secondary"
+						:disabled="isClearingSelection || !selection?.selected"
+						@click="clearSelectionAction.execute()">
+						Clear selection
+					</button>
+					<p v-if="clearSelectionError" class="error">{{ clearSelectionError }}</p>
+				</div>
+				<div>
+					<button type="button" class="secondary" :disabled="isLoggingOut" @click="logoutAction.execute()">Sign out</button>
+					<p v-if="logoutError" class="error">{{ logoutError }}</p>
+				</div>
 			</div>
 		</section>
 	</main>
@@ -80,6 +88,7 @@ const sessionStore = useSessionStore()
 
 const workspaceDisplayName = ref('Delivery Ops')
 const portfolioDisplayName = ref('Main Portfolio')
+const selectingPortfolioKey = ref('')
 const workspacePortfolios = computed(() => sessionStore.workspacePortfolios)
 const selection = computed(() => sessionStore.selection)
 
@@ -103,6 +112,11 @@ const selectPortfolioAction = useApiAction(async (workspaceId: string, portfolio
 	await navigateTo('/app')
 })
 
+async function selectPortfolio(workspaceId: string, portfolioId: string): Promise<void> {
+	selectingPortfolioKey.value = portfolioActionKey(workspaceId, portfolioId)
+	await selectPortfolioAction.execute(workspaceId, portfolioId)
+}
+
 const clearSelectionAction = useApiAction(async () => {
 	await sessionStore.clearSelection()
 })
@@ -115,24 +129,23 @@ const logoutAction = useApiAction(async () => {
 const isInitialSelectionLoading = computed(
 	() => refreshSelectionPageAction.isLoading.value && !refreshSelectionPageAction.hasExecuted.value,
 )
-const isUserActionLoading = computed(
-	() =>
-		provisionWorkspaceAction.isLoading.value ||
-		selectPortfolioAction.isLoading.value ||
-		clearSelectionAction.isLoading.value ||
-		logoutAction.isLoading.value,
-)
-const pageError = computed(() =>
-	firstMessage([
-		refreshSelectionPageAction.error.value,
-		provisionWorkspaceAction.error.value,
-		selectPortfolioAction.error.value,
-		clearSelectionAction.error.value,
-		logoutAction.error.value,
-	]),
-)
+const isProvisioningWorkspace = provisionWorkspaceAction.isLoading
+const provisionWorkspaceError = provisionWorkspaceAction.error
+const isSelectingPortfolio = selectPortfolioAction.isLoading
+const isClearingSelection = clearSelectionAction.isLoading
+const clearSelectionError = clearSelectionAction.error
+const isLoggingOut = logoutAction.isLoading
+const logoutError = logoutAction.error
 
-function firstMessage(messages: string[]): string {
-	return messages.find(Boolean) ?? ''
+function isSelectingThisPortfolio(workspaceId: string, portfolioId: string): boolean {
+	return selectPortfolioAction.isLoading.value && selectingPortfolioKey.value === portfolioActionKey(workspaceId, portfolioId)
+}
+
+function portfolioSelectionError(workspaceId: string, portfolioId: string): string {
+	return selectingPortfolioKey.value === portfolioActionKey(workspaceId, portfolioId) ? selectPortfolioAction.error.value : ''
+}
+
+function portfolioActionKey(workspaceId: string, portfolioId: string): string {
+	return `${workspaceId}:${portfolioId}`
 }
 </script>

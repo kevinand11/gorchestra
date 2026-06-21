@@ -6,8 +6,6 @@
 			<p>Project, Plan, and Delivery views will land after Core read routes are added.</p>
 		</section>
 
-		<section v-if="pageError" class="error">{{ pageError }}</section>
-
 		<section v-if="selection?.selected" class="grid">
 			<article class="card accent">
 				<h2>{{ selection.workspace.displayName }} / {{ selection.portfolio.displayName }}</h2>
@@ -25,6 +23,7 @@
 					<NuxtLink class="button-link" to="/select">Change selection</NuxtLink>
 					<button type="button" class="secondary" :disabled="isLoggingOut" @click="logoutAction.execute()">Sign out</button>
 				</div>
+				<p v-if="logoutError" class="error">{{ logoutError }}</p>
 			</article>
 		</section>
 
@@ -49,5 +48,5 @@ const logoutAction = useApiAction(async () => {
 	await navigateTo('/sign-in')
 })
 const isLoggingOut = logoutAction.isLoading
-const pageError = logoutAction.error
+const logoutError = logoutAction.error
 </script>

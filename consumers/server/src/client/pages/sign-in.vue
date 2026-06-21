@@ -6,8 +6,6 @@
 			<p>Verify control of your email address before selecting a Workspace and Portfolio.</p>
 		</section>
 
-		<section v-if="pageError" class="error">{{ pageError }}</section>
-
 		<section class="card">
 			<h2>Email OTP Sign-in</h2>
 			<form class="stack" @submit.prevent="requestEmailOtpAction.execute()">
@@ -16,6 +14,7 @@
 					<input v-model="email" type="email" autocomplete="email" required placeholder="person@example.com" />
 				</label>
 				<button type="submit" :disabled="isRequestingEmailOtp">Send sign-in code</button>
+				<p v-if="requestEmailOtpError" class="error">{{ requestEmailOtpError }}</p>
 			</form>
 
 			<form v-if="challengeRequested" class="stack" @submit.prevent="verifyEmailOtpAction.execute()">
@@ -24,6 +23,7 @@
 					<input v-model="code" inputmode="numeric" autocomplete="one-time-code" required placeholder="123456" />
 				</label>
 				<button type="submit" :disabled="isVerifyingEmailOtp">Verify and continue</button>
+				<p v-if="verifyEmailOtpError" class="error">{{ verifyEmailOtpError }}</p>
 			</form>
 		</section>
 	</main>
@@ -63,5 +63,6 @@ const verifyEmailOtpAction = useApiAction(async () => {
 
 const isRequestingEmailOtp = requestEmailOtpAction.isLoading
 const isVerifyingEmailOtp = verifyEmailOtpAction.isLoading
-const pageError = computed(() => requestEmailOtpAction.error.value || verifyEmailOtpAction.error.value)
+const requestEmailOtpError = requestEmailOtpAction.error
+const verifyEmailOtpError = verifyEmailOtpAction.error
 </script>
