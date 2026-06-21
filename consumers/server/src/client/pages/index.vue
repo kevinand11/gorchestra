@@ -15,12 +15,10 @@ definePageMeta({
 	middleware: [
 		async () => {
 			const sessionStore = useSessionStore()
-			try {
-				await sessionStore.loadAuthenticatedState()
-				return sessionStore.homePath
-			} catch {
-				return '/sign-in'
-			}
+			return sessionStore
+				.loadAuthenticatedState()
+				.then(() => sessionStore.homePath)
+				.catch(() => '/sign-in')
 		},
 	],
 })

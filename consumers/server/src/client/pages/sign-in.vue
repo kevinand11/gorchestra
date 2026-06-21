@@ -38,11 +38,7 @@ definePageMeta({
 	middleware: [
 		async () => {
 			const sessionStore = useSessionStore()
-			try {
-				await sessionStore.loadAuthenticatedState()
-			} catch {
-				return
-			}
+			await sessionStore.loadAuthenticatedState().catch()
 			if (sessionStore.isAuthenticated) return sessionStore.homePath
 		},
 	],

@@ -38,87 +38,123 @@ function isSelectedPortfolio(selection: ClientSelectionState | null): boolean {
 	return selection?.selected === true
 }
 
-export const useSessionStore = defineStore('session', {
-	state: (): SessionStoreState => ({ session: null, workspacePortfolios: [], selection: null }),
-	getters: {
-		isAuthenticated: (state): boolean => state.session?.authenticated === true,
-		hasSelection: (state): boolean => state.selection?.selected === true,
-		homePath: (state): '/sign-in' | '/select' | '/app' => getSessionHomePath(state),
-	},
-	actions: {
-		async loadSession(api: ServerApi = useServerApi()): Promise<SessionStatusResponse> {
-			const session = await api.getSession()
-			this.session = session
-			if (!session.authenticated) this.clearAuthenticatedState()
-			return session
-		},
-		async loadAuthenticatedState(api: ServerApi = useServerApi()): Promise<void> {
-			const session = await this.loadSession(api)
-			if (!session.authenticated) return
+export const useSessionStore = defineStore('session', () => {
+	const session = ref<SessionStatusResponse | null>(null)
+	const workspacePortfolios = ref<WorkspacePortfoliosResponse['workspacePortfolios']>([])
+	const selection = ref<ClientSelectionState | null>(null)
 
-			const [workspacePortfolios, selection] = await Promise.all([api.listWorkspacePortfolios(), api.getSelection()])
-			this.workspacePortfolios = workspacePortfolios.workspacePortfolios
-			this.selection = selection
-		},
-		async loadSelection(api: ServerApi = useServerApi()): Promise<SelectionAccessResponse | null> {
-			if (!this.isAuthenticated) return null
-			this.selection = await api.getSelection()
-			return this.selection
-		},
-		async requestEmailOtp(email: string, api: ServerApi = useServerApi()): Promise<EmailOtpChallengeResponse> {
-			return await api.requestEmailOtp(email)
-		},
-		async verifyEmailOtpSignIn(email: string, code: string, api: ServerApi = useServerApi()): Promise<EmailOtpSignInResponse> {
-			const response = await api.verifyEmailOtpSignIn(email, code)
-			await this.loadAuthenticatedState(api)
-			return response
-		},
-		async provisionDefaultWorkspace(
-			input: ProvisionDefaultWorkspaceInput,
-			api: ServerApi = useServerApi(),
-		): Promise<ProvisionedWorkspaceResponse> {
-			const response = await api.provisionDefaultWorkspace(input)
-			this.workspacePortfolios = [
-				{
-					workspace: response.workspace,
-					workspaceMember: response.workspaceMember,
-					portfolio: response.portfolio,
-					activeWorkspaceOwnerRole: response.workspaceOwnerRole,
-				},
-			]
-			this.selection = {
-				selected: true,
-				selection: response.selection,
+	const isAuthenticated = computed((): boolean => isAuthenticatedSession(session.value))
+	const hasSelection = computed((): boolean => isSelectedPortfolio(selection.value))
+	const homePath = computed((): '/sign-in' | '/select' | '/app' =>
+		getSessionHomePath({ session: session.value, selection: selection.value }),
+	)
+
+	async function loadSession(api: ServerApi = useServerApi()): Promise<SessionStatusResponse> {
+		const response = await api.getSession()
+		session.value = response
+		if (!response.authenticated) clearAuthenticatedState()
+		return response
+	}
+
+	async function loadAuthenticatedState(api: ServerApi = useServerApi()): Promise<void> {
+		const response = await loadSession(api)
+		if (!response.authenticated) return
+
+		const [workspacePortfoliosResponse, selectionResponse] = await Promise.all([api.listWorkspacePortfolios(), api.getSelection()])
+		workspacePortfolios.value = workspacePortfoliosResponse.workspacePortfolios
+		selection.value = selectionResponse
+	}
+
+	async function loadSelection(api: ServerApi = useServerApi()): Promise<SelectionAccessResponse | null> {
+		if (!isAuthenticated.value) return null
+		selection.value = await api.getSelection()
+		return selection.value
+	}
+
+	async function requestEmailOtp(email: string, api: ServerApi = useServerApi()): Promise<EmailOtpChallengeResponse> {
+		return await api.requestEmailOtp(email)
+	}
+
+	async function verifyEmailOtpSignIn(email: string, code: string, api: ServerApi = useServerApi()): Promise<EmailOtpSignInResponse> {
+		const response = await api.verifyEmailOtpSignIn(email, code)
+		await loadAuthenticatedState(api)
+		return response
+	}
+
+	async function provisionDefaultWorkspace(
+		input: ProvisionDefaultWorkspaceInput,
+		api: ServerApi = useServerApi(),
+	): Promise<ProvisionedWorkspaceResponse> {
+		const response = await api.provisionDefaultWorkspace(input)
+		workspacePortfolios.value = [
+			{
 				workspace: response.workspace,
 				workspaceMember: response.workspaceMember,
 				portfolio: response.portfolio,
 				activeWorkspaceOwnerRole: response.workspaceOwnerRole,
-			}
-			return response
-		},
-		async setSelection(workspaceId: string, portfolioId: string, api: ServerApi = useServerApi()): Promise<SelectionAccessResponse> {
-			this.selection = await api.setSelection(workspaceId, portfolioId)
-			return this.selection
-		},
-		async clearSelection(api: ServerApi = useServerApi()): Promise<SelectionClearedResponse> {
-			const response = await api.clearSelection()
-			this.selection = response
-			return response
-		},
-		async logout(api: ServerApi = useServerApi()): Promise<SignedOutResponse> {
-			const response = await api.logout()
-			this.session = { authenticated: false, reason: 'missing-token' }
-			this.clearAuthenticatedState()
-			return response
-		},
-		errorMessage(error: unknown): string {
-			return useServerApi().errorMessage(error)
-		},
-		clearAuthenticatedState(): void {
-			this.workspacePortfolios = []
-			this.selection = null
-		},
-	},
+			},
+		]
+		selection.value = {
+			selected: true,
+			selection: response.selection,
+			workspace: response.workspace,
+			workspaceMember: response.workspaceMember,
+			portfolio: response.portfolio,
+			activeWorkspaceOwnerRole: response.workspaceOwnerRole,
+		}
+		return response
+	}
+
+	async function setSelection(
+		workspaceId: string,
+		portfolioId: string,
+		api: ServerApi = useServerApi(),
+	): Promise<SelectionAccessResponse> {
+		selection.value = await api.setSelection(workspaceId, portfolioId)
+		return selection.value
+	}
+
+	async function clearSelection(api: ServerApi = useServerApi()): Promise<SelectionClearedResponse> {
+		const response = await api.clearSelection()
+		selection.value = response
+		return response
+	}
+
+	async function logout(api: ServerApi = useServerApi()): Promise<SignedOutResponse> {
+		const response = await api.logout()
+		session.value = { authenticated: false, reason: 'missing-token' }
+		clearAuthenticatedState()
+		return response
+	}
+
+	function errorMessage(error: unknown): string {
+		return useServerApi().errorMessage(error)
+	}
+
+	function clearAuthenticatedState(): void {
+		workspacePortfolios.value = []
+		selection.value = null
+	}
+
+	return {
+		session,
+		workspacePortfolios,
+		selection,
+		isAuthenticated,
+		hasSelection,
+		homePath,
+		loadSession,
+		loadAuthenticatedState,
+		loadSelection,
+		requestEmailOtp,
+		verifyEmailOtpSignIn,
+		provisionDefaultWorkspace,
+		setSelection,
+		clearSelection,
+		logout,
+		errorMessage,
+		clearAuthenticatedState,
+	}
 })
 
 if (import.meta.vitest) {
