@@ -6,13 +6,17 @@
 			<p>Selection is explicit and revalidated by the Server API before Portfolio-scoped work.</p>
 		</section>
 
-		<section v-if="message" class="notice">{{ message }}</section>
-		<section v-if="errorMessage" class="error">{{ errorMessage }}</section>
+		<section v-if="pageError" class="error">{{ pageError }}</section>
 
-		<section v-if="workspacePortfolios.length === 0" class="card">
+		<section v-if="isInitialSelectionLoading" class="card">
+			<h2>Loading your Workspaces…</h2>
+			<p class="muted">Checking your accessible Workspaces and selected Portfolio.</p>
+		</section>
+
+		<section v-else-if="workspacePortfolios.length === 0" class="card">
 			<h2>Provision your first Workspace</h2>
 			<p>No accessible Workspace and Portfolio is available yet.</p>
-			<form class="stack" @submit.prevent="provisionWorkspace">
+			<form class="stack" @submit.prevent="provisionWorkspaceAction.execute()">
 				<label>
 					Workspace display name
 					<input v-model="workspaceDisplayName" required placeholder="Delivery Ops" />
@@ -21,7 +25,7 @@
 					Portfolio display name
 					<input v-model="portfolioDisplayName" required placeholder="Main Portfolio" />
 				</label>
-				<button type="submit" :disabled="busy">Create Workspace and select Default Portfolio</button>
+				<button type="submit" :disabled="isUserActionLoading">Create Workspace and select Default Portfolio</button>
 			</form>
 		</section>
 
@@ -43,78 +47,92 @@
 						<strong>{{ access.workspace.displayName }}</strong>
 						<span>{{ access.portfolio.displayName }}</span>
 					</div>
-					<button type="button" :disabled="busy" @click="selectPortfolio(access.workspace.id, access.portfolio.id)">
+					<button
+						type="button"
+						:disabled="isUserActionLoading"
+						@click="selectPortfolioAction.execute(access.workspace.id, access.portfolio.id)">
 						Select
 					</button>
 				</li>
 			</ul>
 
 			<div class="actions">
-				<button type="button" class="secondary" :disabled="busy || !selection?.selected" @click="clearSelection">
+				<button
+					type="button"
+					class="secondary"
+					:disabled="isUserActionLoading || !selection?.selected"
+					@click="clearSelectionAction.execute()">
 					Clear selection
 				</button>
-				<button type="button" class="secondary" :disabled="busy" @click="logout">Sign out</button>
+				<button type="button" class="secondary" :disabled="isUserActionLoading" @click="logoutAction.execute()">Sign out</button>
 			</div>
 		</section>
 	</main>
 </template>
 
 <script setup lang="ts">
-import { createPageActionRunner } from '../composables/page-action'
+import { useApiAction, useFetchAction } from '../composables/action-state'
 import { useSessionStore } from '../stores/session'
 
 definePageMeta({ middleware: ['is-authenticated'] })
 
 const sessionStore = useSessionStore()
 
-const busy = ref(false)
-const message = ref('')
-const errorMessage = ref('')
-const runAction = createPageActionRunner({ busy, errorMessage, getErrorMessage: sessionStore.errorMessage })
 const workspaceDisplayName = ref('Delivery Ops')
 const portfolioDisplayName = ref('Main Portfolio')
 const workspacePortfolios = computed(() => sessionStore.workspacePortfolios)
 const selection = computed(() => sessionStore.selection)
 
-onMounted(refreshSelectionPage)
-
-async function refreshSelectionPage(): Promise<void> {
-	await runAction(async () => {
+const refreshSelectionPageAction = useFetchAction(
+	async () => {
 		await sessionStore.loadAuthenticatedState()
-	})
-}
+	},
+	{ dedupeKey: 'select-page-session-state' },
+)
 
-async function provisionWorkspace(): Promise<void> {
-	await runAction(async () => {
-		await sessionStore.provisionDefaultWorkspace({
-			workspaceDisplayName: workspaceDisplayName.value,
-			portfolioDisplayName: portfolioDisplayName.value,
-		})
-		message.value = 'Workspace provisioned and Default Portfolio selected.'
-		await navigateTo('/app')
+const provisionWorkspaceAction = useApiAction(async () => {
+	await sessionStore.provisionDefaultWorkspace({
+		workspaceDisplayName: workspaceDisplayName.value,
+		portfolioDisplayName: portfolioDisplayName.value,
 	})
-}
+	await navigateTo('/app')
+})
 
-async function selectPortfolio(workspaceId: string, portfolioId: string): Promise<void> {
-	await runAction(async () => {
-		await sessionStore.setSelection(workspaceId, portfolioId)
-		message.value = 'Selection updated.'
-		await navigateTo('/app')
-	})
-}
+const selectPortfolioAction = useApiAction(async (workspaceId: string, portfolioId: string) => {
+	await sessionStore.setSelection(workspaceId, portfolioId)
+	await navigateTo('/app')
+})
 
-async function clearSelection(): Promise<void> {
-	await runAction(async () => {
-		await sessionStore.clearSelection()
-		message.value = 'Selection cleared.'
-	})
-}
+const clearSelectionAction = useApiAction(async () => {
+	await sessionStore.clearSelection()
+})
 
-async function logout(): Promise<void> {
-	await runAction(async () => {
-		await sessionStore.logout()
-		message.value = 'Signed out.'
-		await navigateTo('/sign-in')
-	})
+const logoutAction = useApiAction(async () => {
+	await sessionStore.logout()
+	await navigateTo('/sign-in')
+})
+
+const isInitialSelectionLoading = computed(
+	() => refreshSelectionPageAction.isLoading.value && !refreshSelectionPageAction.hasExecuted.value,
+)
+const isUserActionLoading = computed(
+	() =>
+		provisionWorkspaceAction.isLoading.value ||
+		selectPortfolioAction.isLoading.value ||
+		clearSelectionAction.isLoading.value ||
+		logoutAction.isLoading.value,
+)
+const pageError = computed(() =>
+	firstMessage([
+		refreshSelectionPageAction.error.value,
+		provisionWorkspaceAction.error.value,
+		selectPortfolioAction.error.value,
+		clearSelectionAction.error.value,
+		logoutAction.error.value,
+	]),
+)
+
+function firstMessage(messages: string[]): string {
+	return messages.find(Boolean) ?? ''
 }
 </script>

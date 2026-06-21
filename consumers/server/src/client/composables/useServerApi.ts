@@ -1,4 +1,4 @@
-import axios, { type AxiosError } from 'axios'
+import axios from 'axios'
 
 import type {
 	EmailOtpChallengeResponse,
@@ -71,9 +71,6 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async clearSelection(): Promise<SelectionClearedResponse> {
 			return getResponseData(await client.delete<SelectionClearedResponse>('/selection/'))
 		},
-		errorMessage(error: unknown): string {
-			return getErrorMessage(error)
-		},
 	}
 }
 
@@ -81,28 +78,4 @@ export type ServerApi = ReturnType<typeof createServerApi>
 
 function getResponseData<T>(response: { data: T }): T {
 	return response.data
-}
-
-function getErrorMessage(error: unknown): string {
-	return axios.isAxiosError(error) ? getAxiosErrorMessage(error) : getUnknownErrorMessage(error)
-}
-
-function getAxiosErrorMessage(error: AxiosError<unknown>): string {
-	return getApiErrorMessages(error.response?.data) ?? error.message
-}
-
-function getUnknownErrorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : 'Unexpected error'
-}
-
-function getApiErrorMessages(data: unknown): string | null {
-	return Array.isArray(data) ? data.map(getApiErrorMessage).join('\n') : null
-}
-
-function getApiErrorMessage(error: unknown): string {
-	return hasMessage(error) ? String(error.message) : String(error)
-}
-
-function hasMessage(error: unknown): error is { message: unknown } {
-	return typeof error === 'object' && error !== null && 'message' in error
 }

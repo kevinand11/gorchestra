@@ -127,10 +127,6 @@ export const useSessionStore = defineStore('session', () => {
 		return response
 	}
 
-	function errorMessage(error: unknown): string {
-		return useServerApi().errorMessage(error)
-	}
-
 	function clearAuthenticatedState(): void {
 		workspacePortfolios.value = []
 		selection.value = null
@@ -152,7 +148,6 @@ export const useSessionStore = defineStore('session', () => {
 		setSelection,
 		clearSelection,
 		logout,
-		errorMessage,
 		clearAuthenticatedState,
 	}
 })

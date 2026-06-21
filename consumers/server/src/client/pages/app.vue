@@ -6,8 +6,7 @@
 			<p>Project, Plan, and Delivery views will land after Core read routes are added.</p>
 		</section>
 
-		<section v-if="message" class="notice">{{ message }}</section>
-		<section v-if="errorMessage" class="error">{{ errorMessage }}</section>
+		<section v-if="pageError" class="error">{{ pageError }}</section>
 
 		<section v-if="selection?.selected" class="grid">
 			<article class="card accent">
@@ -24,7 +23,7 @@
 				</p>
 				<div class="actions">
 					<NuxtLink class="button-link" to="/select">Change selection</NuxtLink>
-					<button type="button" class="secondary" :disabled="busy" @click="logout">Sign out</button>
+					<button type="button" class="secondary" :disabled="isLoggingOut" @click="logoutAction.execute()">Sign out</button>
 				</div>
 			</article>
 		</section>
@@ -37,24 +36,18 @@
 </template>
 
 <script setup lang="ts">
-import { createPageActionRunner } from '../composables/page-action'
+import { useApiAction } from '../composables/action-state'
 import { useSessionStore } from '../stores/session'
 
 definePageMeta({ middleware: ['has-selection'] })
 
 const sessionStore = useSessionStore()
 
-const busy = ref(false)
-const message = ref('')
-const errorMessage = ref('')
-const runAction = createPageActionRunner({ busy, errorMessage, getErrorMessage: sessionStore.errorMessage })
 const selection = computed(() => sessionStore.selection)
-
-async function logout(): Promise<void> {
-	await runAction(async () => {
-		await sessionStore.logout()
-		message.value = 'Signed out.'
-		await navigateTo('/sign-in')
-	})
-}
+const logoutAction = useApiAction(async () => {
+	await sessionStore.logout()
+	await navigateTo('/sign-in')
+})
+const isLoggingOut = logoutAction.isLoading
+const pageError = logoutAction.error
 </script>

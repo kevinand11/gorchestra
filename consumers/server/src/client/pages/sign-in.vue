@@ -6,32 +6,31 @@
 			<p>Verify control of your email address before selecting a Workspace and Portfolio.</p>
 		</section>
 
-		<section v-if="message" class="notice">{{ message }}</section>
-		<section v-if="errorMessage" class="error">{{ errorMessage }}</section>
+		<section v-if="pageError" class="error">{{ pageError }}</section>
 
 		<section class="card">
 			<h2>Email OTP Sign-in</h2>
-			<form class="stack" @submit.prevent="requestEmailOtp">
+			<form class="stack" @submit.prevent="requestEmailOtpAction.execute()">
 				<label>
 					Email address
 					<input v-model="email" type="email" autocomplete="email" required placeholder="person@example.com" />
 				</label>
-				<button type="submit" :disabled="busy">Send sign-in code</button>
+				<button type="submit" :disabled="isRequestingEmailOtp">Send sign-in code</button>
 			</form>
 
-			<form v-if="challengeRequested" class="stack" @submit.prevent="verifyEmailOtp">
+			<form v-if="challengeRequested" class="stack" @submit.prevent="verifyEmailOtpAction.execute()">
 				<label>
 					Six-digit code
 					<input v-model="code" inputmode="numeric" autocomplete="one-time-code" required placeholder="123456" />
 				</label>
-				<button type="submit" :disabled="busy">Verify and continue</button>
+				<button type="submit" :disabled="isVerifyingEmailOtp">Verify and continue</button>
 			</form>
 		</section>
 	</main>
 </template>
 
 <script setup lang="ts">
-import { createPageActionRunner } from '../composables/page-action'
+import { useApiAction } from '../composables/action-state'
 import { useSessionStore } from '../stores/session'
 
 definePageMeta({
@@ -46,29 +45,23 @@ definePageMeta({
 
 const sessionStore = useSessionStore()
 
-const busy = ref(false)
-const message = ref('')
-const errorMessage = ref('')
-const runAction = createPageActionRunner({ busy, errorMessage, getErrorMessage: sessionStore.errorMessage })
 const email = ref('')
 const code = ref('')
 const challengeRequested = ref(false)
 
-async function requestEmailOtp(): Promise<void> {
-	await runAction(async () => {
-		await sessionStore.requestEmailOtp(email.value)
-		challengeRequested.value = true
-		message.value = 'Sign-in code sent. Check the server mail output for the development OTP.'
-	})
-}
+const requestEmailOtpAction = useApiAction(async () => {
+	await sessionStore.requestEmailOtp(email.value)
+	challengeRequested.value = true
+})
 
-async function verifyEmailOtp(): Promise<void> {
-	await runAction(async () => {
-		await sessionStore.verifyEmailOtpSignIn(email.value, code.value)
-		code.value = ''
-		challengeRequested.value = false
-		message.value = 'Signed in.'
-		await navigateTo(sessionStore.homePath)
-	})
-}
+const verifyEmailOtpAction = useApiAction(async () => {
+	await sessionStore.verifyEmailOtpSignIn(email.value, code.value)
+	code.value = ''
+	challengeRequested.value = false
+	await navigateTo(sessionStore.homePath)
+})
+
+const isRequestingEmailOtp = requestEmailOtpAction.isLoading
+const isVerifyingEmailOtp = verifyEmailOtpAction.isLoading
+const pageError = computed(() => requestEmailOtpAction.error.value || verifyEmailOtpAction.error.value)
 </script>
