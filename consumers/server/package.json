@@ -11,6 +11,7 @@
 	"dependencies": {
 		"@gorchestra/core": "workspace:*",
 		"@pinia/nuxt": "^0.11.3",
+		"@vue/reactivity": "3.5.38",
 		"axios": "^1.18.0",
 		"equipped": "latest",
 		"h3": "1.15.11",

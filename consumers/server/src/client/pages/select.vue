@@ -17,13 +17,29 @@
 			<form class="mt-4 grid max-w-[520px] gap-4" @submit.prevent="provisionWorkspace()">
 				<label class="grid gap-2 font-bold text-dim">
 					Workspace display name
-					<UiInput v-model="workspaceDisplayName" required placeholder="Delivery Ops" />
+					<UiInput
+						v-model="provisionWorkspaceForm.workspaceDisplayName"
+						required
+						placeholder="Delivery Ops"
+						:invalid="!!provisionWorkspaceForm.errors.workspaceDisplayName" />
 				</label>
+				<UiText v-if="provisionWorkspaceForm.errors.workspaceDisplayName" tone="error" size="helper">
+					{{ provisionWorkspaceForm.errors.workspaceDisplayName }}
+				</UiText>
 				<label class="grid gap-2 font-bold text-dim">
 					Portfolio display name
-					<UiInput v-model="portfolioDisplayName" required placeholder="Main Portfolio" />
+					<UiInput
+						v-model="provisionWorkspaceForm.portfolioDisplayName"
+						required
+						placeholder="Main Portfolio"
+						:invalid="!!provisionWorkspaceForm.errors.portfolioDisplayName" />
 				</label>
-				<UiButton type="submit" :loading="isProvisioningWorkspace">Create Workspace and select Default Portfolio</UiButton>
+				<UiText v-if="provisionWorkspaceForm.errors.portfolioDisplayName" tone="error" size="helper">
+					{{ provisionWorkspaceForm.errors.portfolioDisplayName }}
+				</UiText>
+				<UiButton type="submit" :loading="isProvisioningWorkspace" :disabled="!provisionWorkspaceForm.valid">
+					Create Workspace and select Default Portfolio
+				</UiButton>
 				<UiText v-if="provisionWorkspaceError" tone="error">{{ provisionWorkspaceError }}</UiText>
 			</form>
 		</UiCard>
@@ -99,6 +115,7 @@ import UiInput from '../components/ui/UiInput.vue'
 import UiShell from '../components/ui/UiShell.vue'
 import UiText from '../components/ui/UiText.vue'
 import { useApiAction, useFetchAction } from '../composables/action-state'
+import { ProvisionWorkspaceFormFactory } from '../forms/workspace'
 import { useSessionStore } from '../stores/session'
 import { useToastStore } from '../stores/toasts'
 
@@ -107,8 +124,7 @@ definePageMeta({ middleware: ['is-authenticated'] })
 const sessionStore = useSessionStore()
 const toastStore = useToastStore()
 
-const workspaceDisplayName = ref('Delivery Ops')
-const portfolioDisplayName = ref('Main Portfolio')
+const provisionWorkspaceForm = new ProvisionWorkspaceFormFactory()
 const selectingPortfolioKey = ref('')
 const workspacePortfolios = computed(() => sessionStore.workspacePortfolios)
 const selection = computed(() => sessionStore.selection)
@@ -125,10 +141,7 @@ const {
 	error: provisionWorkspaceError,
 	execute: provisionWorkspace,
 } = useApiAction(async () => {
-	await sessionStore.provisionDefaultWorkspace({
-		workspaceDisplayName: workspaceDisplayName.value,
-		portfolioDisplayName: portfolioDisplayName.value,
-	})
+	await sessionStore.provisionDefaultWorkspace(provisionWorkspaceForm.toModel())
 	toastStore.success({ title: 'Workspace created and Portfolio selected.' })
 	await navigateTo('/app')
 })
