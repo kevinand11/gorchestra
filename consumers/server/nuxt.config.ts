@@ -1,13 +1,6 @@
-type ServerNuxtConfig = {
-	compatibilityDate: string
-	srcDir: string
-	devtools: { enabled: boolean }
-	app: { head: { title: string; meta: { name: string; content: string }[] } }
-	modules: string[]
-	nitro: { preset: string; serveStatic: boolean }
-}
+import { defineNuxtConfig, type NuxtConfig } from 'nuxt/config'
 
-const config: ServerNuxtConfig = {
+export default defineNuxtConfig({
 	compatibilityDate: '2026-06-18',
 	srcDir: 'src/client',
 	devtools: { enabled: false },
@@ -22,6 +15,9 @@ const config: ServerNuxtConfig = {
 		preset: 'node',
 		serveStatic: true,
 	},
-}
-
-export default config
+	vite: {
+		optimizeDeps: {
+			include: ['axios'],
+		},
+	},
+}) as NuxtConfig
