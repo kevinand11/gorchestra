@@ -1,4 +1,4 @@
-import { Router, type RouteDef } from 'equipped/server'
+import { Router } from 'equipped/server'
 import { FastifyServer } from 'equipped/server/adapters/fastify'
 
 import type { ServerEnv } from '../env'
@@ -9,20 +9,17 @@ import { createPortfolioApiRouter } from './routes/portfolio'
 import { createSelectionApiRouter } from './routes/selection'
 import { createWorkspaceApiRouter } from './routes/workspace'
 
-export function createServerApiRouter(context: ServerApiContext): Router<RouteDef> {
-	const router = new Router({ path: '/api' })
-	router.nest(
-		createAuthApiRouter(context),
-		createWorkspaceApiRouter(context),
-		createSelectionApiRouter(context),
-		createPortfolioApiRouter(context),
-	)
-	return router
+export function createServerApiRouter(context: ServerApiContext) {
+	return new Router({ path: '/api' })
+		.nest(createAuthApiRouter(context))
+		.nest(createWorkspaceApiRouter(context))
+		.nest(createSelectionApiRouter(context))
+		.nest(createPortfolioApiRouter(context))
 }
 
-export function createServerApiServer(context: ServerApiContext, env: ServerEnv): FastifyServer {
+export function createServerApiServer(context: ServerApiContext, env: ServerEnv) {
 	ensureServerInstance()
-	const server = FastifyServer.create({
+	return FastifyServer.create({
 		port: env.GORCHESTRA_PORT,
 		cors: { origin: true, credentials: true },
 		healthPath: '/api/health',
@@ -32,7 +29,5 @@ export function createServerApiServer(context: ServerApiContext, env: ServerEnv)
 			rateLimit: { enabled: false },
 			slowdown: { enabled: false },
 		},
-	})
-	server.addRouter(createServerApiRouter(context))
-	return server
+	}).addRouter(createServerApiRouter(context))
 }

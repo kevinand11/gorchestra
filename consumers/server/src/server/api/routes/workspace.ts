@@ -1,4 +1,4 @@
-import { Router, type RouteDef } from 'equipped/server'
+import { Router } from 'equipped/server'
 import { v } from 'valleyed'
 
 import { buildSelectionCookie } from '../../modules/selection-cookie'
@@ -15,27 +15,29 @@ const provisionDefaultWorkspaceBodySchema = jsonObjectPipe({
 	portfolioDisplayName: displayNamePipe(),
 })
 
-export function createWorkspaceApiRouter(context: ServerApiContext): Router<RouteDef> {
-	const router = new Router({ path: '/workspaces' })
+export function createWorkspaceApiRouter(context: ServerApiContext) {
+	return new Router({ path: '/workspaces' })
 
-	router.get('/portfolios', { schema: { cookies: sessionCookieSchema, response: workspacePortfoliosResponseSchema } })(async (req) => {
-		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
-		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
+		.get('/portfolios', {
+			schema: { cookies: sessionCookieSchema, response: workspacePortfoliosResponseSchema },
+		})(async (req) => {
+			const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
+			if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 
-		return await listAccessibleWorkspacePortfolios({
-			serverStorage: context.serverStorage,
-			userId: authentication.session.userId,
+			return await listAccessibleWorkspacePortfolios({
+				serverStorage: context.serverStorage,
+				userId: authentication.session.userId,
+			})
 		})
-	})
 
-	router.post('/provision-default', {
-		schema: {
-			body: provisionDefaultWorkspaceBodySchema,
-			cookies: sessionCookieSchema,
-			response: provisionedWorkspaceResponseSchema,
-			responseCookies: selectionResponseCookieSchema,
-		},
-	})(async (req) => {
+		.post('/provision-default', {
+			schema: {
+				body: provisionDefaultWorkspaceBodySchema,
+				cookies: sessionCookieSchema,
+				response: provisionedWorkspaceResponseSchema,
+				responseCookies: selectionResponseCookieSchema,
+			},
+		})(async (req) => {
 		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 
@@ -66,8 +68,6 @@ export function createWorkspaceApiRouter(context: ServerApiContext): Router<Rout
 			cookies: moduleCookiesToResponseCookies(selection.cookie),
 		})
 	})
-
-	return router
 }
 
 function displayNamePipe() {
