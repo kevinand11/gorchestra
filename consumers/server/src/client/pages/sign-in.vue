@@ -31,8 +31,6 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-
 import { createPageActionRunner } from '../composables/page-action'
 import { useRequestServerApi } from '../composables/useRequestServerApi'
 import { useSessionStore } from '../stores/session'

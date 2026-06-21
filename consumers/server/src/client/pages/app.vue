@@ -37,8 +37,6 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-
 import { createPageActionRunner } from '../composables/page-action'
 import { useSessionStore } from '../stores/session'
 

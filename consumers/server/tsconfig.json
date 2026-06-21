@@ -1,10 +1,15 @@
 {
 	"$schema": "https://json.schemastore.org/tsconfig",
-	"extends": "../../tsconfig.base.json",
+	"extends": "./.nuxt/tsconfig.json",
 	"compilerOptions": {
 		"composite": true,
+		"declaration": true,
+		"declarationDir": "../../node_modules/.cache/types/server",
+		"emitDeclarationOnly": true,
+		"noEmit": false,
 		"rootDir": ".",
-		"tsBuildInfoFile": "../../node_modules/.cache/tsbuildinfo/server.tsbuildinfo"
+		"tsBuildInfoFile": "../../node_modules/.cache/tsbuildinfo/server.tsbuildinfo",
+		"types": ["node", "vitest/importMeta"]
 	},
-	"include": ["src/**/*.ts", "nuxt.config.ts", "vitest.config.ts"]
+	"include": ["src/**/*.ts", "src/**/*.vue", "nuxt.config.ts", "vitest.config.ts", ".nuxt/**/*.d.ts"]
 }
