@@ -32,19 +32,19 @@
 
 <script setup lang="ts">
 import { createPageActionRunner } from '../composables/page-action'
+import { useRequestServerApi } from '../composables/useRequestServerApi'
 import { useSessionStore } from '../stores/session'
 
 definePageMeta({
 	middleware: [
 		async () => {
-			if (typeof window === 'undefined') return
 			const sessionStore = useSessionStore()
 			try {
-				await sessionStore.loadAuthenticatedState()
+				await sessionStore.loadAuthenticatedState(useRequestServerApi())
 			} catch {
 				return
 			}
-			if (sessionStore.isAuthenticated) return navigateTo(sessionStore.homePath)
+			if (sessionStore.isAuthenticated) return sessionStore.homePath
 		},
 	],
 })

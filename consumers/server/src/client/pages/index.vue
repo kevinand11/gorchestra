@@ -9,18 +9,18 @@
 </template>
 
 <script setup lang="ts">
+import { useRequestServerApi } from '../composables/useRequestServerApi'
 import { useSessionStore } from '../stores/session'
 
 definePageMeta({
 	middleware: [
 		async () => {
-			if (typeof window === 'undefined') return
 			const sessionStore = useSessionStore()
 			try {
-				await sessionStore.loadAuthenticatedState()
-				return navigateTo(sessionStore.homePath)
+				await sessionStore.loadAuthenticatedState(useRequestServerApi())
+				return sessionStore.homePath
 			} catch {
-				return navigateTo('/sign-in')
+				return '/sign-in'
 			}
 		},
 	],

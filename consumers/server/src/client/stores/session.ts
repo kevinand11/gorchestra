@@ -10,7 +10,7 @@ import type {
 	SignedOutResponse,
 	WorkspacePortfoliosResponse,
 } from '../../shared/api'
-import { useServerApi } from '../composables/useServerApi'
+import { useServerApi, type ServerApi } from '../composables/useServerApi'
 
 export type ClientSelectionState = SelectionAccessResponse | SelectionClearedResponse
 
@@ -46,36 +46,38 @@ export const useSessionStore = defineStore('session', {
 		homePath: (state): '/sign-in' | '/select' | '/app' => getSessionHomePath(state),
 	},
 	actions: {
-		async loadSession(): Promise<SessionStatusResponse> {
-			const session = await useServerApi().getSession()
+		async loadSession(api: ServerApi = useServerApi()): Promise<SessionStatusResponse> {
+			const session = await api.getSession()
 			this.session = session
 			if (!session.authenticated) this.clearAuthenticatedState()
 			return session
 		},
-		async loadAuthenticatedState(): Promise<void> {
-			const session = await this.loadSession()
+		async loadAuthenticatedState(api: ServerApi = useServerApi()): Promise<void> {
+			const session = await this.loadSession(api)
 			if (!session.authenticated) return
 
-			const api = useServerApi()
 			const [workspacePortfolios, selection] = await Promise.all([api.listWorkspacePortfolios(), api.getSelection()])
 			this.workspacePortfolios = workspacePortfolios.workspacePortfolios
 			this.selection = selection
 		},
-		async loadSelection(): Promise<SelectionAccessResponse | null> {
+		async loadSelection(api: ServerApi = useServerApi()): Promise<SelectionAccessResponse | null> {
 			if (!this.isAuthenticated) return null
-			this.selection = await useServerApi().getSelection()
+			this.selection = await api.getSelection()
 			return this.selection
 		},
-		async requestEmailOtp(email: string): Promise<EmailOtpChallengeResponse> {
-			return await useServerApi().requestEmailOtp(email)
+		async requestEmailOtp(email: string, api: ServerApi = useServerApi()): Promise<EmailOtpChallengeResponse> {
+			return await api.requestEmailOtp(email)
 		},
-		async verifyEmailOtpSignIn(email: string, code: string): Promise<EmailOtpSignInResponse> {
-			const response = await useServerApi().verifyEmailOtpSignIn(email, code)
-			await this.loadAuthenticatedState()
+		async verifyEmailOtpSignIn(email: string, code: string, api: ServerApi = useServerApi()): Promise<EmailOtpSignInResponse> {
+			const response = await api.verifyEmailOtpSignIn(email, code)
+			await this.loadAuthenticatedState(api)
 			return response
 		},
-		async provisionDefaultWorkspace(input: ProvisionDefaultWorkspaceInput): Promise<ProvisionedWorkspaceResponse> {
-			const response = await useServerApi().provisionDefaultWorkspace(input)
+		async provisionDefaultWorkspace(
+			input: ProvisionDefaultWorkspaceInput,
+			api: ServerApi = useServerApi(),
+		): Promise<ProvisionedWorkspaceResponse> {
+			const response = await api.provisionDefaultWorkspace(input)
 			this.workspacePortfolios = [
 				{
 					workspace: response.workspace,
@@ -94,17 +96,17 @@ export const useSessionStore = defineStore('session', {
 			}
 			return response
 		},
-		async setSelection(workspaceId: string, portfolioId: string): Promise<SelectionAccessResponse> {
-			this.selection = await useServerApi().setSelection(workspaceId, portfolioId)
+		async setSelection(workspaceId: string, portfolioId: string, api: ServerApi = useServerApi()): Promise<SelectionAccessResponse> {
+			this.selection = await api.setSelection(workspaceId, portfolioId)
 			return this.selection
 		},
-		async clearSelection(): Promise<SelectionClearedResponse> {
-			const response = await useServerApi().clearSelection()
+		async clearSelection(api: ServerApi = useServerApi()): Promise<SelectionClearedResponse> {
+			const response = await api.clearSelection()
 			this.selection = response
 			return response
 		},
-		async logout(): Promise<SignedOutResponse> {
-			const response = await useServerApi().logout()
+		async logout(api: ServerApi = useServerApi()): Promise<SignedOutResponse> {
+			const response = await api.logout()
 			this.session = { authenticated: false, reason: 'missing-token' }
 			this.clearAuthenticatedState()
 			return response

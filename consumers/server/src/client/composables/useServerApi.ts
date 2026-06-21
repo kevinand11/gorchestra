@@ -12,9 +12,22 @@ import type {
 	WorkspacePortfoliosResponse,
 } from '../../shared/api'
 
-const client = axios.create({ baseURL: '/api', withCredentials: true })
+export type ServerApiOptions = {
+	baseURL?: string
+	headers?: { cookie: string }
+}
 
 export function useServerApi() {
+	return createServerApi()
+}
+
+export function createServerApi(options: ServerApiOptions = {}) {
+	const client = axios.create({
+		baseURL: options.baseURL ?? '/api',
+		withCredentials: true,
+		...(options.headers === undefined ? {} : { headers: options.headers }),
+	})
+
 	return {
 		async requestEmailOtp(email: string): Promise<EmailOtpChallengeResponse> {
 			return getResponseData(await client.post<EmailOtpChallengeResponse>('/auth/email-otp/challenges', { email }))
@@ -54,6 +67,8 @@ export function useServerApi() {
 		},
 	}
 }
+
+export type ServerApi = ReturnType<typeof createServerApi>
 
 function getResponseData<T>(response: { data: T }): T {
 	return response.data

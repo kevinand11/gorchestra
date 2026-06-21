@@ -1,7 +1,6 @@
 type ServerNuxtConfig = {
 	compatibilityDate: string
 	srcDir: string
-	ssr: boolean
 	devtools: { enabled: boolean }
 	app: { head: { title: string; meta: { name: string; content: string }[] } }
 	modules: string[]
@@ -11,7 +10,6 @@ type ServerNuxtConfig = {
 const config: ServerNuxtConfig = {
 	compatibilityDate: '2026-06-18',
 	srcDir: 'src/client',
-	ssr: false,
 	devtools: { enabled: false },
 	app: {
 		head: {

@@ -1,11 +1,10 @@
 import { defineNuxtRouteMiddleware, navigateTo } from 'nuxt/app'
 
+import { useRequestServerApi } from '../composables/useRequestServerApi'
 import { useSessionStore } from '../stores/session'
 
 export default defineNuxtRouteMiddleware(async () => {
-	if (typeof window === 'undefined') return
-
 	const sessionStore = useSessionStore()
-	await sessionStore.loadSession()
+	await sessionStore.loadSession(useRequestServerApi())
 	if (!sessionStore.isAuthenticated) return navigateTo('/sign-in')
 })
