@@ -135,7 +135,7 @@ if (import.meta.vitest) {
 			if (!result.ok) return
 			expect(typeof result.value.preflight).toBe('function')
 			expect(typeof result.value.commands.createProject).toBe('function')
-			expect(typeof result.value.queries.getDeliveryWorkState).toBe('function')
+			expect(typeof result.value.queries.listProjects).toBe('function')
 			expect(typeof result.value.snapshots.export).toBe('function')
 			expect(typeof result.value.snapshots.restore).toBe('function')
 		})

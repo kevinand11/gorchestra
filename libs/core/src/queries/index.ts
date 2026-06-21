@@ -1,16 +1,13 @@
 import type { CoreRuntime } from '../runtime'
-import { createGetDeliveryWorkStateQuery } from './get-delivery-work-state'
-import { createGetSliceWorkStateQuery } from './get-slice-work-state'
+import { createListProjectsQuery } from './list-projects'
 
-export type * as GetDeliveryWorkState from './get-delivery-work-state'
-export type * as GetSliceWorkState from './get-slice-work-state'
+export type * as ListProjects from './list-projects'
 
 export function createCoreQueries(runtime: CoreRuntime) {
 	const services = runtime.services
 
 	return {
-		getDeliveryWorkState: createGetDeliveryWorkStateQuery(services),
-		getSliceWorkState: createGetSliceWorkStateQuery(services),
+		listProjects: createListProjectsQuery(services),
 	}
 }
 
@@ -24,7 +21,7 @@ if (import.meta.vitest) {
 	describe('Core queries', () => {
 		it('returns an object with the expected query keys', () => {
 			const queries = createCoreQueries(createCoreRuntime(createTestCoreServices())) as Record<string, unknown>
-			const queryNames = ['getDeliveryWorkState', 'getSliceWorkState']
+			const queryNames = ['listProjects']
 
 			expect(Object.keys(queries).sort()).toEqual([...queryNames].sort())
 			for (const queryName of queryNames) {
