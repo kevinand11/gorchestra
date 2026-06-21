@@ -1,5 +1,6 @@
 import axios from 'axios'
 
+import { createRouteContractAxiosClient } from './server-api-route-client'
 import type {
 	EmailOtpChallengeResponse,
 	EmailOtpSignInResponse,
@@ -68,55 +69,49 @@ export function createServerApi(options: ServerApiOptions = {}) {
 			throw error
 		},
 	)
+	const routes = createRouteContractAxiosClient(client)
 
 	return {
 		async requestEmailOtp(email: string): Promise<EmailOtpChallengeResponse> {
-			await client.post('/auth/email-otp/challenges', { email })
-			return undefined
+			return routes.request('post', '/api/auth/email-otp/challenges', { body: { email } })
 		},
 		async verifyEmailOtpSignIn(email: string, code: string): Promise<EmailOtpSignInResponse> {
-			return getResponseData(await client.post<EmailOtpSignInResponse>('/auth/email-otp/sign-in', { email, code }))
+			return routes.request('post', '/api/auth/email-otp/sign-in', { body: { email, code } })
 		},
 		async getSession(): Promise<SessionStatusResponse> {
-			return getResponseData(await client.get<SessionStatusResponse>('/auth/session'))
+			return routes.request('get', '/api/auth/session')
 		},
 		async refreshSession(): Promise<RefreshedSessionResponse> {
-			return getResponseData(await client.post<RefreshedSessionResponse>('/auth/refresh'))
+			return routes.request('post', '/api/auth/refresh')
 		},
 		async logout(): Promise<SignedOutResponse> {
-			await client.delete('/auth/session')
-			return undefined
+			return routes.request('delete', '/api/auth/session')
 		},
 		async listWorkspacePortfolios(): Promise<WorkspacePortfoliosResponse> {
-			return getResponseData(await client.get<WorkspacePortfoliosResponse>('/workspaces/portfolios'))
+			return routes.request('get', '/api/workspaces/portfolios')
 		},
 		async listProjects(): Promise<PortfolioProjectsResponse> {
-			return getResponseData(await client.get<PortfolioProjectsResponse>('/portfolio/projects'))
+			return routes.request('get', '/api/portfolio/projects')
 		},
 		async provisionDefaultWorkspace(input: {
 			workspaceDisplayName: string
 			portfolioDisplayName: string
 		}): Promise<ProvisionedWorkspaceResponse> {
-			return getResponseData(await client.post<ProvisionedWorkspaceResponse>('/workspaces/provision-default', input))
+			return routes.request('post', '/api/workspaces/provision-default', { body: input })
 		},
 		async getSelection(): Promise<SelectionAccessResponse> {
-			return getResponseData(await client.get<SelectionAccessResponse>('/selection'))
+			return routes.request('get', '/api/selection')
 		},
 		async setSelection(workspaceId: string, portfolioId: string): Promise<SelectionAccessResponse> {
-			return getResponseData(await client.post<SelectionAccessResponse>('/selection', { workspaceId, portfolioId }))
+			return routes.request('post', '/api/selection', { body: { workspaceId, portfolioId } })
 		},
 		async clearSelection(): Promise<SelectionClearedResponse> {
-			await client.delete('/selection/')
-			return undefined
+			return routes.request('delete', '/api/selection')
 		},
 	}
 }
 
 export type ServerApi = ReturnType<typeof createServerApi>
-
-function getResponseData<T>(response: { data: T }): T {
-	return response.data
-}
 
 function shouldHandlePreconditionRequired(error: unknown): boolean {
 	return typeof window !== 'undefined' && getHttpStatusCode(error) === preconditionRequiredStatusCode

@@ -18,7 +18,7 @@ The `consumers/server/` package implements the v1 deployed Server Consumer: Nuxt
 
 - Read `../../docs/consumers/CONTEXT.md`, `../../docs/consumers/server/CONTEXT.md`, and relevant Server Consumer ADRs before changing source behavior.
 - Server-owned storage must not store Core Portfolio facts except Portfolio registry metadata and Core storage locations.
-- Client code must not import from `src/server/`; server code may not import from `src/client/`; either side may import browser-safe types from `src/shared/`.
+- Client code must not import from `src/server/`; server code may not import from `src/client/`; either side may import browser-safe types from `src/shared/`. `src/shared/` may contain a type-only Route Contract bridge to `src/server/`; client code must import that bridge with `import type` only.
 - Portfolio-scoped API routes must validate the signed-in User, Selection Cookie, Active Workspace membership, and Portfolio registry ownership before opening Core; after Session authentication succeeds, missing or unusable selection must fail with Equipped `PreconditionRequiredError` / HTTP 428 so browser clients can redirect to `/select`.
 - Reuse the Portfolio-scoped Server API context helper for Portfolio-scoped routes; it validates selection, opens Core, exposes only resolved Session/selection/access records plus Core, and auto-closes Core storage through a callback.
 - Initial slice exposes no Project/Plan/Delivery Core UI/API routes; add explicit Core queries before adding standalone Core read routes.
