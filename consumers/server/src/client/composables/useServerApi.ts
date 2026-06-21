@@ -26,8 +26,24 @@ export function setServerApiOptionsResolver(resolver: ServerApiOptionsResolver):
 }
 
 export function useServerApi() {
-	if (typeof window !== 'undefined') return createServerApi()
-	return createServerApi(serverApiOptionsResolver?.() ?? {})
+	return createServerApi(resolveServerApiOptions())
+}
+
+function resolveServerApiOptions(): ServerApiOptions {
+	if (typeof window !== 'undefined') return {}
+	return resolveServerRequestApiOptions()
+}
+
+function resolveServerRequestApiOptions(): ServerApiOptions {
+	if (serverApiOptionsResolver === null) return throwMissingServerApiContext()
+
+	const options = serverApiOptionsResolver()
+	if (options === null) return throwMissingServerApiContext()
+	return options
+}
+
+function throwMissingServerApiContext(): never {
+	throw new Error('Server API requests require an active Nuxt request context')
 }
 
 export function createServerApi(options: ServerApiOptions = {}) {
