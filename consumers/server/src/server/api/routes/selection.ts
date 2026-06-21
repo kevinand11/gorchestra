@@ -5,7 +5,7 @@ import { resolveSelectionAccess, validateWorkspacePortfolioAccess } from '../../
 import { buildDeleteSelectionCookie, buildSelectionCookie, selectionCookieName } from '../../modules/selection-cookie'
 import type { ServerApiContext } from '../context'
 import { throwSelectionAccessError, throwSessionAuthenticationError } from '../errors'
-import { jsonObjectPipe, moduleCookiesToResponseCookies, optionalCookiePipe } from '../http'
+import { moduleCookiesToResponseCookies, optionalCookiePipe } from '../http'
 import {
 	noContentResponseSchema,
 	portfolioRegistryEntryResponseSchema,
@@ -19,7 +19,7 @@ import { authenticateApiSession, getSessionToken, sessionCookieSchema } from '..
 
 const selectionCookieSchema = optionalCookiePipe(selectionCookieName)
 const selectionRequestCookieSchema = v.merge(sessionCookieSchema, selectionCookieSchema)
-const setSelectionBodySchema = jsonObjectPipe({ workspaceId: requestStringPipe(), portfolioId: requestStringPipe() })
+const setSelectionBodySchema = v.object({ workspaceId: requestStringPipe(), portfolioId: requestStringPipe() })
 const selectionAccessResponseSchema = v.or([
 	v.object({
 		selected: v.is(true as const),
@@ -44,9 +44,8 @@ const selectionAccessResponseSchema = v.or([
 ])
 
 export function createSelectionApiRouter(context: ServerApiContext) {
-	const router = new Router({ path: '/selection' })
-	const withAccess = router.get('/', { schema: { cookies: selectionRequestCookieSchema, response: selectionAccessResponseSchema } })(
-		async (req) => {
+	return new Router({ path: '/selection' })
+		.get('/', { schema: { cookies: selectionRequestCookieSchema, response: selectionAccessResponseSchema } })(async (req) => {
 			const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 			if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 
@@ -57,52 +56,51 @@ export function createSelectionApiRouter(context: ServerApiContext) {
 				now: context.now(),
 				signingKey: context.selectionSigningKey,
 			})
-		},
-	)
-	const withSetSelection = withAccess.post('/', {
-		schema: {
-			body: setSelectionBodySchema,
-			cookies: sessionCookieSchema,
-			response: selectionAccessResponseSchema,
-			responseCookies: selectionResponseCookieSchema,
-		},
-	})(async (req) => {
-		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
-		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
-
-		const access = await validateWorkspacePortfolioAccess({
-			serverStorage: context.serverStorage,
-			userId: authentication.session.userId,
-			selection: req.body,
 		})
-		if (!access.accessible) throwSelectionAccessError(access.reason)
-
-		const built = buildSelectionCookie({
-			workspaceId: access.workspace.id,
-			portfolioId: access.portfolio.id,
-			now: context.now(),
-			signingKey: context.selectionSigningKey,
-		})
-		return req.res({
-			body: {
-				selected: true,
-				selection: built.selection,
-				workspace: access.workspace,
-				workspaceMember: access.workspaceMember,
-				portfolio: access.portfolio,
-				activeWorkspaceOwnerRole: access.activeWorkspaceOwnerRole,
+		.post('/', {
+			schema: {
+				body: setSelectionBodySchema,
+				cookies: sessionCookieSchema,
+				response: selectionAccessResponseSchema,
+				responseCookies: selectionResponseCookieSchema,
 			},
-			cookies: moduleCookiesToResponseCookies(built.cookie),
+		})(async (req) => {
+			const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
+			if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
+
+			const access = await validateWorkspacePortfolioAccess({
+				serverStorage: context.serverStorage,
+				userId: authentication.session.userId,
+				selection: req.body,
+			})
+			if (!access.accessible) throwSelectionAccessError(access.reason)
+
+			const built = buildSelectionCookie({
+				workspaceId: access.workspace.id,
+				portfolioId: access.portfolio.id,
+				now: context.now(),
+				signingKey: context.selectionSigningKey,
+			})
+			return req.res({
+				body: {
+					selected: true,
+					selection: built.selection,
+					workspace: access.workspace,
+					workspaceMember: access.workspaceMember,
+					portfolio: access.portfolio,
+					activeWorkspaceOwnerRole: access.activeWorkspaceOwnerRole,
+				},
+				cookies: moduleCookiesToResponseCookies(built.cookie),
+			})
 		})
-	})
-	return withSetSelection.delete('/', {
-		schema: {
-			cookies: sessionCookieSchema,
-			response: noContentResponseSchema,
-			responseCookies: selectionResponseCookieSchema,
-			defaultStatusCode: StatusCodes.NoContent,
-		},
-	})(async (req) => {
+		.delete('/', {
+			schema: {
+				cookies: sessionCookieSchema,
+				response: noContentResponseSchema,
+				responseCookies: selectionResponseCookieSchema,
+				defaultStatusCode: StatusCodes.NoContent,
+			},
+		})(async (req) => {
 		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 

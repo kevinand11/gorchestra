@@ -6,7 +6,7 @@ import { provisionWorkspaceWithDefaultPortfolio } from '../../modules/workspace-
 import { listAccessibleWorkspacePortfolios } from '../../modules/workspaces'
 import type { ServerApiContext } from '../context'
 import { throwNotAuthorized, throwSessionAuthenticationError } from '../errors'
-import { jsonObjectPipe, moduleCookiesToResponseCookies } from '../http'
+import { moduleCookiesToResponseCookies } from '../http'
 import {
 	portfolioRegistryEntryResponseSchema,
 	selectedPortfolioResponseSchema,
@@ -17,48 +17,48 @@ import {
 } from '../schemas'
 import { authenticateApiSession, getSessionToken, sessionCookieSchema } from '../session'
 
-const provisionDefaultWorkspaceBodySchema = jsonObjectPipe({
+const provisionDefaultWorkspaceBodySchema = v.object({
 	workspaceDisplayName: displayNamePipe(),
 	portfolioDisplayName: displayNamePipe(),
 })
 
 export function createWorkspaceApiRouter(context: ServerApiContext) {
-	const router = new Router({ path: '/workspaces' })
-	const withPortfolios = router.get('/portfolios', {
-		schema: {
-			cookies: sessionCookieSchema,
-			response: v.array(
-				v.object({
+	return new Router({ path: '/workspaces' })
+		.get('/portfolios', {
+			schema: {
+				cookies: sessionCookieSchema,
+				response: v.array(
+					v.object({
+						workspace: workspaceResponseSchema,
+						workspaceMember: workspaceMemberResponseSchema,
+						portfolio: portfolioRegistryEntryResponseSchema,
+						activeWorkspaceOwnerRole: v.nullable(workspaceOwnerRoleResponseSchema),
+					}),
+				),
+			},
+		})(async (req) => {
+			const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
+			if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
+
+			return await listAccessibleWorkspacePortfolios({
+				serverStorage: context.serverStorage,
+				userId: authentication.session.userId,
+			})
+		})
+		.post('/provision-default', {
+			schema: {
+				body: provisionDefaultWorkspaceBodySchema,
+				cookies: sessionCookieSchema,
+				response: v.object({
 					workspace: workspaceResponseSchema,
 					workspaceMember: workspaceMemberResponseSchema,
+					workspaceOwnerRole: workspaceOwnerRoleResponseSchema,
 					portfolio: portfolioRegistryEntryResponseSchema,
-					activeWorkspaceOwnerRole: v.nullable(workspaceOwnerRoleResponseSchema),
+					selection: selectedPortfolioResponseSchema,
 				}),
-			),
-		},
-	})(async (req) => {
-		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
-		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
-
-		return await listAccessibleWorkspacePortfolios({
-			serverStorage: context.serverStorage,
-			userId: authentication.session.userId,
-		})
-	})
-	return withPortfolios.post('/provision-default', {
-		schema: {
-			body: provisionDefaultWorkspaceBodySchema,
-			cookies: sessionCookieSchema,
-			response: v.object({
-				workspace: workspaceResponseSchema,
-				workspaceMember: workspaceMemberResponseSchema,
-				workspaceOwnerRole: workspaceOwnerRoleResponseSchema,
-				portfolio: portfolioRegistryEntryResponseSchema,
-				selection: selectedPortfolioResponseSchema,
-			}),
-			responseCookies: selectionResponseCookieSchema,
-		},
-	})(async (req) => {
+				responseCookies: selectionResponseCookieSchema,
+			},
+		})(async (req) => {
 		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 

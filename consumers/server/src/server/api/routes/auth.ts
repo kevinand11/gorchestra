@@ -5,7 +5,7 @@ import { createEmailOtpChallenge } from '../../modules/email-otp'
 import { verifyEmailOtpSignIn } from '../../modules/email-otp-sign-in'
 import type { ServerApiContext } from '../context'
 import { throwBadRequest, throwSessionAuthenticationError } from '../errors'
-import { jsonObjectPipe, moduleCookiesToResponseCookies } from '../http'
+import { moduleCookiesToResponseCookies } from '../http'
 import {
 	emailPipe,
 	idPipe,
@@ -23,8 +23,8 @@ import {
 	signedOutResponseCookies,
 } from '../session'
 
-const emailOtpChallengeBodySchema = jsonObjectPipe({ email: requestStringPipe() })
-const emailOtpSignInBodySchema = jsonObjectPipe({ email: requestStringPipe(), code: requestStringPipe() })
+const emailOtpChallengeBodySchema = v.object({ email: v.string().pipe(v.email()) })
+const emailOtpSignInBodySchema = v.object({ email: v.string().pipe(v.email()), code: v.string().pipe(v.asTrimmed(), v.min<string>(1)) })
 const serverUserResponseSchema = v.object({ id: idPipe, createdAt: isoDateTimePipe })
 const emailAuthenticationIdentityResponseSchema = v.object({
 	id: idPipe,
@@ -41,90 +41,86 @@ const sessionResponseSchema = v.object({
 })
 
 export function createAuthApiRouter(context: ServerApiContext) {
-	const router = new Router({ path: '/auth' })
-	const withChallenge = router.post('/email-otp/challenges', {
-		schema: {
-			body: emailOtpChallengeBodySchema,
-			response: noContentResponseSchema,
-			defaultStatusCode: StatusCodes.NoContent,
-		},
-	})(async (req) => {
-		await createEmailOtpChallenge({ email: req.body.email, now: context.now() })
-		return req.res({ status: StatusCodes.NoContent, body: undefined })
-	})
-	const withSignIn = withChallenge.post('/email-otp/sign-in', {
-		schema: {
-			body: emailOtpSignInBodySchema,
-			response: v.object({
-				user: serverUserResponseSchema,
-				emailAuthenticationIdentity: emailAuthenticationIdentityResponseSchema,
-				createdUser: v.boolean(),
-				session: sessionResponseSchema,
-			}),
-			responseCookies: sessionResponseCookieSchema,
-		},
-	})(async (req) => {
-		const result = await verifyEmailOtpSignIn({
-			serverStorage: context.serverStorage,
-			email: req.body.email,
-			code: req.body.code,
-			now: context.now(),
-			signingKey: context.sessionSigningKey,
-		})
-		if (!result.signedIn) throwBadRequest(`Email OTP Sign-in failed: ${result.reason}`)
-		return req.res({
-			body: {
-				user: result.user,
-				emailAuthenticationIdentity: result.emailAuthenticationIdentity,
-				createdUser: result.createdUser,
-				session: result.session,
+	return new Router({ path: '/auth' })
+		.post('/email-otp/challenges', {
+			schema: {
+				body: emailOtpChallengeBodySchema,
+				response: noContentResponseSchema,
+				defaultStatusCode: StatusCodes.NoContent,
 			},
-			cookies: moduleCookiesToResponseCookies(result.cookie),
+		})(async (req) => {
+			await createEmailOtpChallenge({ email: req.body.email, now: context.now() })
+			return req.res({ status: StatusCodes.NoContent, body: undefined })
 		})
-	})
-	const withSession = withSignIn.get('/session', {
-		schema: {
-			cookies: sessionCookieSchema,
-			response: v.or([
-				v.object({
-					authenticated: v.is(true as const),
+		.post('/email-otp/sign-in', {
+			schema: {
+				body: emailOtpSignInBodySchema,
+				response: v.object({
+					user: serverUserResponseSchema,
+					emailAuthenticationIdentity: emailAuthenticationIdentityResponseSchema,
+					createdUser: v.boolean(),
 					session: sessionResponseSchema,
-					tokenStatus: v.in(['current', 'previous-grace'] as const),
-					refreshRecommended: v.boolean(),
 				}),
-				v.object({
-					authenticated: v.is(false as const),
-					reason: v.in(['missing-token', 'invalid-token', 'expired', 'not-current'] as const),
-				}),
-			]),
-		},
-	})(async (req) => authenticateApiSession(context, getSessionToken(req.cookies)))
-	const withRefresh = withSession.post('/refresh', {
-		schema: {
-			cookies: sessionCookieSchema,
-			response: sessionResponseSchema,
-			responseCookies: sessionResponseCookieSchema,
-		},
-	})(async (req) => {
-		const result = await refreshApiSession(context, getSessionToken(req.cookies))
-		if (!result.refreshed) return throwRefreshSessionError(result.reason)
-		return req.res({ body: result.session, cookies: moduleCookiesToResponseCookies(result.cookie) })
-	})
-	return withRefresh.delete('/session', {
-		schema: {
-			cookies: sessionCookieSchema,
-			response: noContentResponseSchema,
-			responseCookies: signedOutResponseCookieSchema,
-			defaultStatusCode: StatusCodes.NoContent,
-		},
-	})(async (req) => {
+				responseCookies: sessionResponseCookieSchema,
+			},
+		})(async (req) => {
+			const result = await verifyEmailOtpSignIn({
+				serverStorage: context.serverStorage,
+				email: req.body.email,
+				code: req.body.code,
+				now: context.now(),
+				signingKey: context.sessionSigningKey,
+			})
+			if (!result.signedIn) throwBadRequest(`Email OTP Sign-in failed: ${result.reason}`)
+			return req.res({
+				body: {
+					user: result.user,
+					emailAuthenticationIdentity: result.emailAuthenticationIdentity,
+					createdUser: result.createdUser,
+					session: result.session,
+				},
+				cookies: moduleCookiesToResponseCookies(result.cookie),
+			})
+		})
+		.get('/session', {
+			schema: {
+				cookies: sessionCookieSchema,
+				response: v.or([
+					v.object({
+						authenticated: v.is(true as const),
+						session: sessionResponseSchema,
+						tokenStatus: v.in(['current', 'previous-grace'] as const),
+						refreshRecommended: v.boolean(),
+					}),
+					v.object({
+						authenticated: v.is(false as const),
+						reason: v.in(['missing-token', 'invalid-token', 'expired', 'not-current'] as const),
+					}),
+				]),
+			},
+		})(async (req) => authenticateApiSession(context, getSessionToken(req.cookies)))
+		.post('/refresh', {
+			schema: {
+				cookies: sessionCookieSchema,
+				response: sessionResponseSchema,
+				responseCookies: sessionResponseCookieSchema,
+			},
+		})(async (req) => {
+			const result = await refreshApiSession(context, getSessionToken(req.cookies))
+			if (!result.refreshed) return throwRefreshSessionError(result.reason)
+			return req.res({ body: result.session, cookies: moduleCookiesToResponseCookies(result.cookie) })
+		})
+		.delete('/session', {
+			schema: {
+				cookies: sessionCookieSchema,
+				response: noContentResponseSchema,
+				responseCookies: signedOutResponseCookieSchema,
+				defaultStatusCode: StatusCodes.NoContent,
+			},
+		})(async (req) => {
 		await revokeApiSessionIfAuthenticated(context, getSessionToken(req.cookies))
 		return req.res({ status: StatusCodes.NoContent, body: undefined, cookies: signedOutResponseCookies() })
 	})
-}
-
-function requestStringPipe() {
-	return v.string().pipe(v.asTrimmed(), v.min<string>(1))
 }
 
 function throwRefreshSessionError(reason: Extract<Awaited<ReturnType<typeof refreshApiSession>>, { refreshed: false }>['reason']): never {

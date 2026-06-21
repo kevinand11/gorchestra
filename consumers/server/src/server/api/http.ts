@@ -1,4 +1,4 @@
-import { v, type Pipe, type PipeOutput } from 'valleyed'
+import { v, type Pipe } from 'valleyed'
 
 export type ServerApiResponseCookie = {
 	value: string
@@ -33,14 +33,6 @@ export function optionalCookiePipe<const Name extends string>(
 ): Pipe<Record<string, string | undefined>, Record<Name, string | undefined>> {
 	return v.object({ [name]: v.optional(v.string()) }) as Pipe<Record<string, string | undefined>, Record<Name, string | undefined>>
 }
-
-export function jsonObjectPipe<const Shape extends Record<string, Pipe<unknown, unknown>>>(shape: Shape) {
-	return v.fromJson(v.object(shape))
-}
-
-export type JsonObjectPipeOutput<Shape extends Record<string, Pipe<unknown, unknown>>> = PipeOutput<
-	ReturnType<typeof jsonObjectPipe<Shape>>
->
 
 function moduleCookieToResponseCookie(cookie: ServerModuleCookie): ServerApiResponseCookie {
 	const { name: _name, ...responseCookie } = cookie
