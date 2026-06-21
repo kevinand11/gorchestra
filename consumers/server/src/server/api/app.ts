@@ -5,12 +5,18 @@ import type { ServerEnv } from '../env'
 import { ensureServerInstance } from '../instance'
 import type { ServerApiContext } from './context'
 import { createAuthApiRouter } from './routes/auth'
+import { createPortfolioApiRouter } from './routes/portfolio'
 import { createSelectionApiRouter } from './routes/selection'
 import { createWorkspaceApiRouter } from './routes/workspace'
 
 export function createServerApiRouter(context: ServerApiContext): Router<RouteDef> {
 	const router = new Router({ path: '/api' })
-	router.nest(createAuthApiRouter(context), createWorkspaceApiRouter(context), createSelectionApiRouter(context))
+	router.nest(
+		createAuthApiRouter(context),
+		createWorkspaceApiRouter(context),
+		createSelectionApiRouter(context),
+		createPortfolioApiRouter(context),
+	)
 	return router
 }
 

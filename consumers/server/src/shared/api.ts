@@ -1,3 +1,8 @@
+import type { Queries } from '@gorchestra/core'
+
+export type ListedProject = Queries.ListProjects.ListedProject
+export type PortfolioProjectsResponse = Queries.ListProjects.Result
+
 export type ServerSession = {
 	userId: string
 	email: string

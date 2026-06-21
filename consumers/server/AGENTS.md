@@ -20,7 +20,7 @@ The `consumers/server/` package implements the v1 deployed Server Consumer: Nuxt
 - Server-owned storage must not store Core Portfolio facts except Portfolio registry metadata and Core storage locations.
 - Client code must not import from `src/server/`; server code may not import from `src/client/`; either side may import browser-safe types from `src/shared/`.
 - Portfolio-scoped API routes must validate the signed-in User, Selection Cookie, Active Workspace membership, and Portfolio registry ownership before opening Core; after Session authentication succeeds, missing or unusable selection must fail with Equipped `PreconditionRequiredError` / HTTP 428 so browser clients can redirect to `/select`.
-- Introduce the Portfolio-scoped Server API context helper with the first real Core read route so the helper has a production call site; it should validate selection, open Core, expose only resolved Session/selection/access records plus Core, and auto-close Core storage through a callback.
+- Reuse the Portfolio-scoped Server API context helper for Portfolio-scoped routes; it validates selection, opens Core, exposes only resolved Session/selection/access records plus Core, and auto-closes Core storage through a callback.
 - Initial slice exposes no Project/Plan/Delivery Core UI/API routes; add explicit Core queries before adding standalone Core read routes.
 - Do not require `GORCHESTRA_SECRET_ENCRYPTION_KEY` until Secret management routes and encrypted Secret vault support are implemented.
 - `GET` routes must be read-only; do not refresh Sessions, set cookies, or mutate cache/storage from `GET` handlers.

@@ -3,6 +3,7 @@ import axios from 'axios'
 import type {
 	EmailOtpChallengeResponse,
 	EmailOtpSignInResponse,
+	PortfolioProjectsResponse,
 	ProvisionedWorkspaceResponse,
 	RefreshedSessionResponse,
 	SelectionAccessResponse,
@@ -88,6 +89,9 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		},
 		async listWorkspacePortfolios(): Promise<WorkspacePortfoliosResponse> {
 			return getResponseData(await client.get<WorkspacePortfoliosResponse>('/workspaces/portfolios'))
+		},
+		async listProjects(): Promise<PortfolioProjectsResponse> {
+			return getResponseData(await client.get<PortfolioProjectsResponse>('/portfolio/projects'))
 		},
 		async provisionDefaultWorkspace(input: {
 			workspaceDisplayName: string

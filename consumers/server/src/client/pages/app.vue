@@ -14,11 +14,28 @@
 			</article>
 
 			<article class="card">
-				<h2>Next: Core read boundary</h2>
-				<p>
-					This app route is selection-aware. It does not expose Project, Plan, Delivery, or Slice data until the Server API adds
-					explicit Core query routes.
-				</p>
+				<h2>Projects</h2>
+				<p v-if="isLoadingProjects && !hasLoadedProjects" class="muted">Loading Projects…</p>
+				<p v-else-if="projectsError" class="error">{{ projectsError }}</p>
+				<p v-else-if="projects.length === 0" class="muted">No Projects yet.</p>
+				<ul v-else class="portfolio-list">
+					<li v-for="project in projects" :key="project.id">
+						<div>
+							<strong>{{ project.title }}</strong>
+							<span>Project id: {{ project.id }}</span>
+							<span>Source: {{ project.source.type }}</span>
+							<span v-if="project.source.repositories.length === 0">No Repositories configured.</span>
+							<span v-for="repository in project.source.repositories" :key="repository.id">
+								{{ repository.config.provider }}: {{ repository.config.owner }}/{{ repository.config.name }}
+							</span>
+						</div>
+					</li>
+				</ul>
+			</article>
+
+			<article class="card">
+				<h2>Portfolio actions</h2>
+				<p>This app route loads selected Portfolio Projects through an explicit Core query boundary.</p>
 				<div class="actions">
 					<NuxtLink class="button-link" to="/select">Change selection</NuxtLink>
 					<button type="button" class="secondary" :disabled="isLoggingOut" @click="logout()">Sign out</button>
@@ -35,14 +52,28 @@
 </template>
 
 <script setup lang="ts">
-import { useApiAction } from '../composables/action-state'
+import type { ListedProject } from '../../shared/api'
+import { useApiAction, useFetchAction } from '../composables/action-state'
+import { useServerApi } from '../composables/useServerApi'
 import { useSessionStore } from '../stores/session'
 
 definePageMeta({ middleware: ['has-selection'] })
 
 const sessionStore = useSessionStore()
+const serverApi = useServerApi()
 
 const selection = computed(() => sessionStore.selection)
+const projects = ref<ListedProject[]>([])
+const {
+	isLoading: isLoadingProjects,
+	error: projectsError,
+	hasExecuted: hasLoadedProjects,
+} = useFetchAction(
+	async () => {
+		projects.value = await serverApi.listProjects()
+	},
+	{ dedupeKey: 'selected-portfolio-projects' },
+)
 const {
 	isLoading: isLoggingOut,
 	error: logoutError,
