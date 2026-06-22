@@ -113,7 +113,7 @@ function failedProbeCheck(): CorePreflightCheck {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreStorage } = await import('./utils/test-helpers')
+	const { createTestCoreServices, createTestCoreStorage } = await import('./utils/test-helpers')
 
 	const secrets: CoreServices['secrets'] = {
 		preflight: () => Promise.resolve({ ok: true }),
@@ -155,18 +155,9 @@ if (import.meta.vitest) {
 		})
 
 		it('validates Core Service shape without probing service behavior', () => {
+			const storage = createTestCoreServices()
 			const options = {
-				storage: {
-					on: () => {
-						throw new Error('storage on was probed')
-					},
-					session: () => {
-						throw new Error('storage session was probed')
-					},
-					resolve: () => {
-						throw new Error('storage resolve was probed')
-					},
-				},
+				storage: storage.storage,
 				secrets: {
 					preflight: () => {
 						throw new Error('secret preflight was probed')
@@ -185,12 +176,13 @@ if (import.meta.vitest) {
 				},
 			}
 
-			expect(openCore(options as never)).toMatchObject({ ok: true })
+			expect(openCore(options)).toMatchObject({ ok: true })
+			expect(storage.transactionCalls()).toBe(0)
 
 			const invalidSecrets = { ...options.secrets } as { resolveSecrets?: unknown }
 			delete invalidSecrets.resolveSecrets
 
-			expect(openCore({ ...options, secrets: invalidSecrets as never } as never)).toMatchObject({
+			expect(openCore({ ...options, secrets: invalidSecrets } as never)).toMatchObject({
 				ok: false,
 				error: {
 					type: 'invalid-input',

@@ -32,9 +32,20 @@ export function throwSelectionRequired(): never {
 	throw new PreconditionRequiredError('Select a Workspace and Portfolio before using this API.')
 }
 
+const badRequestCoreErrorMessages: Record<string, string> = {
+	'invalid-input': 'Invalid Core input',
+	'duplicate-repository-target': 'Repository target already exists for this Project',
+	'project-source-type-mismatch': 'Project does not support source control Repositories',
+	'secret-not-active': 'Repository access Secret is not active',
+}
+
 export function throwCoreOperationError(error: { type: string; resource?: string }): never {
-	if (error.type === 'invalid-input') throw new BadRequestError('Invalid Core input')
-	if (error.type === 'not-found')
-		throw new NotFoundError(error.resource === undefined ? 'Core resource was not found' : `${error.resource} was not found`)
+	const badRequestMessage = badRequestCoreErrorMessages[error.type]
+	if (badRequestMessage !== undefined) throw new BadRequestError(badRequestMessage)
+	if (error.type === 'not-found') throw new NotFoundError(notFoundCoreResourceMessage(error.resource))
 	throw new Error(`Core operation failed: ${error.type}`)
+}
+
+function notFoundCoreResourceMessage(resource: string | undefined): string {
+	return resource === undefined ? 'Core resource was not found' : `${resource} was not found`
 }

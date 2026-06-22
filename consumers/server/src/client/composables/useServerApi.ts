@@ -84,6 +84,28 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async createProject(input: { title: string }) {
 			return routes.request('post', '/api/portfolio/projects', { body: input })
 		},
+		async getProject(projectId: string) {
+			return routes.request('get', '/api/portfolio/projects/:projectId', { params: { projectId } })
+		},
+		async listRepositories(projectId: string) {
+			return routes.request('get', '/api/portfolio/projects/:projectId/repositories', { params: { projectId } })
+		},
+		async createRepository(
+			projectId: string,
+			input: { config: { provider: 'github'; owner: string; name: string; secretId: string } },
+		) {
+			return routes.request('post', '/api/portfolio/projects/:projectId/repositories', { params: { projectId }, body: input })
+		},
+		async getRepository(projectId: string, repositoryId: string) {
+			return routes.request('get', '/api/portfolio/projects/:projectId/repositories/:repositoryId', {
+				params: { projectId, repositoryId },
+			})
+		},
+		async preflightRepository(projectId: string, repositoryId: string) {
+			return routes.request('post', '/api/portfolio/projects/:projectId/repositories/:repositoryId/preflight', {
+				params: { projectId, repositoryId },
+			})
+		},
 		async listSecrets() {
 			return routes.request('get', '/api/portfolio/secrets')
 		},

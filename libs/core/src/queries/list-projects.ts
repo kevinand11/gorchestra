@@ -38,7 +38,9 @@ export function createListProjectsQuery(options: CoreServices): Operation {
 
 function listProjects(projects: Project[], repositories: Repository[]): ListedProject[] {
 	const repositoriesByProjectId = groupRepositoriesByProjectId(sortByCreatedAtThenId(repositories))
-	return sortByCreatedAtThenId(projects).map((project) => listProject(project, repositoriesByProjectId.get(project.id) ?? []))
+	return sortByCreatedAtThenId(projects).map((project) =>
+		listedProjectFromProjectAndRepositories(project, repositoriesByProjectId.get(project.id) ?? []),
+	)
 }
 
 const projectSourceListBuilders = {
@@ -48,7 +50,7 @@ const projectSourceListBuilders = {
 	},
 } satisfies Record<Project['source']['type'], (project: Project, repositories: Repository[]) => ListedProject>
 
-function listProject(project: Project, repositories: Repository[]): ListedProject {
+export function listedProjectFromProjectAndRepositories(project: Project, repositories: Repository[]): ListedProject {
 	return projectSourceListBuilders[project.source.type](project, repositories)
 }
 
@@ -62,7 +64,7 @@ function groupRepositoriesByProjectId(repositories: Repository[]): Map<string, R
 	return grouped
 }
 
-function sortByCreatedAtThenId<T extends { id: string; created: { at: string } }>(records: T[]): T[] {
+export function sortByCreatedAtThenId<T extends { id: string; created: { at: string } }>(records: T[]): T[] {
 	return [...records].sort((left, right) => left.created.at.localeCompare(right.created.at) || left.id.localeCompare(right.id))
 }
 

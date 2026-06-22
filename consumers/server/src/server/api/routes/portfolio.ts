@@ -18,6 +18,14 @@ const createSecretRequestSchema = v.object({
 	name: v.string().pipe(v.asTrimmed(), v.min(1, 'Secret name is required')),
 	value: v.string().pipe(v.custom<string>((value) => value.trim().length > 0, 'Secret value is required')),
 })
+const githubRepositoryConfigRequestSchema = v.object({
+	provider: v.is('github' as const),
+	owner: v.string().pipe(v.asTrimmed(), v.min(1, 'Repository owner is required')),
+	name: v.string().pipe(v.asTrimmed(), v.min(1, 'Repository name is required')),
+	secretId: idPipe,
+})
+const repositoryConfigRequestSchema = v.discriminate((value) => value.provider, { github: githubRepositoryConfigRequestSchema })
+const createRepositoryRequestSchema = v.object({ config: repositoryConfigRequestSchema })
 const localActorRefResponseSchema = v.object({ type: v.string(), id: v.string() })
 const auditStampResponseSchema = v.discriminate((value) => value.origin, {
 	local: v.object({
@@ -74,10 +82,18 @@ const secretResponseSchema = v.object({
 	replaced: v.nullable(auditStampResponseSchema),
 	archived: v.boolean(),
 })
+const repositoryPreflightEvidenceResponseSchema = v.object({
+	type: v.is('validation' as const),
+	operation: v.object({ type: v.is('repository-preflight' as const) }),
+	passed: v.boolean(),
+	summary: nonEmptyStringPipe,
+})
 
 type PortfolioRequestCookies = Record<string, string | undefined>
 type CreateProjectRequest = { title: string }
 type CreateSecretRequest = { name: string; value: string }
+type CreateRepositoryRequest = { config: Domain.Repository.RepositoryConfig }
+type RepositoryPreflightEvidence = Domain.Evidence.ValidationEvidence & { operation: { type: 'repository-preflight' } }
 
 export function createPortfolioApiRouter(context: ServerApiContext) {
 	return new Router({ path: '/portfolio' })
@@ -92,6 +108,42 @@ export function createPortfolioApiRouter(context: ServerApiContext) {
 		.post('/projects', {
 			schema: { cookies: portfolioRequestCookieSchema, body: createProjectRequestSchema, response: listedProjectResponseSchema },
 		})(async (req) => createSelectedPortfolioProject(context, req.cookies, req.body))
+		.get('/projects/:projectId', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ projectId: idPipe }),
+				response: listedProjectResponseSchema,
+			},
+		})(async (req) => getSelectedPortfolioProject(context, req.cookies, req.params.projectId))
+		.get('/projects/:projectId/repositories', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ projectId: idPipe }),
+				response: v.array(repositoryResponseSchema),
+			},
+		})(async (req) => listSelectedProjectRepositories(context, req.cookies, req.params.projectId))
+		.post('/projects/:projectId/repositories', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ projectId: idPipe }),
+				body: createRepositoryRequestSchema,
+				response: repositoryResponseSchema,
+			},
+		})(async (req) => createSelectedProjectRepository(context, req.cookies, req.params.projectId, req.body))
+		.get('/projects/:projectId/repositories/:repositoryId', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ projectId: idPipe, repositoryId: idPipe }),
+				response: repositoryResponseSchema,
+			},
+		})(async (req) => getSelectedProjectRepository(context, req.cookies, req.params.projectId, req.params.repositoryId))
+		.post('/projects/:projectId/repositories/:repositoryId/preflight', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ projectId: idPipe, repositoryId: idPipe }),
+				response: repositoryPreflightEvidenceResponseSchema,
+			},
+		})(async (req) => preflightSelectedProjectRepository(context, req.cookies, req.params.projectId, req.params.repositoryId))
 		.get('/secrets', {
 			schema: { cookies: portfolioRequestCookieSchema, response: v.array(secretResponseSchema) },
 		})(async (req) => listSelectedPortfolioSecrets(context, req.cookies))
@@ -115,6 +167,78 @@ async function createSelectedPortfolioProject(
 		)
 		return project.ok ? listedProjectFromCreatedProject(project.value) : throwCoreOperationError(project.error)
 	})
+}
+
+function getSelectedPortfolioProject(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	projectId: string,
+): Promise<Queries.GetProject.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
+		const project = await core.queries.getProject({ projectId })
+		return project.ok ? project.value : throwCoreOperationError(project.error)
+	})
+}
+
+function listSelectedProjectRepositories(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	projectId: string,
+): Promise<Queries.ListRepositories.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
+		const repositories = await core.queries.listRepositories({ projectId })
+		return repositories.ok ? repositories.value : throwCoreOperationError(repositories.error)
+	})
+}
+
+function createSelectedProjectRepository(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	projectId: string,
+	input: CreateRepositoryRequest,
+): Promise<Domain.Repository.Repository> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
+		const repository = await core.commands.createRepository(
+			{ projectId, config: input.config },
+			{ actor: { type: 'workspace-member', id: workspaceMember.id }, correlationId: null },
+		)
+		return repository.ok ? repository.value : throwCoreOperationError(repository.error)
+	})
+}
+
+function getSelectedProjectRepository(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	projectId: string,
+	repositoryId: string,
+): Promise<Queries.GetRepository.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
+		const repository = await core.queries.getRepository({ projectId, repositoryId })
+		return repository.ok ? repository.value : throwCoreOperationError(repository.error)
+	})
+}
+
+function preflightSelectedProjectRepository(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	projectId: string,
+	repositoryId: string,
+): Promise<RepositoryPreflightEvidence> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
+		const repository = await core.queries.getRepository({ projectId, repositoryId })
+		if (!repository.ok) return throwCoreOperationError(repository.error)
+
+		const evidence = await core.commands.preflightRepository(
+			{ repositoryId },
+			{ actor: { type: 'workspace-member', id: workspaceMember.id }, correlationId: null },
+		)
+		return evidence.ok ? repositoryPreflightEvidence(evidence.value) : throwCoreOperationError(evidence.error)
+	})
+}
+
+function repositoryPreflightEvidence(evidence: Domain.Evidence.ValidationEvidence): RepositoryPreflightEvidence {
+	if (evidence.operation.type !== 'repository-preflight') throw new Error('Repository preflight returned unexpected evidence')
+	return { ...evidence, operation: evidence.operation }
 }
 
 function listedProjectFromCreatedProject(project: Domain.Project.Project): Queries.ListProjects.ListedProject {
