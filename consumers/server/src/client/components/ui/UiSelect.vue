@@ -3,7 +3,7 @@
 		v-model="model"
 		v-bind="$attrs"
 		:aria-invalid="invalid || undefined"
-		class="rounded-input border bg-input px-3.5 py-3 text-input-contrast outline-none focus:outline-none"
+		class="w-full border bg-input px-2.5 py-2 text-input-contrast outline-none"
 		:class="invalid ? 'border-error focus:border-error' : 'border-dimmer focus:border-primary'">
 		<slot />
 	</select>

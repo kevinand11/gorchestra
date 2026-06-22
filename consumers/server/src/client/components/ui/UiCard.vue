@@ -1,5 +1,5 @@
 <template>
-	<article class="mb-5 rounded-card border p-6 shadow-panel" :class="toneClass">
+	<article class="border p-4" :class="toneClass">
 		<slot />
 	</article>
 </template>

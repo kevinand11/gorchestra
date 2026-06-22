@@ -3,7 +3,7 @@
 		v-bind="attrs"
 		:type="buttonType"
 		:disabled="isDisabled"
-		class="inline-flex cursor-pointer items-center justify-center rounded-pill px-5 py-3 font-extrabold no-underline transition disabled:cursor-not-allowed disabled:opacity-50"
+		class="inline-flex cursor-pointer items-center justify-center border px-3 py-1.5 text-sz-helper font-semibold no-underline transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
 		:class="variantClass">
 		<slot />
 	</button>
@@ -23,8 +23,8 @@ const buttonType = computed(() => attrs.type ?? 'button')
 const isDisabled = computed(() => props.loading || Boolean(attrs.disabled))
 const variantClass = computed(() => {
 	const variants = {
-		primary: 'bg-primary text-primary-contrast hover:brightness-110',
-		secondary: 'border border-dimmer bg-secondary text-secondary-contrast hover:brightness-110',
+		primary: 'border-primary bg-primary text-primary-contrast',
+		secondary: 'border-dimmer bg-secondary text-secondary-contrast hover:border-dim',
 	}
 	return variants[props.variant]
 })

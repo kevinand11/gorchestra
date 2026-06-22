@@ -15,9 +15,9 @@ const props = withDefaults(
 
 const sizeClass = computed(() => {
 	const sizes = {
-		hero: 'm-0 max-w-[760px] font-display text-sz-hero font-extrabold tracking-[-0.08em]',
-		section: 'm-0 text-sz-section font-bold',
-		subsection: 'm-0 text-sz-subsection font-bold',
+		hero: 'm-0 max-w-[760px] font-display text-sz-hero font-semibold tracking-[-0.01em]',
+		section: 'm-0 text-sz-section font-semibold tracking-[-0.01em]',
+		subsection: 'm-0 text-sz-subsection font-semibold',
 	}
 	return sizes[props.size]
 })

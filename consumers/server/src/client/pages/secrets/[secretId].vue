@@ -1,38 +1,48 @@
 <template>
-	<SelectedPortfolioShell>
-		<UiHero>
-			<UiText as="p" tone="primary" class="font-bold uppercase tracking-[0.16em]">Secret Details</UiText>
-			<UiHeading as="h1" size="hero">{{ secret?.name ?? 'Loading Secret…' }}</UiHeading>
-			<UiText size="lede" tone="muted">Secret values are protected and cannot be viewed after creation.</UiText>
-		</UiHero>
+	<NuxtLayout name="portfolio">
+		<header class="border-b border-dimmer px-3 py-3">
+			<h1 class="m-0 text-sz-section font-semibold tracking-[-0.01em]">{{ secret?.name ?? 'Loading Secret…' }}</h1>
+			<p class="m-0 mt-1 text-sz-helper text-dim">Secret values are protected and cannot be viewed after creation.</p>
+		</header>
 
-		<UiCard>
-			<UiText v-if="isLoadingSecret && !hasLoadedSecret" tone="muted">Loading Secret…</UiText>
-			<UiText v-if="isLoadingSecret && hasLoadedSecret" tone="muted" size="helper">Refreshing Secret…</UiText>
-			<UiText v-else-if="secretError" tone="error">{{ secretError }}</UiText>
-			<div v-else-if="secret" class="grid gap-3">
-				<UiHeading as="h2" size="section">{{ secret.name }}</UiHeading>
-				<UiText tone="muted">Secret id: {{ secret.id }}</UiText>
-				<UiText :tone="secret.archived ? 'muted' : 'success'">{{ secret.archived ? 'Archived' : 'Active' }}</UiText>
-				<UiText tone="muted">Created: {{ secret.created.at }}</UiText>
-				<UiText v-if="secret.replaced" tone="muted">Last replaced: {{ secret.replaced.at }}</UiText>
-				<UiText tone="info" size="helper">Plaintext Secret values are never returned by the Server API.</UiText>
-				<NuxtLink
-					class="inline-flex w-fit items-center justify-center rounded-pill border border-dimmer bg-secondary px-5 py-3 font-extrabold text-secondary-contrast no-underline transition hover:border-primary"
-					to="/secrets">
-					Back to Secrets
-				</NuxtLink>
+		<section>
+			<div v-if="isLoadingSecret && !hasLoadedSecret" class="border-b border-dimmer px-3 py-4 text-dim">Loading Secret…</div>
+			<p v-if="isLoadingSecret && hasLoadedSecret" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
+				Refreshing Secret…
+			</p>
+			<div v-else-if="secretError" class="border-b border-dimmer px-3 py-4 text-error">{{ secretError }}</div>
+			<div v-else-if="secret" class="grid gap-0">
+				<div class="border-b border-dimmer px-3 py-3">
+					<h2 class="m-0 text-sz-subsection font-semibold">Secret metadata</h2>
+					<div class="mt-2 grid gap-2 text-sz-helper sm:grid-cols-2">
+						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
+							<span class="text-dim">Status</span
+							><span :class="secret.archived ? 'text-dim' : 'text-success'">{{
+								secret.archived ? 'Archived' : 'Active'
+							}}</span>
+						</div>
+						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
+							<span class="text-dim">Created</span><span>{{ formatDate(secret.created.at) }}</span>
+						</div>
+						<div v-if="secret.replaced" class="flex justify-between gap-3 border-b border-dimmer py-2">
+							<span class="text-dim">Last replaced</span><span>{{ formatDate(secret.replaced.at) }}</span>
+						</div>
+					</div>
+				</div>
+				<div class="px-3 py-3">
+					<div class="border border-dimmer bg-card p-3">
+						<strong class="block font-semibold">Plaintext is not available here.</strong>
+						<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+							Use this page to inspect metadata. Create a replacement Secret when the value needs to change.
+						</p>
+					</div>
+				</div>
 			</div>
-		</UiCard>
-	</SelectedPortfolioShell>
+		</section>
+	</NuxtLayout>
 </template>
 
 <script setup lang="ts">
-import SelectedPortfolioShell from '../../components/SelectedPortfolioShell.vue'
-import UiCard from '../../components/ui/UiCard.vue'
-import UiHeading from '../../components/ui/UiHeading.vue'
-import UiHero from '../../components/ui/UiHero.vue'
-import UiText from '../../components/ui/UiText.vue'
 import { useFetchAction } from '../../composables/action-state'
 import { useQueryCache } from '../../composables/query-cache'
 import { useSelectedPortfolio } from '../../composables/selected-portfolio'
@@ -61,5 +71,9 @@ const {
 
 function routeParam(value: string | string[]): string {
 	return Array.isArray(value) ? (value[0] ?? '') : value
+}
+
+function formatDate(value: string): string {
+	return new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(value))
 }
 </script>

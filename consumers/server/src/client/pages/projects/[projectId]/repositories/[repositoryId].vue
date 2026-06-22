@@ -1,57 +1,58 @@
 <template>
-	<SelectedPortfolioShell>
-		<UiHero>
-			<UiText as="p" tone="primary" class="font-bold uppercase tracking-[0.16em]">Repository Details</UiText>
-			<UiHeading as="h1" size="hero">{{ repositoryTitle }}</UiHeading>
-			<UiText size="lede" tone="muted">Inspect the GitHub Repository target and validate provider access.</UiText>
-		</UiHero>
-
-		<UiCard>
-			<UiText v-if="isLoadingRepositoryPage" tone="muted">Loading Repository…</UiText>
-			<UiText v-else-if="repositoryPageError" tone="error">{{ repositoryPageError }}</UiText>
-			<div v-else-if="repository && project" class="grid gap-5">
-				<UiText v-if="isRefreshingRepositoryPage" tone="muted" size="helper">Refreshing Repository details…</UiText>
-				<div class="grid gap-2">
-					<UiHeading as="h2" size="section">{{ repository.config.owner }}/{{ repository.config.name }}</UiHeading>
-					<UiText tone="muted">Project: {{ project.title }}</UiText>
-					<UiText tone="muted">Repository id: {{ repository.id }}</UiText>
-					<UiText tone="muted">Provider: {{ repository.config.provider }}</UiText>
-					<UiText :tone="secretTone">Secret: {{ secretLabel }}</UiText>
-					<UiText tone="muted">Created: {{ repository.created.at }}</UiText>
-				</div>
-
-				<div class="grid gap-3 rounded-list-item border border-dimmer bg-dimmer p-3.5">
-					<UiHeading as="h2" size="section">Repository Preflight</UiHeading>
-					<UiText tone="muted">
-						Preflight checks whether this stored Repository is ready for GitHub access. It does not store lifecycle facts.
-					</UiText>
-					<div class="flex flex-wrap items-center gap-3">
-						<UiButton :loading="isPreflightingRepository" @click="preflightRepository()">Run Preflight</UiButton>
-						<NuxtLink
-							class="inline-flex items-center justify-center rounded-pill border border-dimmer bg-secondary px-5 py-3 font-extrabold text-secondary-contrast no-underline transition hover:border-primary"
-							:to="`/projects/${project.id}`">
-							Back to Project
-						</NuxtLink>
+	<NuxtLayout
+		name="project"
+		:project-id="projectId"
+		:project-title="project?.title ?? 'Loading Project…'"
+		:project-subtitle="projectSubtitle">
+		<section>
+			<div v-if="isLoadingRepositoryPage" class="border-b border-dimmer px-3 py-4 text-dim">Loading Repository…</div>
+			<div v-else-if="repositoryPageError" class="border-b border-dimmer px-3 py-4 text-error">{{ repositoryPageError }}</div>
+			<div v-else-if="repository && project" class="grid gap-0">
+				<p v-if="isRefreshingRepositoryPage" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
+					Refreshing Repository details…
+				</p>
+				<section class="border-b border-dimmer px-3 py-3">
+					<h2 class="m-0 text-sz-subsection font-semibold">{{ repository.config.owner }}/{{ repository.config.name }}</h2>
+					<div class="mt-2 grid gap-2 text-sz-helper sm:grid-cols-2">
+						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
+							<span class="text-dim">Provider</span><span>{{ repository.config.provider }}</span>
+						</div>
+						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
+							<span class="text-dim">Secret</span><span :class="secretToneClass">{{ secretLabel }}</span>
+						</div>
+						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
+							<span class="text-dim">Created</span><span>{{ formatDate(repository.created.at) }}</span>
+						</div>
 					</div>
-					<UiText v-if="preflightRepositoryError" tone="error">{{ preflightRepositoryError }}</UiText>
-					<div v-if="preflightEvidence" class="grid gap-1 rounded-list-item border border-dimmer bg-card p-3.5">
-						<UiText :tone="preflightEvidence.passed ? 'success' : 'error'">
-							{{ preflightEvidence.passed ? 'Preflight passed.' : 'Preflight failed.' }}
-						</UiText>
-						<UiText tone="muted">{{ preflightEvidence.summary }}</UiText>
+				</section>
+
+				<section class="px-3 py-3">
+					<div class="border border-dimmer bg-card p-3">
+						<div class="flex flex-wrap items-start justify-between gap-3">
+							<div>
+								<h2 class="m-0 text-sz-subsection font-semibold">Repository Preflight</h2>
+								<p class="m-0 mt-1 text-sz-helper text-dim">
+									Check whether this GitHub Repository is ready for provider access.
+								</p>
+							</div>
+							<UiButton :loading="isPreflightingRepository" @click="preflightRepository()">Run Preflight</UiButton>
+						</div>
+						<UiText v-if="preflightRepositoryError" class="mt-3" tone="error">{{ preflightRepositoryError }}</UiText>
+						<div v-if="preflightEvidence" class="mt-3 border border-dimmer bg-canvas p-3">
+							<p class="m-0 font-semibold" :class="preflightEvidence.passed ? 'text-success' : 'text-error'">
+								{{ preflightEvidence.passed ? 'Preflight passed.' : 'Preflight failed.' }}
+							</p>
+							<p class="m-0 mt-1 text-sz-helper text-dim">{{ preflightEvidence.summary }}</p>
+						</div>
 					</div>
-				</div>
+				</section>
 			</div>
-		</UiCard>
-	</SelectedPortfolioShell>
+		</section>
+	</NuxtLayout>
 </template>
 
 <script setup lang="ts">
-import SelectedPortfolioShell from '../../../../components/SelectedPortfolioShell.vue'
 import UiButton from '../../../../components/ui/UiButton.vue'
-import UiCard from '../../../../components/ui/UiCard.vue'
-import UiHeading from '../../../../components/ui/UiHeading.vue'
-import UiHero from '../../../../components/ui/UiHero.vue'
 import UiText from '../../../../components/ui/UiText.vue'
 import { useApiAction } from '../../../../composables/action-state'
 import {
@@ -95,10 +96,6 @@ const {
 } = usePortfolioSecretsQuery(serverApi)
 
 const secretsById = computed(() => new Map(secrets.value.map((secret) => [secret.id, secret])))
-const repositoryTitle = computed(() => {
-	const config = repository.value?.config
-	return config === undefined ? 'Loading Repository…' : `${config.owner}/${config.name}`
-})
 const referencedSecret = computed(() => {
 	const secretId = repository.value?.config.secretId
 	return secretId === undefined ? undefined : secretsById.value.get(secretId)
@@ -107,14 +104,17 @@ const secretLabel = computed(() => {
 	const secretId = repository.value?.config.secretId
 	if (secretId === undefined) return 'Loading Secret…'
 	const secret = referencedSecret.value
-	if (secret === undefined) return `${shortId(secretId)} (not found)`
-	return `${secret.name} (${shortId(secret.id)})${secret.archived ? ' — archived' : ''}`
+	if (secret === undefined) return 'not found'
+	return secret.archived ? `${secret.name} — archived` : secret.name
 })
-const secretTone = computed<'muted' | 'error' | 'success'>(() => {
-	if (repository.value === null) return 'muted'
+const secretToneClass = computed(() => {
+	if (repository.value === null) return 'text-dim'
 	const secret = referencedSecret.value
-	if (secret === undefined || secret.archived) return 'error'
-	return 'success'
+	return secret === undefined || secret.archived ? 'text-error' : 'text-success'
+})
+const projectSubtitle = computed(() => {
+	const config = repository.value?.config
+	return config === undefined ? 'Repository detail' : `${config.owner}/${config.name}`
 })
 
 const repositoryPageFetches = [
@@ -149,7 +149,7 @@ function routeParam(value: string | string[]): string {
 	return Array.isArray(value) ? (value[0] ?? '') : value
 }
 
-function shortId(id: string): string {
-	return id.slice(0, 8)
+function formatDate(value: string): string {
+	return new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(value))
 }
 </script>

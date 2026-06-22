@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700&family=JetBrains+Mono:wght@500;600&display=swap');
 @import 'tailwindcss';
 
 @source '../../';
@@ -7,6 +7,7 @@
 	--font-*: initial;
 	--font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
 	--font-display: Inter, ui-sans-serif, system-ui, sans-serif;
+	--font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
 	--font-weight-*: initial;
 	--font-weight-normal: 400;
@@ -18,48 +19,52 @@
 	--color-*: initial;
 	--color-transparent: transparent;
 	--color-current: currentColor;
-	--color-dim: color-mix(in srgb, currentColor 50%, transparent);
-	--color-dimmer: color-mix(in srgb, currentColor 10%, transparent);
-
-	--color-body: #e9eef5;
-	--color-body-contrast: #101419;
-	--color-card: rgb(255 255 255 / 6%);
-	--color-card-contrast: #e9eef5;
-	--color-input: rgb(0 0 0 / 26%);
-	--color-input-contrast: #ffffff;
-	--color-primary: #77ddff;
-	--color-primary-contrast: #071016;
-	--color-secondary: rgb(255 255 255 / 12%);
-	--color-secondary-contrast: #f8fbff;
-	--color-success: #9effc3;
-	--color-success-contrast: #071016;
-	--color-error: #ffd0d0;
-	--color-error-contrast: #2a0707;
-	--color-info: #c5f3ff;
-	--color-info-contrast: #071016;
+	--color-canvas: #02050d;
+	--color-body: #dfe8f4;
+	--color-body-contrast: #060b16;
+	--color-card: #09111f;
+	--color-card-contrast: #dfe8f4;
+	--color-input: #02050d;
+	--color-input-contrast: #dfe8f4;
+	--color-primary: #b9852e;
+	--color-primary-contrast: #02050d;
+	--color-secondary: #111b2a;
+	--color-secondary-contrast: #dfe8f4;
+	--color-dim: #8492a7;
+	--color-dimmer: #1b2a3d;
+	--color-success: #3ba66a;
+	--color-success-contrast: #03120b;
+	--color-error: #d85c55;
+	--color-error-contrast: #1d0503;
+	--color-info: #79a6d2;
+	--color-info-contrast: #02050d;
 
 	--radius-*: initial;
-	--radius-input: 14px;
-	--radius-list-item: 18px;
-	--radius-card: 24px;
-	--radius-pill: 999px;
+	--radius-input: 4px;
+	--radius-list-item: 4px;
+	--radius-card: 0;
+	--radius-pill: 4px;
 
 	--shadow-*: initial;
-	--shadow-panel: 0 24px 70px rgb(0 0 0 / 24%);
+	--shadow-panel: none;
 
 	--text-*: initial;
-	--text-sz-helper: 0.875rem;
-	--text-sz-helper--line-height: 1.4;
-	--text-sz-base: 1rem;
-	--text-sz-base--line-height: 1.5;
-	--text-sz-lede: 1.1rem;
-	--text-sz-lede--line-height: 1.6;
-	--text-sz-section: 1.5rem;
-	--text-sz-section--line-height: 1.2;
-	--text-sz-subsection: 1.125rem;
-	--text-sz-subsection--line-height: 1.25;
-	--text-sz-hero: clamp(2.5rem, 8vw, 5.5rem);
-	--text-sz-hero--line-height: 0.92;
+	--text-sz-tiny: 0.625rem;
+	--text-sz-tiny--line-height: 1.35;
+	--text-sz-micro: 0.6875rem;
+	--text-sz-micro--line-height: 1.35;
+	--text-sz-helper: 0.75rem;
+	--text-sz-helper--line-height: 1.42;
+	--text-sz-base: 0.8125rem;
+	--text-sz-base--line-height: 1.48;
+	--text-sz-lede: 0.875rem;
+	--text-sz-lede--line-height: 1.55;
+	--text-sz-section: 1.125rem;
+	--text-sz-section--line-height: 1.25;
+	--text-sz-subsection: 0.9375rem;
+	--text-sz-subsection--line-height: 1.3;
+	--text-sz-hero: 1.125rem;
+	--text-sz-hero--line-height: 1.25;
 }
 
 @layer base {
@@ -69,7 +74,7 @@
 
 	body {
 		margin: 0;
-		background: var(--color-body-contrast);
+		background: var(--color-canvas);
 		color: var(--color-body);
 		font-family: var(--font-sans);
 		font-size: var(--text-sz-base);
@@ -84,7 +89,16 @@
 	}
 
 	button,
-	input {
+	input,
+	select {
 		font: inherit;
+	}
+
+	button:focus-visible,
+	a:focus-visible,
+	input:focus-visible,
+	select:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 2px;
 	}
 }

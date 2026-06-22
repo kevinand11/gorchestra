@@ -1,73 +1,82 @@
 <template>
-	<SelectedPortfolioShell>
-		<UiHero>
-			<UiText as="p" tone="primary" class="font-bold uppercase tracking-[0.16em]">Project Details</UiText>
-			<UiHeading as="h1" size="hero">{{ project?.title ?? 'Loading Project…' }}</UiHeading>
-			<UiText size="lede" tone="muted">Configure the source-control Repositories this Project can orchestrate.</UiText>
-		</UiHero>
-
-		<UiCard>
-			<UiText v-if="isLoadingProjectDetails" tone="muted">Loading Project…</UiText>
-			<UiText v-else-if="projectDetailsError" tone="error">{{ projectDetailsError }}</UiText>
-			<div v-else-if="project" class="grid gap-5">
-				<UiText v-if="isRefreshingProjectDetails" tone="muted" size="helper">Refreshing Project details…</UiText>
-				<div class="grid gap-2">
-					<UiHeading as="h2" size="section">{{ project.title }}</UiHeading>
-					<UiText tone="muted">Project id: {{ project.id }}</UiText>
-					<UiText tone="muted">Source: {{ project.source.type }}</UiText>
-					<UiText tone="muted">Created: {{ project.created.at }}</UiText>
+	<NuxtLayout
+		name="project"
+		:project-id="projectId"
+		:project-title="project?.title ?? 'Loading Project…'"
+		:project-subtitle="projectSubtitle">
+		<section>
+			<div class="flex min-h-11 items-center justify-between gap-3 border-b border-dimmer px-3 py-2">
+				<div class="flex overflow-hidden border border-dimmer">
+					<span class="border-r border-dimmer bg-card px-2 py-1 text-sz-helper font-semibold text-body">All</span>
+					<span class="border-r border-dimmer px-2 py-1 text-sz-helper text-dim">Ready</span>
+					<span class="px-2 py-1 text-sz-helper text-dim">Needs setup</span>
 				</div>
-
-				<div class="grid gap-3">
-					<div class="flex flex-wrap items-center justify-between gap-3">
-						<UiHeading as="h2" size="section">Repositories</UiHeading>
-						<NuxtLink
-							class="inline-flex items-center justify-center rounded-pill bg-primary px-5 py-3 font-extrabold text-primary-contrast no-underline transition hover:brightness-110"
-							:to="`/projects/${project.id}/repositories/new`">
-							New Repository
-						</NuxtLink>
-					</div>
-					<UiText v-if="project.source.repositories.length === 0" tone="muted">
-						No Repositories configured. Add a GitHub Repository to prepare this Project for Deliveries.
-					</UiText>
-					<ul v-else class="grid list-none gap-3 p-0">
-						<li
-							v-for="repository in project.source.repositories"
-							:key="repository.id"
-							class="flex flex-wrap items-center justify-between gap-3 rounded-list-item border border-dimmer bg-dimmer p-3.5">
-							<div class="grid gap-1">
-								<strong>{{ repository.config.owner }}/{{ repository.config.name }}</strong>
-								<UiText as="span" tone="muted">Repository id: {{ repository.id }}</UiText>
-								<UiText as="span" tone="muted">Provider: {{ repository.config.provider }}</UiText>
-								<UiText as="span" :tone="secretTone(repository.config.secretId)">
-									Secret: {{ secretLabel(repository.config.secretId) }}
-								</UiText>
-							</div>
-							<NuxtLink
-								class="inline-flex items-center justify-center rounded-pill border border-dimmer bg-secondary px-4 py-2.5 font-extrabold text-secondary-contrast no-underline transition hover:border-primary"
-								:to="`/projects/${project.id}/repositories/${repository.id}`">
-								Details
-							</NuxtLink>
-						</li>
-					</ul>
-				</div>
-
 				<NuxtLink
-					class="inline-flex w-fit items-center justify-center rounded-pill border border-dimmer bg-secondary px-5 py-3 font-extrabold text-secondary-contrast no-underline transition hover:border-primary"
-					to="/projects">
-					Back to Projects
+					v-if="project"
+					class="border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline hover:brightness-110"
+					:to="`/projects/${project.id}/repositories/new`">
+					New Repository
 				</NuxtLink>
 			</div>
-		</UiCard>
-	</SelectedPortfolioShell>
+
+			<div v-if="isLoadingProjectDetails" class="border-b border-dimmer px-3 py-4 text-dim">Loading Project…</div>
+			<div v-else-if="projectDetailsError" class="border-b border-dimmer px-3 py-4 text-error">{{ projectDetailsError }}</div>
+			<div v-else-if="project">
+				<p v-if="isRefreshingProjectDetails" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
+					Refreshing Project details…
+				</p>
+				<div v-if="project.source.repositories.length === 0" class="m-3 border border-dashed border-dimmer p-5">
+					<h2 class="m-0 text-sz-subsection font-semibold">No Repositories configured.</h2>
+					<p class="m-0 mt-1 text-sz-helper text-dim">Add a GitHub Repository to prepare this Project for Deliveries.</p>
+					<NuxtLink
+						class="mt-4 inline-flex border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline"
+						:to="`/projects/${project.id}/repositories/new`">
+						New Repository
+					</NuxtLink>
+				</div>
+				<div v-else>
+					<NuxtLink
+						v-for="repository in project.source.repositories"
+						:key="repository.id"
+						:to="`/projects/${project.id}/repositories/${repository.id}`"
+						class="grid min-h-[58px] grid-cols-[24px_minmax(0,1fr)] items-center gap-2 border-b border-dimmer px-3 py-2 text-body no-underline hover:bg-card focus-visible:bg-secondary lg:grid-cols-[24px_minmax(0,1fr)_126px]">
+						<span class="grid size-5 place-items-center border border-dimmer text-sz-micro text-dim">R</span>
+						<span class="min-w-0">
+							<strong class="block truncate font-semibold">{{ repository.config.owner }}/{{ repository.config.name }}</strong>
+							<span class="mt-0.5 flex flex-wrap gap-2 text-sz-helper text-dim">
+								<span>{{ repository.config.provider }}</span>
+								<span>Secret: {{ secretLabel(repository.config.secretId) }}</span>
+							</span>
+						</span>
+						<span class="hidden justify-self-start lg:inline-flex" :class="repositoryStatusClass(repository.config.secretId)">
+							<span class="size-2 rounded-full" :class="repositoryStatusDotClass(repository.config.secretId)" />
+							{{ repositoryStatusLabel(repository.config.secretId) }}
+						</span>
+					</NuxtLink>
+				</div>
+			</div>
+		</section>
+
+		<template v-if="repositoryIssues.length > 0" #right>
+			<div class="border-b border-dimmer px-3 py-2 font-semibold">Needs attention</div>
+			<NuxtLink
+				v-for="issue in repositoryIssues"
+				:key="issue.repository.id"
+				:to="`/projects/${project?.id}/repositories/${issue.repository.id}`"
+				class="grid grid-cols-[14px_minmax(0,1fr)_auto] gap-2 border-b border-dimmer px-3 py-2 text-body no-underline hover:bg-card">
+				<span class="mt-1.5 size-2 rounded-full bg-primary" />
+				<span class="min-w-0"
+					><strong class="block truncate font-semibold"
+						>{{ issue.repository.config.owner }}/{{ issue.repository.config.name }}</strong
+					><span class="block text-sz-helper text-dim">{{ issue.label }}</span></span
+				>
+				<span class="border border-primary/50 bg-primary/10 px-1.5 py-0.5 text-sz-micro text-primary">secret</span>
+			</NuxtLink>
+		</template>
+	</NuxtLayout>
 </template>
 
 <script setup lang="ts">
-import SelectedPortfolioShell from '../../../components/SelectedPortfolioShell.vue'
-import UiCard from '../../../components/ui/UiCard.vue'
-import UiHeading from '../../../components/ui/UiHeading.vue'
-import UiHero from '../../../components/ui/UiHero.vue'
-import UiText from '../../../components/ui/UiText.vue'
 import { usePortfolioProjectQuery, usePortfolioSecretsQuery } from '../../../composables/portfolio-resource-queries'
 import { useServerApi } from '../../../composables/useServerApi'
 
@@ -91,6 +100,18 @@ const {
 } = usePortfolioSecretsQuery(serverApi)
 
 const secretsById = computed(() => new Map(secrets.value.map((secret) => [secret.id, secret])))
+const projectSubtitle = computed(() => {
+	if (project.value === null) return 'Source-control Project'
+	return `Source-control Project · Created ${formatDate(project.value.created.at)}`
+})
+const repositoryIssues = computed(() => {
+	if (project.value === null) return []
+	return project.value.source.repositories.flatMap((repository) => {
+		const secret = secretsById.value.get(repository.config.secretId)
+		if (secret === undefined) return [{ repository, label: 'Secret not found' }]
+		return secret.archived ? [{ repository, label: 'Secret archived' }] : []
+	})
+})
 
 const isLoadingProjectDetails = computed(
 	() => (isLoadingProject.value && !hasLoadedProject.value) || (isLoadingSecrets.value && !hasLoadedSecrets.value),
@@ -106,17 +127,29 @@ function routeParam(value: string | string[]): string {
 
 function secretLabel(secretId: string): string {
 	const secret = secretsById.value.get(secretId)
-	if (secret === undefined) return `${shortId(secretId)} (not found)`
-	return `${secret.name} (${shortId(secret.id)})${secret.archived ? ' — archived' : ''}`
+	if (secret === undefined) return 'not found'
+	return secret.archived ? `${secret.name} — archived` : secret.name
 }
 
-function secretTone(secretId: string): 'muted' | 'error' | 'success' {
+function repositoryStatusLabel(secretId: string): string {
 	const secret = secretsById.value.get(secretId)
-	if (secret === undefined || secret.archived) return 'error'
-	return 'success'
+	if (secret === undefined) return 'secret missing'
+	return secret.archived ? 'secret archived' : 'ready'
 }
 
-function shortId(id: string): string {
-	return id.slice(0, 8)
+function repositoryStatusClass(secretId: string): string {
+	const secret = secretsById.value.get(secretId)
+	return secret === undefined || secret.archived
+		? 'items-center gap-1 border border-primary/50 bg-primary/10 px-2 py-0.5 text-sz-micro font-semibold text-primary'
+		: 'items-center gap-1 border border-success/50 bg-success/10 px-2 py-0.5 text-sz-micro font-semibold text-success'
+}
+
+function repositoryStatusDotClass(secretId: string): string {
+	const secret = secretsById.value.get(secretId)
+	return secret === undefined || secret.archived ? 'bg-primary' : 'bg-success'
+}
+
+function formatDate(value: string): string {
+	return new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(value))
 }
 </script>

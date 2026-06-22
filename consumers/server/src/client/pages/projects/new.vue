@@ -1,18 +1,16 @@
 <template>
-	<SelectedPortfolioShell>
-		<UiHero>
-			<UiText as="p" tone="primary" class="font-bold uppercase tracking-[0.16em]">New Project</UiText>
-			<UiHeading as="h1" size="hero">Create a Project.</UiHeading>
-			<UiText size="lede" tone="muted"
-				>Start with a title-only source-control Project, then add Repositories from Project details.</UiText
-			>
-		</UiHero>
+	<NuxtLayout name="portfolio">
+		<header class="border-b border-dimmer px-3 py-3">
+			<h1 class="m-0 text-sz-section font-semibold tracking-[-0.01em]">New Project</h1>
+			<p class="m-0 mt-1 text-sz-helper text-dim">Start with a source-control Project, then add Repositories from Project details.</p>
+		</header>
 
-		<UiCard>
-			<form class="grid max-w-[520px] gap-4" @submit.prevent="createProject()">
-				<label class="grid gap-2 font-bold text-dim">
+		<section class="px-3 py-3">
+			<form class="grid max-w-[520px] gap-3" @submit.prevent="createProject()">
+				<label class="grid gap-1.5 font-semibold" for="project-title">
 					Project title
 					<UiInput
+						id="project-title"
 						v-model="projectCreationForm.title"
 						required
 						placeholder="Delivery Ops"
@@ -21,26 +19,40 @@
 				<UiText v-if="projectCreationForm.errors.title" tone="error" size="helper">
 					{{ projectCreationForm.errors.title }}
 				</UiText>
-				<div class="flex flex-wrap items-center gap-3">
+				<div class="flex flex-wrap items-center gap-2">
 					<UiButton type="submit" :loading="isCreatingProject" :disabled="!projectCreationForm.valid">Create Project</UiButton>
-					<NuxtLink
-						class="inline-flex items-center justify-center rounded-pill border border-dimmer bg-secondary px-5 py-3 font-extrabold text-secondary-contrast no-underline transition hover:border-primary"
-						to="/projects">
-						Back to Projects
-					</NuxtLink>
 				</div>
 				<UiText v-if="createProjectError" tone="error">{{ createProjectError }}</UiText>
 			</form>
-		</UiCard>
-	</SelectedPortfolioShell>
+		</section>
+
+		<template #right>
+			<div class="border-b border-dimmer px-3 py-2 font-semibold">Guidance</div>
+			<div class="border-b border-dimmer px-3 py-3">
+				<strong class="block font-semibold">Use the product name</strong>
+				<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+					Choose a title people will recognize in Repository, Delivery, and review workflows.
+				</p>
+			</div>
+			<div class="border-b border-dimmer px-3 py-2 font-semibold">What gets created</div>
+			<div class="border-b border-dimmer px-3 py-3">
+				<strong class="block font-semibold">A Project shell</strong>
+				<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+					The Project starts ready for source-control setup. Repositories are connected next from Project details.
+				</p>
+			</div>
+			<div class="px-3 py-3">
+				<strong class="block font-semibold">Portfolio context</strong>
+				<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+					This Project will belong to {{ selectedPortfolio.portfolio.displayName }}.
+				</p>
+			</div>
+		</template>
+	</NuxtLayout>
 </template>
 
 <script setup lang="ts">
-import SelectedPortfolioShell from '../../components/SelectedPortfolioShell.vue'
 import UiButton from '../../components/ui/UiButton.vue'
-import UiCard from '../../components/ui/UiCard.vue'
-import UiHeading from '../../components/ui/UiHeading.vue'
-import UiHero from '../../components/ui/UiHero.vue'
 import UiInput from '../../components/ui/UiInput.vue'
 import UiText from '../../components/ui/UiText.vue'
 import { useApiAction } from '../../composables/action-state'
