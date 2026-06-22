@@ -56,8 +56,8 @@
 				<NuxtLink
 					v-if="selection?.selected"
 					class="inline-flex items-center justify-center rounded-pill border border-dimmer bg-secondary px-5 py-3 font-extrabold text-secondary-contrast no-underline transition hover:brightness-110"
-					to="/app">
-					Go to app
+					to="/projects">
+					Go to Projects
 				</NuxtLink>
 			</div>
 
@@ -143,7 +143,7 @@ const {
 } = useApiAction(async () => {
 	await sessionStore.provisionDefaultWorkspace(provisionWorkspaceForm.toModel())
 	toastStore.success({ title: 'Workspace created and Portfolio selected.' })
-	await navigateTo('/app')
+	await navigateTo('/projects')
 })
 
 const {
@@ -153,7 +153,7 @@ const {
 } = useApiAction(async (workspaceId: string, portfolioId: string) => {
 	await sessionStore.setSelection(workspaceId, portfolioId)
 	toastStore.success({ title: 'Portfolio selected.' })
-	await navigateTo('/app')
+	await navigateTo('/projects')
 })
 
 async function selectPortfolio(workspaceId: string, portfolioId: string): Promise<void> {

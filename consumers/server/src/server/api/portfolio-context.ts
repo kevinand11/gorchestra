@@ -2,7 +2,7 @@ import { openCore, type GorchestraCore } from '@gorchestra/core'
 import { PreconditionRequiredError } from 'equipped/errors'
 
 import type { ServerApiContext } from './context'
-import { throwCoreOperationError, throwSelectionRequired, throwSessionAuthenticationError } from './errors'
+import { throwCoreOperationError, throwNotAuthorized, throwSelectionRequired, throwSessionAuthenticationError } from './errors'
 import { authenticateApiSession, getSessionToken, type ApiSessionAuthentication } from './session'
 import { createCoreServices } from '../core/services'
 import { openCorePortfolioStorage } from '../core/storage'
@@ -19,6 +19,10 @@ export type SelectedPortfolioCoreContext = {
 	portfolio: PortfolioRegistryEntry
 	activeWorkspaceOwnerRole: WorkspaceOwnerRole | null
 	core: GorchestraCore
+}
+
+export type SelectedPortfolioOwnerCoreContext = Omit<SelectedPortfolioCoreContext, 'activeWorkspaceOwnerRole'> & {
+	activeWorkspaceOwnerRole: WorkspaceOwnerRole
 }
 
 type AuthenticatedApiSession = Extract<ApiSessionAuthentication, { authenticated: true }>
@@ -45,6 +49,14 @@ export async function withSelectedPortfolioCore<T>(
 	} finally {
 		await coreStorage.close()
 	}
+}
+
+export async function withSelectedPortfolioOwnerCore<T>(
+	context: ServerApiContext,
+	cookies: Record<string, string | undefined>,
+	run: (selectedContext: SelectedPortfolioOwnerCoreContext) => Promise<T>,
+): Promise<T> {
+	return withSelectedPortfolioCore(context, cookies, async (selectedContext) => run(requireSelectedPortfolioOwner(selectedContext)))
 }
 
 async function resolveSelectedPortfolioRequest(
@@ -98,6 +110,11 @@ function selectedPortfolioCoreContext(resolved: ResolvedSelectedPortfolioRequest
 	}
 }
 
+function requireSelectedPortfolioOwner(selectedContext: SelectedPortfolioCoreContext): SelectedPortfolioOwnerCoreContext {
+	if (selectedContext.activeWorkspaceOwnerRole === null) throwNotAuthorized('Workspace Owner role is required to change Portfolio state')
+	return selectedContext as SelectedPortfolioOwnerCoreContext
+}
+
 if (import.meta.vitest) {
 	const { afterEach, describe, expect, it } = import.meta.vitest
 	const { createTempServerStorageTestHarness } = await import('../testing/server-storage')
@@ -141,7 +158,63 @@ if (import.meta.vitest) {
 				).rejects.toBeInstanceOf(PreconditionRequiredError)
 			})
 		})
+
+		it('requires Active Workspace Owner authority for owner-scoped Portfolio context', () => {
+			const ownerRole = workspaceOwnerRole()
+
+			expect(requireSelectedPortfolioOwner(selectedPortfolioCoreContextFixture(ownerRole)).activeWorkspaceOwnerRole).toEqual(
+				ownerRole,
+			)
+			expect(() => requireSelectedPortfolioOwner(selectedPortfolioCoreContextFixture(null))).toThrow(
+				'Workspace Owner role is required to change Portfolio state',
+			)
+		})
 	})
+
+	function selectedPortfolioCoreContextFixture(activeWorkspaceOwnerRole: WorkspaceOwnerRole | null): SelectedPortfolioCoreContext {
+		return {
+			session: {
+				userId: 'user-1',
+				email: 'person@example.com',
+				sessionId: 'session-1',
+				issuedAt: now.toISOString(),
+				expiresAt: now.toISOString(),
+			},
+			selection: {
+				workspaceId: 'workspace-1',
+				portfolioId: 'portfolio-1',
+				issuedAt: now.toISOString(),
+				expiresAt: now.toISOString(),
+			},
+			workspace: { id: 'workspace-1', displayName: 'Workspace', createdAt: now.toISOString() },
+			workspaceMember: {
+				id: 'member-1',
+				workspaceId: 'workspace-1',
+				userId: 'user-1',
+				membershipStartedAt: now.toISOString(),
+				membershipEndedAt: null,
+			},
+			portfolio: {
+				id: 'portfolio-1',
+				workspaceId: 'workspace-1',
+				displayName: 'Portfolio',
+				coreStorageNamespace: 'portfolios/portfolio-1',
+				registeredAt: now.toISOString(),
+			},
+			activeWorkspaceOwnerRole,
+			core: {} as GorchestraCore,
+		}
+	}
+
+	function workspaceOwnerRole(): WorkspaceOwnerRole {
+		return {
+			id: 'role-1',
+			workspaceId: 'workspace-1',
+			workspaceMemberId: 'member-1',
+			assignedAt: now.toISOString(),
+			revokedAt: null,
+		}
+	}
 
 	async function withPortfolioContextFixture<T>(
 		run: (fixture: Awaited<ReturnType<typeof createPortfolioContextFixture>>) => Promise<T>,

@@ -77,7 +77,7 @@ The operation that replaces the currently-open Portfolio contents with a Core-en
 _Avoid_: Import, upload, merge
 
 **Project**:
-An orchestration boundary inside a Portfolio where Gorchestra executes Deliveries against one or more execution targets. Project-specific planning context is expressed through Project-level Plans and Links to Portfolio-owned Memories.
+An orchestration boundary inside a Portfolio where Gorchestra executes Deliveries against one or more execution targets. A Project has a non-unique user-facing title; Project identity comes from its id. Project-specific planning context is expressed through Project-level Plans and Links to Portfolio-owned Memories.
 _Avoid_: Repository, repo
 
 **Project Source**:

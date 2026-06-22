@@ -2,8 +2,8 @@
 	<UiShell>
 		<UiHero>
 			<UiText as="p" tone="primary" class="font-bold uppercase tracking-[0.16em]">Selected Portfolio</UiText>
-			<UiHeading as="h1" size="hero">Ready for Core work.</UiHeading>
-			<UiText size="lede" tone="muted">Project, Plan, and Delivery views will land after Core read routes are added.</UiText>
+			<UiHeading as="h1" size="hero">Projects</UiHeading>
+			<UiText size="lede" tone="muted">Create and inspect Projects in the selected Portfolio.</UiText>
 		</UiHero>
 
 		<section v-if="selection?.selected" class="grid gap-5">
@@ -14,10 +14,24 @@
 			</UiCard>
 
 			<UiCard>
-				<UiHeading as="h2" size="section" class="mb-3">Projects</UiHeading>
+				<div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+					<UiHeading as="h2" size="section">Projects</UiHeading>
+					<NuxtLink
+						class="inline-flex items-center justify-center rounded-pill bg-primary px-5 py-3 font-extrabold text-primary-contrast no-underline transition hover:brightness-110"
+						to="/projects/new">
+						New Project
+					</NuxtLink>
+				</div>
 				<UiText v-if="isLoadingProjects && !hasLoadedProjects" tone="muted">Loading Projects…</UiText>
 				<UiText v-else-if="projectsError" tone="error">{{ projectsError }}</UiText>
-				<UiText v-else-if="projects.length === 0" tone="muted">No Projects yet.</UiText>
+				<div v-else-if="projects.length === 0" class="grid gap-3">
+					<UiText tone="muted">No Projects yet.</UiText>
+					<NuxtLink
+						class="inline-flex w-fit items-center justify-center rounded-pill bg-primary px-5 py-3 font-extrabold text-primary-contrast no-underline transition hover:brightness-110"
+						to="/projects/new">
+						Create your first Project
+					</NuxtLink>
+				</div>
 				<ul v-else class="grid list-none gap-3 p-0">
 					<li
 						v-for="project in projects"
@@ -40,7 +54,7 @@
 
 			<UiCard>
 				<UiHeading as="h2" size="section" class="mb-2">Portfolio actions</UiHeading>
-				<UiText tone="muted">This app route loads selected Portfolio Projects through an explicit Core query boundary.</UiText>
+				<UiText tone="muted">This Projects route loads selected Portfolio Projects through an explicit Core query boundary.</UiText>
 				<div class="mt-4 flex flex-wrap items-start gap-3">
 					<NuxtLink
 						class="inline-flex items-center justify-center rounded-pill bg-primary px-5 py-3 font-extrabold text-primary-contrast no-underline transition hover:brightness-110"
@@ -57,21 +71,21 @@
 
 		<UiCard v-else>
 			<UiHeading as="h2" size="section">Checking selection…</UiHeading>
-			<UiText tone="muted">The app route requires a selected Workspace and Portfolio.</UiText>
+			<UiText tone="muted">The Projects route requires a selected Workspace and Portfolio.</UiText>
 		</UiCard>
 	</UiShell>
 </template>
 
 <script setup lang="ts">
-import UiButton from '../components/ui/UiButton.vue'
-import UiCard from '../components/ui/UiCard.vue'
-import UiHeading from '../components/ui/UiHeading.vue'
-import UiHero from '../components/ui/UiHero.vue'
-import UiShell from '../components/ui/UiShell.vue'
-import UiText from '../components/ui/UiText.vue'
-import { useApiAction, useFetchAction } from '../composables/action-state'
-import { useServerApi, type ServerApi } from '../composables/useServerApi'
-import { useSessionStore } from '../stores/session'
+import UiButton from '../../components/ui/UiButton.vue'
+import UiCard from '../../components/ui/UiCard.vue'
+import UiHeading from '../../components/ui/UiHeading.vue'
+import UiHero from '../../components/ui/UiHero.vue'
+import UiShell from '../../components/ui/UiShell.vue'
+import UiText from '../../components/ui/UiText.vue'
+import { useApiAction, useFetchAction } from '../../composables/action-state'
+import { useServerApi, type ServerApi } from '../../composables/useServerApi'
+import { useSessionStore } from '../../stores/session'
 
 definePageMeta({ middleware: ['has-selection'] })
 

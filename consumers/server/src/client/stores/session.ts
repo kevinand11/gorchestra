@@ -24,9 +24,9 @@ type ProvisionDefaultWorkspaceInput = {
 	portfolioDisplayName: string
 }
 
-function getSessionHomePath(state: Pick<SessionStoreState, 'session' | 'selection'>): '/sign-in' | '/select' | '/app' {
+function getSessionHomePath(state: Pick<SessionStoreState, 'session' | 'selection'>): '/sign-in' | '/select' | '/projects' {
 	if (!isAuthenticatedSession(state.session)) return '/sign-in'
-	return isSelectedPortfolio(state.selection) ? '/app' : '/select'
+	return isSelectedPortfolio(state.selection) ? '/projects' : '/select'
 }
 
 function isAuthenticatedSession(session: SessionStatusResponse | null): boolean {
@@ -44,7 +44,7 @@ export const useSessionStore = defineStore('session', () => {
 
 	const isAuthenticated = computed((): boolean => isAuthenticatedSession(session.value))
 	const hasSelection = computed((): boolean => isSelectedPortfolio(selection.value))
-	const homePath = computed((): '/sign-in' | '/select' | '/app' =>
+	const homePath = computed((): '/sign-in' | '/select' | '/projects' =>
 		getSessionHomePath({ session: session.value, selection: selection.value }),
 	)
 
@@ -167,8 +167,8 @@ if (import.meta.vitest) {
 			)
 		})
 
-		it('uses app for authenticated sessions with valid selection', () => {
-			expect(getSessionHomePath({ session: authenticatedSession(), selection: selectedPortfolio() })).toBe('/app')
+		it('uses Projects for authenticated sessions with valid selection', () => {
+			expect(getSessionHomePath({ session: authenticatedSession(), selection: selectedPortfolio() })).toBe('/projects')
 		})
 	})
 

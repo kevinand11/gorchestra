@@ -81,6 +81,9 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async listProjects() {
 			return routes.request('get', '/api/portfolio/projects')
 		},
+		async createProject(input: { title: string }) {
+			return routes.request('post', '/api/portfolio/projects', { body: input })
+		},
 		async provisionDefaultWorkspace(input: { workspaceDisplayName: string; portfolioDisplayName: string }) {
 			return routes.request('post', '/api/workspaces/provision-default', { body: input })
 		},
