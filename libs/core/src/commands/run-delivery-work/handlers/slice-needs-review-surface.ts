@@ -20,7 +20,7 @@ type SliceReviewSurfaceInput = SourceControlCreateReviewSurfaceInput & {
 
 export async function handleSliceNeedsReviewSurface(
 	runtime: CoreRuntime,
-	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'workResolution'>,
+	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'workResolution' | 'repositoryAccessSecret'>,
 	slice: Slice,
 	state: SliceNeedsReviewSurfaceState,
 ): Promise<RunDeliveryWorkHandlerResult> {
@@ -38,6 +38,7 @@ export async function handleSliceNeedsReviewSurface(
 				values: runtime.values,
 				deliveryContext: context.deliveryContext,
 				workResolution: context.workResolution,
+				repositoryAccessSecret: context.repositoryAccessSecret,
 			},
 			slice,
 			state,
@@ -48,7 +49,7 @@ export async function handleSliceNeedsReviewSurface(
 }
 
 function sliceReviewSurfaceInput(
-	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext'>,
+	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'repositoryAccessSecret'>,
 	slice: Slice,
 	state: SliceNeedsReviewSurfaceState,
 ): CoreResult<SliceReviewSurfaceInput, InvariantViolationError> {
@@ -65,6 +66,7 @@ function sliceReviewSurfaceInput(
 			sliceId: slice.id,
 			sliceArtifactId: state.sliceArtifactId,
 			repository: context.deliveryContext.repository,
+			accessSecret: context.repositoryAccessSecret,
 			sourceBranch: sliceArtifact.value.config.sliceBranch,
 			targetBranch: deliveryArtifact.config.deliveryBranch,
 			title: slice.title,
@@ -374,6 +376,7 @@ if (import.meta.vitest) {
 				executionModel: options.tx.models.records.get('model-1')!,
 				executionModelProvider: options.tx.modelProviders.records.get('model-1-provider')!,
 			},
+			repositoryAccessSecret: { secretId: 'secret-1', valueRef: 'protected-ref' },
 		} satisfies ResolvedDeliveryHandlerContext
 
 		return {

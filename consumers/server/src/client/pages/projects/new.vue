@@ -1,5 +1,5 @@
 <template>
-	<UiShell>
+	<SelectedPortfolioShell>
 		<UiHero>
 			<UiText as="p" tone="primary" class="font-bold uppercase tracking-[0.16em]">New Project</UiText>
 			<UiHeading as="h1" size="hero">Create a Project.</UiHeading>
@@ -30,16 +30,16 @@
 				<UiText v-if="createProjectError" tone="error">{{ createProjectError }}</UiText>
 			</form>
 		</UiCard>
-	</UiShell>
+	</SelectedPortfolioShell>
 </template>
 
 <script setup lang="ts">
+import SelectedPortfolioShell from '../../components/SelectedPortfolioShell.vue'
 import UiButton from '../../components/ui/UiButton.vue'
 import UiCard from '../../components/ui/UiCard.vue'
 import UiHeading from '../../components/ui/UiHeading.vue'
 import UiHero from '../../components/ui/UiHero.vue'
 import UiInput from '../../components/ui/UiInput.vue'
-import UiShell from '../../components/ui/UiShell.vue'
 import UiText from '../../components/ui/UiText.vue'
 import { useApiAction } from '../../composables/action-state'
 import { useServerApi } from '../../composables/useServerApi'

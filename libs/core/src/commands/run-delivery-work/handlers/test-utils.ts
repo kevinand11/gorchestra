@@ -31,5 +31,6 @@ export async function createRunDeliveryWorkHandlerTestContext(options: { sliceId
 		tx: services.tx,
 		deliveryContext: deliveryContext.value,
 		workResolution,
+		repositoryAccessSecret: { secretId: 'secret-1', valueRef: 'protected-ref' },
 	}
 }

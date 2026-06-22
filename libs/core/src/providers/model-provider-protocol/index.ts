@@ -22,7 +22,7 @@ import type {
 } from './types'
 import type { Id } from '../../domain/commons'
 import type { ModelProvider, ModelProviderProtocol } from '../../domain/model-provider'
-import { resolvedSecretValuesPipe, type CoreServices, type ResolvedSecretValues } from '../../services'
+import { resolvedSecretValuesPipe, type CoreServices, type ResolvableSecretValue, type ResolvedSecretValues } from '../../services'
 import type { Result } from '../../utils/types'
 import { validateCoreServiceOutput } from '../../validation'
 
@@ -63,7 +63,7 @@ async function preflightModelWithConcreteProviders(
 	concrete: Required<ModelProviderProtocolProviderImplementations>,
 	input: ModelProviderProtocolPreflightModelInput,
 ): Promise<Result<ModelProviderProtocolPreflight, ModelProviderProtocolPreflightError>> {
-	const access = await resolveModelProviderProtocolAccess(services, input.modelProvider)
+	const access = await resolveModelProviderProtocolAccess(services, input.modelProvider, input.secrets)
 	if (!access.ok) return access
 	if (!isProtocolAccess(access.value)) return { ok: true, value: access.value }
 
@@ -107,23 +107,28 @@ type SecretValueResolution = { type: 'resolved'; output: unknown } | { type: 'fa
 async function resolveModelProviderProtocolAccess(
 	services: CoreServices,
 	modelProvider: ModelProvider,
+	secrets: ResolvableSecretValue[],
 ): Promise<Result<ModelProviderProtocolAccess | ModelProviderProtocolPreflight, ModelProviderProtocolPreflightError>> {
 	const secretIds = secretIdsFromModelProvider(modelProvider)
 	if (secretIds.length === 0) return { ok: true, value: { auth: null, headers: [] } }
 
-	const resolution = await resolveSecretValueOutput(services, modelProvider.protocol, secretIds)
+	const secretValues = secretValuesForIds(secretIds, secrets)
+	const missingSecret = secretValues.find(isMissingSecretValueRef)
+	if (missingSecret !== undefined) return { ok: true, value: unresolvedSecretPreflight(modelProvider.protocol, missingSecret.secretId) }
+
+	const resolution = await resolveSecretValueOutput(services, modelProvider.protocol, secretValues.filter(isResolvableSecretValue))
 	return resolution.ok ? accessFromSecretValueResolution(resolution.value, modelProvider) : resolution
 }
 
 async function resolveSecretValueOutput(
 	services: CoreServices,
 	protocol: ModelProviderProtocol,
-	secretIds: Id[],
+	secrets: ResolvableSecretValue[],
 ): Promise<Result<SecretValueResolution, ModelProviderProtocolPreflightError>> {
 	try {
-		return { ok: true, value: { type: 'resolved', output: await services.secrets.resolveSecretValues({ secretIds }) } }
+		return { ok: true, value: { type: 'resolved', output: await services.secrets.resolveSecretValues({ secrets }) } }
 	} catch {
-		return { ok: true, value: { type: 'failed', preflight: unresolvedSecretPreflight(protocol, secretIds[0]!) } }
+		return { ok: true, value: { type: 'failed', preflight: unresolvedSecretPreflight(protocol, secrets[0]!.secretId) } }
 	}
 }
 
@@ -162,6 +167,24 @@ function secretIdsFromModelProvider(modelProvider: ModelProvider): Id[] {
 	)
 
 	return [...new Set(secretIds)]
+}
+
+function secretValuesForIds(
+	secretIds: Id[],
+	secrets: ResolvableSecretValue[],
+): Array<ResolvableSecretValue | { secretId: Id; valueRef: null }> {
+	const secretsById = new Map(secrets.map((secret) => [secret.secretId, secret]))
+	return secretIds.map((secretId) => secretsById.get(secretId) ?? { secretId, valueRef: null })
+}
+
+function isMissingSecretValueRef(
+	secret: ResolvableSecretValue | { secretId: Id; valueRef: null },
+): secret is { secretId: Id; valueRef: null } {
+	return secret.valueRef === null
+}
+
+function isResolvableSecretValue(secret: ResolvableSecretValue | { secretId: Id; valueRef: null }): secret is ResolvableSecretValue {
+	return secret.valueRef !== null
 }
 
 function unresolvedSecretPreflight(protocol: ModelProviderProtocol, secretId: Id): ModelProviderProtocolPreflight {
@@ -343,6 +366,10 @@ if (import.meta.vitest) {
 				archivePeriods: [],
 			},
 			modelProvider: openAIResponsesModelProvider(),
+			secrets: [
+				{ secretId: 'secret-1', valueRef: 'protected-ref-1' },
+				{ secretId: 'secret-2', valueRef: 'protected-ref-2' },
+			],
 		}
 	}
 

@@ -1,10 +1,16 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import { parseSecretEncryptionKey } from './modules/secret-protection'
+
 const serverEnvPipe = v.object({
 	GORCHESTRA_PORT: v.fromJson(v.number()),
 	GORCHESTRA_DATA_DIR: v.string().pipe(v.min<string>(1)),
 	GORCHESTRA_SESSION_JWT_SIGNING_KEY: v.string().pipe(v.min<string>(1)),
 	GORCHESTRA_SELECTION_COOKIE_SIGNING_KEY: v.string().pipe(v.min<string>(1)),
+	GORCHESTRA_SECRET_ENCRYPTION_KEY: v.string().pipe((val) => {
+		parseSecretEncryptionKey(val)
+		return val
+	}),
 })
 
 export type ServerEnv = PipeOutput<typeof serverEnvPipe>
@@ -23,6 +29,7 @@ if (import.meta.vitest) {
 		GORCHESTRA_DATA_DIR: '/tmp/gorchestra-server',
 		GORCHESTRA_SESSION_JWT_SIGNING_KEY: 'session-secret',
 		GORCHESTRA_SELECTION_COOKIE_SIGNING_KEY: 'selection-secret',
+		GORCHESTRA_SECRET_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64url'),
 	}
 
 	describe('Server env', () => {
@@ -32,6 +39,7 @@ if (import.meta.vitest) {
 				GORCHESTRA_DATA_DIR: '/tmp/gorchestra-server',
 				GORCHESTRA_SESSION_JWT_SIGNING_KEY: 'session-secret',
 				GORCHESTRA_SELECTION_COOKIE_SIGNING_KEY: 'selection-secret',
+				GORCHESTRA_SECRET_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64url'),
 			})
 		})
 

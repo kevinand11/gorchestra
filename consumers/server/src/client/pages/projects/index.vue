@@ -1,5 +1,5 @@
 <template>
-	<UiShell>
+	<SelectedPortfolioShell>
 		<UiHero>
 			<UiText as="p" tone="primary" class="font-bold uppercase tracking-[0.16em]">Selected Portfolio</UiText>
 			<UiHeading as="h1" size="hero">Projects</UiHeading>
@@ -53,19 +53,8 @@
 			</UiCard>
 
 			<UiCard>
-				<UiHeading as="h2" size="section" class="mb-2">Portfolio actions</UiHeading>
+				<UiHeading as="h2" size="section" class="mb-2">Project routes</UiHeading>
 				<UiText tone="muted">This Projects route loads selected Portfolio Projects through an explicit Core query boundary.</UiText>
-				<div class="mt-4 flex flex-wrap items-start gap-3">
-					<NuxtLink
-						class="inline-flex items-center justify-center rounded-pill bg-primary px-5 py-3 font-extrabold text-primary-contrast no-underline transition hover:brightness-110"
-						to="/select">
-						Change selection
-					</NuxtLink>
-					<div class="grid gap-2">
-						<UiButton type="button" variant="secondary" :loading="isLoggingOut" @click="logout()">Sign out</UiButton>
-						<UiText v-if="logoutError" tone="error">{{ logoutError }}</UiText>
-					</div>
-				</div>
 			</UiCard>
 		</section>
 
@@ -73,17 +62,16 @@
 			<UiHeading as="h2" size="section">Checking selection…</UiHeading>
 			<UiText tone="muted">The Projects route requires a selected Workspace and Portfolio.</UiText>
 		</UiCard>
-	</UiShell>
+	</SelectedPortfolioShell>
 </template>
 
 <script setup lang="ts">
-import UiButton from '../../components/ui/UiButton.vue'
+import SelectedPortfolioShell from '../../components/SelectedPortfolioShell.vue'
 import UiCard from '../../components/ui/UiCard.vue'
 import UiHeading from '../../components/ui/UiHeading.vue'
 import UiHero from '../../components/ui/UiHero.vue'
-import UiShell from '../../components/ui/UiShell.vue'
 import UiText from '../../components/ui/UiText.vue'
-import { useApiAction, useFetchAction } from '../../composables/action-state'
+import { useFetchAction } from '../../composables/action-state'
 import { useServerApi, type ServerApi } from '../../composables/useServerApi'
 import { useSessionStore } from '../../stores/session'
 
@@ -106,12 +94,4 @@ const {
 	},
 	{ dedupeKey: 'selected-portfolio-projects' },
 )
-const {
-	isLoading: isLoggingOut,
-	error: logoutError,
-	execute: logout,
-} = useApiAction(async () => {
-	await sessionStore.logout()
-	await navigateTo('/sign-in')
-})
 </script>

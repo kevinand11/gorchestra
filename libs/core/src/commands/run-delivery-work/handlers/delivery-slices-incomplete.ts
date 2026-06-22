@@ -46,17 +46,22 @@ interface SliceWorkerPool {
 	runtime: CoreRuntime
 	deliveryId: Id
 	workResolution: DeliveryWorkResolution
+	repositoryAccessSecret: ResolvedDeliveryHandlerContext['repositoryAccessSecret']
 	claimedKeys: Set<string>
 }
 
 export async function handleDeliverySlicesIncomplete(
 	runtime: CoreRuntime,
-	context: Pick<ResolvedDeliveryHandlerContext, 'services' | 'storage' | 'values' | 'deliveryContext' | 'workResolution'>,
+	context: Pick<
+		ResolvedDeliveryHandlerContext,
+		'services' | 'storage' | 'values' | 'deliveryContext' | 'workResolution' | 'repositoryAccessSecret'
+	>,
 ): Promise<RunDeliveryWorkHandlerResult> {
 	const pool: SliceWorkerPool = {
 		runtime,
 		deliveryId: context.deliveryContext.delivery.id,
 		workResolution: context.workResolution,
+		repositoryAccessSecret: context.repositoryAccessSecret,
 		claimedKeys: new Set(),
 	}
 	const slotCount = context.workResolution.workConfig.maxProcessableSliceSlots
@@ -218,8 +223,12 @@ async function processSliceSelection(pool: SliceWorkerPool, selection: SliceWork
 function selectionContext(
 	pool: SliceWorkerPool,
 	selection: SliceWorkSelection,
-): Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'workResolution'> {
-	return { deliveryContext: selection.deliveryContext, workResolution: pool.workResolution }
+): Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'workResolution' | 'repositoryAccessSecret'> {
+	return {
+		deliveryContext: selection.deliveryContext,
+		workResolution: pool.workResolution,
+		repositoryAccessSecret: pool.repositoryAccessSecret,
+	}
 }
 
 function combineSliceWorkerResults(results: RunDeliveryWorkHandlerResult[]): RunDeliveryWorkHandlerResult {
@@ -334,6 +343,7 @@ if (import.meta.vitest) {
 			tx: options.tx,
 			deliveryContext: deliveryContext.value,
 			workResolution: workResolution.value.resolution,
+			repositoryAccessSecret: { secretId: 'secret-1', valueRef: 'protected-ref' },
 		}
 	}
 

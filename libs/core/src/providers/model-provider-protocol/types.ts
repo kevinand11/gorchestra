@@ -2,11 +2,13 @@ import type { Id } from '../../domain/commons'
 import type { Model } from '../../domain/model'
 import type { ModelProvider, ModelProviderProtocol } from '../../domain/model-provider'
 import type { InvalidCoreServiceOutputError } from '../../errors'
+import type { ResolvableSecretValue } from '../../services'
 import type { Result } from '../../utils/types'
 
 export interface ModelProviderProtocolPreflightModelInput {
 	model: Model
 	modelProvider: ModelProvider
+	secrets: ResolvableSecretValue[]
 }
 
 export type ModelProviderProtocolPreflightFailureReason =

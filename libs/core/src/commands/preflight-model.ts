@@ -14,7 +14,7 @@ import type {
 import { modelProviderProtocolPreflight } from '../providers/model-provider-protocol'
 import type { ModelProviderProtocolPreflightFailureReason } from '../providers/model-provider-protocol/types'
 import type { CoreRuntime } from '../runtime'
-import type { CoreServices, CoreStorage } from '../services'
+import type { CoreServices, CoreStorage, ResolvableSecretValue } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { getRequired, isArchived, validateActiveSecret, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -29,11 +29,11 @@ export type Error = InvalidInputError | InvalidCoreServiceOutputError | Resource
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
 type ModelPreflightReadiness =
-	| { type: 'passed'; model: Model; modelProvider: ModelProvider }
+	| { type: 'passed'; model: Model; modelProvider: ModelProvider; secrets: ResolvableSecretValue[] }
 	| { type: 'failed'; modelProvider: ModelProvider; reason: ModelProviderProtocolPreflightFailureReason }
 
 type ModelPreflightFactReadiness =
-	| { type: 'passed' }
+	| { type: 'passed'; secrets: ResolvableSecretValue[] }
 	| { type: 'failed'; modelProvider: ModelProvider; reason: ModelProviderProtocolPreflightFailureReason }
 
 type ModelPreflightStorageFacts = { model: Model; modelProvider: ModelProvider }
@@ -58,6 +58,7 @@ export function createPreflightModelCommand(runtime: CoreRuntime): Operation {
 		const providerPreflight = await runtime.providers.modelProviderProtocols.preflightModel({
 			model: readiness.value.model,
 			modelProvider: readiness.value.modelProvider,
+			secrets: readiness.value.secrets,
 		})
 		if (!providerPreflight.ok) return providerPreflight
 
@@ -86,7 +87,7 @@ async function readModelPreflightReadinessFromStorage(
 	if (!activeFacts.ok) return activeFacts
 	if (activeFacts.value.type === 'failed') return { ok: true, value: activeFacts.value }
 
-	return { ok: true, value: { type: 'passed', ...facts.value } }
+	return { ok: true, value: { type: 'passed', ...facts.value, secrets: activeFacts.value.secrets } }
 }
 
 async function readModelPreflightStorageFacts(
@@ -106,12 +107,35 @@ async function validateActiveModelFacts(
 	modelProvider: ModelProvider,
 ): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
 	const archivalReadiness = modelArchivalReadiness(model, modelProvider)
-	if (archivalReadiness.type === 'failed') return { ok: true, value: archivalReadiness }
+	return archivalReadiness.type === 'failed' ? { ok: true, value: archivalReadiness } : validateModelSecrets(storage, modelProvider)
+}
 
+async function validateModelSecrets(
+	storage: CoreStorage,
+	modelProvider: ModelProvider,
+): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
 	const authSecret = await validateAuthSecret(storage, modelProvider)
-	if (!authSecret.ok || authSecret.value.type === 'failed') return authSecret
+	return authSecret.ok && authSecret.value.type === 'passed'
+		? validateModelHeaderSecrets(storage, modelProvider, authSecret.value.secrets)
+		: authSecret
+}
 
-	return validateHeaderSecrets(storage, modelProvider)
+async function validateModelHeaderSecrets(
+	storage: CoreStorage,
+	modelProvider: ModelProvider,
+	authSecrets: ResolvableSecretValue[],
+): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
+	const headerSecrets = await validateHeaderSecrets(storage, modelProvider)
+	return combineModelSecrets(authSecrets, headerSecrets)
+}
+
+function combineModelSecrets(
+	authSecrets: ResolvableSecretValue[],
+	headerSecrets: CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>,
+): CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError> {
+	return headerSecrets.ok && headerSecrets.value.type === 'passed'
+		? { ok: true, value: { type: 'passed', secrets: uniqueSecrets([...authSecrets, ...headerSecrets.value.secrets]) } }
+		: headerSecrets
 }
 
 function modelArchivalReadiness(model: Model, modelProvider: ModelProvider): ModelPreflightFactReadiness {
@@ -119,29 +143,33 @@ function modelArchivalReadiness(model: Model, modelProvider: ModelProvider): Mod
 
 	return isArchived(modelProvider.archivePeriods)
 		? { type: 'failed', modelProvider, reason: { type: 'model-provider-archived', modelProviderId: modelProvider.id } }
-		: { type: 'passed' }
+		: { type: 'passed', secrets: [] }
 }
 
 async function validateAuthSecret(
 	storage: CoreStorage,
 	modelProvider: ModelProvider,
 ): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
-	if (modelProvider.auth === null) return { ok: true, value: { type: 'passed' } }
+	if (modelProvider.auth === null) return { ok: true, value: { type: 'passed', secrets: [] } }
 
 	const secret = await validateActiveSecret(storage, modelProvider.auth.secretId)
-	return secret.ok ? { ok: true, value: { type: 'passed' } } : mapAuthSecretFailure(modelProvider, secret.error)
+	return secret.ok
+		? { ok: true, value: { type: 'passed', secrets: [secretValueRef(secret.value)] } }
+		: mapAuthSecretFailure(modelProvider, secret.error)
 }
 
 async function validateHeaderSecrets(
 	storage: CoreStorage,
 	modelProvider: ModelProvider,
 ): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
+	const secrets: ResolvableSecretValue[] = []
 	for (const header of modelProvider.headers) {
 		const secret = await validateActiveSecret(storage, header.valueSecretId)
 		if (!secret.ok) return mapHeaderSecretFailure(modelProvider, header, secret.error)
+		secrets.push(secretValueRef(secret.value))
 	}
 
-	return { ok: true, value: { type: 'passed' } }
+	return { ok: true, value: { type: 'passed', secrets } }
 }
 
 function mapAuthSecretFailure(
@@ -199,6 +227,14 @@ function mapHeaderSecretFailure(
 
 function modelPreflightEvidence(passed: boolean, summary: string): ValidationEvidence {
 	return { type: 'validation', operation: { type: 'model-preflight' }, passed, summary }
+}
+
+function uniqueSecrets(secrets: ResolvableSecretValue[]): ResolvableSecretValue[] {
+	return [...new Map(secrets.map((secret) => [secret.secretId, secret])).values()]
+}
+
+function secretValueRef(secret: { id: string; valueRef: string }): ResolvableSecretValue {
+	return { secretId: secret.id, valueRef: secret.valueRef }
 }
 
 if (import.meta.vitest) {

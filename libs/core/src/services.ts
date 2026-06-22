@@ -1,4 +1,4 @@
-import type { AnySchema, AnyUpdateOp, FilterGroup, OrmAdapterLike, QueryOptions, RepoSurface } from 'equipped/orm'
+import { Repo, type AnySchema, type AnyUpdateOp, type FilterGroup, type OrmAdapterLike, type QueryOptions } from 'equipped/orm'
 import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe, type Id } from './domain/commons'
@@ -32,15 +32,17 @@ export type CoreStorageAdapter = OrmAdapterLike<{ table: string }> & {
 	session<T>(fn: () => Promise<T>): Promise<T>
 }
 
-export type CoreStorage = RepoSurface<CoreStorageAdapter>
-export type CoreStorageService = CoreStorage
-
 export interface ResolveSecretsInput {
 	scope: { type: 'project'; projectId: Id } | { type: 'delivery'; deliveryId: Id }
 }
 
+export interface ResolvableSecretValue {
+	secretId: Id
+	valueRef: string
+}
+
 export interface ResolveSecretValuesInput {
-	secretIds: Id[]
+	secrets: ResolvableSecretValue[]
 }
 
 export interface ResolvedSecret {
@@ -59,12 +61,9 @@ export type CoreEvent = never
 
 type PreflightFn = () => Promise<CoreServicePreflightOutput>
 
-export const storagePipe = v
-	.any<CoreStorage>()
-	.pipe(v.custom((value) => typeof value === 'object' && value !== null, 'Expected an Equipped Repo.'))
-	.pipe(v.custom((value) => hasFunction(value, 'on'), 'Expected storage.on to be a function.'))
-	.pipe(v.custom((value) => hasFunction(value, 'session'), 'Expected storage.session to be a function.'))
-	.pipe(v.custom((value) => hasFunction(value, 'resolve'), 'Expected storage.resolve to be a function.'))
+export const storagePipe = v.instanceOf(Repo<CoreStorageAdapter>)
+export type CoreStorageService = PipeOutput<typeof storagePipe>
+export type CoreStorage = CoreStorageService
 
 export const coreSecretsServicePipe = v.object({
 	preflight: typedFunctionDependencyPipe<PreflightFn>(),
@@ -102,8 +101,4 @@ export type CoreServices = UndefinedToOptional<PipeOutput<typeof coreServicesPip
 
 function typedFunctionDependencyPipe<Fn extends (...args: never[]) => unknown>() {
 	return v.any<Fn>().pipe(v.custom((value) => typeof value === 'function', 'Expected a function dependency.'))
-}
-
-function hasFunction(value: object, key: string): boolean {
-	return typeof (value as Record<string, unknown>)[key] === 'function'
 }

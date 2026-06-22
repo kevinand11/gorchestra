@@ -45,11 +45,11 @@ An operation-specific exported union of only the error variants a public Core op
 _Avoid_: full CoreError return, catch-all error type
 
 **Secret**:
-A Portfolio-owned named sensitive value whose stored record includes a protected value reference but never plaintext. Users may create, replace, and archive Secret values, and Core may return Secret records from write operations, but users may not view plaintext values after creation; v1 Secrets do not have provider-specific Secret types.
+A Portfolio-owned sensitive value with a non-unique user-facing name and a stored protected value reference but never plaintext. Users may create, replace, and archive Secret values, and Core may return Secret records from write operations, but users may not view plaintext values after creation; v1 Secrets do not have provider-specific Secret types.
 _Avoid_: Credential, token, key, sensitive value
 
 **Protected Secret Value Reference**:
-A consumer-specific protected reference to Secret plaintext that may be stored and returned by Core because it is not plaintext.
+A consumer-specific protected token that lets the owning Consumer resolve Secret plaintext without Core storing plaintext. It may be an external protected-store reference or an inline encrypted value envelope.
 _Avoid_: Plaintext secret, decrypted secret value
 
 **Environment Variable**:

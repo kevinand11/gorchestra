@@ -9,7 +9,7 @@ import type { ModelProvider, ModelProviderHeader } from '../domain/model-provide
 import type { Repository } from '../domain/repository'
 import type { ResourceNotFoundError, SecretNotActiveError, StorageOperationFailedError, InvalidCoreServiceOutputError } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import type { CoreStorage } from '../services'
+import type { CoreStorage, ResolvableSecretValue } from '../services'
 import type { DeliveryContext } from './delivery-context'
 
 export type {
@@ -21,11 +21,13 @@ export type {
 	PassedDeliveryPreflight,
 } from './delivery-context/work-resolution'
 
-export type RepositoryDeliveryPreflightPlan = { type: 'check'; check: ValidationEvidence } | { type: 'provider'; repository: Repository }
+export type RepositoryDeliveryPreflightPlan =
+	| { type: 'check'; check: ValidationEvidence }
+	| { type: 'provider'; repository: Repository; accessSecret: ResolvableSecretValue }
 
 export type ModelDeliveryPreflightPlan =
 	| { type: 'check'; check: ValidationEvidence }
-	| { type: 'provider'; model: Model; modelProvider: ModelProvider }
+	| { type: 'provider'; model: Model; modelProvider: ModelProvider; secrets: ResolvableSecretValue[] }
 
 export type ProviderBackedDeliveryPreflightPlan =
 	| { type: 'local-failed'; checks: ValidationEvidence[]; snapshot: DeliveryPreflightSnapshot }
@@ -114,6 +116,10 @@ export function providerBackedDeliveryWorkResolution(plan: ProviderBackedDeliver
 	return plan.type === 'provider-plan' ? plan.resolution.resolution : undefined
 }
 
+export function providerBackedRepositoryAccessSecret(plan: ProviderBackedDeliveryPreflightPlan): ResolvableSecretValue | undefined {
+	return plan.type === 'provider-plan' && plan.repository.type === 'provider' ? plan.repository.accessSecret : undefined
+}
+
 async function readRepositoryPlan(
 	storage: CoreStorage,
 	repository: Repository,
@@ -121,7 +127,7 @@ async function readRepositoryPlan(
 	const secret = await validateActiveSecret(storage, repository.config.secretId)
 	if (!secret.ok) return mapRepositoryAccessSecretFailure(secret.error)
 
-	return ok({ type: 'provider', repository })
+	return ok({ type: 'provider', repository, accessSecret: secretValueRef(secret.value) })
 }
 
 async function readModelPlan(
@@ -129,33 +135,58 @@ async function readModelPlan(
 	resolution: DeliveryWorkResolution,
 ): Promise<Result<ModelDeliveryPreflightPlan, DeliveryPreflightError>> {
 	const authSecret = await readModelProviderAuthSecretCheck(storage, resolution.executionModelProvider)
-	if (!authSecret.ok) return authSecret
-	if (authSecret.value !== null) return ok({ type: 'check', check: authSecret.value })
+	return authSecret.ok ? readModelPlanWithAuthSecret(storage, resolution, authSecret.value) : authSecret
+}
 
-	return readModelProviderHeaderSecretPlan(storage, resolution.executionModel, resolution.executionModelProvider)
+async function readModelPlanWithAuthSecret(
+	storage: CoreStorage,
+	resolution: DeliveryWorkResolution,
+	authSecret: { type: 'secrets'; secrets: ResolvableSecretValue[] } | { type: 'check'; check: ValidationEvidence },
+): Promise<Result<ModelDeliveryPreflightPlan, DeliveryPreflightError>> {
+	if (authSecret.type === 'check') return ok(authSecret)
+
+	const headerSecrets = await readModelProviderHeaderSecretPlan(storage, resolution.executionModelProvider)
+	return headerSecrets.ok ? modelPlanFromSecrets(resolution, authSecret.secrets, headerSecrets.value) : headerSecrets
+}
+
+function modelPlanFromSecrets(
+	resolution: DeliveryWorkResolution,
+	authSecrets: ResolvableSecretValue[],
+	headerSecrets: { type: 'secrets'; secrets: ResolvableSecretValue[] } | { type: 'check'; check: ValidationEvidence },
+): Result<ModelDeliveryPreflightPlan, never> {
+	return headerSecrets.type === 'check'
+		? ok(headerSecrets)
+		: ok(providerModelPlan(resolution.executionModel, resolution.executionModelProvider, authSecrets, headerSecrets.secrets))
 }
 
 async function readModelProviderAuthSecretCheck(
 	storage: CoreStorage,
 	modelProvider: ModelProvider,
-): Promise<Result<ValidationEvidence | null, DeliveryPreflightError>> {
-	if (modelProvider.auth === null) return ok(null)
+): Promise<
+	Result<{ type: 'secrets'; secrets: ResolvableSecretValue[] } | { type: 'check'; check: ValidationEvidence }, DeliveryPreflightError>
+> {
+	if (modelProvider.auth === null) return ok({ type: 'secrets', secrets: [] })
 
 	const secret = await validateActiveSecret(storage, modelProvider.auth.secretId)
-	return secret.ok ? ok(null) : mapModelProviderAuthSecretFailure(modelProvider, secret.error)
+	return secret.ok
+		? ok({ type: 'secrets', secrets: [secretValueRef(secret.value)] })
+		: mapModelProviderAuthSecretFailure(modelProvider, secret.error)
 }
 
 async function readModelProviderHeaderSecretPlan(
 	storage: CoreStorage,
-	model: Model,
 	modelProvider: ModelProvider,
-): Promise<Result<ModelDeliveryPreflightPlan, DeliveryPreflightError>> {
+): Promise<
+	Result<{ type: 'secrets'; secrets: ResolvableSecretValue[] } | { type: 'check'; check: ValidationEvidence }, DeliveryPreflightError>
+> {
+	const secrets: ResolvableSecretValue[] = []
 	for (const header of modelProvider.headers) {
 		const secret = await validateActiveSecret(storage, header.valueSecretId)
 		if (!secret.ok) return mapModelProviderHeaderSecretFailure(modelProvider, header, secret.error)
+		secrets.push(secretValueRef(secret.value))
 	}
 
-	return ok({ type: 'provider', model, modelProvider })
+	return ok({ type: 'secrets', secrets })
 }
 
 function mapRepositoryAccessSecretFailure(
@@ -180,12 +211,18 @@ function mapRepositoryAccessSecretFailure(
 function mapModelProviderAuthSecretFailure(
 	modelProvider: ModelProvider,
 	error: ResourceNotFoundError | SecretNotActiveError | StorageOperationFailedError | InvalidCoreServiceOutputError,
-): Result<ValidationEvidence | null, DeliveryPreflightError> {
+): Result<{ type: 'check'; check: ValidationEvidence }, DeliveryPreflightError> {
 	if (error.type === 'not-found' && error.resource === 'secret') {
-		return ok(validationEvidence('model-preflight', false, modelSecretSummary(modelProvider, 'auth', 'missing')))
+		return ok({
+			type: 'check',
+			check: validationEvidence('model-preflight', false, modelSecretSummary(modelProvider, 'auth', 'missing')),
+		})
 	}
 	if (error.type === 'secret-not-active') {
-		return ok(validationEvidence('model-preflight', false, modelSecretSummary(modelProvider, 'auth', 'inactive')))
+		return ok({
+			type: 'check',
+			check: validationEvidence('model-preflight', false, modelSecretSummary(modelProvider, 'auth', 'inactive')),
+		})
 	}
 
 	return { ok: false, error }
@@ -195,7 +232,7 @@ function mapModelProviderHeaderSecretFailure(
 	modelProvider: ModelProvider,
 	_header: ModelProviderHeader,
 	error: ResourceNotFoundError | SecretNotActiveError | StorageOperationFailedError | InvalidCoreServiceOutputError,
-): Result<ModelDeliveryPreflightPlan, DeliveryPreflightError> {
+): Result<{ type: 'check'; check: ValidationEvidence }, DeliveryPreflightError> {
 	if (error.type === 'not-found' && error.resource === 'secret') {
 		return ok({
 			type: 'check',
@@ -218,7 +255,10 @@ async function runRepositoryCheck(
 ): Promise<Result<ValidationEvidence, DeliveryPreflightError>> {
 	if (plan.type === 'check') return ok(plan.check)
 
-	const preflight = await runtime.providers.sourceControl.preflightRepository({ repository: plan.repository })
+	const preflight = await runtime.providers.sourceControl.preflightRepository({
+		repository: plan.repository,
+		accessSecret: plan.accessSecret,
+	})
 	return preflight.ok
 		? ok(validationEvidence('repository-preflight', preflight.value.type === 'passed', preflight.value.summary))
 		: preflight
@@ -233,8 +273,26 @@ async function runModelCheck(
 	const preflight = await runtime.providers.modelProviderProtocols.preflightModel({
 		model: plan.model,
 		modelProvider: plan.modelProvider,
+		secrets: plan.secrets,
 	})
 	return preflight.ok ? ok(validationEvidence('model-preflight', preflight.value.type === 'passed', preflight.value.summary)) : preflight
+}
+
+function providerModelPlan(
+	model: Model,
+	modelProvider: ModelProvider,
+	authSecrets: ResolvableSecretValue[],
+	headerSecrets: ResolvableSecretValue[],
+): ModelDeliveryPreflightPlan {
+	return { type: 'provider', model, modelProvider, secrets: uniqueSecrets([...authSecrets, ...headerSecrets]) }
+}
+
+function uniqueSecrets(secrets: ResolvableSecretValue[]): ResolvableSecretValue[] {
+	return [...new Map(secrets.map((secret) => [secret.secretId, secret])).values()]
+}
+
+function secretValueRef(secret: { id: string; valueRef: string }): ResolvableSecretValue {
+	return { secretId: secret.id, valueRef: secret.valueRef }
 }
 
 function modelSecretSummary(modelProvider: ModelProvider, secretKind: 'auth' | 'header', state: 'missing' | 'inactive'): string {

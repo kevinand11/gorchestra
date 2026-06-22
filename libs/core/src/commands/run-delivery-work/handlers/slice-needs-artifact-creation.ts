@@ -24,7 +24,7 @@ export type SliceArtifactCreationInput = SourceControlCreateArtifactBranchInput 
 }
 
 export function sliceArtifactCreationInput(
-	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'workResolution'>,
+	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'workResolution' | 'repositoryAccessSecret'>,
 ): CoreResult<SliceArtifactCreationInput | null, RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
 	const candidates = sliceStateCandidates(context)
 	if (!candidates.ok) return candidates
@@ -38,7 +38,7 @@ export function sliceArtifactCreationInput(
 
 export async function handleSliceNeedsArtifactCreation(
 	runtime: CoreRuntime,
-	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'workResolution'>,
+	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'workResolution' | 'repositoryAccessSecret'>,
 	slice: Slice,
 	_state: Extract<SliceWorkState, { type: 'needs-artifact-creation' }>,
 ): Promise<RunDeliveryWorkHandlerResult> {
@@ -56,6 +56,7 @@ export async function handleSliceNeedsArtifactCreation(
 				values: runtime.values,
 				deliveryContext: context.deliveryContext,
 				workResolution: context.workResolution,
+				repositoryAccessSecret: context.repositoryAccessSecret,
 			},
 			{ type: 'slices-incomplete' },
 			input.value,
@@ -98,7 +99,7 @@ function isActiveSliceSlotState(state: SliceWorkState): boolean {
 }
 
 function sliceArtifactCreationInputForSlice(
-	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext'>,
+	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'repositoryAccessSecret'>,
 	slice: Slice,
 ): CoreResult<SliceArtifactCreationInput, InvariantViolationError> {
 	const deliveryArtifact = context.deliveryContext.deliveryArtifact
@@ -115,6 +116,7 @@ function sliceArtifactCreationInputForSlice(
 			deliveryId: context.deliveryContext.delivery.id,
 			sliceId: slice.id,
 			repository: context.deliveryContext.repository,
+			accessSecret: context.repositoryAccessSecret,
 			sourceBranch: deliveryArtifact.config.deliveryBranch,
 			artifactBranch: sliceBranch.value,
 		},
@@ -219,6 +221,7 @@ if (import.meta.vitest) {
 					deliveryId: 'delivery-1',
 					sliceId: 'slice-1',
 					repository: context.deliveryContext.repository,
+					accessSecret: context.repositoryAccessSecret,
 					sourceBranch: 'delivery-branch',
 					artifactBranch: 'gorchestra/deliveries/d-ZGVsaXZlcnktMQ/slices/s-c2xpY2UtMQ',
 				},

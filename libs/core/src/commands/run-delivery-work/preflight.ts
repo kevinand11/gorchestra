@@ -6,12 +6,13 @@ import type { DeliveryWorkState } from '../../domain/delivery'
 import type { ValidationEvidence } from '../../domain/evidence'
 import type { InvalidInputError } from '../../errors'
 import type { CoreRuntime } from '../../runtime'
-import type { CoreServices, CoreStorage } from '../../services'
+import type { CoreServices, CoreStorage, ResolvableSecretValue } from '../../services'
 import { createRecord, nextId, runtimeRecord } from '../../utils/command-storage'
 import { buildDeliveryContext, getDeliveryState, type DeliveryContext, type DeliveryWorkResolution } from '../../utils/delivery-context'
 import {
 	deliveryPreflightChecksPassed,
 	providerBackedDeliveryWorkResolution,
+	providerBackedRepositoryAccessSecret,
 	readProviderBackedDeliveryPreflightPlan,
 	runProviderBackedDeliveryPreflightChecks,
 	type ProviderBackedDeliveryPreflightPlan,
@@ -30,6 +31,7 @@ export type ProviderBackedSchedulerPreflightClaim = {
 export interface SchedulerHandlerContext {
 	deliveryContext: DeliveryContext
 	workResolution: DeliveryWorkResolution
+	repositoryAccessSecret: ResolvableSecretValue
 }
 
 export interface ResolvedSchedulerHandlerContext extends SchedulerHandlerContext {
@@ -75,9 +77,10 @@ export function schedulerHandlerContextFromClaim(
 	claim: ProviderBackedSchedulerPreflightClaim,
 ): CoreResult<SchedulerHandlerContext, Exclude<Error, InvalidInputError>> {
 	const resolution = providerBackedDeliveryWorkResolution(claim.preflight)
-	return resolution === undefined
+	const repositoryAccessSecret = providerBackedRepositoryAccessSecret(claim.preflight)
+	return resolution === undefined || repositoryAccessSecret === undefined
 		? missingSchedulerWorkResolution()
-		: { ok: true, value: { deliveryContext: claim.deliveryContext, workResolution: resolution } }
+		: { ok: true, value: { deliveryContext: claim.deliveryContext, workResolution: resolution, repositoryAccessSecret } }
 }
 
 export function resolvedSchedulerHandlerContext(
@@ -87,9 +90,20 @@ export function resolvedSchedulerHandlerContext(
 	claim: ProviderBackedSchedulerPreflightClaim,
 ): CoreResult<ResolvedSchedulerHandlerContext, Exclude<Error, InvalidInputError>> {
 	const resolution = providerBackedDeliveryWorkResolution(claim.preflight)
-	return resolution === undefined
+	const repositoryAccessSecret = providerBackedRepositoryAccessSecret(claim.preflight)
+	return resolution === undefined || repositoryAccessSecret === undefined
 		? missingSchedulerWorkResolution()
-		: { ok: true, value: { services: runtime.services, storage, values: runtime.values, deliveryContext, workResolution: resolution } }
+		: {
+				ok: true,
+				value: {
+					services: runtime.services,
+					storage,
+					values: runtime.values,
+					deliveryContext,
+					workResolution: resolution,
+					repositoryAccessSecret,
+				},
+			}
 }
 
 async function schedulerPreflightForState(
@@ -133,9 +147,17 @@ function schedulerHandlerContext(
 	preflight: ProviderBackedDeliveryPreflightPlan,
 ) {
 	const resolution = providerBackedDeliveryWorkResolution(preflight)
-	return resolution === undefined
+	const repositoryAccessSecret = providerBackedRepositoryAccessSecret(preflight)
+	return resolution === undefined || repositoryAccessSecret === undefined
 		? { services: runtime.services, storage, values: runtime.values, deliveryContext }
-		: { services: runtime.services, storage, values: runtime.values, deliveryContext, workResolution: resolution }
+		: {
+				services: runtime.services,
+				storage,
+				values: runtime.values,
+				deliveryContext,
+				workResolution: resolution,
+				repositoryAccessSecret,
+			}
 }
 
 async function writeFailedPreflightAction(

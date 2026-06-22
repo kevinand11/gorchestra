@@ -1,10 +1,12 @@
 import type { Id } from '../../domain/commons'
 import type { GitHubRepositoryConfig, Repository, RepositoryConfig } from '../../domain/repository'
 import type { InvalidCoreServiceOutputError } from '../../errors'
+import type { ResolvableSecretValue } from '../../services'
 import type { Result } from '../../utils/types'
 
 export interface SourceControlRepositoryPreflightInput {
 	repository: Repository
+	accessSecret: ResolvableSecretValue
 }
 
 export type SourceControlRepositoryPreflightFailureReason =
@@ -24,6 +26,7 @@ export type SourceControlRepositoryPreflightError = InvalidCoreServiceOutputErro
 
 export interface SourceControlCreateArtifactBranchInput {
 	repository: Repository
+	accessSecret: ResolvableSecretValue
 	sourceBranch: string
 	artifactBranch: string
 }
@@ -50,6 +53,7 @@ export type SourceControlArtifactCreationError = InvalidCoreServiceOutputError
 
 export interface SourceControlCreateReviewSurfaceInput {
 	repository: Repository
+	accessSecret: ResolvableSecretValue
 	sourceBranch: string
 	targetBranch: string
 	title: string

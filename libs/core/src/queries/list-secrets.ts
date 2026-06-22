@@ -1,0 +1,125 @@
+import { v, type PipeOutput } from 'valleyed'
+
+import type { Secret } from '../domain/secret'
+import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
+import type { CoreServices } from '../services'
+import { buildQueryHandler } from './utils'
+import { isArchived } from '../utils/command-storage'
+import { listRecords, withTransaction } from '../utils/storage'
+import type { Result as CoreResult } from '../utils/types'
+
+const listSecretsInputPipe = v.object({})
+export type Input = PipeOutput<typeof listSecretsInputPipe>
+
+export type ListedSecret = Omit<Secret, 'valueRef' | 'archivePeriods'> & { archived: boolean }
+
+export type Result = ListedSecret[]
+export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
+export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
+
+export function createListSecretsQuery(options: CoreServices): Operation {
+	return buildQueryHandler('listSecrets', listSecretsInputPipe, () =>
+		withTransaction(options, async (storage) => {
+			const secrets = await listRecords('secret', storage)
+			return secrets.ok ? { ok: true, value: listSecrets(secrets.value) } : secrets
+		}),
+	)
+}
+
+function listSecrets(secrets: Secret[]): ListedSecret[] {
+	return sortByCreatedAtThenId(secrets).map(listSecret)
+}
+
+export function listSecret(secret: Secret): ListedSecret {
+	const { valueRef: _valueRef, archivePeriods, ...secretFields } = secret
+	return { ...secretFields, archived: isArchived(archivePeriods) }
+}
+
+function sortByCreatedAtThenId<T extends { id: string; created: { at: string } }>(records: T[]): T[] {
+	return [...records].sort((left, right) => left.created.at.localeCompare(right.created.at) || left.id.localeCompare(right.id))
+}
+
+if (import.meta.vitest) {
+	const { describe, expect, it } = import.meta.vitest
+	const { createTestCoreServices, stamp } = await import('../utils/test-helpers')
+
+	describe('listSecrets query', () => {
+		it('validates input before reading storage', async () => {
+			const options = createTestCoreServices()
+			options.tx.secrets.fail.list = true
+			const query = createListSecretsQuery(options)
+
+			const result = await query(null as unknown as Input)
+
+			expect(result).toMatchObject({
+				ok: false,
+				error: { type: 'invalid-input', boundary: 'query', operation: 'listSecrets' },
+			})
+			expect(options.transactionCalls()).toBe(0)
+		})
+
+		it('returns an empty Secret list for an empty Portfolio', async () => {
+			const query = createListSecretsQuery(createTestCoreServices())
+
+			const result = await query({})
+
+			expect(result).toEqual({ ok: true, value: [] })
+		})
+
+		it('lists redacted Secret metadata in creation order with archive state', async () => {
+			const options = createTestCoreServices()
+			options.tx.secrets.records.set('secret-b', secret({ id: 'secret-b', name: 'Later', createdAt: '2026-06-10T00:00:00.000Z' }))
+			options.tx.secrets.records.set('secret-c', secret({ id: 'secret-c', name: 'Tie C', createdAt: '2026-06-09T00:00:00.000Z' }))
+			options.tx.secrets.records.set(
+				'secret-a',
+				secret({ id: 'secret-a', name: 'Tie A', createdAt: '2026-06-09T00:00:00.000Z', archived: true }),
+			)
+			const query = createListSecretsQuery(options)
+
+			const result = await query({})
+
+			expect(result).toEqual({
+				ok: true,
+				value: [
+					redactedSecret({ id: 'secret-a', name: 'Tie A', createdAt: '2026-06-09T00:00:00.000Z', archived: true }),
+					redactedSecret({ id: 'secret-c', name: 'Tie C', createdAt: '2026-06-09T00:00:00.000Z' }),
+					redactedSecret({ id: 'secret-b', name: 'Later', createdAt: '2026-06-10T00:00:00.000Z' }),
+				],
+			})
+		})
+
+		it('returns storage errors when Secret reads fail', async () => {
+			const options = createTestCoreServices()
+			options.tx.secrets.fail.list = true
+			const query = createListSecretsQuery(options)
+
+			const result = await query({})
+
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'secret' } },
+			})
+		})
+	})
+
+	function secret(input: { id: string; name: string; createdAt?: string; archived?: boolean }): Secret {
+		return {
+			id: input.id,
+			name: input.name,
+			valueRef: 'protected-value-ref',
+			created: { origin: 'imported', at: input.createdAt ?? stamp.at },
+			replaced: null,
+			archivePeriods: input.archived ? [{ archived: { origin: 'imported', at: '2026-06-11T00:00:00.000Z' }, unarchived: null }] : [],
+		}
+	}
+
+	function redactedSecret(input: { id: string; name: string; createdAt?: string; archived?: boolean }): ListedSecret {
+		return {
+			id: input.id,
+			name: input.name,
+			created: { origin: 'imported', at: input.createdAt ?? stamp.at },
+			replaced: null,
+			archived: input.archived ?? false,
+		}
+	}
+}

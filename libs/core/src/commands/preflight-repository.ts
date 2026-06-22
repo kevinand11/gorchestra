@@ -11,7 +11,7 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import type { CoreServices, CoreStorage } from '../services'
+import type { CoreServices, CoreStorage, ResolvableSecretValue } from '../services'
 import { buildCommandHandler } from '../utils/command'
 import { getRequired, validateActiveSecret, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
@@ -25,7 +25,9 @@ export type Error = InvalidInputError | InvalidCoreServiceOutputError | Resource
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
-type RepositoryPreflightReadiness = { type: 'passed'; repository: Repository } | { type: 'failed'; summary: string }
+type RepositoryPreflightReadiness =
+	| { type: 'passed'; repository: Repository; accessSecret: ResolvableSecretValue }
+	| { type: 'failed'; summary: string }
 
 type RepositoryPreflightLocalError = InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 
@@ -36,7 +38,10 @@ export function createPreflightRepositoryCommand(runtime: CoreRuntime): Operatio
 		if (!readiness.ok) return readiness
 		if (readiness.value.type === 'failed') return { ok: true, value: repositoryPreflightEvidence(false, readiness.value.summary) }
 
-		const providerPreflight = await runtime.providers.sourceControl.preflightRepository({ repository: readiness.value.repository })
+		const providerPreflight = await runtime.providers.sourceControl.preflightRepository({
+			repository: readiness.value.repository,
+			accessSecret: readiness.value.accessSecret,
+		})
 		if (!providerPreflight.ok) return providerPreflight
 
 		return {
@@ -63,7 +68,7 @@ async function readRepositoryPreflightReadinessFromStorage(
 	const secret = await validateActiveSecret(storage, repository.value.config.secretId)
 	if (!secret.ok) return mapAccessSecretFailure(repository.value, secret.error)
 
-	return { ok: true, value: { type: 'passed', repository: repository.value } }
+	return { ok: true, value: { type: 'passed', repository: repository.value, accessSecret: secretValueRef(secret.value) } }
 }
 
 function mapAccessSecretFailure(
@@ -89,6 +94,10 @@ function accessSecretSummary(repository: Repository, state: 'missing' | 'inactiv
 
 function repositoryPreflightEvidence(passed: boolean, summary: string): ValidationEvidence {
 	return { type: 'validation', operation: { type: 'repository-preflight' }, passed, summary }
+}
+
+function secretValueRef(secret: { id: string; valueRef: string }): ResolvableSecretValue {
+	return { secretId: secret.id, valueRef: secret.valueRef }
 }
 
 if (import.meta.vitest) {

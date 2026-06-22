@@ -77,6 +77,7 @@ export function createWorkspaceApiRouter(context: ServerApiContext) {
 			portfolioDisplayName: req.body.portfolioDisplayName,
 			dataDir: context.dataDir,
 			now,
+			secretEncryptionKey: context.secretEncryptionKey,
 		})
 		const selection = buildSelectionCookie({
 			workspaceId: provisioned.workspace.id,

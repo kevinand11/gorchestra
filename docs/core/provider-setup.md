@@ -91,7 +91,7 @@ A provider verification test should arrange Core the same way a Consumer would:
 2. Store a Secret whose protected value reference points to the deployment's secret store entry.
 3. Configure the provider record with the Secret reference and any header Secret references.
 4. Configure the Repository or Model record using the provider-facing identifier.
-5. Make the Secret Core Service resolve requested Secret IDs to plaintext values only inside the test process.
+5. Make the Secret Core Service resolve requested Secret value refs to plaintext values only inside the test process.
 6. Call the relevant preflight operation and assert on safe Validation Evidence.
 
 For Model Provider Protocol tests, assert that success returns Model Preflight Validation Evidence with `passed: true`; for expected provider failures, assert on the safe summary/reason rather than raw SDK exceptions. Avoid tests that depend on generation output, token usage, or mutable provider-side state. Prefer model or repository metadata endpoints because preflight should prove reachability with minimal side effects.
@@ -100,7 +100,8 @@ Minimal Model Preflight test shape:
 
 ```ts
 const services = createConsumerLikeCoreServices({
-	resolveSecretValues: async ({ secretIds }) => Object.fromEntries(secretIds.map((id) => [id, plaintextValueFor(id)])),
+	resolveSecretValues: async ({ secrets }) =>
+		Object.fromEntries(secrets.map((secret) => [secret.secretId, plaintextValueFor(secret.valueRef)])),
 })
 const opened = openCore(services)
 if (!opened.ok) throw new Error('Core did not open')

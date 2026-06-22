@@ -8,7 +8,7 @@ import type {
 	SingletonNotFoundError,
 	StorageOperationFailedError,
 } from '../../errors'
-import type { CoreServices, CoreStorage } from '../../services'
+import type { CoreServices, CoreStorage, ResolvableSecretValue } from '../../services'
 import type { DeliveryWorkResolution, DeliveryContext } from '../../utils/delivery-context'
 import type { CoreRuntimeValues } from '../../utils/runtime-values'
 import type { Result as CoreResult } from '../../utils/types'
@@ -58,6 +58,7 @@ export interface DeliveryHandlerContext extends RunDeliveryWorkContext {
 
 export interface ResolvedDeliveryHandlerContext extends DeliveryHandlerContext {
 	workResolution: DeliveryWorkResolution
+	repositoryAccessSecret: ResolvableSecretValue
 }
 
 export type { DeliveryWorkResolution }

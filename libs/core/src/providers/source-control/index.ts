@@ -9,13 +9,14 @@ import type {
 	SourceControlProviders,
 	SourceControlRepositoryPreflight,
 	SourceControlRepositoryPreflightError,
+	SourceControlRepositoryPreflightInput,
 	SourceControlRepositoryPreflightFailureReason,
 	SourceControlReviewSurfaceCreation,
 	SourceControlReviewSurfaceCreationError,
 } from './types'
 import type { Id } from '../../domain/commons'
 import type { Repository } from '../../domain/repository'
-import { resolvedSecretValuesPipe, type CoreServices, type ResolvedSecretValues } from '../../services'
+import { resolvedSecretValuesPipe, type CoreServices, type ResolvableSecretValue, type ResolvedSecretValues } from '../../services'
 import type { Result } from '../../utils/types'
 import { validateCoreServiceOutput } from '../../validation'
 
@@ -33,7 +34,7 @@ export function createSourceControlProviders(
 		preflightRepository(input) {
 			switch (input.repository.config.provider) {
 				case 'github':
-					return preflightGitHubRepository(services, github, input.repository)
+					return preflightGitHubRepository(services, github, { ...input, repository: input.repository })
 			}
 		},
 		createArtifactBranch(input) {
@@ -56,7 +57,7 @@ async function createGitHubArtifactBranch(
 	github: GitHubSourceControlProvider,
 	input: SourceControlCreateArtifactBranchInput & { repository: GitHubRepository },
 ): Promise<Result<SourceControlArtifactCreation, SourceControlArtifactCreationError>> {
-	const accessToken = await resolveRepositoryAccessToken(services, input.repository.config.secretId)
+	const accessToken = await resolveRepositoryAccessToken(services, input.accessSecret)
 	if (!accessToken.ok) return accessToken
 	if (!isAccessToken(accessToken.value)) return { ok: true, value: artifactCreationAccessFailure(accessToken.value) }
 
@@ -75,7 +76,7 @@ async function createGitHubReviewSurface(
 	github: GitHubSourceControlProvider,
 	input: SourceControlCreateReviewSurfaceInput & { repository: GitHubRepository },
 ): Promise<Result<SourceControlReviewSurfaceCreation, SourceControlReviewSurfaceCreationError>> {
-	const accessToken = await resolveRepositoryAccessToken(services, input.repository.config.secretId)
+	const accessToken = await resolveRepositoryAccessToken(services, input.accessSecret)
 	if (!accessToken.ok) return accessToken
 	if (!isAccessToken(accessToken.value)) return { ok: true, value: reviewSurfaceAccessFailure(accessToken.value) }
 
@@ -93,13 +94,13 @@ async function createGitHubReviewSurface(
 async function preflightGitHubRepository(
 	services: CoreServices,
 	github: GitHubSourceControlProvider,
-	repository: GitHubRepository,
+	input: SourceControlRepositoryPreflightInput & { repository: GitHubRepository },
 ): Promise<Result<SourceControlRepositoryPreflight, SourceControlRepositoryPreflightError>> {
-	const accessToken = await resolveRepositoryAccessToken(services, repository.config.secretId)
+	const accessToken = await resolveRepositoryAccessToken(services, input.accessSecret)
 	if (!accessToken.ok) return accessToken
 	if (!isAccessToken(accessToken.value)) return { ok: true, value: accessToken.value }
 
-	const providerPreflight = await github.preflightRepository({ repository, accessToken: accessToken.value })
+	const providerPreflight = await github.preflightRepository({ repository: input.repository, accessToken: accessToken.value })
 	return { ok: true, value: gitHubRepositoryPreflight(providerPreflight) }
 }
 
@@ -107,20 +108,20 @@ type SecretValueResolution = { type: 'resolved'; output: unknown } | { type: 'fa
 
 async function resolveRepositoryAccessToken(
 	services: CoreServices,
-	secretId: Id,
+	secret: ResolvableSecretValue,
 ): Promise<Result<SourceControlAccessToken | SourceControlRepositoryPreflight, SourceControlRepositoryPreflightError>> {
-	const resolution = await resolveSecretValueOutput(services, secretId)
-	return resolution.ok ? accessTokenFromSecretValueResolution(resolution.value, secretId) : resolution
+	const resolution = await resolveSecretValueOutput(services, secret)
+	return resolution.ok ? accessTokenFromSecretValueResolution(resolution.value, secret.secretId) : resolution
 }
 
 async function resolveSecretValueOutput(
 	services: CoreServices,
-	secretId: Id,
+	secret: ResolvableSecretValue,
 ): Promise<Result<SecretValueResolution, SourceControlRepositoryPreflightError>> {
 	try {
-		return { ok: true, value: { type: 'resolved', output: await services.secrets.resolveSecretValues({ secretIds: [secretId] }) } }
+		return { ok: true, value: { type: 'resolved', output: await services.secrets.resolveSecretValues({ secrets: [secret] }) } }
 	} catch {
-		return { ok: true, value: { type: 'failed', preflight: unresolvedAccessSecretPreflight(secretId) } }
+		return { ok: true, value: { type: 'failed', preflight: unresolvedAccessSecretPreflight(secret.secretId) } }
 	}
 }
 
@@ -247,7 +248,7 @@ if (import.meta.vitest) {
 				},
 			})
 
-			const result = await sourceControl.preflightRepository({ repository: gitHubRepository() })
+			const result = await sourceControl.preflightRepository({ repository: gitHubRepository(), accessSecret: gitHubAccessSecret() })
 
 			expect(result).toEqual({ ok: true, value: { type: 'passed', summary: 'GitHub repository preflight passed.' } })
 			expect(observedToken).toBe('token')
@@ -257,7 +258,7 @@ if (import.meta.vitest) {
 			const services = coreServices(() => Promise.resolve({}))
 			const sourceControl = createSourceControlProviders(services, { github: neverCalledGitHubProvider() })
 
-			const result = await sourceControl.preflightRepository({ repository: gitHubRepository() })
+			const result = await sourceControl.preflightRepository({ repository: gitHubRepository(), accessSecret: gitHubAccessSecret() })
 
 			expect(result).toEqual({
 				ok: true,
@@ -291,6 +292,7 @@ if (import.meta.vitest) {
 
 			const result = await sourceControl.createArtifactBranch({
 				repository: gitHubRepository(),
+				accessSecret: gitHubAccessSecret(),
 				sourceBranch: 'main',
 				artifactBranch: 'delivery-branch',
 			})
@@ -320,6 +322,7 @@ if (import.meta.vitest) {
 
 			const result = await sourceControl.createReviewSurface({
 				repository: gitHubRepository(),
+				accessSecret: gitHubAccessSecret(),
 				sourceBranch: 'delivery-branch',
 				targetBranch: 'main',
 				title: 'Delivery',
@@ -338,6 +341,7 @@ if (import.meta.vitest) {
 
 			const result = await sourceControl.createArtifactBranch({
 				repository: gitHubRepository(),
+				accessSecret: gitHubAccessSecret(),
 				sourceBranch: 'main',
 				artifactBranch: 'delivery-branch',
 			})
@@ -356,7 +360,7 @@ if (import.meta.vitest) {
 			const services = coreServices(() => Promise.resolve({ 'secret-1': 1 } as never))
 			const sourceControl = createSourceControlProviders(services, { github: neverCalledGitHubProvider() })
 
-			const result = await sourceControl.preflightRepository({ repository: gitHubRepository() })
+			const result = await sourceControl.preflightRepository({ repository: gitHubRepository(), accessSecret: gitHubAccessSecret() })
 
 			expect(result).toMatchObject({
 				ok: false,
@@ -372,6 +376,10 @@ if (import.meta.vitest) {
 			config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 		}
+	}
+
+	function gitHubAccessSecret(): ResolvableSecretValue {
+		return { secretId: 'secret-1', valueRef: 'protected-ref' }
 	}
 
 	function coreServices(resolveSecretValues: CoreServices['secrets']['resolveSecretValues']): CoreServices {

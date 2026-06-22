@@ -84,6 +84,15 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async createProject(input: { title: string }) {
 			return routes.request('post', '/api/portfolio/projects', { body: input })
 		},
+		async listSecrets() {
+			return routes.request('get', '/api/portfolio/secrets')
+		},
+		async createSecret(input: { name: string; value: string }) {
+			return routes.request('post', '/api/portfolio/secrets', { body: input })
+		},
+		async getSecret(secretId: string) {
+			return routes.request('get', '/api/portfolio/secrets/:secretId', { params: { secretId } })
+		},
 		async provisionDefaultWorkspace(input: { workspaceDisplayName: string; portfolioDisplayName: string }) {
 			return routes.request('post', '/api/workspaces/provision-default', { body: input })
 		},

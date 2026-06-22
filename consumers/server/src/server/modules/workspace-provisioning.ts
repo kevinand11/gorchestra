@@ -1,5 +1,6 @@
 import { v } from 'valleyed'
 
+import type { SecretEncryptionKey } from './secret-protection'
 import { assignWorkspaceOwnerRole, createPortfolioRegistryEntry, createWorkspace, createWorkspaceMember } from './workspaces'
 import {
 	createCoreStorageNamespace,
@@ -17,6 +18,7 @@ export type ProvisionWorkspaceWithDefaultPortfolioInput = {
 	portfolioDisplayName: string
 	dataDir: string
 	now: Date
+	secretEncryptionKey: SecretEncryptionKey
 	coreStorageNamespaceFactory?: () => string
 	coreStorageAdapterFactory?: CorePortfolioStorageAdapterFactory
 }
@@ -44,7 +46,7 @@ export async function provisionWorkspaceWithDefaultPortfolio(
 	}
 
 	try {
-		await initializeCorePortfolioStorage(coreStorageInput)
+		await initializeCorePortfolioStorage({ ...coreStorageInput, secretEncryptionKey: input.secretEncryptionKey })
 		return await input.serverStorage.repo.session(async () => {
 			const workspace = await createWorkspace({
 				serverStorage: input.serverStorage,
@@ -98,6 +100,7 @@ if (import.meta.vitest) {
 		'gorchestra-server-workspace-provisioning-',
 	)
 	const testNow = new Date('2026-06-19T12:00:00.000Z')
+	const secretEncryptionKey = Buffer.alloc(32, 1)
 
 	afterEach(cleanupTempServerStorage)
 
@@ -123,6 +126,7 @@ if (import.meta.vitest) {
 				portfolioDisplayName: '  Main Portfolio  ',
 				dataDir,
 				now: testNow,
+				secretEncryptionKey,
 				coreStorageNamespaceFactory: () => coreStorageNamespace,
 			})
 
@@ -179,6 +183,7 @@ if (import.meta.vitest) {
 					portfolioDisplayName: 'Main Portfolio',
 					dataDir,
 					now: testNow,
+					secretEncryptionKey,
 					coreStorageNamespaceFactory: () => coreStorageNamespace,
 				}),
 			).rejects.toThrow('Workspace display name is required')
@@ -198,6 +203,7 @@ if (import.meta.vitest) {
 					portfolioDisplayName: 'Main Portfolio',
 					dataDir,
 					now: testNow,
+					secretEncryptionKey,
 					coreStorageNamespaceFactory: () => coreStorageNamespace,
 				}),
 			).rejects.toThrow()

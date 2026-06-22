@@ -1,4 +1,11 @@
-import { BadRequestError, NotAuthenticatedError, NotAuthorizedError, PreconditionRequiredError, TokenExpired } from 'equipped/errors'
+import {
+	BadRequestError,
+	NotAuthenticatedError,
+	NotAuthorizedError,
+	NotFoundError,
+	PreconditionRequiredError,
+	TokenExpired,
+} from 'equipped/errors'
 
 import type { ApiSessionAuthentication } from './session'
 import type { WorkspacePortfolioAccessFailureReason } from '../modules/selection-access'
@@ -25,7 +32,9 @@ export function throwSelectionRequired(): never {
 	throw new PreconditionRequiredError('Select a Workspace and Portfolio before using this API.')
 }
 
-export function throwCoreOperationError(error: { type: string }): never {
+export function throwCoreOperationError(error: { type: string; resource?: string }): never {
 	if (error.type === 'invalid-input') throw new BadRequestError('Invalid Core input')
+	if (error.type === 'not-found')
+		throw new NotFoundError(error.resource === undefined ? 'Core resource was not found' : `${error.resource} was not found`)
 	throw new Error(`Core operation failed: ${error.type}`)
 }

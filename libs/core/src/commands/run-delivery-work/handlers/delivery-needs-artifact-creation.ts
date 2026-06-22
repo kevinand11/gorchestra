@@ -8,7 +8,7 @@ import type { CoreRuntime } from '../../../runtime'
 import { createRecord, nextId, runtimeRecord } from '../../../utils/command-storage'
 import { withTransaction } from '../../../utils/storage'
 import type { Result as CoreResult } from '../../../utils/types'
-import { resolvedSchedulerHandlerContext, type ProviderBackedSchedulerPreflightClaim } from '../preflight'
+import { resolvedSchedulerHandlerContext, schedulerHandlerContextFromClaim, type ProviderBackedSchedulerPreflightClaim } from '../preflight'
 import type { ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
 import { actionRecord, externalOperationEvidence } from './result'
 
@@ -17,7 +17,7 @@ export type DeliveryArtifactCreationInput = SourceControlCreateArtifactBranchInp
 }
 
 function deliveryArtifactCreationInput(
-	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext'>,
+	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'repositoryAccessSecret'>,
 ): CoreResult<DeliveryArtifactCreationInput, InvariantViolationError> {
 	const deliveryBranch = sourceControlDeliveryBranchName(context.deliveryContext.delivery.id)
 	if (!deliveryBranch.ok) return deliveryBranch
@@ -27,6 +27,7 @@ function deliveryArtifactCreationInput(
 		value: {
 			deliveryId: context.deliveryContext.delivery.id,
 			repository: context.deliveryContext.repository,
+			accessSecret: context.repositoryAccessSecret,
 			sourceBranch: context.deliveryContext.delivery.target.targetBranch,
 			artifactBranch: deliveryBranch.value,
 		},
@@ -37,7 +38,10 @@ export async function handleDeliveryNeedsArtifactCreation(
 	runtime: CoreRuntime,
 	preflight: ProviderBackedSchedulerPreflightClaim,
 ): Promise<RunDeliveryWorkHandlerResult> {
-	const input = deliveryArtifactCreationInput(preflight)
+	const context = schedulerHandlerContextFromClaim(preflight)
+	if (!context.ok) return context
+
+	const input = deliveryArtifactCreationInput(context.value)
 	if (!input.ok) return input
 
 	const creation = await runtime.providers.sourceControl.createArtifactBranch(input.value)
@@ -155,6 +159,7 @@ if (import.meta.vitest) {
 				value: {
 					deliveryId: 'delivery-1',
 					repository: context.deliveryContext.repository,
+					accessSecret: context.repositoryAccessSecret,
 					sourceBranch: 'main',
 					artifactBranch: 'gorchestra/deliveries/d-ZGVsaXZlcnktMQ',
 				},
@@ -241,6 +246,7 @@ if (import.meta.vitest) {
 				executionModel: options.tx.models.records.get('model-1')!,
 				executionModelProvider: options.tx.modelProviders.records.get('model-1-provider')!,
 			},
+			repositoryAccessSecret: { secretId: 'secret-1', valueRef: 'protected-ref' },
 		}
 	}
 }

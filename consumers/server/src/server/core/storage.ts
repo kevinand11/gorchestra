@@ -14,6 +14,7 @@ import { v } from 'valleyed'
 
 import { createDefaultCorePortfolioStorageBackend } from './json-adapter'
 import { createCoreServices } from './services'
+import type { SecretEncryptionKey } from '../modules/secret-protection'
 
 export type CorePortfolioStorageAdapter = GorchestraCoreStorageAdapter &
 	OrmAdapter &
@@ -58,7 +59,9 @@ export type CorePortfolioStorage = {
 	close: () => Promise<void>
 }
 
-export type InitializeCorePortfolioStorageInput = OpenCorePortfolioStorageInput
+export type InitializeCorePortfolioStorageInput = OpenCorePortfolioStorageInput & {
+	secretEncryptionKey: SecretEncryptionKey
+}
 
 export type InitializeCorePortfolioStorageResult = {
 	coreStorageNamespace: string
@@ -78,7 +81,7 @@ export async function initializeCorePortfolioStorage(
 ): Promise<InitializeCorePortfolioStorageResult> {
 	const coreStorage = await openCorePortfolioStorage(input)
 	try {
-		const opened = openCore(createCoreServices(coreStorage.storage))
+		const opened = openCore(createCoreServices(coreStorage.storage, { secretEncryptionKey: input.secretEncryptionKey }))
 		if (!opened.ok) throw new Error(`Core failed to open: ${opened.error.type}`)
 
 		const preflight = await opened.value.preflight()
@@ -155,6 +158,8 @@ if (import.meta.vitest) {
 		return dataDir
 	}
 
+	const secretEncryptionKey = Buffer.alloc(32, 1)
+
 	describe('Server Core storage', () => {
 		it('creates safe per-Portfolio Core storage namespaces', () => {
 			const namespace = createCoreStorageNamespace()
@@ -168,7 +173,7 @@ if (import.meta.vitest) {
 			const dataDir = await createTempDataDir()
 			const coreStorageNamespace = createCoreStorageNamespace()
 
-			const initialized = await initializeCorePortfolioStorage({ dataDir, coreStorageNamespace })
+			const initialized = await initializeCorePortfolioStorage({ dataDir, coreStorageNamespace, secretEncryptionKey })
 
 			expect(initialized.coreStorageNamespace).toBe(coreStorageNamespace)
 			expect(initialized.preflightReport.passed).toBe(true)

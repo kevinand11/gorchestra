@@ -2,6 +2,7 @@ import type { Domain, Queries } from '@gorchestra/core'
 import { Router } from 'equipped/server'
 import { v } from 'valleyed'
 
+import { protectSecretPlaintext } from '../../modules/secret-protection'
 import { selectionCookieName } from '../../modules/selection-cookie'
 import type { ServerApiContext } from '../context'
 import { throwCoreOperationError } from '../errors'
@@ -13,6 +14,10 @@ import { sessionCookieSchema } from '../session'
 const selectionCookieSchema = optionalCookiePipe(selectionCookieName)
 const portfolioRequestCookieSchema = v.merge(sessionCookieSchema, selectionCookieSchema)
 const createProjectRequestSchema = v.object({ title: v.string().pipe(v.asTrimmed(), v.min(1, 'Project title is required')) })
+const createSecretRequestSchema = v.object({
+	name: v.string().pipe(v.asTrimmed(), v.min(1, 'Secret name is required')),
+	value: v.string().pipe(v.custom<string>((value) => value.trim().length > 0, 'Secret value is required')),
+})
 const localActorRefResponseSchema = v.object({ type: v.string(), id: v.string() })
 const auditStampResponseSchema = v.discriminate((value) => value.origin, {
 	local: v.object({
@@ -62,9 +67,17 @@ const listedProjectResponseSchema = v.object({
 	config: v.nullable(projectConfigRecordResponseSchema),
 	created: auditStampResponseSchema,
 })
+const secretResponseSchema = v.object({
+	id: idPipe,
+	name: nonEmptyStringPipe,
+	created: auditStampResponseSchema,
+	replaced: v.nullable(auditStampResponseSchema),
+	archived: v.boolean(),
+})
 
 type PortfolioRequestCookies = Record<string, string | undefined>
 type CreateProjectRequest = { title: string }
+type CreateSecretRequest = { name: string; value: string }
 
 export function createPortfolioApiRouter(context: ServerApiContext) {
 	return new Router({ path: '/portfolio' })
@@ -79,6 +92,15 @@ export function createPortfolioApiRouter(context: ServerApiContext) {
 		.post('/projects', {
 			schema: { cookies: portfolioRequestCookieSchema, body: createProjectRequestSchema, response: listedProjectResponseSchema },
 		})(async (req) => createSelectedPortfolioProject(context, req.cookies, req.body))
+		.get('/secrets', {
+			schema: { cookies: portfolioRequestCookieSchema, response: v.array(secretResponseSchema) },
+		})(async (req) => listSelectedPortfolioSecrets(context, req.cookies))
+		.post('/secrets', {
+			schema: { cookies: portfolioRequestCookieSchema, body: createSecretRequestSchema, response: secretResponseSchema },
+		})(async (req) => createSelectedPortfolioSecret(context, req.cookies, req.body))
+		.get('/secrets/:secretId', {
+			schema: { cookies: portfolioRequestCookieSchema, params: v.object({ secretId: idPipe }), response: secretResponseSchema },
+		})(async (req) => getSelectedPortfolioSecret(context, req.cookies, req.params.secretId))
 }
 
 async function createSelectedPortfolioProject(
@@ -99,6 +121,43 @@ function listedProjectFromCreatedProject(project: Domain.Project.Project): Queri
 	return { ...project, source: { type: 'source-control', repositories: [] } }
 }
 
+function listSelectedPortfolioSecrets(context: ServerApiContext, cookies: PortfolioRequestCookies): Promise<Queries.ListSecrets.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
+		const secrets = await core.queries.listSecrets({})
+		return secrets.ok ? secrets.value : throwCoreOperationError(secrets.error)
+	})
+}
+
+function getSelectedPortfolioSecret(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	secretId: string,
+): Promise<Queries.GetSecret.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
+		const secret = await core.queries.getSecret({ secretId })
+		return secret.ok ? secret.value : throwCoreOperationError(secret.error)
+	})
+}
+
+function createSelectedPortfolioSecret(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	input: CreateSecretRequest,
+): Promise<Queries.GetSecret.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
+		const valueRef = protectSecretPlaintext(input.value, context.secretEncryptionKey)
+		const secret = await core.commands.createSecret(
+			{ name: input.name, valueRef },
+			{ actor: { type: 'workspace-member', id: workspaceMember.id }, correlationId: null },
+		)
+		return secret.ok ? secretResponseFromCreatedSecret(secret.value) : throwCoreOperationError(secret.error)
+	})
+}
+
+function secretResponseFromCreatedSecret(secret: Domain.Secret.Secret): Queries.GetSecret.Result {
+	return { id: secret.id, name: secret.name, created: secret.created, replaced: secret.replaced, archived: false }
+}
+
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
@@ -115,6 +174,27 @@ if (import.meta.vitest) {
 			expect(listedProjectFromCreatedProject(project)).toEqual({
 				...project,
 				source: { type: 'source-control', repositories: [] },
+			})
+		})
+	})
+
+	describe('Portfolio API Secrets', () => {
+		it('redacts protected value refs from newly-created Secret responses', () => {
+			const secret: Domain.Secret.Secret = {
+				id: 'secret-1',
+				name: 'GitHub PAT',
+				valueRef: 'gorchestra-secret-value:v1:encrypted',
+				created: { origin: 'imported', at: '2026-06-21T00:00:00.000Z' },
+				replaced: null,
+				archivePeriods: [],
+			}
+
+			expect(secretResponseFromCreatedSecret(secret)).toEqual({
+				id: 'secret-1',
+				name: 'GitHub PAT',
+				created: { origin: 'imported', at: '2026-06-21T00:00:00.000Z' },
+				replaced: null,
+				archived: false,
 			})
 		})
 	})
