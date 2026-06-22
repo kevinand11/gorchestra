@@ -80,6 +80,7 @@ import { useFetchAction } from '../../composables/action-state'
 import { useQueryCache } from '../../composables/query-cache'
 import { useSelectedPortfolio } from '../../composables/selected-portfolio'
 import { useServerApi, type ServerApi } from '../../composables/useServerApi'
+import { formatDate } from '../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
 
@@ -93,10 +94,10 @@ const secretTabs: Array<{ value: SecretTab; label: string; shortLabel: string }>
 ]
 
 const route = useRoute()
-const selectedPortfolio = useSelectedPortfolio()
+const { portfolio } = useSelectedPortfolio()
+const portfolioId = computed(() => portfolio.value.id)
 const serverApi = useServerApi()
 const { queryKeys } = useQueryCache()
-const portfolioId = computed(() => selectedPortfolio.value.portfolio.id)
 const {
 	data: secrets,
 	isLoading: isLoadingSecrets,
@@ -132,9 +133,5 @@ function matchesSecretTab(secret: ListedSecret, tab: SecretTab): boolean {
 
 function secretFilterPillClass(tab: SecretTab): string {
 	return currentSecretTab.value === tab ? 'bg-card font-semibold text-body' : 'text-dim hover:bg-secondary hover:text-body'
-}
-
-function formatDate(value: string): string {
-	return new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(value))
 }
 </script>

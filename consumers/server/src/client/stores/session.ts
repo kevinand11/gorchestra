@@ -8,8 +8,6 @@ type SelectionAccessResponse = Awaited<ReturnType<ServerApi['getSelection']>>
 type EmailOtpChallengeResponse = Awaited<ReturnType<ServerApi['requestEmailOtp']>>
 type EmailOtpSignInResponse = Awaited<ReturnType<ServerApi['verifyEmailOtpSignIn']>>
 type ProvisionedWorkspaceResponse = Awaited<ReturnType<ServerApi['provisionDefaultWorkspace']>>
-type SelectionClearedResponse = Awaited<ReturnType<ServerApi['clearSelection']>>
-type SignedOutResponse = Awaited<ReturnType<ServerApi['logout']>>
 
 export type ClientSelectionState = SelectionAccessResponse
 
@@ -102,18 +100,18 @@ export const useSessionStore = defineStore('session', () => {
 		return selection.value
 	}
 
-	async function clearSelection(api: ServerApi = useServerApi()): Promise<SelectionClearedResponse> {
-		const response = await api.clearSelection()
+	async function clearSelection(api: ServerApi = useServerApi()) {
+		await api.clearSelection()
 		selection.value = null
 		useQueryCache().clear(['portfolio'])
-		return response
 	}
 
-	async function logout(api: ServerApi = useServerApi()): Promise<SignedOutResponse> {
-		const response = await api.logout()
+	async function logout(api: ServerApi = useServerApi()) {
+		await api.logout()
 		session.value = { authenticated: false, reason: 'missing-token' }
 		clearAuthenticatedState()
-		return response
+		if (typeof window !== 'undefined') window.location.assign('/sign-in')
+		else await navigateTo('/sign-in')
 	}
 
 	function clearAuthenticatedState(): void {

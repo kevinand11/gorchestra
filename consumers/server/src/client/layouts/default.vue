@@ -1,5 +1,5 @@
 <template>
-	<AppFrame :topbar="props.topbar">
+	<AppFrame :topbar="topbar">
 		<template #topbar-left>
 			<slot name="topbar-left">
 				<NuxtLink to="/" class="flex min-w-0 items-center gap-2 text-body no-underline">
@@ -11,9 +11,9 @@
 			</slot>
 		</template>
 
-		<template v-if="$slots['topbar-center'] || props.topbarSubtitle" #topbar-center>
+		<template v-if="$slots['topbar-center'] || topbarSubtitle" #topbar-center>
 			<slot name="topbar-center">
-				<p class="m-0 truncate text-sz-helper text-dim">{{ props.topbarSubtitle }}</p>
+				<p class="m-0 truncate text-sz-helper text-dim">{{ topbarSubtitle }}</p>
 			</slot>
 		</template>
 
@@ -37,7 +37,7 @@
 import AppFrame from '../components/layout/AppFrame.vue'
 import GorchestraMark from '../components/layout/GorchestraMark.vue'
 
-const props = withDefaults(
+withDefaults(
 	defineProps<{
 		topbar?: boolean
 		topbarSubtitle?: string

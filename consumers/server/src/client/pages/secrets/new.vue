@@ -55,7 +55,7 @@
 			<div class="px-3 py-3">
 				<strong class="block font-semibold">Portfolio context</strong>
 				<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-					This Secret will belong to {{ selectedPortfolio.portfolio.displayName }}.
+					This Secret will belong to {{ portfolio.displayName }}.
 				</p>
 			</div>
 		</template>
@@ -75,11 +75,10 @@ import { useToastStore } from '../../stores/toasts'
 
 definePageMeta({ middleware: ['has-selection'] })
 
-const selectedPortfolio = useSelectedPortfolio()
+const { portfolio } = useSelectedPortfolio()
 const serverApi = useServerApi()
 const toastStore = useToastStore()
-const queryCache = useQueryCache()
-const { queryKeys } = queryCache
+const { queryKeys, invalidate } = useQueryCache()
 const secretCreationForm = new SecretCreationFormFactory()
 
 const {
@@ -88,7 +87,7 @@ const {
 	execute: createSecret,
 } = useApiAction(async () => {
 	const secret = await serverApi.createSecret(secretCreationForm.toModel())
-	queryCache.invalidate(queryKeys.portfolio.secrets(selectedPortfolio.value.portfolio.id), { exact: true })
+	invalidate(queryKeys.portfolio.secrets(portfolio.value.id), { exact: true })
 	toastStore.success({ title: 'Secret created.', body: secret.name })
 	await navigateTo(`/secrets/${secret.id}`)
 })

@@ -44,7 +44,7 @@
 			<div class="px-3 py-3">
 				<strong class="block font-semibold">Portfolio context</strong>
 				<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-					This Project will belong to {{ selectedPortfolio.portfolio.displayName }}.
+					This Project will belong to {{ portfolio.displayName }}.
 				</p>
 			</div>
 		</template>
@@ -64,7 +64,7 @@ import { useToastStore } from '../../stores/toasts'
 
 definePageMeta({ middleware: ['has-selection'] })
 
-const selectedPortfolio = useSelectedPortfolio()
+const { portfolio } = useSelectedPortfolio()
 const serverApi = useServerApi()
 const toastStore = useToastStore()
 const queryCache = useQueryCache()
@@ -77,7 +77,7 @@ const {
 	execute: createProject,
 } = useApiAction(async () => {
 	const project = await serverApi.createProject(projectCreationForm.toModel())
-	queryCache.invalidate(queryKeys.portfolio.projects(selectedPortfolio.value.portfolio.id), { exact: true })
+	queryCache.invalidate(queryKeys.portfolio.projects(portfolio.value.id), { exact: true })
 	toastStore.success({ title: 'Project created.', body: project.title })
 	await navigateTo(`/projects/${project.id}`)
 })

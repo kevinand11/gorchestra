@@ -3,7 +3,7 @@
 		name="project"
 		:project-id="projectId"
 		:project-title="project?.title ?? 'Loading Project…'"
-		:project-subtitle="projectSubtitle">
+		project-subtitle="Add a GitHub Repository.">
 		<section class="px-3 py-3">
 			<div v-if="isLoadingSetup && !hasLoadedSetup" class="text-dim">Loading Repository setup…</div>
 			<div v-else-if="setupError" class="text-error">{{ setupError }}</div>
@@ -119,13 +119,12 @@ import { useToastStore } from '../../../../stores/toasts'
 definePageMeta({ middleware: ['has-selection'] })
 
 const route = useRoute()
-const selectedPortfolio = useSelectedPortfolio()
+const projectId = computed(() => route.params.projectId as string)
+const { portfolio } = useSelectedPortfolio()
+const portfolioId = computed(() => portfolio.value.id)
 const serverApi = useServerApi()
 const toastStore = useToastStore()
-const queryCache = useQueryCache()
-const { queryKeys } = queryCache
-const portfolioId = computed(() => selectedPortfolio.value.portfolio.id)
-const projectId = computed(() => routeParam(route.params.projectId))
+const { queryKeys, invalidate } = useQueryCache()
 const repositoryCreationForm = new RepositoryCreationFormFactory()
 
 const {
@@ -143,9 +142,7 @@ const {
 } = usePortfolioSecretsQuery(serverApi)
 
 const activeSecrets = computed(() => secrets.value.filter((secret) => !secret.archived))
-const projectSubtitle = computed(() =>
-	project.value === null ? 'Add a GitHub Repository.' : `Add a GitHub Repository to ${project.value.title}.`,
-)
+
 const isLoadingSetup = computed(
 	() => (isLoadingProject.value && !hasLoadedProject.value) || (isLoadingSecrets.value && !hasLoadedSecrets.value),
 )
@@ -161,13 +158,9 @@ const {
 	execute: createRepository,
 } = useApiAction(async () => {
 	const repository = await serverApi.createRepository(projectId.value, repositoryCreationForm.toModel())
-	queryCache.invalidate(queryKeys.portfolio.projects(portfolioId.value), { exact: true })
-	queryCache.invalidate(queryKeys.portfolio.project(portfolioId.value, projectId.value))
+	invalidate(queryKeys.portfolio.projects(portfolioId.value), { exact: true })
+	invalidate(queryKeys.portfolio.project(portfolioId.value, projectId.value))
 	toastStore.success({ title: 'Repository created.', body: `${repository.config.owner}/${repository.config.name}` })
 	await navigateTo(`/projects/${projectId.value}/repositories/${repository.id}`)
 })
-
-function routeParam(value: string | string[]): string {
-	return Array.isArray(value) ? (value[0] ?? '') : value
-}
 </script>

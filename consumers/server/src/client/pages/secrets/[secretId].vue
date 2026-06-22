@@ -47,17 +47,18 @@ import { useFetchAction } from '../../composables/action-state'
 import { useQueryCache } from '../../composables/query-cache'
 import { useSelectedPortfolio } from '../../composables/selected-portfolio'
 import { useServerApi, type ServerApi } from '../../composables/useServerApi'
+import { formatDate } from '../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
 
 type SecretDetails = Awaited<ReturnType<ServerApi['getSecret']>>
 
 const route = useRoute()
-const selectedPortfolio = useSelectedPortfolio()
+const secretId = computed(() => route.params.secretId as string)
+const { portfolio } = useSelectedPortfolio()
+const portfolioId = computed(() => portfolio.value.id)
 const serverApi = useServerApi()
 const { queryKeys } = useQueryCache()
-const portfolioId = computed(() => selectedPortfolio.value.portfolio.id)
-const secretId = computed(() => routeParam(route.params.secretId))
 
 const {
 	data: secret,
@@ -68,12 +69,4 @@ const {
 	queryKey: queryKeys.portfolio.secret(portfolioId.value, secretId.value),
 	initialData: null as SecretDetails | null,
 })
-
-function routeParam(value: string | string[]): string {
-	return Array.isArray(value) ? (value[0] ?? '') : value
-}
-
-function formatDate(value: string): string {
-	return new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(value))
-}
 </script>

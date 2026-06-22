@@ -34,8 +34,8 @@ export function usePortfolioSecretsQuery(serverApi: ServerApi) {
 }
 
 function usePortfolioQueryContext() {
-	const selectedPortfolio = useSelectedPortfolio()
+	const { portfolio } = useSelectedPortfolio()
 	const { queryKeys } = useQueryCache()
-	const portfolioId = computed(() => selectedPortfolio.value.portfolio.id)
+	const portfolioId = computed(() => portfolio.value.id)
 	return { portfolioId, queryKeys }
 }

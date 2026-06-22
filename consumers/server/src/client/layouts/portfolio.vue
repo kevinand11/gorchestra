@@ -13,8 +13,8 @@
 
 		<template #topbar-center>
 			<slot name="topbar-center">
-				<div class="border border-dimmer bg-canvas px-2.5 py-1.5 text-sz-helper text-dim">
-					{{ props.topbarSearchLabel }}
+				<div class="border border-dimmer bg-canvas px-2.5 py-1.5 max-w-[400px] mx-auto text-sz-helper text-dim">
+					{{ topbarSearchLabel }}
 				</div>
 			</slot>
 		</template>
@@ -31,10 +31,10 @@
 		<template #left>
 			<slot name="left">
 				<div class="border-b border-dimmer px-3 py-2 font-semibold">Selected Portfolio</div>
-				<div class="flex items-start justify-between gap-2 border-b border-dimmer px-3 py-2">
+				<div class="flex items-center justify-between gap-2 border-b border-dimmer px-3 py-2">
 					<div class="min-w-0">
-						<strong class="block truncate font-semibold">{{ portfolioName }}</strong>
-						<p class="m-0 truncate text-sz-helper text-dim">{{ workspaceName }}</p>
+						<strong class="block truncate font-semibold">{{ portfolio.displayName }}</strong>
+						<p class="m-0 truncate text-sz-helper text-dim">{{ workspace.displayName }}</p>
 					</div>
 					<NuxtLink
 						to="/select"
@@ -44,16 +44,15 @@
 				</div>
 				<nav class="grid gap-1 p-2" aria-label="Selected Portfolio navigation">
 					<NuxtLink
-						to="/projects"
+						v-for="{ label, to } in [
+							{ label: 'Projects', to: '/projects' },
+							{ label: 'Secrets', to: '/secrets' }
+						]"
+						:key="to"
+						:to="to"
 						class="flex min-h-8 items-center justify-between gap-2 px-2 py-1.5 text-sz-helper font-semibold text-dim no-underline hover:bg-secondary hover:text-body"
-						:class="isProjectsRoute ? 'bg-secondary text-body' : ''">
-						<span>Projects</span>
-					</NuxtLink>
-					<NuxtLink
-						to="/secrets"
-						class="flex min-h-8 items-center justify-between gap-2 px-2 py-1.5 text-sz-helper font-semibold text-dim no-underline hover:bg-secondary hover:text-body"
-						:class="isSecretsRoute ? 'bg-secondary text-body' : ''">
-						<span>Secrets</span>
+						active-class="bg-secondary text-body">
+						<span>{{ label }}</span>
 					</NuxtLink>
 				</nav>
 			</slot>
@@ -72,28 +71,20 @@
 import GorchestraMark from '../components/layout/GorchestraMark.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import { useApiAction } from '../composables/action-state'
+import { useSelectedPortfolio } from '../composables/selected-portfolio'
 import { useSessionStore } from '../stores/session'
 import DefaultLayout from './default.vue'
 
-const props = withDefaults(defineProps<{ topbarSearchLabel?: string }>(), {
+withDefaults(defineProps<{ topbarSearchLabel?: string }>(), {
 	topbarSearchLabel: 'Search Projects, Repositories, Secrets, Deliveries…',
 })
 
-const route = useRoute()
+const { workspace, portfolio } = useSelectedPortfolio()
 const sessionStore = useSessionStore()
-const selection = computed(() => (sessionStore.selection?.selected === true ? sessionStore.selection : null))
-const workspaceName = computed(() => selection.value?.workspace.displayName ?? 'Workspace')
-const portfolioName = computed(() => selection.value?.portfolio.displayName ?? 'Portfolio')
-const isProjectsRoute = computed(() => route.path === '/projects' || route.path.startsWith('/projects/'))
-const isSecretsRoute = computed(() => route.path === '/secrets' || route.path.startsWith('/secrets/'))
 
 const {
 	isLoading: isLoggingOut,
 	error: logoutError,
 	execute: logout,
-} = useApiAction(async () => {
-	await sessionStore.logout()
-	if (typeof window !== 'undefined') window.location.assign('/sign-in')
-	else await navigateTo('/sign-in')
-})
+} = useApiAction(sessionStore.logout)
 </script>

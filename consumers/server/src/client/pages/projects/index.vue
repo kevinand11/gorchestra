@@ -21,7 +21,10 @@
 					:key="tab.value"
 					:to="projectTabLocation(tab.value)"
 					class="px-2 py-1 text-sz-helper no-underline"
-					:class="[projectFilterPillClass(tab.value), index === projectTabs.length - 1 ? '' : 'border-r border-dimmer']">
+					:class="[
+						currentProjectTab === tab.value ? 'bg-card font-semibold text-body' : 'text-dim hover:bg-secondary hover:text-body',
+						index === projectTabs.length - 1 ? '' : 'border-r border-dimmer'
+					]">
 					{{ tab.shortLabel }}
 				</NuxtLink>
 			</div>
@@ -63,12 +66,14 @@
 					<span class="min-w-0">
 						<strong class="block truncate font-semibold">{{ project.title }}</strong>
 						<span class="mt-0.5 flex flex-wrap gap-2 text-sz-helper text-dim">
-							<span>{{ sourceLabel(project) }}</span>
-							<span>{{ repositorySummary(project) }}</span>
+							<span>{{ project.sourceLabel }}</span>
+							<span>{{ project.summary }}</span>
 						</span>
 					</span>
-					<span class="hidden justify-self-start lg:inline-flex" :class="projectStatusClass(project)">
-						<span class="size-2 rounded-full" :class="project.source.repositories.length === 0 ? 'bg-primary' : 'bg-success'" />
+					<span class="hidden justify-self-start lg:inline-flex items-center gap-1 border border-current/50 bg-current/10 px-2 py-0.5 text-sz-micro font-semibold"
+						:class="project.source.repositories.length === 0 ? 'text-primary' : 'text-success'"
+					>
+						<span class="size-2 rounded-full bg-current" />
 						{{ project.source.repositories.length === 0 ? 'needs Repository' : 'ready' }}
 					</span>
 				</NuxtLink>
@@ -98,10 +103,10 @@ const projectTabs: Array<{ value: ProjectTab; label: string; shortLabel: string 
 ]
 
 const route = useRoute()
-const selectedPortfolio = useSelectedPortfolio()
+const { portfolio } = useSelectedPortfolio()
+const portfolioId = computed(() => portfolio.value.id)
 const serverApi = useServerApi()
 const { queryKeys } = useQueryCache()
-const portfolioId = computed(() => selectedPortfolio.value.portfolio.id)
 const {
 	data: projects,
 	isLoading: isLoadingProjects,
@@ -112,46 +117,27 @@ const {
 	initialData: [] as ListedProject[],
 })
 
-const currentProjectTab = computed(() => parseProjectTab(route.query.tab))
-const currentProjectTabLabel = computed(() => projectTabs.find((tab) => tab.value === currentProjectTab.value)?.label ?? 'All Projects')
-const visibleProjects = computed(() => projects.value.filter((project) => matchesProjectTab(project, currentProjectTab.value)))
-
-function projectTabLocation(tab: ProjectTab) {
-	return { path: route.path, query: { ...route.query, tab } }
-}
-
-function parseProjectTab(value: unknown): ProjectTab {
+const currentProjectTab = computed((): ProjectTab => {
+	const value = route.query.tab
 	const tab = Array.isArray(value) ? value[0] : value
 	return projectTabs.some((option) => option.value === tab) ? (tab as ProjectTab) : 'all'
-}
-
-function matchesProjectTab(project: ListedProject, tab: ProjectTab): boolean {
+})
+const currentProjectTabLabel = computed(() => projectTabs.find((tab) => tab.value === currentProjectTab.value)?.label ?? 'All Projects')
+const visibleProjects = computed(() => projects.value.filter((project) => {
+	const tab = currentProjectTab.value
 	if (tab === 'needs-setup') return project.source.repositories.length === 0
 	if (tab === 'source-control') return project.source.type === 'source-control'
 	return true
-}
-
-function projectFilterPillClass(tab: ProjectTab): string {
-	return currentProjectTab.value === tab ? 'bg-card font-semibold text-body' : 'text-dim hover:bg-secondary hover:text-body'
-}
-
-function sourceLabel(project: ListedProject): string {
-	return project.source.type === 'source-control' ? 'source-control' : project.source.type
-}
-
-function repositorySummary(project: ListedProject): string {
+}).map((project) => {
 	const count = project.source.repositories.length
-	if (count === 0) return 'No Repositories configured'
-	if (count === 1) {
-		const repository = project.source.repositories[0]!
-		return `${repository.config.owner}/${repository.config.name}`
+	return {
+		...project,
+		sourceLabel: project.source.type === 'source-control' ? 'source-control' : project.source.type,
+		summary: count === 0 ? 'No Repositories configured' : count === 1 ? `${project.source.repositories[0]!.config.owner}/${project.source.repositories[0]!.config.name}` : `${count} Repositories configured`
 	}
-	return `${count} Repositories configured`
-}
+}))
 
-function projectStatusClass(project: ListedProject): string {
-	return project.source.repositories.length === 0
-		? 'items-center gap-1 border border-primary/50 bg-primary/10 px-2 py-0.5 text-sz-micro font-semibold text-primary'
-		: 'items-center gap-1 border border-success/50 bg-success/10 px-2 py-0.5 text-sz-micro font-semibold text-success'
+function projectTabLocation(tab: ProjectTab) {
+	return { path: route.path, query: { ...route.query, tab } }
 }
 </script>

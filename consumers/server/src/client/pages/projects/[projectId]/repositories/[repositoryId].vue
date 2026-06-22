@@ -62,6 +62,7 @@ import {
 } from '../../../../composables/portfolio-resource-queries'
 import { useServerApi, type ServerApi } from '../../../../composables/useServerApi'
 import { useToastStore } from '../../../../stores/toasts'
+import { formatDate } from '../../../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
 
@@ -70,8 +71,8 @@ type RepositoryPreflightEvidence = Awaited<ReturnType<ServerApi['preflightReposi
 const route = useRoute()
 const serverApi = useServerApi()
 const toastStore = useToastStore()
-const projectId = computed(() => routeParam(route.params.projectId))
-const repositoryId = computed(() => routeParam(route.params.repositoryId))
+const projectId = computed(() => route.params.projectId as string)
+const repositoryId = computed(() => route.params.repositoryId as string)
 const preflightEvidence = ref<RepositoryPreflightEvidence | null>(null)
 
 const {
@@ -122,9 +123,9 @@ const repositoryPageFetches = [
 	{ isLoading: isLoadingRepository, hasExecuted: hasLoadedRepository },
 	{ isLoading: isLoadingSecrets, hasExecuted: hasLoadedSecrets },
 ]
-const isLoadingRepositoryPage = computed(() => repositoryPageFetches.some(isInitialFetchLoading))
+const isLoadingRepositoryPage = computed(() => repositoryPageFetches.some((fetch) => fetch.isLoading.value && !fetch.hasExecuted.value))
 const repositoryPageError = computed(() => projectError.value || repositoryError.value || secretsError.value)
-const isRefreshingRepositoryPage = computed(() => repositoryPageFetches.some(isRefreshingFetch))
+const isRefreshingRepositoryPage = computed(() => repositoryPageFetches.some((fetch) => fetch.isLoading.value && fetch.hasExecuted.value))
 
 const {
 	isLoading: isPreflightingRepository,
@@ -136,20 +137,4 @@ const {
 	if (evidence.passed) toastStore.success({ title: 'Repository preflight passed.', body: evidence.summary })
 	else toastStore.info({ title: 'Repository preflight failed.', body: evidence.summary })
 })
-
-function isInitialFetchLoading(fetch: (typeof repositoryPageFetches)[number]): boolean {
-	return fetch.isLoading.value && !fetch.hasExecuted.value
-}
-
-function isRefreshingFetch(fetch: (typeof repositoryPageFetches)[number]): boolean {
-	return fetch.isLoading.value && fetch.hasExecuted.value
-}
-
-function routeParam(value: string | string[]): string {
-	return Array.isArray(value) ? (value[0] ?? '') : value
-}
-
-function formatDate(value: string): string {
-	return new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(value))
-}
 </script>
