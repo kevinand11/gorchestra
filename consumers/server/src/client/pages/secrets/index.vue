@@ -44,6 +44,7 @@
 					</NuxtLink>
 				</li>
 			</ul>
+			<UiText v-if="isLoadingSecrets && hasLoadedSecrets" tone="muted" size="helper">Refreshing Secrets…</UiText>
 		</UiCard>
 	</SelectedPortfolioShell>
 </template>
@@ -55,22 +56,25 @@ import UiHeading from '../../components/ui/UiHeading.vue'
 import UiHero from '../../components/ui/UiHero.vue'
 import UiText from '../../components/ui/UiText.vue'
 import { useFetchAction } from '../../composables/action-state'
+import { useQueryCache } from '../../composables/query-cache'
+import { useSelectedPortfolio } from '../../composables/selected-portfolio'
 import { useServerApi, type ServerApi } from '../../composables/useServerApi'
 
 definePageMeta({ middleware: ['has-selection'] })
 
 type ListedSecret = Awaited<ReturnType<ServerApi['listSecrets']>>[number]
 
+const selectedPortfolio = useSelectedPortfolio()
 const serverApi = useServerApi()
-const secrets = ref<ListedSecret[]>([])
+const { queryKeys } = useQueryCache()
+const portfolioId = computed(() => selectedPortfolio.value.portfolio.id)
 const {
+	data: secrets,
 	isLoading: isLoadingSecrets,
 	error: secretsError,
 	hasExecuted: hasLoadedSecrets,
-} = useFetchAction(
-	async () => {
-		secrets.value = await serverApi.listSecrets()
-	},
-	{ dedupeKey: 'selected-portfolio-secrets' },
-)
+} = useFetchAction(() => serverApi.listSecrets(), {
+	queryKey: queryKeys.portfolio.secrets(portfolioId.value),
+	initialData: [] as ListedSecret[],
+})
 </script>

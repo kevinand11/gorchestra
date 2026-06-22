@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 
+import { useQueryCache } from '../composables/query-cache'
 import { useServerApi, type ServerApi } from '../composables/useServerApi'
 
 type SessionStatusResponse = Awaited<ReturnType<ServerApi['getSession']>>
-type WorkspacePortfoliosResponse = Awaited<ReturnType<ServerApi['listWorkspacePortfolios']>>
 type SelectionAccessResponse = Awaited<ReturnType<ServerApi['getSelection']>>
 type EmailOtpChallengeResponse = Awaited<ReturnType<ServerApi['requestEmailOtp']>>
 type EmailOtpSignInResponse = Awaited<ReturnType<ServerApi['verifyEmailOtpSignIn']>>
@@ -15,7 +15,6 @@ export type ClientSelectionState = SelectionAccessResponse
 
 export type SessionStoreState = {
 	session: SessionStatusResponse | null
-	workspacePortfolios: WorkspacePortfoliosResponse
 	selection: ClientSelectionState | null
 }
 
@@ -39,7 +38,6 @@ function isSelectedPortfolio(selection: ClientSelectionState | null): boolean {
 
 export const useSessionStore = defineStore('session', () => {
 	const session = ref<SessionStatusResponse | null>(null)
-	const workspacePortfolios = ref<WorkspacePortfoliosResponse>([])
 	const selection = ref<ClientSelectionState | null>(null)
 
 	const isAuthenticated = computed((): boolean => isAuthenticatedSession(session.value))
@@ -59,9 +57,7 @@ export const useSessionStore = defineStore('session', () => {
 		const response = await loadSession(api)
 		if (!response.authenticated) return
 
-		const [workspacePortfoliosResponse, selectionResponse] = await Promise.all([api.listWorkspacePortfolios(), api.getSelection()])
-		workspacePortfolios.value = workspacePortfoliosResponse
-		selection.value = selectionResponse
+		selection.value = await api.getSelection()
 	}
 
 	async function loadSelection(api: ServerApi = useServerApi()): Promise<SelectionAccessResponse | null> {
@@ -85,14 +81,6 @@ export const useSessionStore = defineStore('session', () => {
 		api: ServerApi = useServerApi(),
 	): Promise<ProvisionedWorkspaceResponse> {
 		const response = await api.provisionDefaultWorkspace(input)
-		workspacePortfolios.value = [
-			{
-				workspace: response.workspace,
-				workspaceMember: response.workspaceMember,
-				portfolio: response.portfolio,
-				activeWorkspaceOwnerRole: response.workspaceOwnerRole,
-			},
-		]
 		selection.value = {
 			selected: true,
 			selection: response.selection,
@@ -110,12 +98,14 @@ export const useSessionStore = defineStore('session', () => {
 		api: ServerApi = useServerApi(),
 	): Promise<SelectionAccessResponse> {
 		selection.value = await api.setSelection(workspaceId, portfolioId)
+		useQueryCache().clear(['portfolio'])
 		return selection.value
 	}
 
 	async function clearSelection(api: ServerApi = useServerApi()): Promise<SelectionClearedResponse> {
 		const response = await api.clearSelection()
 		selection.value = null
+		useQueryCache().clear(['portfolio'])
 		return response
 	}
 
@@ -127,13 +117,11 @@ export const useSessionStore = defineStore('session', () => {
 	}
 
 	function clearAuthenticatedState(): void {
-		workspacePortfolios.value = []
 		selection.value = null
 	}
 
 	return {
 		session,
-		workspacePortfolios,
 		selection,
 		isAuthenticated,
 		hasSelection,

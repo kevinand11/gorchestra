@@ -1,4 +1,8 @@
-export type ActionExecutionResult<T> = { success: true; result: T } | { success: false }
+import { readonly, shallowRef, type Ref } from '@vue/reactivity'
+
+import { useQueryCacheControllerForFetch } from './query-cache'
+
+type ActionExecutionResult<T> = { success: true; result: T } | { success: false }
 
 type Awaitable<T> = T | Promise<T>
 
@@ -6,7 +10,9 @@ type ActionStateOptions = {
 	dedupeKey?: string
 }
 
-type FetchActionOptions = ActionStateOptions & {
+type FetchActionOptions<TData> = {
+	queryKey: readonly string[]
+	initialData: TData | (() => TData)
 	immediate?: boolean
 }
 
@@ -39,25 +45,34 @@ export function useApiAction<TArgs extends unknown[], TResult>(
 	return { ...state, execute, reset: () => resetActionState(state, executionController) }
 }
 
-export function useFetchAction<TResult>(action: () => Awaitable<TResult>, options: FetchActionOptions = {}) {
+export function useFetchAction<TResult, TData = Awaited<TResult>>(action: () => Awaitable<TResult>, options: FetchActionOptions<TData>) {
 	const state = createActionState()
-	const executionController = createExecutionController()
-	const inFlightExecutions = getScopedInFlightExecutions()
+	const controller = useQueryCacheControllerForFetch()
+	const data = shallowRef(resolveInitialData(options.initialData)) as Ref<TData>
+	const observer = {
+		queryKey: options.queryKey,
+		initialData: options.initialData,
+		data,
+		isLoading: state.isLoading,
+		error: state.error,
+		hasExecuted: state.hasExecuted,
+		immediate: options.immediate !== false,
+		fetcher: async () => (await action()) as TData,
+	}
+	const detach = controller.attach(observer)
+	onScopeDispose(detach)
 
-	async function execute(): Promise<Awaited<TResult>> {
-		const executionId = startExecution(state, executionController)
-		try {
-			const result = await runWithOptionalInFlightDedupe(inFlightExecutions, options.dedupeKey, async () => await action())
-			finishSuccess(state, executionController, executionId)
-			return result
-		} catch (error) {
-			finishThrowingFailure(state, executionController, executionId, error)
-		}
+	async function execute(): Promise<TData> {
+		return await controller.refetch(observer)
 	}
 
-	if (options.immediate !== false) runImmediateFetch(execute)
+	if (options.immediate !== false) {
+		runImmediateFetch(async () => {
+			await controller.ensure(observer)
+		})
+	}
 
-	return { ...state, execute, reset: () => resetActionState(state, executionController) }
+	return { ...state, data: readonly(data), execute, reset: () => resetFetchActionState(state) }
 }
 
 type ActionState = ReturnType<typeof createActionState>
@@ -107,16 +122,20 @@ function finishLocalFailure(state: ActionState, executionController: ExecutionCo
 	state.isLoading.value = false
 }
 
-function finishThrowingFailure(state: ActionState, executionController: ExecutionController, executionId: number, error: unknown): never {
-	finishLocalFailure(state, executionController, executionId, error)
-	throw error
-}
-
 function resetActionState(state: ActionState, executionController: ExecutionController): void {
 	state.isLoading.value = false
 	state.error.value = ''
 	state.hasExecuted.value = false
 	executionController.invalidate()
+}
+
+function resetFetchActionState(state: ActionState): void {
+	state.isLoading.value = false
+	state.error.value = ''
+}
+
+function resolveInitialData<T>(initialData: T | (() => T)): T {
+	return typeof initialData === 'function' ? (initialData as () => T)() : initialData
 }
 
 function runImmediateFetch(execute: () => Promise<unknown>): void {

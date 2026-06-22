@@ -10,6 +10,7 @@
 			<UiText v-if="isLoadingSetup && !hasLoadedSetup" tone="muted">Loading Repository setup…</UiText>
 			<UiText v-else-if="setupError" tone="error">{{ setupError }}</UiText>
 			<div v-else-if="project" class="grid gap-5">
+				<UiText v-if="isRefreshingSetup" tone="muted" size="helper">Refreshing Repository setup…</UiText>
 				<div class="grid gap-2 rounded-list-item border border-dimmer bg-dimmer p-3.5">
 					<UiHeading as="h2" size="section">{{ project.title }}</UiHeading>
 					<UiText tone="muted">Provider: GitHub</UiText>
@@ -102,36 +103,48 @@ import UiHero from '../../../../components/ui/UiHero.vue'
 import UiInput from '../../../../components/ui/UiInput.vue'
 import UiSelect from '../../../../components/ui/UiSelect.vue'
 import UiText from '../../../../components/ui/UiText.vue'
-import { useApiAction, useFetchAction } from '../../../../composables/action-state'
-import { useServerApi, type ServerApi } from '../../../../composables/useServerApi'
+import { useApiAction } from '../../../../composables/action-state'
+import { usePortfolioProjectQuery, usePortfolioSecretsQuery } from '../../../../composables/portfolio-resource-queries'
+import { useQueryCache } from '../../../../composables/query-cache'
+import { useSelectedPortfolio } from '../../../../composables/selected-portfolio'
+import { useServerApi } from '../../../../composables/useServerApi'
 import { RepositoryCreationFormFactory } from '../../../../forms/repository'
 import { useToastStore } from '../../../../stores/toasts'
 
 definePageMeta({ middleware: ['has-selection'] })
 
-type ProjectDetails = Awaited<ReturnType<ServerApi['getProject']>>
-type ListedSecret = Awaited<ReturnType<ServerApi['listSecrets']>>[number]
-
 const route = useRoute()
+const selectedPortfolio = useSelectedPortfolio()
 const serverApi = useServerApi()
 const toastStore = useToastStore()
+const queryCache = useQueryCache()
+const { queryKeys } = queryCache
+const portfolioId = computed(() => selectedPortfolio.value.portfolio.id)
 const projectId = computed(() => routeParam(route.params.projectId))
-const project = ref<ProjectDetails | null>(null)
-const secrets = ref<ListedSecret[]>([])
-const activeSecrets = computed(() => secrets.value.filter((secret) => !secret.archived))
 const repositoryCreationForm = new RepositoryCreationFormFactory()
 
 const {
-	isLoading: isLoadingSetup,
-	error: setupError,
-	hasExecuted: hasLoadedSetup,
-} = useFetchAction(
-	async () => {
-		const [loadedProject, loadedSecrets] = await Promise.all([serverApi.getProject(projectId.value), serverApi.listSecrets()])
-		project.value = loadedProject
-		secrets.value = loadedSecrets
-	},
-	{ dedupeKey: `selected-portfolio-repository-setup:${projectId.value}` },
+	data: project,
+	isLoading: isLoadingProject,
+	error: projectError,
+	hasExecuted: hasLoadedProject,
+} = usePortfolioProjectQuery(serverApi, projectId)
+
+const {
+	data: secrets,
+	isLoading: isLoadingSecrets,
+	error: secretsError,
+	hasExecuted: hasLoadedSecrets,
+} = usePortfolioSecretsQuery(serverApi)
+
+const activeSecrets = computed(() => secrets.value.filter((secret) => !secret.archived))
+const isLoadingSetup = computed(
+	() => (isLoadingProject.value && !hasLoadedProject.value) || (isLoadingSecrets.value && !hasLoadedSecrets.value),
+)
+const setupError = computed(() => projectError.value || secretsError.value)
+const hasLoadedSetup = computed(() => hasLoadedProject.value && hasLoadedSecrets.value)
+const isRefreshingSetup = computed(
+	() => (isLoadingProject.value && hasLoadedProject.value) || (isLoadingSecrets.value && hasLoadedSecrets.value),
 )
 
 const {
@@ -140,6 +153,8 @@ const {
 	execute: createRepository,
 } = useApiAction(async () => {
 	const repository = await serverApi.createRepository(projectId.value, repositoryCreationForm.toModel())
+	queryCache.invalidate(queryKeys.portfolio.projects(portfolioId.value), { exact: true })
+	queryCache.invalidate(queryKeys.portfolio.project(portfolioId.value, projectId.value))
 	toastStore.success({ title: 'Repository created.', body: `${repository.config.owner}/${repository.config.name}` })
 	await navigateTo(`/projects/${projectId.value}/repositories/${repository.id}`)
 })

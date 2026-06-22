@@ -4,6 +4,6 @@ import { useSessionStore } from '../stores/session'
 
 export default defineNuxtRouteMiddleware(async () => {
 	const sessionStore = useSessionStore()
-	await sessionStore.loadSession()
+	await sessionStore.loadAuthenticatedState()
 	if (!sessionStore.isAuthenticated) return navigateTo('/sign-in')
 })

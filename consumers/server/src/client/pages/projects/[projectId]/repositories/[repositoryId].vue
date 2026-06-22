@@ -7,9 +7,10 @@
 		</UiHero>
 
 		<UiCard>
-			<UiText v-if="isLoadingRepository && !hasLoadedRepository" tone="muted">Loading Repository…</UiText>
-			<UiText v-else-if="repositoryError" tone="error">{{ repositoryError }}</UiText>
+			<UiText v-if="isLoadingRepositoryPage" tone="muted">Loading Repository…</UiText>
+			<UiText v-else-if="repositoryPageError" tone="error">{{ repositoryPageError }}</UiText>
 			<div v-else-if="repository && project" class="grid gap-5">
+				<UiText v-if="isRefreshingRepositoryPage" tone="muted" size="helper">Refreshing Repository details…</UiText>
 				<div class="grid gap-2">
 					<UiHeading as="h2" size="section">{{ repository.config.owner }}/{{ repository.config.name }}</UiHeading>
 					<UiText tone="muted">Project: {{ project.title }}</UiText>
@@ -52,15 +53,17 @@ import UiCard from '../../../../components/ui/UiCard.vue'
 import UiHeading from '../../../../components/ui/UiHeading.vue'
 import UiHero from '../../../../components/ui/UiHero.vue'
 import UiText from '../../../../components/ui/UiText.vue'
-import { useApiAction, useFetchAction } from '../../../../composables/action-state'
+import { useApiAction } from '../../../../composables/action-state'
+import {
+	usePortfolioProjectQuery,
+	usePortfolioRepositoryQuery,
+	usePortfolioSecretsQuery,
+} from '../../../../composables/portfolio-resource-queries'
 import { useServerApi, type ServerApi } from '../../../../composables/useServerApi'
 import { useToastStore } from '../../../../stores/toasts'
 
 definePageMeta({ middleware: ['has-selection'] })
 
-type ProjectDetails = Awaited<ReturnType<ServerApi['getProject']>>
-type RepositoryDetails = Awaited<ReturnType<ServerApi['getRepository']>>
-type ListedSecret = Awaited<ReturnType<ServerApi['listSecrets']>>[number]
 type RepositoryPreflightEvidence = Awaited<ReturnType<ServerApi['preflightRepository']>>
 
 const route = useRoute()
@@ -68,10 +71,29 @@ const serverApi = useServerApi()
 const toastStore = useToastStore()
 const projectId = computed(() => routeParam(route.params.projectId))
 const repositoryId = computed(() => routeParam(route.params.repositoryId))
-const project = ref<ProjectDetails | null>(null)
-const repository = ref<RepositoryDetails | null>(null)
-const secrets = ref<ListedSecret[]>([])
 const preflightEvidence = ref<RepositoryPreflightEvidence | null>(null)
+
+const {
+	data: project,
+	isLoading: isLoadingProject,
+	error: projectError,
+	hasExecuted: hasLoadedProject,
+} = usePortfolioProjectQuery(serverApi, projectId)
+
+const {
+	data: repository,
+	isLoading: isLoadingRepository,
+	error: repositoryError,
+	hasExecuted: hasLoadedRepository,
+} = usePortfolioRepositoryQuery(serverApi, projectId, repositoryId)
+
+const {
+	data: secrets,
+	isLoading: isLoadingSecrets,
+	error: secretsError,
+	hasExecuted: hasLoadedSecrets,
+} = usePortfolioSecretsQuery(serverApi)
+
 const secretsById = computed(() => new Map(secrets.value.map((secret) => [secret.id, secret])))
 const repositoryTitle = computed(() => {
 	const config = repository.value?.config
@@ -95,23 +117,14 @@ const secretTone = computed<'muted' | 'error' | 'success'>(() => {
 	return 'success'
 })
 
-const {
-	isLoading: isLoadingRepository,
-	error: repositoryError,
-	hasExecuted: hasLoadedRepository,
-} = useFetchAction(
-	async () => {
-		const [loadedProject, loadedRepository, loadedSecrets] = await Promise.all([
-			serverApi.getProject(projectId.value),
-			serverApi.getRepository(projectId.value, repositoryId.value),
-			serverApi.listSecrets(),
-		])
-		project.value = loadedProject
-		repository.value = loadedRepository
-		secrets.value = loadedSecrets
-	},
-	{ dedupeKey: `selected-portfolio-repository:${projectId.value}:${repositoryId.value}` },
-)
+const repositoryPageFetches = [
+	{ isLoading: isLoadingProject, hasExecuted: hasLoadedProject },
+	{ isLoading: isLoadingRepository, hasExecuted: hasLoadedRepository },
+	{ isLoading: isLoadingSecrets, hasExecuted: hasLoadedSecrets },
+]
+const isLoadingRepositoryPage = computed(() => repositoryPageFetches.some(isInitialFetchLoading))
+const repositoryPageError = computed(() => projectError.value || repositoryError.value || secretsError.value)
+const isRefreshingRepositoryPage = computed(() => repositoryPageFetches.some(isRefreshingFetch))
 
 const {
 	isLoading: isPreflightingRepository,
@@ -123,6 +136,14 @@ const {
 	if (evidence.passed) toastStore.success({ title: 'Repository preflight passed.', body: evidence.summary })
 	else toastStore.info({ title: 'Repository preflight failed.', body: evidence.summary })
 })
+
+function isInitialFetchLoading(fetch: (typeof repositoryPageFetches)[number]): boolean {
+	return fetch.isLoading.value && !fetch.hasExecuted.value
+}
+
+function isRefreshingFetch(fetch: (typeof repositoryPageFetches)[number]): boolean {
+	return fetch.isLoading.value && fetch.hasExecuted.value
+}
 
 function routeParam(value: string | string[]): string {
 	return Array.isArray(value) ? (value[0] ?? '') : value

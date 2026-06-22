@@ -6,9 +6,14 @@
 			<UiText size="lede" tone="muted">Selection is explicit and revalidated by the Server API before Portfolio-scoped work.</UiText>
 		</UiHero>
 
-		<UiCard v-if="isInitialSelectionLoading">
+		<UiCard v-if="isLoadingWorkspacePortfolios && !hasLoadedWorkspacePortfolios">
 			<UiHeading as="h2" size="section">Loading your Workspaces…</UiHeading>
 			<UiText tone="muted">Checking your accessible Workspaces and selected Portfolio.</UiText>
+		</UiCard>
+
+		<UiCard v-else-if="workspacePortfoliosError">
+			<UiHeading as="h2" size="section">Could not load Workspaces.</UiHeading>
+			<UiText tone="error">{{ workspacePortfoliosError }}</UiText>
 		</UiCard>
 
 		<UiCard v-else-if="workspacePortfolios.length === 0">
@@ -48,6 +53,9 @@
 			<div class="flex items-center justify-between gap-4">
 				<div>
 					<UiHeading as="h2" size="section">Available Portfolios</UiHeading>
+					<UiText v-if="isLoadingWorkspacePortfolios && hasLoadedWorkspacePortfolios" tone="muted" size="helper">
+						Refreshing available Portfolios…
+					</UiText>
 					<UiText v-if="selection?.selected" tone="success">
 						Selected {{ selection.workspace.displayName }} / {{ selection.portfolio.displayName }}
 					</UiText>
@@ -115,26 +123,35 @@ import UiInput from '../components/ui/UiInput.vue'
 import UiShell from '../components/ui/UiShell.vue'
 import UiText from '../components/ui/UiText.vue'
 import { useApiAction, useFetchAction } from '../composables/action-state'
+import { useQueryCache } from '../composables/query-cache'
+import { useServerApi, type ServerApi } from '../composables/useServerApi'
 import { ProvisionWorkspaceFormFactory } from '../forms/workspace'
 import { useSessionStore } from '../stores/session'
 import { useToastStore } from '../stores/toasts'
 
 definePageMeta({ middleware: ['is-authenticated'] })
 
+type WorkspacePortfolios = Awaited<ReturnType<ServerApi['listWorkspacePortfolios']>>
+
 const sessionStore = useSessionStore()
 const toastStore = useToastStore()
+const serverApi = useServerApi()
+const queryCache = useQueryCache()
+const { queryKeys } = queryCache
 
 const provisionWorkspaceForm = new ProvisionWorkspaceFormFactory()
 const selectingPortfolioKey = ref('')
-const workspacePortfolios = computed(() => sessionStore.workspacePortfolios)
 const selection = computed(() => sessionStore.selection)
 
-const { isLoading: isLoadingInitialSelection, hasExecuted: hasLoadedInitialSelection } = useFetchAction(
-	async () => {
-		await sessionStore.loadAuthenticatedState()
-	},
-	{ dedupeKey: 'select-page-session-state' },
-)
+const {
+	data: workspacePortfolios,
+	isLoading: isLoadingWorkspacePortfolios,
+	error: workspacePortfoliosError,
+	hasExecuted: hasLoadedWorkspacePortfolios,
+} = useFetchAction(() => serverApi.listWorkspacePortfolios(), {
+	queryKey: queryKeys.workspacePortfolios(),
+	initialData: [] as WorkspacePortfolios,
+})
 
 const {
 	isLoading: isProvisioningWorkspace,
@@ -142,6 +159,7 @@ const {
 	execute: provisionWorkspace,
 } = useApiAction(async () => {
 	await sessionStore.provisionDefaultWorkspace(provisionWorkspaceForm.toModel())
+	queryCache.invalidate(queryKeys.workspacePortfolios())
 	toastStore.success({ title: 'Workspace created and Portfolio selected.' })
 	await navigateTo('/projects')
 })
@@ -176,10 +194,9 @@ const {
 	execute: logout,
 } = useApiAction(async () => {
 	await sessionStore.logout()
-	await navigateTo('/sign-in')
+	if (typeof window !== 'undefined') window.location.assign('/sign-in')
+	else await navigateTo('/sign-in')
 })
-
-const isInitialSelectionLoading = computed(() => isLoadingInitialSelection.value && !hasLoadedInitialSelection.value)
 
 function isSelectingThisPortfolio(workspaceId: string, portfolioId: string): boolean {
 	return isSelectingPortfolio.value && selectingPortfolioKey.value === portfolioActionKey(workspaceId, portfolioId)

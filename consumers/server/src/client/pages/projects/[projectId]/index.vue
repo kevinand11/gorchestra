@@ -7,9 +7,10 @@
 		</UiHero>
 
 		<UiCard>
-			<UiText v-if="isLoadingProject && !hasLoadedProject" tone="muted">Loading Project…</UiText>
-			<UiText v-else-if="projectError" tone="error">{{ projectError }}</UiText>
+			<UiText v-if="isLoadingProjectDetails" tone="muted">Loading Project…</UiText>
+			<UiText v-else-if="projectDetailsError" tone="error">{{ projectDetailsError }}</UiText>
 			<div v-else-if="project" class="grid gap-5">
+				<UiText v-if="isRefreshingProjectDetails" tone="muted" size="helper">Refreshing Project details…</UiText>
 				<div class="grid gap-2">
 					<UiHeading as="h2" size="section">{{ project.title }}</UiHeading>
 					<UiText tone="muted">Project id: {{ project.id }}</UiText>
@@ -67,32 +68,36 @@ import UiCard from '../../../components/ui/UiCard.vue'
 import UiHeading from '../../../components/ui/UiHeading.vue'
 import UiHero from '../../../components/ui/UiHero.vue'
 import UiText from '../../../components/ui/UiText.vue'
-import { useFetchAction } from '../../../composables/action-state'
-import { useServerApi, type ServerApi } from '../../../composables/useServerApi'
+import { usePortfolioProjectQuery, usePortfolioSecretsQuery } from '../../../composables/portfolio-resource-queries'
+import { useServerApi } from '../../../composables/useServerApi'
 
 definePageMeta({ middleware: ['has-selection'] })
-
-type ProjectDetails = Awaited<ReturnType<ServerApi['getProject']>>
-type ListedSecret = Awaited<ReturnType<ServerApi['listSecrets']>>[number]
 
 const route = useRoute()
 const serverApi = useServerApi()
 const projectId = computed(() => routeParam(route.params.projectId))
-const project = ref<ProjectDetails | null>(null)
-const secrets = ref<ListedSecret[]>([])
-const secretsById = computed(() => new Map(secrets.value.map((secret) => [secret.id, secret])))
-
 const {
+	data: project,
 	isLoading: isLoadingProject,
 	error: projectError,
 	hasExecuted: hasLoadedProject,
-} = useFetchAction(
-	async () => {
-		const [loadedProject, loadedSecrets] = await Promise.all([serverApi.getProject(projectId.value), serverApi.listSecrets()])
-		project.value = loadedProject
-		secrets.value = loadedSecrets
-	},
-	{ dedupeKey: `selected-portfolio-project:${projectId.value}` },
+} = usePortfolioProjectQuery(serverApi, projectId)
+
+const {
+	data: secrets,
+	isLoading: isLoadingSecrets,
+	error: secretsError,
+	hasExecuted: hasLoadedSecrets,
+} = usePortfolioSecretsQuery(serverApi)
+
+const secretsById = computed(() => new Map(secrets.value.map((secret) => [secret.id, secret])))
+
+const isLoadingProjectDetails = computed(
+	() => (isLoadingProject.value && !hasLoadedProject.value) || (isLoadingSecrets.value && !hasLoadedSecrets.value),
+)
+const projectDetailsError = computed(() => projectError.value || secretsError.value)
+const isRefreshingProjectDetails = computed(
+	() => (isLoadingProject.value && hasLoadedProject.value) || (isLoadingSecrets.value && hasLoadedSecrets.value),
 )
 
 function routeParam(value: string | string[]): string {

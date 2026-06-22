@@ -3,10 +3,9 @@
 		<div class="flex flex-wrap items-center justify-between gap-4">
 			<div>
 				<UiText as="p" tone="primary" size="helper" class="font-bold uppercase tracking-[0.16em]">Selected Portfolio</UiText>
-				<UiText v-if="selection?.selected" as="p" tone="muted">
-					{{ selection.workspace.displayName }} / {{ selection.portfolio.displayName }}
+				<UiText as="p" tone="muted">
+					{{ selectedPortfolio.workspace.displayName }} / {{ selectedPortfolio.portfolio.displayName }}
 				</UiText>
-				<UiText v-else as="p" tone="muted">Checking selection…</UiText>
 			</div>
 			<div class="flex flex-wrap items-center gap-2">
 				<NuxtLink
@@ -30,12 +29,13 @@
 
 <script setup lang="ts">
 import { useApiAction } from '../composables/action-state'
+import { useSelectedPortfolio } from '../composables/selected-portfolio'
 import { useSessionStore } from '../stores/session'
 import UiButton from './ui/UiButton.vue'
 import UiText from './ui/UiText.vue'
 
 const sessionStore = useSessionStore()
-const selection = computed(() => sessionStore.selection)
+const selectedPortfolio = useSelectedPortfolio()
 
 const {
 	isLoading: isLoggingOut,
@@ -43,6 +43,7 @@ const {
 	execute: logout,
 } = useApiAction(async () => {
 	await sessionStore.logout()
-	await navigateTo('/sign-in')
+	if (typeof window !== 'undefined') window.location.assign('/sign-in')
+	else await navigateTo('/sign-in')
 })
 </script>

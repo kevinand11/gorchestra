@@ -6,11 +6,13 @@
 			<UiText size="lede" tone="muted">Create and inspect Projects in the selected Portfolio.</UiText>
 		</UiHero>
 
-		<section v-if="selection?.selected" class="grid gap-5">
+		<section class="grid gap-5">
 			<UiCard tone="accent">
-				<UiHeading as="h2" size="section">{{ selection.workspace.displayName }} / {{ selection.portfolio.displayName }}</UiHeading>
-				<UiText tone="muted">Portfolio registry id: {{ selection.portfolio.id }}</UiText>
-				<UiText tone="muted">Core storage namespace: {{ selection.portfolio.coreStorageNamespace }}</UiText>
+				<UiHeading as="h2" size="section">
+					{{ selectedPortfolio.workspace.displayName }} / {{ selectedPortfolio.portfolio.displayName }}
+				</UiHeading>
+				<UiText tone="muted">Portfolio registry id: {{ selectedPortfolio.portfolio.id }}</UiText>
+				<UiText tone="muted">Core storage namespace: {{ selectedPortfolio.portfolio.coreStorageNamespace }}</UiText>
 			</UiCard>
 
 			<UiCard>
@@ -55,6 +57,7 @@
 						</NuxtLink>
 					</li>
 				</ul>
+				<UiText v-if="isLoadingProjects && hasLoadedProjects" tone="muted" size="helper">Refreshing Projects…</UiText>
 			</UiCard>
 
 			<UiCard>
@@ -62,11 +65,6 @@
 				<UiText tone="muted">This Projects route loads selected Portfolio Projects through an explicit Core query boundary.</UiText>
 			</UiCard>
 		</section>
-
-		<UiCard v-else>
-			<UiHeading as="h2" size="section">Checking selection…</UiHeading>
-			<UiText tone="muted">The Projects route requires a selected Workspace and Portfolio.</UiText>
-		</UiCard>
 	</SelectedPortfolioShell>
 </template>
 
@@ -77,26 +75,25 @@ import UiHeading from '../../components/ui/UiHeading.vue'
 import UiHero from '../../components/ui/UiHero.vue'
 import UiText from '../../components/ui/UiText.vue'
 import { useFetchAction } from '../../composables/action-state'
+import { useQueryCache } from '../../composables/query-cache'
+import { useSelectedPortfolio } from '../../composables/selected-portfolio'
 import { useServerApi, type ServerApi } from '../../composables/useServerApi'
-import { useSessionStore } from '../../stores/session'
 
 definePageMeta({ middleware: ['has-selection'] })
 
 type ListedProject = Awaited<ReturnType<ServerApi['listProjects']>>[number]
 
-const sessionStore = useSessionStore()
+const selectedPortfolio = useSelectedPortfolio()
 const serverApi = useServerApi()
-
-const selection = computed(() => sessionStore.selection)
-const projects = ref<ListedProject[]>([])
+const { queryKeys } = useQueryCache()
+const portfolioId = computed(() => selectedPortfolio.value.portfolio.id)
 const {
+	data: projects,
 	isLoading: isLoadingProjects,
 	error: projectsError,
 	hasExecuted: hasLoadedProjects,
-} = useFetchAction(
-	async () => {
-		projects.value = await serverApi.listProjects()
-	},
-	{ dedupeKey: 'selected-portfolio-projects' },
-)
+} = useFetchAction(() => serverApi.listProjects(), {
+	queryKey: queryKeys.portfolio.projects(portfolioId.value),
+	initialData: [] as ListedProject[],
+})
 </script>

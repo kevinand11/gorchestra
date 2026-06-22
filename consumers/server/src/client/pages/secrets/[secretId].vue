@@ -8,6 +8,7 @@
 
 		<UiCard>
 			<UiText v-if="isLoadingSecret && !hasLoadedSecret" tone="muted">Loading Secret…</UiText>
+			<UiText v-if="isLoadingSecret && hasLoadedSecret" tone="muted" size="helper">Refreshing Secret…</UiText>
 			<UiText v-else-if="secretError" tone="error">{{ secretError }}</UiText>
 			<div v-else-if="secret" class="grid gap-3">
 				<UiHeading as="h2" size="section">{{ secret.name }}</UiHeading>
@@ -33,6 +34,8 @@ import UiHeading from '../../components/ui/UiHeading.vue'
 import UiHero from '../../components/ui/UiHero.vue'
 import UiText from '../../components/ui/UiText.vue'
 import { useFetchAction } from '../../composables/action-state'
+import { useQueryCache } from '../../composables/query-cache'
+import { useSelectedPortfolio } from '../../composables/selected-portfolio'
 import { useServerApi, type ServerApi } from '../../composables/useServerApi'
 
 definePageMeta({ middleware: ['has-selection'] })
@@ -40,20 +43,21 @@ definePageMeta({ middleware: ['has-selection'] })
 type SecretDetails = Awaited<ReturnType<ServerApi['getSecret']>>
 
 const route = useRoute()
+const selectedPortfolio = useSelectedPortfolio()
 const serverApi = useServerApi()
+const { queryKeys } = useQueryCache()
+const portfolioId = computed(() => selectedPortfolio.value.portfolio.id)
 const secretId = computed(() => routeParam(route.params.secretId))
-const secret = ref<SecretDetails | null>(null)
 
 const {
+	data: secret,
 	isLoading: isLoadingSecret,
 	error: secretError,
 	hasExecuted: hasLoadedSecret,
-} = useFetchAction(
-	async () => {
-		secret.value = await serverApi.getSecret(secretId.value)
-	},
-	{ dedupeKey: `selected-portfolio-secret:${secretId.value}` },
-)
+} = useFetchAction(() => serverApi.getSecret(secretId.value), {
+	queryKey: queryKeys.portfolio.secret(portfolioId.value, secretId.value),
+	initialData: null as SecretDetails | null,
+})
 
 function routeParam(value: string | string[]): string {
 	return Array.isArray(value) ? (value[0] ?? '') : value

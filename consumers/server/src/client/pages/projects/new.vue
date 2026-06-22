@@ -44,14 +44,19 @@ import UiHero from '../../components/ui/UiHero.vue'
 import UiInput from '../../components/ui/UiInput.vue'
 import UiText from '../../components/ui/UiText.vue'
 import { useApiAction } from '../../composables/action-state'
+import { useQueryCache } from '../../composables/query-cache'
+import { useSelectedPortfolio } from '../../composables/selected-portfolio'
 import { useServerApi } from '../../composables/useServerApi'
 import { ProjectCreationFormFactory } from '../../forms/project'
 import { useToastStore } from '../../stores/toasts'
 
 definePageMeta({ middleware: ['has-selection'] })
 
+const selectedPortfolio = useSelectedPortfolio()
 const serverApi = useServerApi()
 const toastStore = useToastStore()
+const queryCache = useQueryCache()
+const { queryKeys } = queryCache
 const projectCreationForm = new ProjectCreationFormFactory()
 
 const {
@@ -60,6 +65,7 @@ const {
 	execute: createProject,
 } = useApiAction(async () => {
 	const project = await serverApi.createProject(projectCreationForm.toModel())
+	queryCache.invalidate(queryKeys.portfolio.projects(selectedPortfolio.value.portfolio.id), { exact: true })
 	toastStore.success({ title: 'Project created.', body: project.title })
 	await navigateTo(`/projects/${project.id}`)
 })
