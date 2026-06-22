@@ -3,7 +3,9 @@
 		<UiHero>
 			<UiText as="p" tone="primary" class="font-bold uppercase tracking-[0.16em]">New Project</UiText>
 			<UiHeading as="h1" size="hero">Create a Project.</UiHeading>
-			<UiText size="lede" tone="muted">Start with a title-only source-control Project. Repository setup comes later.</UiText>
+			<UiText size="lede" tone="muted"
+				>Start with a title-only source-control Project, then add Repositories from Project details.</UiText
+			>
 		</UiHero>
 
 		<UiCard>

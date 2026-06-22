@@ -36,7 +36,7 @@
 					<li
 						v-for="project in projects"
 						:key="project.id"
-						class="flex items-center justify-between gap-3 rounded-list-item border border-dimmer bg-dimmer p-3.5">
+						class="flex flex-wrap items-center justify-between gap-3 rounded-list-item border border-dimmer bg-dimmer p-3.5">
 						<div>
 							<strong>{{ project.title }}</strong>
 							<UiText as="span" tone="muted">Project id: {{ project.id }}</UiText>
@@ -48,6 +48,11 @@
 								{{ repository.config.provider }}: {{ repository.config.owner }}/{{ repository.config.name }}
 							</UiText>
 						</div>
+						<NuxtLink
+							class="inline-flex items-center justify-center rounded-pill border border-dimmer bg-secondary px-4 py-2.5 font-extrabold text-secondary-contrast no-underline transition hover:border-primary"
+							:to="`/projects/${project.id}`">
+							Open
+						</NuxtLink>
 					</li>
 				</ul>
 			</UiCard>
