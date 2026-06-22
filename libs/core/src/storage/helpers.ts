@@ -1,4 +1,4 @@
-import { OrmValidationError } from 'equipped/orm'
+import { OrmValidationError, type FilterGroup, type SchemaFields } from 'equipped/orm'
 import { PipeError } from 'valleyed'
 
 import type {
@@ -135,12 +135,31 @@ export async function getRequired<Resource extends CoreIdResource>(
 	return record.value === null ? notFound(resource, id) : { ok: true, value: record.value }
 }
 
+type CoreIdResourceSchema<Resource extends CoreIdResource> = (typeof coreIdResourceSchemas)[Resource]
+
+type ListRecordsWhere<Resource extends CoreIdResource> = (
+	filter: FilterGroup,
+	fields: SchemaFields<CoreIdResourceSchema<Resource>>,
+) => FilterGroup
+
+export interface ListRecordsOptions<Resource extends CoreIdResource> {
+	where?: ListRecordsWhere<Resource>
+}
+
 export async function listRecords<Resource extends CoreIdResource>(
 	resource: Resource,
 	storage: CoreStorage,
+	options: ListRecordsOptions<Resource> = {},
 ): Promise<Result<Array<CoreIdStorageRecord<Resource>>, StorageBoundaryError>> {
 	try {
-		const records = await storage.on(coreIdResourceSchemas[resource]).all().find()
+		const schema = coreIdResourceSchemas[resource]
+		const records = await (options.where === undefined
+			? storage.on(schema).all().find()
+			: storage
+					.on(schema)
+					.all()
+					.where((filter) => options.where?.(filter, schema.fields as SchemaFields<CoreIdResourceSchema<Resource>>) ?? filter)
+					.find())
 		return { ok: true, value: records as unknown as Array<CoreIdStorageRecord<Resource>> }
 	} catch (error) {
 		return readStorageError(resource, { type: 'list', resource }, error)
@@ -224,4 +243,34 @@ function recordId(record: unknown): string {
 	return typeof record === 'object' && record !== null && typeof (record as { id?: unknown }).id === 'string'
 		? (record as { id: string }).id
 		: ''
+}
+
+if (import.meta.vitest) {
+	const { describe, expect, it } = import.meta.vitest
+	const { createTestCoreServices, localStamp } = await import('../utils/test-helpers')
+
+	describe('listRecords', () => {
+		it('passes filters to the storage adapter', async () => {
+			const options = createTestCoreServices()
+			const matching = {
+				id: 'repository-1',
+				projectId: 'project-1',
+				config: { provider: 'github' as const, owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
+				created: localStamp(),
+			}
+			options.tx.repositories.records.set(matching.id, matching)
+			options.tx.repositories.records.set('repository-2', {
+				id: 'repository-2',
+				projectId: 'project-2',
+				config: { provider: 'github', owner: 'Octo', name: 'Other', secretId: 'secret-1' },
+				created: localStamp(),
+			})
+
+			const result = await listRecords('repository', options.storage, {
+				where: (filter, fields) => filter.eq(fields.projectId, 'project-1'),
+			})
+
+			expect(result).toEqual({ ok: true, value: [matching] })
+		})
+	})
 }

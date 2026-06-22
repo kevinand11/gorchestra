@@ -21,15 +21,14 @@ export function createGetProjectQuery(options: CoreServices): Operation {
 			const project = await getRequired('project', storage, input.projectId)
 			if (!project.ok) return project
 
-			const repositories = await listRecords('repository', storage)
+			const repositories = await listRecords('repository', storage, {
+				where: (filter, fields) => filter.eq(fields.projectId, project.value.id),
+			})
 			if (!repositories.ok) return repositories
 
 			return {
 				ok: true,
-				value: listedProjectFromProjectAndRepositories(
-					project.value,
-					sortByCreatedAtThenId(repositories.value.filter((repository) => repository.projectId === project.value.id)),
-				),
+				value: listedProjectFromProjectAndRepositories(project.value, sortByCreatedAtThenId(repositories.value)),
 			}
 		}),
 	)

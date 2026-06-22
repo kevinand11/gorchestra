@@ -26,7 +26,7 @@ export async function buildDeliveryContext(
 	const root = await readDeliveryContextRoot(storage, deliveryId)
 	if (!root.ok) return root
 
-	const records = await readDeliveryContextRecords(storage)
+	const records = await readDeliveryContextRecords(storage, root.value.delivery)
 	if (!records.ok) return records
 
 	return deliveryContext(root.value, scopedDeliveryContextRecords(root.value.delivery, records.value))
@@ -115,21 +115,34 @@ async function readOptionalPortfolioConfig(
 	return { ok: true, value: record.value === null ? null : { configured: record.value.configured, value: record.value.value } }
 }
 
-async function readDeliveryContextRecords(storage: CoreStorage): Promise<Result<DeliveryContextRecords, DeliveryContextError>> {
-	const records = await readDeliveryContextRecordResults(storage)
-	const failure = firstFailure(records)
-	return failure ?? okDeliveryContextRecords(records)
-}
+async function readDeliveryContextRecords(
+	storage: CoreStorage,
+	delivery: Delivery,
+): Promise<Result<DeliveryContextRecords, DeliveryContextError>> {
+	const slices = await listRecords('slice', storage, {
+		where: (filter, fields) => filter.eq(fields.deliveryId, delivery.id),
+	})
+	if (!slices.ok) return slices
 
-function okDeliveryContextRecords(
-	records: Awaited<ReturnType<typeof readDeliveryContextRecordResults>>,
-): Result<DeliveryContextRecords, DeliveryContextError> {
-	const [slices, links, actions, agentRuns, deliveries, deliveryArtifacts, sliceArtifacts, reviewSurfaces] = records
+	const links = await listRecords('link', storage, { where: (filter, fields) => filter.eq(fields.type, 'depends-on') })
+	if (!links.ok) return links
+
+	const [actions, agentRuns, deliveries, deliveryArtifacts, sliceArtifacts, reviewSurfaces] = await Promise.all([
+		listRecords('action', storage, { where: (filter, fields) => filter.eq(fields.deliveryId, delivery.id) }),
+		listRecords('agent-run', storage),
+		listDependencyDeliveries(storage, delivery, links.value),
+		listRecords('delivery-artifact', storage, { where: (filter, fields) => filter.eq(fields.deliveryId, delivery.id) }),
+		listSliceArtifacts(storage, slices.value),
+		listRecords('review-surface', storage),
+	] as const)
+	const failure = firstFailure([actions, agentRuns, deliveries, deliveryArtifacts, sliceArtifacts, reviewSurfaces])
+	if (failure !== null) return failure
+
 	return {
 		ok: true,
 		value: {
-			slices: resultValue(slices),
-			links: resultValue(links),
+			slices: slices.value,
+			links: links.value,
 			actions: resultValue(actions).sort(compareActions),
 			agentRuns: resultValue(agentRuns),
 			deliveries: resultValue(deliveries),
@@ -140,17 +153,22 @@ function okDeliveryContextRecords(
 	}
 }
 
-async function readDeliveryContextRecordResults(storage: CoreStorage) {
-	return Promise.all([
-		listRecords('slice', storage),
-		listRecords('link', storage),
-		listRecords('action', storage),
-		listRecords('agent-run', storage),
-		listRecords('delivery', storage),
-		listRecords('delivery-artifact', storage),
-		listRecords('slice-artifact', storage),
-		listRecords('review-surface', storage),
-	] as const)
+function listDependencyDeliveries(
+	storage: CoreStorage,
+	delivery: Delivery,
+	links: Link[],
+): Promise<Result<Delivery[], DeliveryContextError>> {
+	const dependencyIds = uniqueIds(deliveryDependencyLinks(delivery, links).map((link) => link.to.id))
+	return dependencyIds.length === 0
+		? Promise.resolve(successful<Delivery[]>([]))
+		: listRecords('delivery', storage, { where: (filter, fields) => filter.in(fields.id, dependencyIds) })
+}
+
+function listSliceArtifacts(storage: CoreStorage, slices: Slice[]): Promise<Result<SliceArtifact[], DeliveryContextError>> {
+	const sliceIds = slices.map((slice) => slice.id)
+	return sliceIds.length === 0
+		? Promise.resolve(successful<SliceArtifact[]>([]))
+		: listRecords('slice-artifact', storage, { where: (filter, fields) => filter.in(fields.sliceId, sliceIds) })
 }
 
 function scopedDeliveryContextRecords(
@@ -309,6 +327,14 @@ function resultValue<TValue>(result: Result<TValue, unknown>): TValue {
 	if (!result.ok) throw new Error('Expected result value after checking for failures.')
 
 	return result.value
+}
+
+function successful<TValue>(value: TValue): Result<TValue, never> {
+	return { ok: true, value }
+}
+
+function uniqueIds(ids: Id[]): Id[] {
+	return [...new Set(ids)]
 }
 
 function deliveryContext(

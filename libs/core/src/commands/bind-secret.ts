@@ -93,10 +93,12 @@ async function validateSecretBindingUnique(
 	storage: CoreStorage,
 	input: Input,
 ): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
-	const bindings = await listRecords('secret-binding', storage)
+	const bindings = await listRecords('secret-binding', storage, {
+		where: (filter, fields) => filter.eq(fields.envName, input.envName),
+	})
 	if (!bindings.ok) return bindings
 
-	const duplicate = bindings.value.find((binding) => binding.envName === input.envName && scopesEqual(binding.scope, input.scope))
+	const duplicate = bindings.value.find((binding) => scopesEqual(binding.scope, input.scope))
 	return duplicate === undefined ? { ok: true, value: undefined } : duplicateSecretBinding(duplicate.id, input.scope, input.envName)
 }
 

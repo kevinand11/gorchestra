@@ -103,10 +103,12 @@ async function validateNoRevisionForGate(
 	storage: CoreStorage,
 	revisionGateId: Id,
 ): Promise<CoreResult<void, StorageOperationFailedError | InvalidCoreServiceOutputError | InvariantViolationError>> {
-	const revisions = await listRecords('revision', storage)
+	const revisions = await listRecords('revision', storage, {
+		where: (filter, fields) => filter.eq(fields.revisionGateId, revisionGateId),
+	})
 	if (!revisions.ok) return revisions
 
-	return revisions.value.some((revision) => revision.revisionGateId === revisionGateId)
+	return revisions.value.length > 0
 		? invariant(`Revision Gate ${revisionGateId} already has a Revision.`)
 		: { ok: true, value: undefined }
 }

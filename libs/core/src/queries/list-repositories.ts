@@ -34,13 +34,10 @@ export function createListRepositoriesQuery(options: CoreServices): Operation {
 			const project = await validateSourceControlProject(storage, input.projectId)
 			if (!project.ok) return project
 
-			const repositories = await listRecords('repository', storage)
-			return repositories.ok
-				? {
-						ok: true,
-						value: sortByCreatedAtThenId(repositories.value.filter((repository) => repository.projectId === project.value.id)),
-					}
-				: repositories
+			const repositories = await listRecords('repository', storage, {
+				where: (filter, fields) => filter.eq(fields.projectId, project.value.id),
+			})
+			return repositories.ok ? { ok: true, value: sortByCreatedAtThenId(repositories.value) } : repositories
 		}),
 	)
 }

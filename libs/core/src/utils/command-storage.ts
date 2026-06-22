@@ -284,15 +284,14 @@ export async function validateUniqueRepositoryTarget(
 	config: RepositoryConfig,
 	excludeRepositoryId: Id | null,
 ): Promise<Result<void, StorageBoundaryError | DuplicateRepositoryTargetError>> {
-	const repositoriesResult = await listRecords('repository', storage)
+	const repositoriesResult = await listRecords('repository', storage, {
+		where: (filter, fields) => filter.eq(fields.projectId, projectId),
+	})
 	if (!repositoriesResult.ok) return repositoriesResult
 
 	const target = repositoryTargetKey(config)
 	const duplicate = repositoriesResult.value.find(
-		(repository) =>
-			repository.projectId === projectId &&
-			repository.id !== excludeRepositoryId &&
-			repositoryTargetKey(repository.config) === target,
+		(repository) => repository.id !== excludeRepositoryId && repositoryTargetKey(repository.config) === target,
 	)
 
 	if (duplicate !== undefined) {
