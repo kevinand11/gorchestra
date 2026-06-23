@@ -112,7 +112,6 @@ if (import.meta.vitest) {
 			expect(await verifySessionToken({ token: result.token, now: testNow, signingKey })).toEqual({
 				authenticated: true,
 				session: result.session,
-				tokenStatus: 'current',
 				refreshRecommended: false,
 			})
 		})
@@ -183,7 +182,6 @@ if (import.meta.vitest) {
 			expect(await verifySessionToken({ token: second.token, now: secondSignInTime, signingKey })).toEqual({
 				authenticated: true,
 				session: second.session,
-				tokenStatus: 'current',
 				refreshRecommended: false,
 			})
 		})

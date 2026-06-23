@@ -8,8 +8,7 @@ import { normalizeEmailAddress } from './email-otp'
 
 export const sessionCookieName = 'gorchestra_session'
 export const sessionLifetimeSeconds = 7 * 24 * 60 * 60
-export const sessionRefreshThresholdSeconds = sessionLifetimeSeconds / 2
-export const previousSessionTokenGraceSeconds = 30
+export const sessionRefreshThresholdSeconds = 24 * 60 * 60
 
 function nonEmptyStringPipe() {
 	return v.string().pipe(v.min(1))
@@ -32,11 +31,7 @@ type SessionJwtPayload = PipeOutput<typeof sessionJwtPayloadPipe>
 
 type CachedServerSession = {
 	currentToken: string
-	previousToken?: string
-	previousTokenGraceExpiresAt?: number
 }
-
-type SessionTokenStatus = 'current' | 'previous-grace'
 
 export type ServerSession = {
 	userId: string
@@ -78,7 +73,7 @@ export type VerifySessionTokenInput = {
 }
 
 export type VerifySessionTokenResult =
-	| { authenticated: true; session: ServerSession; tokenStatus: 'current' | 'previous-grace'; refreshRecommended: boolean }
+	| { authenticated: true; session: ServerSession; refreshRecommended: boolean }
 	| { authenticated: false; reason: 'missing-token' | 'invalid-token' | 'expired' | 'not-current' }
 
 export type RefreshSessionTokenInput = {
@@ -90,7 +85,7 @@ export type RefreshSessionTokenInput = {
 
 export type RefreshSessionTokenResult =
 	| { refreshed: true; token: string; session: ServerSession; cookie: ServerSessionCookie }
-	| { refreshed: false; reason: 'not-authenticated' | 'previous-token-grace' }
+	| { refreshed: false; reason: 'not-authenticated' }
 
 export type RevokeSessionInput = {
 	userId: string
@@ -116,17 +111,15 @@ export async function verifySessionToken(input: VerifySessionTokenInput): Promis
 	if (!payloadLookup.verified) return { authenticated: false, reason: payloadLookup.reason }
 
 	const cachedSession = await getCachedJson<CachedServerSession>(getSessionCacheKey(payloadLookup.payload.sub))
-	const tokenStatus = getSessionTokenStatus(payloadLookup.token, cachedSession, input.now)
-	if (!tokenStatus) return { authenticated: false, reason: 'not-current' }
+	if (!isCurrentSessionToken(payloadLookup.token, cachedSession)) return { authenticated: false, reason: 'not-current' }
 
 	const session = sessionFromPayload(payloadLookup.payload)
-	return { authenticated: true, session, tokenStatus, refreshRecommended: shouldRefreshSession(session, input.now) }
+	return { authenticated: true, session, refreshRecommended: shouldRefreshSession(session, input.now) }
 }
 
 export async function refreshSessionToken(input: RefreshSessionTokenInput): Promise<RefreshSessionTokenResult> {
 	const verified = await verifySessionToken(input)
 	if (!verified.authenticated) return { refreshed: false, reason: 'not-authenticated' }
-	if (verified.tokenStatus === 'previous-grace') return { refreshed: false, reason: 'previous-token-grace' }
 
 	const refreshed = await createRefreshedSession({ ...input, session: verified.session })
 	return { refreshed: true, ...refreshed }
@@ -162,7 +155,7 @@ export function buildDeleteSessionCookie(): ServerSessionCookie {
 
 export function shouldRefreshSession(session: ServerSession, now: Date): boolean {
 	const remainingSeconds = Math.ceil((Date.parse(session.expiresAt) - now.getTime()) / 1000)
-	return remainingSeconds > 0 && remainingSeconds < sessionRefreshThresholdSeconds
+	return remainingSeconds > 0 && remainingSeconds <= sessionRefreshThresholdSeconds
 }
 
 async function createRefreshedSession(input: RefreshSessionTokenInput & { session: ServerSession }): Promise<CreateSessionResult> {
@@ -176,31 +169,16 @@ async function createRefreshedSession(input: RefreshSessionTokenInput & { sessio
 		exp: issuedAt + sessionLifetimeSeconds,
 	}
 	const token = signSessionJwt(payload, input.signingKey)
-	await storeSessionTokens({
-		currentToken: token,
-		currentExpiresAt: payload.exp,
-		previousToken: input.token,
-		previousTokenGraceExpiresAt: input.now.getTime() + previousSessionTokenGraceSeconds * 1000,
-		userId: payload.sub,
-		now: input.now,
-	})
+	await storeSessionTokens({ currentToken: token, currentExpiresAt: payload.exp, userId: payload.sub, now: input.now })
 	return { token, session: sessionFromPayload(payload), cookie: buildSessionCookie(token) }
 }
 
-async function storeSessionTokens(input: {
-	currentToken: string
-	currentExpiresAt: number
-	previousToken?: string
-	previousTokenGraceExpiresAt?: number
-	userId: string
-	now: Date
-}): Promise<void> {
-	const cachedSession: CachedServerSession = { currentToken: input.currentToken }
-	if (input.previousToken && input.previousTokenGraceExpiresAt) {
-		cachedSession.previousToken = input.previousToken
-		cachedSession.previousTokenGraceExpiresAt = input.previousTokenGraceExpiresAt
-	}
-	await setCachedJson(getSessionCacheKey(input.userId), cachedSession, getCacheTtlSeconds(input.currentExpiresAt, input.now))
+async function storeSessionTokens(input: { currentToken: string; currentExpiresAt: number; userId: string; now: Date }): Promise<void> {
+	await setCachedJson(
+		getSessionCacheKey(input.userId),
+		{ currentToken: input.currentToken },
+		getCacheTtlSeconds(input.currentExpiresAt, input.now),
+	)
 }
 
 function getVerifiedSessionPayload(
@@ -216,18 +194,8 @@ function getVerifiedSessionPayload(
 		: { ...payloadLookup, token: input.token }
 }
 
-function getSessionTokenStatus(token: string, cachedSession: CachedServerSession | null, now: Date): SessionTokenStatus | null {
-	if (!cachedSession) return null
-	if (isCurrentSessionToken(token, cachedSession)) return 'current'
-	return isPreviousGraceSessionToken(token, cachedSession, now) ? 'previous-grace' : null
-}
-
-function isCurrentSessionToken(token: string, cachedSession: CachedServerSession): boolean {
-	return token === cachedSession.currentToken
-}
-
-function isPreviousGraceSessionToken(token: string, cachedSession: CachedServerSession, now: Date): boolean {
-	return token === cachedSession.previousToken && (cachedSession.previousTokenGraceExpiresAt ?? 0) > now.getTime()
+function isCurrentSessionToken(token: string, cachedSession: CachedServerSession | null): boolean {
+	return token === cachedSession?.currentToken
 }
 
 function isExpiredSessionPayload(payload: SessionJwtPayload, now: Date): boolean {
@@ -311,7 +279,7 @@ if (import.meta.vitest) {
 			issuedAt: '2026-06-19T00:00:00.000Z',
 			expiresAt: '2026-06-26T00:00:00.000Z',
 		})
-		expect(verified).toEqual({ authenticated: true, session: created.session, tokenStatus: 'current', refreshRecommended: false })
+		expect(verified).toEqual({ authenticated: true, session: created.session, refreshRecommended: false })
 		expect(created.cookie).toMatchObject({
 			name: sessionCookieName,
 			value: created.token,
@@ -336,7 +304,6 @@ if (import.meta.vitest) {
 		expect(await verifySessionToken({ token: second.token, now: secondSessionStart, signingKey })).toEqual({
 			authenticated: true,
 			session: second.session,
-			tokenStatus: 'current',
 			refreshRecommended: false,
 		})
 	}
@@ -365,53 +332,43 @@ if (import.meta.vitest) {
 		})
 	}
 
-	async function testRefreshDecisionAndGraceWindow(): Promise<void> {
+	async function testRefreshDecisionAndImmediateTokenReplacement(): Promise<void> {
 		const userId = uniqueUserId()
 		const created = await createSession(sessionInput({ userId, generateSessionId: () => 'initial-session' }))
-		const afterRefreshThreshold = new Date(testNow.getTime() + 4 * 24 * 60 * 60 * 1000)
+		const beforeRefreshThreshold = new Date(testNow.getTime() + 5 * 24 * 60 * 60 * 1000)
+		const atRefreshThreshold = new Date(testNow.getTime() + 6 * 24 * 60 * 60 * 1000)
 
-		expect(await verifySessionToken({ token: created.token, now: afterRefreshThreshold, signingKey })).toEqual({
+		expect(await verifySessionToken({ token: created.token, now: beforeRefreshThreshold, signingKey })).toEqual({
 			authenticated: true,
 			session: created.session,
-			tokenStatus: 'current',
+			refreshRecommended: false,
+		})
+		expect(await verifySessionToken({ token: created.token, now: atRefreshThreshold, signingKey })).toEqual({
+			authenticated: true,
+			session: created.session,
 			refreshRecommended: true,
 		})
 
 		const refreshed = await refreshSessionToken({
 			token: created.token,
-			now: afterRefreshThreshold,
+			now: atRefreshThreshold,
 			signingKey,
 			generateSessionId: () => 'refreshed-session',
 		})
 		expect(refreshed.refreshed).toBe(true)
 		if (!refreshed.refreshed) return
 		expect(refreshed.session).toMatchObject({ userId, email: created.session.email, sessionId: 'refreshed-session' })
-		expect(
-			await verifySessionToken({ token: created.token, now: new Date(afterRefreshThreshold.getTime() + 29_000), signingKey }),
-		).toEqual({
-			authenticated: true,
-			session: created.session,
-			tokenStatus: 'previous-grace',
-			refreshRecommended: true,
-		})
-		expect(
-			await refreshSessionToken({ token: created.token, now: new Date(afterRefreshThreshold.getTime() + 29_000), signingKey }),
-		).toEqual({
-			refreshed: false,
-			reason: 'previous-token-grace',
-		})
-		expect(
-			await verifySessionToken({ token: created.token, now: new Date(afterRefreshThreshold.getTime() + 31_000), signingKey }),
-		).toEqual({
+		expect(await verifySessionToken({ token: created.token, now: atRefreshThreshold, signingKey })).toEqual({
 			authenticated: false,
 			reason: 'not-current',
 		})
-		expect(
-			await verifySessionToken({ token: refreshed.token, now: new Date(afterRefreshThreshold.getTime() + 31_000), signingKey }),
-		).toEqual({
+		expect(await refreshSessionToken({ token: created.token, now: atRefreshThreshold, signingKey })).toEqual({
+			refreshed: false,
+			reason: 'not-authenticated',
+		})
+		expect(await verifySessionToken({ token: refreshed.token, now: atRefreshThreshold, signingKey })).toEqual({
 			authenticated: true,
 			session: refreshed.session,
-			tokenStatus: 'current',
 			refreshRecommended: false,
 		})
 	}
@@ -421,6 +378,9 @@ if (import.meta.vitest) {
 		it('allows only one active Session per User', testOneActiveSessionPerUser)
 		it('revokes a Session by deleting its cache confirmation', testRevokesSession)
 		it('rejects invalid and expired Session JWTs', testRejectsInvalidAndExpiredTokens)
-		it('recommends rolling refresh and accepts the previous JWT during the grace window', testRefreshDecisionAndGraceWindow)
+		it(
+			'recommends rolling refresh with one day remaining and immediately replaces the previous JWT',
+			testRefreshDecisionAndImmediateTokenReplacement,
+		)
 	})
 }

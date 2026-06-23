@@ -89,7 +89,6 @@ export function createAuthApiRouter(context: ServerApiContext) {
 					v.object({
 						authenticated: v.is(true as const),
 						session: sessionResponseSchema,
-						tokenStatus: v.in(['current', 'previous-grace'] as const),
 						refreshRecommended: v.boolean(),
 					}),
 					v.object({
@@ -107,7 +106,7 @@ export function createAuthApiRouter(context: ServerApiContext) {
 			},
 		})(async (req) => {
 			const result = await refreshApiSession(context, getSessionToken(req.cookies))
-			if (!result.refreshed) return throwRefreshSessionError(result.reason)
+			if (!result.refreshed) throwSessionAuthenticationError('not-current')
 			return req.res({ body: result.session, cookies: moduleCookiesToResponseCookies(result.cookie) })
 		})
 		.delete('/session', {
@@ -121,9 +120,4 @@ export function createAuthApiRouter(context: ServerApiContext) {
 		await revokeApiSessionIfAuthenticated(context, getSessionToken(req.cookies))
 		return req.res({ status: StatusCodes.NoContent, body: undefined, cookies: signedOutResponseCookies() })
 	})
-}
-
-function throwRefreshSessionError(reason: Extract<Awaited<ReturnType<typeof refreshApiSession>>, { refreshed: false }>['reason']): never {
-	if (reason === 'previous-token-grace') throwBadRequest('Previous Session token cannot be refreshed')
-	throwSessionAuthenticationError('not-current')
 }

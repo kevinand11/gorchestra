@@ -19,7 +19,6 @@ export type ApiSessionAuthentication =
 			authenticated: true
 			session: ServerSession
 			token: string
-			tokenStatus: Extract<VerifySessionTokenResult, { authenticated: true }>['tokenStatus']
 			refreshRecommended: boolean
 	  }
 	| { authenticated: false; reason: Extract<VerifySessionTokenResult, { authenticated: false }>['reason'] }
@@ -31,7 +30,6 @@ export async function authenticateApiSession(context: ServerApiContext, token?: 
 		authenticated: true,
 		token: token ?? '',
 		session: result.session,
-		tokenStatus: result.tokenStatus,
 		refreshRecommended: result.refreshRecommended,
 	}
 }

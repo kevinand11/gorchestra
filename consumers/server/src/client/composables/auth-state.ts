@@ -7,11 +7,19 @@ type AuthenticatedSessionStatus = Extract<SessionStatus, { authenticated: true }
 type SelectionAccess = Awaited<ReturnType<ServerApi['getSelection']>>
 type SelectedPortfolioAccess = Extract<SelectionAccess, { selected: true }>
 type EmailOtpSignInResponse = Awaited<ReturnType<ServerApi['verifyEmailOtpSignIn']>>
+type RefreshSessionResponse = Awaited<ReturnType<ServerApi['refreshSession']>>
 type ProvisionDefaultWorkspaceResponse = Awaited<ReturnType<ServerApi['provisionDefaultWorkspace']>>
+type QueryCacheAccess = ReturnType<typeof useQueryCache>
 
 type ProvisionDefaultWorkspaceInput = {
 	workspaceDisplayName: string
 	portfolioDisplayName: string
+}
+
+const sessionRefreshInFlightKey = Symbol('gorchestra.auth-state.session-refresh-in-flight')
+
+type NuxtAppWithSessionRefresh = ReturnType<typeof useNuxtApp> & {
+	[sessionRefreshInFlightKey]?: Promise<AuthenticatedSessionStatus> | null
 }
 
 export function useAuthState() {
@@ -20,7 +28,9 @@ export function useAuthState() {
 	const { queryKeys } = queryCache
 
 	async function getSession(): Promise<SessionStatus> {
-		return await queryCache.read(queryKeys.session(), unauthenticatedSession(), () => serverApi.getSession())
+		const session = await queryCache.read(queryKeys.session(), unauthenticatedSession(), () => serverApi.getSession())
+		if (!isAuthenticatedSession(session)) return session
+		return await refreshBrowserSessionIfRecommended(session, serverApi, queryCache)
 	}
 
 	async function getSelection(): Promise<SelectionAccess> {
@@ -123,7 +133,56 @@ export function unselectedPortfolio(): SelectionAccess {
 }
 
 function authenticatedSessionFromSignIn(response: EmailOtpSignInResponse): AuthenticatedSessionStatus {
-	return { authenticated: true, session: response.session, tokenStatus: 'current', refreshRecommended: false }
+	return authenticatedSessionFromRefresh(response.session)
+}
+
+function authenticatedSessionFromRefresh(session: RefreshSessionResponse): AuthenticatedSessionStatus {
+	return { authenticated: true, session, refreshRecommended: false }
+}
+
+async function refreshBrowserSessionIfRecommended(
+	session: AuthenticatedSessionStatus,
+	serverApi: ServerApi,
+	queryCache: QueryCacheAccess,
+): Promise<AuthenticatedSessionStatus> {
+	if (!shouldRefreshBrowserSession(session)) return session
+
+	const nuxtApp = tryUseNuxtApp()
+	return nuxtApp === null ? session : await getBrowserSessionRefresh(nuxtApp, serverApi, queryCache)
+}
+
+function getBrowserSessionRefresh(
+	nuxtApp: ReturnType<typeof useNuxtApp>,
+	serverApi: ServerApi,
+	queryCache: QueryCacheAccess,
+): Promise<AuthenticatedSessionStatus> {
+	const appWithRefresh = nuxtApp as NuxtAppWithSessionRefresh
+	appWithRefresh[sessionRefreshInFlightKey] ??= createBrowserSessionRefresh(appWithRefresh, serverApi, queryCache)
+	return appWithRefresh[sessionRefreshInFlightKey]
+}
+
+function createBrowserSessionRefresh(
+	appWithRefresh: NuxtAppWithSessionRefresh,
+	serverApi: ServerApi,
+	queryCache: QueryCacheAccess,
+): Promise<AuthenticatedSessionStatus> {
+	const refresh = refreshBrowserSession(serverApi, queryCache)
+	void refresh.finally(() => clearBrowserSessionRefresh(appWithRefresh, refresh))
+	return refresh
+}
+
+function clearBrowserSessionRefresh(appWithRefresh: NuxtAppWithSessionRefresh, refresh: Promise<AuthenticatedSessionStatus>): void {
+	if (appWithRefresh[sessionRefreshInFlightKey] === refresh) appWithRefresh[sessionRefreshInFlightKey] = null
+}
+
+async function refreshBrowserSession(serverApi: ServerApi, queryCache: QueryCacheAccess): Promise<AuthenticatedSessionStatus> {
+	const session = authenticatedSessionFromRefresh(await serverApi.refreshSession())
+	queryCache.set(queryCache.queryKeys.session(), session)
+	return session
+}
+
+function shouldRefreshBrowserSession(session: AuthenticatedSessionStatus): boolean {
+	return typeof window !== 'undefined' && session.refreshRecommended
 }
 
 function selectionFromProvisioning(response: ProvisionDefaultWorkspaceResponse): SelectedPortfolioAccess {
@@ -162,7 +221,6 @@ if (import.meta.vitest) {
 	function authenticatedSession(): SessionStatus {
 		return {
 			authenticated: true,
-			tokenStatus: 'current',
 			refreshRecommended: false,
 			session: {
 				userId: 'user-1',
