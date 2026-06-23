@@ -1,7 +1,7 @@
 <template>
 	<NuxtLayout name="portfolio">
 		<header class="border-b border-dimmer px-3 pt-3 pb-4">
-			<div class="flex flex-wrap items-start justify-between gap-3">
+			<div class="flex flex-wrap items-center justify-between gap-3">
 				<div>
 					<h1 class="m-0 text-sz-section font-semibold tracking-[-0.01em]">Secrets</h1>
 					<p class="m-0 mt-1 text-sz-helper text-dim">Create and inspect protected Secrets in the selected Portfolio.</p>

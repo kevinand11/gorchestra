@@ -46,7 +46,7 @@
 					<NuxtLink
 						v-for="{ label, to } in [
 							{ label: 'Projects', to: '/projects' },
-							{ label: 'Secrets', to: '/secrets' }
+							{ label: 'Secrets', to: '/secrets' },
 						]"
 						:key="to"
 						:to="to"
@@ -82,9 +82,5 @@ withDefaults(defineProps<{ topbarSearchLabel?: string }>(), {
 const { workspace, portfolio } = useSelectedPortfolio()
 const sessionStore = useSessionStore()
 
-const {
-	isLoading: isLoggingOut,
-	error: logoutError,
-	execute: logout,
-} = useApiAction(sessionStore.logout)
+const { isLoading: isLoggingOut, error: logoutError, execute: logout } = useApiAction(sessionStore.logout)
 </script>

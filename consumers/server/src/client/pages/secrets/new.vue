@@ -54,9 +54,7 @@
 			</div>
 			<div class="px-3 py-3">
 				<strong class="block font-semibold">Portfolio context</strong>
-				<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-					This Secret will belong to {{ portfolio.displayName }}.
-				</p>
+				<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">This Secret will belong to {{ portfolio.displayName }}.</p>
 			</div>
 		</template>
 	</NuxtLayout>

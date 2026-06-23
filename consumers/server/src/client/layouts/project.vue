@@ -17,9 +17,7 @@
 						:key="to"
 						:to="to"
 						class="border-b-2 px-0 pb-2 text-sz-helper font-semibold no-underline"
-						:class="
-							route.fullPath.startsWith(to) ? 'border-primary text-body' : 'border-transparent text-dim hover:text-body'
-						">
+						:class="route.fullPath.startsWith(to) ? 'border-primary text-body' : 'border-transparent text-dim hover:text-body'">
 						{{ label }}
 					</NuxtLink>
 				</nav>

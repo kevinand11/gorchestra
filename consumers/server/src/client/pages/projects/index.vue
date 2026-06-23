@@ -1,7 +1,7 @@
 <template>
 	<NuxtLayout name="portfolio">
 		<header class="border-b border-dimmer px-3 pt-3 pb-4">
-			<div class="flex flex-wrap items-start justify-between gap-3">
+			<div class="flex flex-wrap items-center justify-between gap-3">
 				<div>
 					<h1 class="m-0 text-sz-section font-semibold tracking-[-0.01em]">Projects</h1>
 					<p class="m-0 mt-1 text-sz-helper text-dim">Create and inspect Projects in the selected Portfolio.</p>
@@ -23,7 +23,7 @@
 					class="px-2 py-1 text-sz-helper no-underline"
 					:class="[
 						currentProjectTab === tab.value ? 'bg-card font-semibold text-body' : 'text-dim hover:bg-secondary hover:text-body',
-						index === projectTabs.length - 1 ? '' : 'border-r border-dimmer'
+						index === projectTabs.length - 1 ? '' : 'border-r border-dimmer',
 					]">
 					{{ tab.shortLabel }}
 				</NuxtLink>
@@ -70,9 +70,9 @@
 							<span>{{ project.summary }}</span>
 						</span>
 					</span>
-					<span class="hidden justify-self-start lg:inline-flex items-center gap-1 border border-current/50 bg-current/10 px-2 py-0.5 text-sz-micro font-semibold"
-						:class="project.source.repositories.length === 0 ? 'text-primary' : 'text-success'"
-					>
+					<span
+						class="hidden justify-self-start lg:inline-flex items-center gap-1 border border-current/50 bg-current/10 px-2 py-0.5 text-sz-micro font-semibold"
+						:class="project.source.repositories.length === 0 ? 'text-primary' : 'text-success'">
 						<span class="size-2 rounded-full bg-current" />
 						{{ project.source.repositories.length === 0 ? 'needs Repository' : 'ready' }}
 					</span>
@@ -123,19 +123,28 @@ const currentProjectTab = computed((): ProjectTab => {
 	return projectTabs.some((option) => option.value === tab) ? (tab as ProjectTab) : 'all'
 })
 const currentProjectTabLabel = computed(() => projectTabs.find((tab) => tab.value === currentProjectTab.value)?.label ?? 'All Projects')
-const visibleProjects = computed(() => projects.value.filter((project) => {
-	const tab = currentProjectTab.value
-	if (tab === 'needs-setup') return project.source.repositories.length === 0
-	if (tab === 'source-control') return project.source.type === 'source-control'
-	return true
-}).map((project) => {
-	const count = project.source.repositories.length
-	return {
-		...project,
-		sourceLabel: project.source.type === 'source-control' ? 'source-control' : project.source.type,
-		summary: count === 0 ? 'No Repositories configured' : count === 1 ? `${project.source.repositories[0]!.config.owner}/${project.source.repositories[0]!.config.name}` : `${count} Repositories configured`
-	}
-}))
+const visibleProjects = computed(() =>
+	projects.value
+		.filter((project) => {
+			const tab = currentProjectTab.value
+			if (tab === 'needs-setup') return project.source.repositories.length === 0
+			if (tab === 'source-control') return project.source.type === 'source-control'
+			return true
+		})
+		.map((project) => {
+			const count = project.source.repositories.length
+			return {
+				...project,
+				sourceLabel: project.source.type === 'source-control' ? 'source-control' : project.source.type,
+				summary:
+					count === 0
+						? 'No Repositories configured'
+						: count === 1
+							? `${project.source.repositories[0]!.config.owner}/${project.source.repositories[0]!.config.name}`
+							: `${count} Repositories configured`,
+			}
+		}),
+)
 
 function projectTabLocation(tab: ProjectTab) {
 	return { path: route.path, query: { ...route.query, tab } }

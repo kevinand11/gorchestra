@@ -7,9 +7,17 @@
 		<section>
 			<div class="flex min-h-11 items-center justify-between gap-3 border-b border-dimmer px-3 py-2">
 				<div class="flex overflow-hidden border border-dimmer">
-					<span class="border-r border-dimmer bg-card px-2 py-1 text-sz-helper font-semibold text-body">All</span>
-					<span class="border-r border-dimmer px-2 py-1 text-sz-helper text-dim">Ready</span>
-					<span class="px-2 py-1 text-sz-helper text-dim">Needs setup</span>
+					<NuxtLink
+						v-for="(tab, index) in repositoryTabs"
+						:key="tab.value"
+						:to="repositoryTabLocation(tab.value)"
+						class="px-2 py-1 text-sz-helper no-underline"
+						:class="[
+							repositoryFilterPillClass(tab.value),
+							index === repositoryTabs.length - 1 ? '' : 'border-r border-dimmer',
+						]">
+						{{ tab.shortLabel }}
+					</NuxtLink>
 				</div>
 				<NuxtLink
 					v-if="project"
@@ -34,9 +42,18 @@
 						New Repository
 					</NuxtLink>
 				</div>
+				<div v-else-if="visibleRepositories.length === 0" class="m-3 border border-dashed border-dimmer p-5">
+					<h2 class="m-0 text-sz-subsection font-semibold">No Repositories match {{ currentRepositoryTabLabel }}.</h2>
+					<p class="m-0 mt-1 text-sz-helper text-dim">Change the filter to inspect another Repository slice.</p>
+					<NuxtLink
+						class="mt-4 inline-flex border border-dimmer bg-secondary px-3 py-1.5 text-sz-helper font-semibold text-secondary-contrast no-underline"
+						:to="repositoryTabLocation('all')">
+						Show all Repositories
+					</NuxtLink>
+				</div>
 				<div v-else>
 					<NuxtLink
-						v-for="repository in project.source.repositories"
+						v-for="repository in visibleRepositories"
 						:key="repository.id"
 						:to="`/projects/${project.id}/repositories/${repository.id}`"
 						class="grid min-h-[58px] grid-cols-[24px_minmax(0,1fr)] items-center gap-2 border-b border-dimmer px-3 py-2 text-body no-underline hover:bg-card focus-visible:bg-secondary lg:grid-cols-[24px_minmax(0,1fr)_126px]">
@@ -48,7 +65,9 @@
 								<span>Secret: {{ secretLabel(repository.config.secretId) }}</span>
 							</span>
 						</span>
-						<span class="hidden justify-self-start lg:inline-flex items-center gap-1 border border-current/50 bg-current/10 px-2 py-0.5 text-sz-micro font-semibold" :class="repositoryStatusClass(repository.config.secretId)">
+						<span
+							class="hidden justify-self-start lg:inline-flex items-center gap-1 border border-current/50 bg-current/10 px-2 py-0.5 text-sz-micro font-semibold"
+							:class="repositoryStatusClass(repository.config.secretId)">
 							<span class="size-2 rounded-full bg-current" />
 							{{ repositoryStatusLabel(repository.config.secretId) }}
 						</span>
@@ -83,6 +102,14 @@ import { formatDate } from '../../../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
 
+type RepositoryTab = 'all' | 'ready' | 'needs-setup'
+
+const repositoryTabs: Array<{ value: RepositoryTab; label: string; shortLabel: string }> = [
+	{ value: 'all', label: 'All Repositories', shortLabel: 'All' },
+	{ value: 'ready', label: 'Ready', shortLabel: 'Ready' },
+	{ value: 'needs-setup', label: 'Needs setup', shortLabel: 'Needs setup' },
+]
+
 const route = useRoute()
 const serverApi = useServerApi()
 const projectId = computed(() => route.params.projectId as string)
@@ -113,6 +140,11 @@ const repositoryIssues = computed(() => {
 		return secret.archived ? [{ repository, label: 'Secret archived' }] : []
 	})
 })
+const currentRepositoryTab = computed(() => parseRepositoryTab(route.query.tab))
+const currentRepositoryTabLabel = computed(
+	() => repositoryTabs.find((tab) => tab.value === currentRepositoryTab.value)?.label ?? 'All Repositories',
+)
+const visibleRepositories = computed(() => project.value?.source.repositories.filter(matchesCurrentRepositoryTab) ?? [])
 
 const isLoadingProjectDetails = computed(
 	() => (isLoadingProject.value && !hasLoadedProject.value) || (isLoadingSecrets.value && !hasLoadedSecrets.value),
@@ -121,6 +153,31 @@ const projectDetailsError = computed(() => projectError.value || secretsError.va
 const isRefreshingProjectDetails = computed(
 	() => (isLoadingProject.value && hasLoadedProject.value) || (isLoadingSecrets.value && hasLoadedSecrets.value),
 )
+
+function repositoryTabLocation(tab: RepositoryTab) {
+	return { path: route.path, query: { ...route.query, tab } }
+}
+
+function parseRepositoryTab(value: unknown): RepositoryTab {
+	const tab = Array.isArray(value) ? value[0] : value
+	return repositoryTabs.some((option) => option.value === tab) ? (tab as RepositoryTab) : 'all'
+}
+
+function matchesCurrentRepositoryTab(repository: NonNullable<typeof project.value>['source']['repositories'][number]): boolean {
+	const tab = currentRepositoryTab.value
+	if (tab === 'ready') return repositoryIsReady(repository.config.secretId)
+	if (tab === 'needs-setup') return !repositoryIsReady(repository.config.secretId)
+	return true
+}
+
+function repositoryFilterPillClass(tab: RepositoryTab): string {
+	return currentRepositoryTab.value === tab ? 'bg-card font-semibold text-body' : 'text-dim hover:bg-secondary hover:text-body'
+}
+
+function repositoryIsReady(secretId: string): boolean {
+	const secret = secretsById.value.get(secretId)
+	return secret !== undefined && !secret.archived
+}
 
 function secretLabel(secretId: string): string {
 	const secret = secretsById.value.get(secretId)
@@ -135,9 +192,6 @@ function repositoryStatusLabel(secretId: string): string {
 }
 
 function repositoryStatusClass(secretId: string): string {
-	const secret = secretsById.value.get(secretId)
-	return secret === undefined || secret.archived
-		? 'text-primary'
-		: 'text-success'
+	return repositoryIsReady(secretId) ? 'text-success' : 'text-primary'
 }
 </script>
