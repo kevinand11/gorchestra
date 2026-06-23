@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { useSessionStore } from '../stores/session'
+import { definePageMeta } from '#app/composables/pages'
+
+import { useAuthState } from '../composables/auth-state'
 
 definePageMeta({
 	middleware: [
 		async () => {
-			const sessionStore = useSessionStore()
-			return sessionStore
-				.loadAuthenticatedState()
-				.then(() => sessionStore.homePath)
+			return await useAuthState()
+				.getHomePath()
 				.catch(() => '/sign-in')
 		},
 	],

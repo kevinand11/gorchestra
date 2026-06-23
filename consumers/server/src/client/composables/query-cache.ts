@@ -1,4 +1,5 @@
 import { isRef, readonly, ref, shallowRef, type Ref } from '@vue/reactivity'
+import { tryUseNuxtApp, useState, type useNuxtApp } from 'nuxt/app'
 
 type QueryKey = readonly string[]
 
@@ -7,6 +8,7 @@ type QueryMatchOptions = {
 }
 
 type QueryInitialData<T> = T | (() => T)
+type QueryFetcher<T> = () => Promise<T>
 
 type QueryObserver<T> = {
 	queryKey: QueryKey
@@ -16,7 +18,7 @@ type QueryObserver<T> = {
 	error: Ref<string>
 	hasExecuted: Ref<boolean>
 	immediate: boolean
-	fetcher: () => Promise<T>
+	fetcher: QueryFetcher<T>
 }
 
 type SerializedQueryEntry = {
@@ -43,6 +45,12 @@ type NuxtAppWithQueryCache = ReturnType<typeof useNuxtApp> & {
 }
 
 const queryKeys = {
+	session(): QueryKey {
+		return ['session']
+	},
+	selection(): QueryKey {
+		return ['selection']
+	},
 	workspacePortfolios(): QueryKey {
 		return ['workspace-portfolios']
 	},
@@ -73,7 +81,7 @@ const queryKeys = {
 
 export function useQueryCache() {
 	const controller = useQueryCacheControllerForFetch()
-	return { invalidate: controller.invalidate, clear: controller.clear, queryKeys }
+	return { read: controller.read, invalidate: controller.invalidate, set: controller.set, clear: controller.clear, queryKeys }
 }
 
 export function useQueryCacheControllerForFetch() {
@@ -113,6 +121,16 @@ function createQueryCacheController(snapshot: Ref<QueryCacheSnapshot> | QueryCac
 		return await runFetch(observer, entry.version, !entry.hasData)
 	}
 
+	async function read<T>(queryKey: QueryKey, initialData: QueryInitialData<T>, fetcher: QueryFetcher<T>): Promise<T> {
+		const observer = detachedObserver(queryKey, initialData, fetcher)
+		const detach = attach(observer)
+		try {
+			return await ensure(observer)
+		} finally {
+			detach()
+		}
+	}
+
 	async function refetch<T>(observer: QueryObserver<T>): Promise<T> {
 		const entry = getSnapshotEntry(observer.queryKey)
 		entry.invalidated = true
@@ -122,6 +140,15 @@ function createQueryCacheController(snapshot: Ref<QueryCacheSnapshot> | QueryCac
 
 	function invalidate(queryKey: QueryKey, options: QueryMatchOptions = {}): void {
 		for (const entry of matchingEntries(queryKey, options)) refetchInvalidatedEntry(markInvalidated(entry))
+	}
+
+	function set<T>(queryKey: QueryKey, data: T): void {
+		const entry = getSnapshotEntry(queryKey)
+		entry.version += 1
+		entry.data = data
+		entry.hasData = true
+		entry.invalidated = false
+		for (const observer of getRuntimeEntry(serializeQueryKey(queryKey)).observers) applySnapshotToObserver(observer)
 	}
 
 	function clear(queryKey: QueryKey, options: QueryMatchOptions = {}): void {
@@ -290,7 +317,20 @@ function createQueryCacheController(snapshot: Ref<QueryCacheSnapshot> | QueryCac
 		}
 	}
 
-	return { attach, ensure, refetch, invalidate, clear, snapshot: readonly(snapshotRef) }
+	return { attach, ensure, read, refetch, invalidate, set, clear, snapshot: readonly(snapshotRef) }
+}
+
+function detachedObserver<T>(queryKey: QueryKey, initialData: QueryInitialData<T>, fetcher: QueryFetcher<T>): QueryObserver<T> {
+	return {
+		queryKey,
+		initialData,
+		data: shallowRef<T>(resolveInitialData(initialData)),
+		isLoading: ref(false),
+		error: ref(''),
+		hasExecuted: ref(false),
+		immediate: true,
+		fetcher,
+	}
 }
 
 function matchesQueryKey(candidate: QueryKey, target: QueryKey, options: QueryMatchOptions = {}): boolean {

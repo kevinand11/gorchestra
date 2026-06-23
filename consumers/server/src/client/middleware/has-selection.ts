@@ -1,10 +1,12 @@
 import { defineNuxtRouteMiddleware, navigateTo } from 'nuxt/app'
 
-import { useSessionStore } from '../stores/session'
+import { isAuthenticatedSession, isSelectedPortfolio, useAuthState } from '../composables/auth-state'
 
 export default defineNuxtRouteMiddleware(async () => {
-	const sessionStore = useSessionStore()
-	await sessionStore.loadAuthenticatedState()
-	if (!sessionStore.isAuthenticated) return navigateTo('/sign-in')
-	if (!sessionStore.hasSelection) return navigateTo('/select')
+	const authState = useAuthState()
+	const session = await authState.getSession()
+	if (!isAuthenticatedSession(session)) return navigateTo('/sign-in')
+
+	const selection = await authState.getSelection()
+	if (!isSelectedPortfolio(selection)) return navigateTo('/select')
 })

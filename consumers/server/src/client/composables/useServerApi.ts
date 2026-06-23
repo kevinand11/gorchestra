@@ -9,11 +9,15 @@ export type ServerApiOptions = {
 
 type ServerApiOptionsResolver = () => ServerApiOptions | null
 type PreconditionRequiredHandler = () => void | Promise<void>
+type AuthenticationLostHandler = () => void | Promise<void>
 
+const notAuthenticatedStatusCode = 401
 const preconditionRequiredStatusCode = 428
+const tokenExpiredStatusCode = 461
 
 let serverApiOptionsResolver: ServerApiOptionsResolver | null = null
 let preconditionRequiredHandler: PreconditionRequiredHandler | null = null
+let authenticationLostHandler: AuthenticationLostHandler | null = null
 
 export function setServerApiOptionsResolver(resolver: ServerApiOptionsResolver): void {
 	serverApiOptionsResolver = resolver
@@ -21,6 +25,10 @@ export function setServerApiOptionsResolver(resolver: ServerApiOptionsResolver):
 
 export function setPreconditionRequiredHandler(handler: PreconditionRequiredHandler): void {
 	preconditionRequiredHandler = handler
+}
+
+export function setAuthenticationLostHandler(handler: AuthenticationLostHandler): void {
+	authenticationLostHandler = handler
 }
 
 export function useServerApi() {
@@ -50,13 +58,7 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		withCredentials: true,
 		...(options.headers === undefined ? {} : { headers: options.headers }),
 	})
-	client.interceptors.response.use(
-		(response) => response,
-		async (error: unknown) => {
-			if (shouldHandlePreconditionRequired(error)) await preconditionRequiredHandler?.()
-			throw error
-		},
-	)
+	client.interceptors.response.use((response) => response, handleServerApiResponseError)
 	const routes = createRouteContractAxiosClient(client)
 
 	return {
@@ -132,6 +134,27 @@ export function createServerApi(options: ServerApiOptions = {}) {
 
 export type ServerApi = ReturnType<typeof createServerApi>
 
+async function handleServerApiResponseError(error: unknown): Promise<never> {
+	await runServerApiBoundaryHandler(error)
+	throw error
+}
+
+async function runServerApiBoundaryHandler(error: unknown): Promise<void> {
+	const handler = serverApiBoundaryHandler(error)
+	if (handler !== null) await handler()
+}
+
+function serverApiBoundaryHandler(error: unknown): (() => void | Promise<void>) | null {
+	if (shouldHandleAuthenticationLost(error)) return authenticationLostHandler
+	if (shouldHandlePreconditionRequired(error)) return preconditionRequiredHandler
+	return null
+}
+
+function shouldHandleAuthenticationLost(error: unknown): boolean {
+	const statusCode = getHttpStatusCode(error)
+	return typeof window !== 'undefined' && (statusCode === notAuthenticatedStatusCode || statusCode === tokenExpiredStatusCode)
+}
+
 function shouldHandlePreconditionRequired(error: unknown): boolean {
 	return typeof window !== 'undefined' && getHttpStatusCode(error) === preconditionRequiredStatusCode
 }
@@ -151,11 +174,22 @@ function getNestedValue(source: unknown, path: string[]): unknown {
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
-	describe('Server API precondition handling', () => {
+	describe('Server API auth boundary handling', () => {
 		it('extracts Axios HTTP status codes', () => {
 			expect(getHttpStatusCode({ response: { status: 428 } })).toBe(428)
 			expect(getHttpStatusCode({ response: { status: '428' } })).toBeNull()
 			expect(getHttpStatusCode(new Error('network'))).toBeNull()
+		})
+
+		it('detects browser auth-loss statuses', () => {
+			const originalWindow = globalThis.window
+			Object.defineProperty(globalThis, 'window', { configurable: true, value: {} })
+
+			expect(shouldHandleAuthenticationLost({ response: { status: 401 } })).toBe(true)
+			expect(shouldHandleAuthenticationLost({ response: { status: 461 } })).toBe(true)
+			expect(shouldHandleAuthenticationLost({ response: { status: 428 } })).toBe(false)
+
+			Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow })
 		})
 	})
 }

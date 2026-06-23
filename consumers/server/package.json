@@ -17,7 +17,8 @@
 		"h3": "1.15.11",
 		"nuxt": "^4.4.8",
 		"pinia": "^3.0.4",
-		"valleyed": "latest"
+		"valleyed": "latest",
+		"vue": "3.5.38"
 	},
 	"devDependencies": {
 		"@tailwindcss/vite": "^4.3.1",

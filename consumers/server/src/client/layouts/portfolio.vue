@@ -69,8 +69,8 @@
 import GorchestraMark from '../components/layout/GorchestraMark.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import { useApiAction } from '../composables/action-state'
+import { useAuthState } from '../composables/auth-state'
 import { useSelectedPortfolio } from '../composables/selected-portfolio'
-import { useSessionStore } from '../stores/session'
 import DefaultLayout from './default.vue'
 
 withDefaults(defineProps<{ topbarSearchLabel?: string }>(), {
@@ -78,7 +78,7 @@ withDefaults(defineProps<{ topbarSearchLabel?: string }>(), {
 })
 
 const { workspace, portfolio } = useSelectedPortfolio()
-const sessionStore = useSessionStore()
+const authState = useAuthState()
 
-const { isLoading: isLoggingOut, error: logoutError, execute: logout } = useApiAction(sessionStore.logout)
+const { isLoading: isLoggingOut, error: logoutError, execute: logout } = useApiAction(authState.logout)
 </script>

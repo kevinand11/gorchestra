@@ -122,21 +122,25 @@
 </template>
 
 <script setup lang="ts">
+import { definePageMeta } from '#app/composables/pages'
+import { navigateTo } from 'nuxt/app'
+import { ref } from 'vue'
+
 import UiButton from '../components/ui/UiButton.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import UiText from '../components/ui/UiText.vue'
 import { useApiAction, useFetchAction } from '../composables/action-state'
+import { useAuthState, useSelectionAccess } from '../composables/auth-state'
 import { useQueryCache } from '../composables/query-cache'
 import { useServerApi, type ServerApi } from '../composables/useServerApi'
 import { ProvisionWorkspaceFormFactory } from '../forms/workspace'
-import { useSessionStore } from '../stores/session'
 import { useToastStore } from '../stores/toasts'
 
 definePageMeta({ middleware: ['is-authenticated'] })
 
 type WorkspacePortfolios = Awaited<ReturnType<ServerApi['listWorkspacePortfolios']>>
 
-const sessionStore = useSessionStore()
+const authState = useAuthState()
 const toastStore = useToastStore()
 const serverApi = useServerApi()
 const queryCache = useQueryCache()
@@ -144,7 +148,7 @@ const { queryKeys } = queryCache
 
 const provisionWorkspaceForm = new ProvisionWorkspaceFormFactory()
 const selectingPortfolioKey = ref('')
-const selection = computed(() => sessionStore.selection)
+const { data: selection } = useSelectionAccess({ immediate: true })
 
 const {
 	data: workspacePortfolios,
@@ -161,8 +165,7 @@ const {
 	error: provisionWorkspaceError,
 	execute: provisionWorkspace,
 } = useApiAction(async () => {
-	await sessionStore.provisionDefaultWorkspace(provisionWorkspaceForm.toModel())
-	queryCache.invalidate(queryKeys.workspacePortfolios())
+	await authState.provisionDefaultWorkspace(provisionWorkspaceForm.toModel())
 	toastStore.success({ title: 'Workspace created and Portfolio selected.' })
 	await navigateTo('/projects')
 })
@@ -172,7 +175,7 @@ const {
 	error: selectPortfolioError,
 	execute: executeSelectPortfolio,
 } = useApiAction(async (workspaceId: string, portfolioId: string) => {
-	await sessionStore.setSelection(workspaceId, portfolioId)
+	await authState.setSelection(workspaceId, portfolioId)
 	toastStore.success({ title: 'Portfolio selected.' })
 	await navigateTo('/projects')
 })
@@ -187,7 +190,7 @@ const {
 	error: clearSelectionError,
 	execute: clearSelection,
 } = useApiAction(async () => {
-	await sessionStore.clearSelection()
+	await authState.clearSelection()
 	toastStore.info({ title: 'Selection cleared.' })
 })
 
@@ -196,9 +199,7 @@ const {
 	error: logoutError,
 	execute: logout,
 } = useApiAction(async () => {
-	await sessionStore.logout()
-	if (typeof window !== 'undefined') window.location.assign('/sign-in')
-	else await navigateTo('/sign-in')
+	await authState.logout()
 })
 
 function isCurrentSelection(workspaceId: string, portfolioId: string): boolean {

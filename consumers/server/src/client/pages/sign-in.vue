@@ -119,25 +119,29 @@
 </template>
 
 <script setup lang="ts">
+import { definePageMeta } from '#app/composables/pages'
+import { navigateTo } from 'nuxt/app'
+import { ref, watch } from 'vue'
+
 import UiButton from '../components/ui/UiButton.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import UiText from '../components/ui/UiText.vue'
 import { useApiAction } from '../composables/action-state'
+import { isAuthenticatedSession, useAuthState } from '../composables/auth-state'
 import { EmailOtpChallengeFormFactory, EmailOtpVerificationFormFactory } from '../forms/auth'
-import { useSessionStore } from '../stores/session'
 import { useToastStore } from '../stores/toasts'
 
 definePageMeta({
 	middleware: [
 		async () => {
-			const sessionStore = useSessionStore()
-			await sessionStore.loadAuthenticatedState().catch()
-			if (sessionStore.isAuthenticated) return sessionStore.homePath
+			const authState = useAuthState()
+			const session = await authState.getSession().catch(() => null)
+			if (session !== null && isAuthenticatedSession(session)) return await authState.getHomePath()
 		},
 	],
 })
 
-const sessionStore = useSessionStore()
+const authState = useAuthState()
 const toastStore = useToastStore()
 
 const emailOtpChallengeForm = new EmailOtpChallengeFormFactory()
@@ -157,7 +161,7 @@ const {
 	execute: requestEmailOtp,
 } = useApiAction(async () => {
 	const input = emailOtpChallengeForm.toModel()
-	await sessionStore.requestEmailOtp(input.email)
+	await authState.requestEmailOtp(input.email)
 	emailOtpVerificationForm.loadEntity({ email: input.email, code: '' })
 	challengeRequested.value = true
 	toastStore.success({ title: 'Sign-in code sent.', body: 'Check your email for the six-digit code.' })
@@ -169,10 +173,10 @@ const {
 	execute: verifyEmailOtp,
 } = useApiAction(async () => {
 	const input = emailOtpVerificationForm.toModel()
-	await sessionStore.verifyEmailOtpSignIn(input.email, input.code)
+	await authState.verifyEmailOtpSignIn(input.email, input.code)
 	emailOtpVerificationForm.code = ''
 	challengeRequested.value = false
-	await navigateTo(sessionStore.homePath)
+	await navigateTo(await authState.getHomePath())
 })
 
 function changeEmail(): void {
