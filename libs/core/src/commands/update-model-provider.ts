@@ -11,15 +11,9 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import { buildCommandHandler } from '../utils/command'
-import {
-	auditStamp,
-	getRequired,
-	updateRecordValue,
-	validateActiveModelProviderSecretReferences,
-	withTransaction,
-} from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
+import { buildCommandHandler } from './utils/handler'
+import { auditStamp, getRequired, updateRecordValue, validateActiveModelProviderSecretReferences, withTransaction } from './utils/storage'
 
 const updateModelProviderInputPipe = v.object({
 	modelProviderId: idPipe,

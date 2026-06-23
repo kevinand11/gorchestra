@@ -11,23 +11,15 @@ import type {
 	InvalidInputError,
 	InvariantViolationError,
 	ResourceNotFoundError,
-	RevisionGateClosedError,
 	ReviewSurfaceAlreadyMergedError,
+	RevisionGateClosedError,
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
-import { buildCommandHandler } from '../utils/command'
-import {
-	auditStamp,
-	createRecordValue,
-	getRequired,
-	listRecords,
-	nextId,
-	updateRecordValue,
-	withTransaction,
-} from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
+import { buildCommandHandler } from './utils/handler'
+import { auditStamp, createRecordValue, getRequired, listRecords, nextId, updateRecordValue, withTransaction } from './utils/storage'
 
 const acceptRevisionOutputInputPipe = v.object({ revisionGateId: idPipe, output: revisionOutputProposalPipe })
 export type Input = PipeOutput<typeof acceptRevisionOutputInputPipe>

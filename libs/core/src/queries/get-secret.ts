@@ -5,9 +5,9 @@ import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFound
 import type { CoreServices } from '../services'
 import { listSecretReferencesBySecretId } from './list-secret-references'
 import { listSecret, type ListedSecret } from './list-secrets'
-import { buildQueryHandler } from './utils'
-import { getRequired, withTransaction } from '../utils/storage'
+import { getRequired, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
+import { buildQueryHandler } from './utils/handler'
 
 const getSecretInputPipe = v.object({ secretId: idPipe })
 export type Input = PipeOutput<typeof getSecretInputPipe>

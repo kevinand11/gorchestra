@@ -9,7 +9,7 @@ import type {
 	ResourceNotFoundError,
 	SecretNotActiveError,
 	StorageOperationFailedError,
-} from '../errors'
+} from '../../errors'
 
 export type ConfigCommandReferenceError = ResourceNotFoundError | ArchivedModelReferenceError | ArchivedModelProviderReferenceError
 export type ConfigCommandStorageError = StorageOperationFailedError | InvalidCoreServiceOutputError | InvariantViolationError

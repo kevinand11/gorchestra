@@ -1,15 +1,15 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import { isArchived } from '../commands/utils/storage'
 import { idPipe, type AuditStamp, type Id } from '../domain/commons'
 import type { ModelProvider, ModelProviderProtocol } from '../domain/model-provider'
 import type { Repository } from '../domain/repository'
 import type { SecretBinding, SecretBindingScope } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices, CoreStorage } from '../services'
-import { buildQueryHandler } from './utils'
-import { isArchived } from '../utils/command-storage'
-import { getRequired, listRecords, withTransaction, type StorageBoundaryError } from '../utils/storage'
+import { getRequired, listRecords, withTransaction, type StorageBoundaryError } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
+import { buildQueryHandler } from './utils/handler'
 
 const listSecretReferencesInputPipe = v.object({ secretId: idPipe })
 export type Input = PipeOutput<typeof listSecretReferencesInputPipe>

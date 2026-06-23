@@ -15,9 +15,9 @@ import { modelProviderProtocolPreflight } from '../providers/model-provider-prot
 import type { ModelProviderProtocolPreflightFailureReason } from '../providers/model-provider-protocol/types'
 import type { CoreRuntime } from '../runtime'
 import type { CoreServices, CoreStorage, ResolvableSecretValue } from '../services'
-import { buildCommandHandler } from '../utils/command'
-import { getRequired, isArchived, validateActiveSecret, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
+import { buildCommandHandler } from './utils/handler'
+import { getRequired, isArchived, validateActiveSecret, withTransaction } from './utils/storage'
 
 const preflightModelInputPipe = v.object({ modelId: idPipe })
 export type Input = PipeOutput<typeof preflightModelInputPipe>

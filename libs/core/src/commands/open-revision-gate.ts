@@ -5,8 +5,8 @@ import type { FetchedFeedback } from '../domain/review-surface'
 import type { RevisionGate } from '../domain/revision'
 import type { CommandStubError } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import { buildStubCommand } from '../utils/command'
 import type { Result as CoreResult } from '../utils/types'
+import { buildStubCommand } from './utils/handler'
 
 const openRevisionGateInputPipe = v.object({ reviewSurfaceId: idPipe })
 export type Input = PipeOutput<typeof openRevisionGateInputPipe>

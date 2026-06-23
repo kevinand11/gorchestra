@@ -3,10 +3,10 @@ import { v, type PipeOutput } from 'valleyed'
 import { idPipe } from '../domain/commons'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
-import { listedProjectFromProjectAndRepositories, type ListedProject, sortByCreatedAtThenId } from './list-projects'
-import { buildQueryHandler } from './utils'
-import { getRequired, listRecords, withTransaction } from '../utils/storage'
+import { listedProjectFromProjectAndRepositories, sortByCreatedAtThenId, type ListedProject } from './list-projects'
+import { getRequired, listRecords, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
+import { buildQueryHandler } from './utils/handler'
 
 const getProjectInputPipe = v.object({ projectId: idPipe })
 export type Input = PipeOutput<typeof getProjectInputPipe>

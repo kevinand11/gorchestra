@@ -17,9 +17,9 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import { buildCommandHandler } from '../utils/command'
-import { auditStamp, createValidModelProvider, nextId, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
+import { buildCommandHandler } from './utils/handler'
+import { auditStamp, createValidModelProvider, nextId, withTransaction } from './utils/storage'
 
 const createModelProviderInputPipe = v.object({
 	name: nonEmptyTrimmedStringPipe,

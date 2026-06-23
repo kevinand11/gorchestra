@@ -13,7 +13,8 @@ import type {
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
-import { buildCommandHandler } from '../utils/command'
+import type { Result as CoreResult } from '../utils/types'
+import { buildCommandHandler } from './utils/handler'
 import {
 	archivedSecretReference,
 	auditStamp,
@@ -25,8 +26,7 @@ import {
 	nextId,
 	scopesEqual,
 	withTransaction,
-} from '../utils/command-storage'
-import type { Result as CoreResult } from '../utils/types'
+} from './utils/storage'
 
 const bindSecretInputPipe = v.object({ secretId: idPipe, scope: secretBindingScopePipe, envName: envNamePipe })
 export type Input = PipeOutput<typeof bindSecretInputPipe>

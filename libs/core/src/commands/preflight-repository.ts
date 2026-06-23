@@ -12,9 +12,9 @@ import type {
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreServices, CoreStorage, ResolvableSecretValue } from '../services'
-import { buildCommandHandler } from '../utils/command'
-import { getRequired, validateActiveSecret, withTransaction } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
+import { buildCommandHandler } from './utils/handler'
+import { getRequired, validateActiveSecret, withTransaction } from './utils/storage'
 
 const preflightRepositoryInputPipe = v.object({ repositoryId: idPipe })
 export type Input = PipeOutput<typeof preflightRepositoryInputPipe>

@@ -6,11 +6,11 @@ import type { Repository } from '../domain/repository'
 import type { Slice } from '../domain/slice'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
-import { deliveryReadModel, type DeliveryReadModel } from './delivery-read-model'
-import { listOrderedDeliverySlices } from './slice-read-model'
-import { buildQueryHandler } from './utils'
-import { getRequired, notFound, withTransaction } from '../utils/storage'
+import { getRequired, notFound, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
+import { deliveryReadModel, type DeliveryReadModel } from './utils/delivery-read-model'
+import { buildQueryHandler } from './utils/handler'
+import { listOrderedDeliverySlices } from './utils/slice-read-model'
 
 const getDeliveryInputPipe = v.object({ projectId: idPipe, deliveryId: idPipe })
 export type Input = PipeOutput<typeof getDeliveryInputPipe>

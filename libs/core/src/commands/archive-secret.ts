@@ -11,9 +11,9 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import { buildCommandHandler } from '../utils/command'
-import { archiveStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
+import { buildCommandHandler } from './utils/handler'
+import { archiveStoredRecordWithAudit } from './utils/storage'
 
 const archiveSecretInputPipe = v.object({ secretId: idPipe })
 export type Input = PipeOutput<typeof archiveSecretInputPipe>

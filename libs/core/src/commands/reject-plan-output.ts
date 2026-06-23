@@ -3,8 +3,8 @@ import { v, type PipeOutput } from 'valleyed'
 import { idPipe, type OperationContext } from '../domain/commons'
 import type { CommandStubError } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import { buildStubCommand } from '../utils/command'
 import type { Result as CoreResult } from '../utils/types'
+import { buildStubCommand } from './utils/handler'
 
 const rejectPlanOutputInputPipe = v.object({ planId: idPipe })
 export type Input = PipeOutput<typeof rejectPlanOutputInputPipe>

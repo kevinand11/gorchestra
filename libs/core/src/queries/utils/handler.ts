@@ -1,8 +1,8 @@
 import { v, type Pipe, type PipeInput, type PipeOutput } from 'valleyed'
 
-import type { InvalidInputError, NotImplementedError } from '../errors'
-import type { Result } from '../utils/types'
-import { validateCoreInput } from '../validation'
+import type { InvalidInputError } from '../../errors'
+import type { Result } from '../../utils/types'
+import { validateCoreInput } from '../../validation'
 
 export const buildQueryHandler =
 	<TPipe extends Pipe<unknown, unknown>, TValue, TError>(
@@ -17,10 +17,3 @@ export const buildQueryHandler =
 
 		return handler(validation.value.input)
 	}
-
-export function buildQueryStub<T, TPipe extends Pipe<unknown, unknown>>(
-	operation: string,
-	inputPipe: TPipe,
-): (input: PipeInput<TPipe>) => Promise<Result<T, InvalidInputError | NotImplementedError>> {
-	return buildQueryHandler(operation, inputPipe, () => Promise.resolve({ ok: false, error: { type: 'not-implemented', operation } }))
-}

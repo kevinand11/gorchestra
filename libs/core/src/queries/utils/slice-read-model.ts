@@ -1,7 +1,7 @@
-import type { Slice } from '../domain/slice'
-import type { CoreStorage } from '../services'
-import { listRecords, type StorageBoundaryError } from '../utils/storage'
-import type { Result as CoreResult } from '../utils/types'
+import type { Slice } from '../../domain/slice'
+import type { CoreStorage } from '../../services'
+import { listRecords, type StorageBoundaryError } from '../../storage/helpers'
+import type { Result as CoreResult } from '../../utils/types'
 
 export async function listOrderedDeliverySlices(
 	storage: CoreStorage,

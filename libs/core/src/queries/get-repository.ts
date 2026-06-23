@@ -1,5 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import { validateSourceControlProject } from '../commands/utils/storage'
 import { idPipe } from '../domain/commons'
 import type { Repository } from '../domain/repository'
 import type {
@@ -10,10 +11,9 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreServices } from '../services'
-import { buildQueryHandler } from './utils'
-import { validateSourceControlProject } from '../utils/command-storage'
-import { getRequired, notFound, withTransaction } from '../utils/storage'
+import { getRequired, notFound, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
+import { buildQueryHandler } from './utils/handler'
 
 const getRepositoryInputPipe = v.object({ projectId: idPipe, repositoryId: idPipe })
 export type Input = PipeOutput<typeof getRepositoryInputPipe>

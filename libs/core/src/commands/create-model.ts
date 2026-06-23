@@ -11,17 +11,17 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import { buildCommandHandler } from '../utils/command'
+import type { Result as CoreResult } from '../utils/types'
+import { buildCommandHandler } from './utils/handler'
 import {
 	archivedModelProviderReference,
 	auditStamp,
+	createRecordValue,
 	getRequired,
 	isArchived,
 	nextId,
-	createRecordValue,
 	withTransaction,
-} from '../utils/command-storage'
-import type { Result as CoreResult } from '../utils/types'
+} from './utils/storage'
 
 const createModelInputPipe = v.object({
 	providerId: idPipe,

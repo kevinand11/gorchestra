@@ -11,8 +11,9 @@ import type {
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
-import { buildCommandHandler } from '../utils/command'
-import type { RepositoryCommandReferenceError } from '../utils/command-errors'
+import type { Result as CoreResult } from '../utils/types'
+import type { RepositoryCommandReferenceError } from './utils/errors'
+import { buildCommandHandler } from './utils/handler'
 import {
 	getRequired,
 	normalizeRepositoryConfig,
@@ -21,8 +22,7 @@ import {
 	validateSourceControlProject,
 	validateUniqueRepositoryTarget,
 	withTransaction,
-} from '../utils/command-storage'
-import type { Result as CoreResult } from '../utils/types'
+} from './utils/storage'
 
 const updateRepositoryConfigInputPipe = v.object({ repositoryId: idPipe, config: repositoryConfigPipe })
 export type Input = PipeOutput<typeof updateRepositoryConfigInputPipe>

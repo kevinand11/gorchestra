@@ -1,5 +1,5 @@
-import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './command-errors'
-import type { ArchivePeriod, AuditStamp, Id, OperationContext } from '../domain/commons'
+import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './errors'
+import type { ArchivePeriod, AuditStamp, Id, OperationContext } from '../../domain/commons'
 import type {
 	DeliveryConfig,
 	DeliveryConfigRecord,
@@ -8,13 +8,13 @@ import type {
 	PortfolioConfig,
 	ProjectConfig,
 	ProjectConfigRecord,
-} from '../domain/config'
-import type { DeliveryWorkState } from '../domain/delivery'
-import type { Model } from '../domain/model'
-import type { ModelProvider, ModelProviderAuth, ModelProviderHeader } from '../domain/model-provider'
-import type { Project } from '../domain/project'
-import type { RepositoryConfig } from '../domain/repository'
-import type { Secret, SecretBindingScope } from '../domain/secret'
+} from '../../domain/config'
+import type { DeliveryWorkState } from '../../domain/delivery'
+import type { Model } from '../../domain/model'
+import type { ModelProvider, ModelProviderAuth, ModelProviderHeader } from '../../domain/model-provider'
+import type { Project } from '../../domain/project'
+import type { RepositoryConfig } from '../../domain/repository'
+import type { Secret, SecretBindingScope } from '../../domain/secret'
 import type {
 	AlreadyArchivedError,
 	ArchivableCoreResource,
@@ -32,9 +32,9 @@ import type {
 	ResourceNotFoundError,
 	SecretNotActiveError,
 	StorageOperationFailedError,
-} from '../errors'
-import type { CoreRuntime } from '../runtime'
-import type { CoreStorage } from '../services'
+} from '../../errors'
+import type { CoreRuntime } from '../../runtime'
+import type { CoreStorage } from '../../services'
 import {
 	createRecord,
 	getRecord,
@@ -46,10 +46,10 @@ import {
 	updateRecord,
 	withTransaction,
 	type StorageBoundaryError,
-} from '../storage/helpers'
-import type { CoreIdStorageRecord, CoreStorageRecord } from '../storage/schemas'
-import { auditStamp, nextId, runtimeRecord } from '../utils/runtime-values'
-import type { Result } from '../utils/types'
+} from '../../storage/helpers'
+import type { CoreIdStorageRecord, CoreStorageRecord } from '../../storage/schemas'
+import { auditStamp, nextId, runtimeRecord } from '../../utils/runtime-values'
+import type { Result } from '../../utils/types'
 
 export {
 	auditStamp,

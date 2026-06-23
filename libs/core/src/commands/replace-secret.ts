@@ -10,9 +10,9 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import { buildCommandHandler } from '../utils/command'
-import { updateStoredRecordWithAudit } from '../utils/command-storage'
 import type { Result as CoreResult } from '../utils/types'
+import { buildCommandHandler } from './utils/handler'
+import { updateStoredRecordWithAudit } from './utils/storage'
 
 const replaceSecretInputPipe = v.object({ secretId: idPipe, valueRef: secretValueRefPipe })
 export type Input = PipeOutput<typeof replaceSecretInputPipe>

@@ -4,9 +4,9 @@ import { idPipe } from '../domain/commons'
 import type { Plan } from '../domain/plan'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
-import { buildQueryHandler } from './utils'
-import { getRequired, notFound, withTransaction } from '../utils/storage'
+import { getRequired, notFound, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
+import { buildQueryHandler } from './utils/handler'
 
 const getPlanInputPipe = v.object({ projectId: idPipe, planId: idPipe })
 export type Input = PipeOutput<typeof getPlanInputPipe>

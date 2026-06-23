@@ -1,8 +1,8 @@
 import type { Action } from '../../../domain/action'
 import type { Id } from '../../../domain/commons'
 import type { ExternalOperation, ExternalOperationEvidence } from '../../../domain/evidence'
-import { nextId, runtimeRecord } from '../../../utils/storage'
 import type { Result as CoreResult } from '../../../utils/types'
+import { nextId, runtimeRecord } from '../../utils/storage'
 import type { RunDeliveryWorkNoObservedChangeTarget } from '../index'
 import type { DeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
 

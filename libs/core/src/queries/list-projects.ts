@@ -4,9 +4,9 @@ import type { Project } from '../domain/project'
 import type { Repository } from '../domain/repository'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
-import { buildQueryHandler } from './utils'
-import { listRecords, withTransaction } from '../utils/storage'
+import { listRecords, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
+import { buildQueryHandler } from './utils/handler'
 
 const listProjectsInputPipe = v.object({})
 export type Input = PipeOutput<typeof listProjectsInputPipe>

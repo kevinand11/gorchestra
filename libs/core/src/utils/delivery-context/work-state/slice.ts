@@ -7,7 +7,7 @@ import type { Action } from '../../../domain/action'
 import type { AgentRun, ExecutionMode } from '../../../domain/agent-run'
 import type { Id } from '../../../domain/commons'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
-import { notFound } from '../../storage'
+import { notFound } from '../../../storage/helpers'
 import type { Result } from '../../types'
 import type { DeliveryContext, DeliveryContextSlice } from '../types'
 

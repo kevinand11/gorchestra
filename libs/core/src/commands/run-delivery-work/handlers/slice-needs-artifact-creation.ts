@@ -1,3 +1,4 @@
+import { actionRecord, externalOperationEvidence } from './result'
 import type { Action } from '../../../domain/action'
 import type { SliceArtifact } from '../../../domain/artifact'
 import type { DeliveryWorkState } from '../../../domain/delivery'
@@ -6,12 +7,11 @@ import type { InvariantViolationError } from '../../../errors'
 import { sourceControlSliceBranchName } from '../../../providers/source-control/branches'
 import type { SourceControlArtifactCreation, SourceControlCreateArtifactBranchInput } from '../../../providers/source-control/types'
 import type { CoreRuntime } from '../../../runtime'
-import { createRecord, nextId, runtimeRecord } from '../../../utils/command-storage'
+import { withTransaction } from '../../../storage/helpers'
 import { getSliceState } from '../../../utils/delivery-context'
-import { withTransaction } from '../../../utils/storage'
 import type { Result as CoreResult } from '../../../utils/types'
+import { createRecord, nextId, runtimeRecord } from '../../utils/storage'
 import type { ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
-import { actionRecord, externalOperationEvidence } from './result'
 
 interface SliceStateCandidate {
 	slice: Slice

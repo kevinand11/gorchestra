@@ -4,16 +4,16 @@ import type { OperationContext } from '../domain/commons'
 import { portfolioConfigPipe, type PortfolioConfigRecord } from '../domain/config'
 import type { InvalidInputError } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import { buildCommandHandler } from '../utils/command'
-import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
+import type { Result as CoreResult } from '../utils/types'
+import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
+import { buildCommandHandler } from './utils/handler'
 import {
 	modelIdsFromPortfolioConfig,
 	normalizePortfolioConfig,
 	setPortfolioConfig,
 	validateSelectableModels,
 	withAuditStampTransaction,
-} from '../utils/command-storage'
-import type { Result as CoreResult } from '../utils/types'
+} from './utils/storage'
 
 const setPortfolioConfigInputPipe = v.object({ config: portfolioConfigPipe })
 export type Input = PipeOutput<typeof setPortfolioConfigInputPipe>

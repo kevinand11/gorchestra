@@ -3,9 +3,9 @@ import type { AuditStamp, Id } from '../../domain/commons'
 import type { GraphNodeRef, LinkType } from '../../domain/graph'
 import type { Plan, PlanOutputProposal, ProposedDelivery, ProposedGraphRef, ProposedMemory } from '../../domain/plan'
 import type { InvalidCoreServiceOutputError, InvalidPlanOutputError } from '../../errors'
-import { nextId } from '../../utils/command-storage'
 import type { CoreRuntimeValues } from '../../utils/runtime-values'
 import type { Result } from '../../utils/types'
+import { nextId } from '../utils/storage'
 
 export function prepareMaterializationPlan(
 	values: CoreRuntimeValues,

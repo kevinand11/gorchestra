@@ -1,13 +1,13 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import { isArchived } from '../commands/utils/storage'
 import type { Secret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
 import { listSecretReferencesBySecretId, type SecretReference } from './list-secret-references'
-import { buildQueryHandler } from './utils'
-import { isArchived } from '../utils/command-storage'
-import { listRecords, withTransaction } from '../utils/storage'
+import { listRecords, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
+import { buildQueryHandler } from './utils/handler'
 
 const listSecretsInputPipe = v.object({})
 export type Input = PipeOutput<typeof listSecretsInputPipe>

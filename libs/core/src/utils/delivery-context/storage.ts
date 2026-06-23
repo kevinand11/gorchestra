@@ -1,6 +1,3 @@
-import type { DeliveryDependencySummary, DeliveryContext, DeliveryContextSlice } from './types'
-import { compareActions } from './work-state/actions'
-import type { DeliveryDependencyLink, SliceDependencyLink, WorkStateDerivationError } from './work-state/types'
 import type { Action } from '../../domain/action'
 import type { AgentRun } from '../../domain/agent-run'
 import type { DeliveryArtifact, SliceArtifact } from '../../domain/artifact'
@@ -14,8 +11,11 @@ import type { ReviewSurface } from '../../domain/review-surface'
 import type { Slice } from '../../domain/slice'
 import type { InvalidCoreServiceOutputError, InvariantViolationError, StorageOperationFailedError } from '../../errors'
 import type { CoreStorage } from '../../services'
-import { getPortfolioConfig, getRequired, listRecords, notFound } from '../storage'
+import { getPortfolioConfig, getRequired, listRecords, notFound } from '../../storage/helpers'
 import type { Result } from '../types'
+import type { DeliveryContext, DeliveryContextSlice, DeliveryDependencySummary } from './types'
+import { compareActions } from './work-state/actions'
+import type { DeliveryDependencyLink, SliceDependencyLink, WorkStateDerivationError } from './work-state/types'
 
 export type DeliveryContextError = WorkStateDerivationError
 

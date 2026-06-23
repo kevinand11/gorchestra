@@ -19,9 +19,9 @@ import type {
 } from '../../errors'
 import type { CoreRuntime } from '../../runtime'
 import type { CoreStorage } from '../../services'
-import { buildCommandHandler } from '../../utils/command'
-import { auditStamp, createRecord, getRequired, listRecords, withTransaction } from '../../utils/command-storage'
 import type { Result as CoreResult } from '../../utils/types'
+import { buildCommandHandler } from '../utils/handler'
+import { auditStamp, createRecord, getRequired, listRecords, withTransaction } from '../utils/storage'
 
 const acceptPlanOutputInputPipe = v.object({ planId: idPipe, output: planOutputProposalPipe })
 export type Input = PipeOutput<typeof acceptPlanOutputInputPipe>

@@ -1,5 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import { validateSourceControlProject } from '../commands/utils/storage'
 import { idPipe } from '../domain/commons'
 import type { Repository } from '../domain/repository'
 import type {
@@ -11,10 +12,9 @@ import type {
 } from '../errors'
 import type { CoreServices } from '../services'
 import { sortByCreatedAtThenId } from './list-projects'
-import { buildQueryHandler } from './utils'
-import { validateSourceControlProject } from '../utils/command-storage'
-import { listRecords, withTransaction } from '../utils/storage'
+import { listRecords, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
+import { buildQueryHandler } from './utils/handler'
 
 const listRepositoriesInputPipe = v.object({ projectId: idPipe })
 export type Input = PipeOutput<typeof listRepositoriesInputPipe>

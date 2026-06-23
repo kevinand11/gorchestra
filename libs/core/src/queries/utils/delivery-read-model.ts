@@ -1,9 +1,9 @@
-import type { Delivery, SourceControlDeliveryTarget } from '../domain/delivery'
-import type { Repository } from '../domain/repository'
-import type { Slice } from '../domain/slice'
-import type { ResourceNotFoundError } from '../errors'
-import { notFound } from '../utils/storage'
-import type { Result as CoreResult } from '../utils/types'
+import type { Delivery, SourceControlDeliveryTarget } from '../../domain/delivery'
+import type { Repository } from '../../domain/repository'
+import type { Slice } from '../../domain/slice'
+import type { ResourceNotFoundError } from '../../errors'
+import { notFound } from '../../storage/helpers'
+import type { Result as CoreResult } from '../../utils/types'
 
 export type SourceControlDeliveryReadTarget = Omit<SourceControlDeliveryTarget, 'repositoryId'> & { repository: Repository }
 export type DeliveryReadTarget = SourceControlDeliveryReadTarget

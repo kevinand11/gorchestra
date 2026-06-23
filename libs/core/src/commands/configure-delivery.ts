@@ -7,8 +7,10 @@ import type { Delivery, DeliveryWorkState } from '../domain/delivery'
 import type { DeliveryWorkStateMismatchError, InvalidInputError, InvariantViolationError } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
-import { buildCommandHandler } from '../utils/command'
-import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
+import { buildDeliveryContext, getDeliveryState } from '../utils/delivery-context'
+import type { Result as CoreResult } from '../utils/types'
+import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
+import { buildCommandHandler } from './utils/handler'
 import {
 	auditStamp,
 	deliveryWorkStateMismatch,
@@ -17,10 +19,7 @@ import {
 	updateRecordValue,
 	validateSelectableModels,
 	withTransaction,
-} from '../utils/command-storage'
-import { buildDeliveryContext } from '../utils/delivery-context'
-import { getDeliveryState } from '../utils/delivery-context'
-import type { Result as CoreResult } from '../utils/types'
+} from './utils/storage'
 
 const configureDeliveryInputPipe = v.object({ deliveryId: idPipe, config: deliveryConfigPipe })
 export type Input = PipeOutput<typeof configureDeliveryInputPipe>
