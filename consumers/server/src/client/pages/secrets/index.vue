@@ -111,12 +111,14 @@ const {
 
 const currentSecretTab = computed(() => parseSecretTab(route.query.tab))
 const currentSecretTabLabel = computed(() => secretTabs.find((tab) => tab.value === currentSecretTab.value)?.label ?? 'All Secrets')
-const visibleSecrets = computed(() => secrets.value.filter((secret) => {
-	const tab = currentSecretTab.value
-	if (tab === 'active') return !secret.archived
-	if (tab === 'archived') return secret.archived
-	return true
-}))
+const visibleSecrets = computed(() =>
+	secrets.value.filter((secret) => {
+		const tab = currentSecretTab.value
+		if (tab === 'active') return !secret.archived
+		if (tab === 'archived') return secret.archived
+		return true
+	}),
+)
 const activeBadgeClass =
 	'inline-flex items-center gap-1 border border-success/50 bg-success/10 px-2 py-0.5 text-sz-micro font-semibold text-success'
 const archivedBadgeClass =

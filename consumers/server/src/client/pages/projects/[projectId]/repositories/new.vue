@@ -1,13 +1,9 @@
 <template>
-	<NuxtLayout
-		name="project"
-		:project-id="projectId"
-		:project-title="project?.title ?? 'Loading Project…'"
-		project-subtitle="Add a GitHub Repository.">
+	<NuxtLayout name="project" :project-id="projectId">
 		<section class="px-3 py-3">
 			<div v-if="isLoadingSetup && !hasLoadedSetup" class="text-dim">Loading Repository setup…</div>
 			<div v-else-if="setupError" class="text-error">{{ setupError }}</div>
-			<div v-else-if="project" class="grid max-w-[760px] gap-4">
+			<div v-else class="grid max-w-[760px] gap-4">
 				<p v-if="isRefreshingSetup" class="m-0 text-sz-helper text-dim">Refreshing Repository setup…</p>
 				<div v-if="activeSecrets.length === 0" class="border border-dashed border-dimmer p-5">
 					<h2 class="m-0 text-sz-subsection font-semibold">Create an active Secret first.</h2>
@@ -104,12 +100,14 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+
 import UiButton from '../../../../components/ui/UiButton.vue'
 import UiInput from '../../../../components/ui/UiInput.vue'
 import UiSelect from '../../../../components/ui/UiSelect.vue'
 import UiText from '../../../../components/ui/UiText.vue'
 import { useApiAction } from '../../../../composables/action-state'
-import { usePortfolioProjectQuery, usePortfolioSecretsQuery } from '../../../../composables/portfolio-resource-queries'
+import { usePortfolioSecretsQuery } from '../../../../composables/portfolio-resource-queries'
 import { useQueryCache } from '../../../../composables/query-cache'
 import { useSelectedPortfolio } from '../../../../composables/selected-portfolio'
 import { useServerApi } from '../../../../composables/useServerApi'
@@ -121,18 +119,10 @@ definePageMeta({ middleware: ['has-selection'] })
 const route = useRoute()
 const projectId = computed(() => route.params.projectId as string)
 const { portfolio } = useSelectedPortfolio()
-const portfolioId = computed(() => portfolio.value.id)
 const serverApi = useServerApi()
 const toasts = useToasts()
 const { queryKeys, invalidate } = useQueryCache()
 const repositoryCreationForm = new RepositoryCreationFormFactory()
-
-const {
-	data: project,
-	isLoading: isLoadingProject,
-	error: projectError,
-	hasExecuted: hasLoadedProject,
-} = usePortfolioProjectQuery(serverApi, projectId)
 
 const {
 	data: secrets,
@@ -143,14 +133,10 @@ const {
 
 const activeSecrets = computed(() => secrets.value.filter((secret) => !secret.archived))
 
-const isLoadingSetup = computed(
-	() => (isLoadingProject.value && !hasLoadedProject.value) || (isLoadingSecrets.value && !hasLoadedSecrets.value),
-)
-const setupError = computed(() => projectError.value || secretsError.value)
-const hasLoadedSetup = computed(() => hasLoadedProject.value && hasLoadedSecrets.value)
-const isRefreshingSetup = computed(
-	() => (isLoadingProject.value && hasLoadedProject.value) || (isLoadingSecrets.value && hasLoadedSecrets.value),
-)
+const isLoadingSetup = computed(() => isLoadingSecrets.value && !hasLoadedSecrets.value)
+const setupError = computed(() => secretsError.value)
+const hasLoadedSetup = computed(() => hasLoadedSecrets.value)
+const isRefreshingSetup = computed(() => isLoadingSecrets.value && hasLoadedSecrets.value)
 
 const {
 	isLoading: isCreatingRepository,
@@ -158,8 +144,8 @@ const {
 	execute: createRepository,
 } = useApiAction(async () => {
 	const repository = await serverApi.createRepository(projectId.value, repositoryCreationForm.toModel())
-	invalidate(queryKeys.portfolio.projects(portfolioId.value), { exact: true })
-	invalidate(queryKeys.portfolio.project(portfolioId.value, projectId.value))
+	invalidate(queryKeys.portfolio.projects(portfolio.value.id), { exact: true })
+	invalidate(queryKeys.portfolio.project(portfolio.value.id, projectId.value))
 	toasts.success({ title: 'Repository created.', body: `${repository.config.owner}/${repository.config.name}` })
 	await navigateTo(`/projects/${projectId.value}/repositories/${repository.id}`)
 })

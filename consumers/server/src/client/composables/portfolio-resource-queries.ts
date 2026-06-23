@@ -1,4 +1,4 @@
-import type { Ref } from 'vue'
+import { computed, type Ref } from 'vue'
 
 import { useFetchAction } from './action-state'
 import { useQueryCache } from './query-cache'

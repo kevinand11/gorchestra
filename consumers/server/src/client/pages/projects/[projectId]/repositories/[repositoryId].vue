@@ -1,13 +1,9 @@
 <template>
-	<NuxtLayout
-		name="project"
-		:project-id="projectId"
-		:project-title="project?.title ?? 'Loading Project…'"
-		:project-subtitle="projectSubtitle">
+	<NuxtLayout name="project" :project-id="projectId">
 		<section>
 			<div v-if="isLoadingRepositoryPage" class="border-b border-dimmer px-3 py-4 text-dim">Loading Repository…</div>
 			<div v-else-if="repositoryPageError" class="border-b border-dimmer px-3 py-4 text-error">{{ repositoryPageError }}</div>
-			<div v-else-if="repository && project" class="grid gap-0">
+			<div v-else-if="repository" class="grid gap-0">
 				<p v-if="isRefreshingRepositoryPage" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
 					Refreshing Repository details…
 				</p>
@@ -32,7 +28,7 @@
 							<div>
 								<h2 class="m-0 text-sz-subsection font-semibold">Repository Preflight</h2>
 								<p class="m-0 mt-1 text-sz-helper text-dim">
-									Check whether this GitHub Repository is ready for provider access.
+									Check whether Core can currently resolve and use this GitHub Repository configuration.
 								</p>
 							</div>
 							<UiButton :loading="isPreflightingRepository" @click="preflightRepository()">Run Preflight</UiButton>
@@ -52,14 +48,12 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from 'vue'
+
 import UiButton from '../../../../components/ui/UiButton.vue'
 import UiText from '../../../../components/ui/UiText.vue'
 import { useApiAction } from '../../../../composables/action-state'
-import {
-	usePortfolioProjectQuery,
-	usePortfolioRepositoryQuery,
-	usePortfolioSecretsQuery,
-} from '../../../../composables/portfolio-resource-queries'
+import { usePortfolioRepositoryQuery, usePortfolioSecretsQuery } from '../../../../composables/portfolio-resource-queries'
 import { useServerApi, type ServerApi } from '../../../../composables/useServerApi'
 import { useToasts } from '../../../../composables/toasts'
 import { formatDate } from '../../../../utils/time'
@@ -74,13 +68,6 @@ const toasts = useToasts()
 const projectId = computed(() => route.params.projectId as string)
 const repositoryId = computed(() => route.params.repositoryId as string)
 const preflightEvidence = ref<RepositoryPreflightEvidence | null>(null)
-
-const {
-	data: project,
-	isLoading: isLoadingProject,
-	error: projectError,
-	hasExecuted: hasLoadedProject,
-} = usePortfolioProjectQuery(serverApi, projectId)
 
 const {
 	data: repository,
@@ -113,18 +100,12 @@ const secretToneClass = computed(() => {
 	const secret = referencedSecret.value
 	return secret === undefined || secret.archived ? 'text-error' : 'text-success'
 })
-const projectSubtitle = computed(() => {
-	const config = repository.value?.config
-	return config === undefined ? 'Repository detail' : `${config.owner}/${config.name}`
-})
-
 const repositoryPageFetches = [
-	{ isLoading: isLoadingProject, hasExecuted: hasLoadedProject },
 	{ isLoading: isLoadingRepository, hasExecuted: hasLoadedRepository },
 	{ isLoading: isLoadingSecrets, hasExecuted: hasLoadedSecrets },
 ]
 const isLoadingRepositoryPage = computed(() => repositoryPageFetches.some((fetch) => fetch.isLoading.value && !fetch.hasExecuted.value))
-const repositoryPageError = computed(() => projectError.value || repositoryError.value || secretsError.value)
+const repositoryPageError = computed(() => repositoryError.value || secretsError.value)
 const isRefreshingRepositoryPage = computed(() => repositoryPageFetches.some((fetch) => fetch.isLoading.value && fetch.hasExecuted.value))
 
 const {

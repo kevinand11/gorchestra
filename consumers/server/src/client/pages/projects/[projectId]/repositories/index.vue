@@ -1,9 +1,5 @@
 <template>
-	<NuxtLayout
-		name="project"
-		:project-id="projectId"
-		:project-title="project?.title ?? 'Loading Project…'"
-		:project-subtitle="projectSubtitle">
+	<NuxtLayout name="project" :project-id="projectId">
 		<section>
 			<div class="flex min-h-11 items-center justify-between gap-3 border-b border-dimmer px-3 py-2">
 				<div class="flex overflow-hidden border border-dimmer">
@@ -96,9 +92,10 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+
 import { usePortfolioProjectQuery, usePortfolioSecretsQuery } from '../../../../composables/portfolio-resource-queries'
 import { useServerApi } from '../../../../composables/useServerApi'
-import { formatDate } from '../../../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
 
@@ -128,10 +125,6 @@ const {
 } = usePortfolioSecretsQuery(serverApi)
 
 const secretsById = computed(() => new Map(secrets.value.map((secret) => [secret.id, secret])))
-const projectSubtitle = computed(() => {
-	if (project.value === null) return 'Source-control Project'
-	return `Source-control Project · Created ${formatDate(project.value.created.at)}`
-})
 const repositoryIssues = computed(() => {
 	if (project.value === null) return []
 	return project.value.source.repositories.flatMap((repository) => {

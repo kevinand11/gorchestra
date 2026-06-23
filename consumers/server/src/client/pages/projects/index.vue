@@ -104,7 +104,6 @@ const projectTabs: Array<{ value: ProjectTab; label: string; shortLabel: string 
 
 const route = useRoute()
 const { portfolio } = useSelectedPortfolio()
-const portfolioId = computed(() => portfolio.value.id)
 const serverApi = useServerApi()
 const { queryKeys } = useQueryCache()
 const {
@@ -113,7 +112,7 @@ const {
 	error: projectsError,
 	hasExecuted: hasLoadedProjects,
 } = useFetchAction(() => serverApi.listProjects(), {
-	queryKey: queryKeys.portfolio.projects(portfolioId.value),
+	queryKey: queryKeys.portfolio.projects(portfolio.value.id),
 	initialData: [] as ListedProject[],
 })
 
