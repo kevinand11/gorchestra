@@ -1,5 +1,6 @@
 node_modules/
 dist/
 coverage/
+consumers/server/public/*.svg
 .husky/_/
 .trowel/

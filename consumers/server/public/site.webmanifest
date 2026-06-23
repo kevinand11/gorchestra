@@ -1,0 +1,17 @@
+{
+	"name": "Gorchestra",
+	"short_name": "Gorchestra",
+	"description": "Goal-oriented delivery orchestration",
+	"start_url": "/",
+	"display": "standalone",
+	"background_color": "#02050D",
+	"theme_color": "#060B16",
+	"icons": [
+		{
+			"src": "/app-icon.svg",
+			"sizes": "any",
+			"type": "image/svg+xml",
+			"purpose": "any maskable"
+		}
+	]
+}

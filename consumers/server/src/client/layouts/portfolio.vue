@@ -3,9 +3,7 @@
 		<template #topbar-left>
 			<slot name="topbar-left">
 				<NuxtLink to="/" class="flex min-w-0 items-center gap-2 text-body no-underline">
-					<span class="grid size-[26px] shrink-0 place-items-center border border-dimmer bg-canvas text-body">
-						<GorchestraMark :size="18" />
-					</span>
+					<GorchestraMark />
 					<span class="truncate font-semibold">Gorchestra</span>
 				</NuxtLink>
 			</slot>
