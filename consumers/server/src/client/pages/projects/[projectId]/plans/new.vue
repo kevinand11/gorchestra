@@ -31,9 +31,9 @@
 			</div>
 			<div class="border-b border-dimmer px-3 py-2 font-semibold">What gets created</div>
 			<div class="border-b border-dimmer px-3 py-3">
-				<strong class="block font-semibold">A Plan record</strong>
+				<strong class="block font-semibold">A Plan and Planning Agent Run</strong>
 				<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-					This slice creates the reusable Project-level Plan. Planning runs and Plan Outputs come later.
+					Creating a Plan also starts its Planning Agent Run record. Plan Output generation and review come later.
 				</p>
 			</div>
 		</template>

@@ -37,6 +37,7 @@ import type { CoreRuntime } from '../../runtime'
 import type { CoreStorage } from '../../services'
 import {
 	createRecord,
+	getPortfolioConfig,
 	getRecord,
 	getRequired,
 	getRequiredPortfolioConfig,
@@ -54,6 +55,7 @@ import type { Result } from '../../utils/types'
 export {
 	auditStamp,
 	createRecord,
+	getPortfolioConfig,
 	getRecord,
 	getRequired,
 	getRequiredPortfolioConfig,

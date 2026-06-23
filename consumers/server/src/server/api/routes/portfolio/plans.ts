@@ -56,7 +56,7 @@ function createSelectedProjectPlan(
 	cookies: PortfolioRequestCookies,
 	projectId: string,
 	input: CreatePlanRequest,
-): Promise<Domain.Plan.Plan> {
+): Promise<Domain.Plan.PlanWithPlanningAgentRun> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
 		const plan = await core.commands.createPlan(
 			{ projectId, title: input.title, config: null },

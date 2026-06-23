@@ -16,15 +16,17 @@
 						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
 							<span class="text-dim">Planning model</span><span>{{ planningModelLabel }}</span>
 						</div>
+						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
+							<span class="text-dim">Planning run</span><span>{{ planningRunLabel }}</span>
+						</div>
 					</div>
 				</section>
 
 				<section class="px-3 py-3">
 					<div class="border border-dimmer bg-card p-3">
-						<strong class="block font-semibold">Plan Outputs are not generated yet.</strong>
+						<strong class="block font-semibold">Planning Agent Run created.</strong>
 						<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-							Later Planning runs will produce Plan Outputs for review. Accepting a Plan Output will materialize Deliveries,
-							Slices, Memories, and Links for this Project.
+							This Plan has a Planning Agent Run record. Plan Output generation, review, and acceptance come in a later slice.
 						</p>
 					</div>
 				</section>
@@ -34,9 +36,9 @@
 		<template v-if="plan" #right>
 			<div class="border-b border-dimmer px-3 py-2 font-semibold">Planning status</div>
 			<div class="border-b border-dimmer px-3 py-3">
-				<strong class="block font-semibold">Record created</strong>
+				<strong class="block font-semibold">{{ planningRunTitle }}</strong>
 				<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-					This Plan can hold future Planning activity. No Plan Output is stored or pending in this slice.
+					Started {{ formatDate(plan.agentRun.started.at) }}. Plan Output generation is still deferred.
 				</p>
 			</div>
 			<div class="px-3 py-3">
@@ -70,5 +72,10 @@ const {
 	hasExecuted: hasLoadedPlan,
 } = usePortfolioPlanQuery(serverApi, projectId, planId)
 
-const planningModelLabel = computed(() => plan.value?.config?.value?.model?.planningModelId ?? 'Project or Portfolio default')
+const planningModelLabel = computed(() => plan.value?.agentRun.agent.modelId ?? 'Unknown')
+const planningRunLabel = computed(() => {
+	if (plan.value === null) return 'Unknown'
+	return plan.value.agentRun.completed === null ? 'In progress' : `Completed ${formatDate(plan.value.agentRun.completed.at)}`
+})
+const planningRunTitle = computed(() => (plan.value?.agentRun.completed === null ? 'Planning in progress' : 'Planning completed'))
 </script>

@@ -113,7 +113,7 @@ An observational validation operation that checks whether Core can currently res
 _Avoid_: Repository status, Repository health state, Repository readiness, access lifecycle event
 
 **Plan**:
-A Project-level reusable planning and discovery artifact. A Plan belongs to exactly one Project, captures research, analysis, requirements, and architectural discussion, and may produce zero, one, or many Plan Outputs for its Project.
+A Project-level reusable planning and discovery artifact. A Plan belongs to exactly one Project, captures research, analysis, requirements, and architectural discussion, starts exactly one Planning Agent Run when created, and may produce zero, one, or many Plan Outputs for its Project.
 _Avoid_: Grill
 
 **Plan Config**:
@@ -213,7 +213,7 @@ An Agent Type where Gorchestra's Core-owned agent loop uses a configured Model t
 _Avoid_: LLM Loop Agent, Pi Agent, Codex Agent, external harness, consumer agent adapter
 
 **Agent Run**:
-One concrete application-managed session where an agent carries out goal-directed work for Gorchestra. An Agent Run is the session boundary; do not introduce a separate Agent Run Session concept. An Agent Run records its agent as a discriminated value and records its purpose with the domain target it works on, such as a Slice execution purpose with Delivery, Slice, and an execution mode union. Initial Slice execution has no correction root; correction Slice execution records the Failure Chain root it is correcting. Agent Runs may gather information, use tools, edit code, run tests, produce outputs, or request human decisions. Core owns Agent Run behavior; an Agent Run does not own authoritative Delivery or Slice Work State.
+One concrete application-managed session where an agent carries out goal-directed work for Gorchestra. An Agent Run is the session boundary; do not introduce a separate Agent Run Session concept. An Agent Run records its agent as a discriminated value and records its purpose with the domain target it works on, such as a Planning purpose for a Plan or a Slice execution purpose with Delivery, Slice, and an execution mode union. Initial Slice execution has no correction root; correction Slice execution records the Failure Chain root it is correcting. Agent Runs may gather information, use tools, edit code, run tests, produce outputs, or request human decisions. Core owns Agent Run behavior; an Agent Run does not own authoritative Delivery or Slice Work State.
 _Avoid_: Mission, Turn, AgentAttempt, Agent Run Session, actor
 
 **Agent Run Sandbox**:

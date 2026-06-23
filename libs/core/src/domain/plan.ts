@@ -1,5 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import type { AgentRun } from './agent-run'
 import { auditStampPipe, freeFormStringPipe, idPipe, nonEmptyTrimmedStringPipe } from './commons'
 import { planConfigRecordPipe, type PlanConfig, type PlanConfigRecord } from './config'
 import { graphNodeRefPipe } from './graph'
@@ -78,5 +79,7 @@ export const planPipe = v.object({
 	created: auditStampPipe,
 })
 export type Plan = PipeOutput<typeof planPipe>
+export type PlanningAgentRun = Omit<AgentRun, 'purpose'> & { purpose: Extract<AgentRun['purpose'], { type: 'planning' }> }
+export type PlanWithPlanningAgentRun = Plan & { agentRun: PlanningAgentRun }
 
 export type { PlanConfig, PlanConfigRecord }

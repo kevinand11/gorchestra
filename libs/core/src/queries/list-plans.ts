@@ -1,10 +1,17 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe } from '../domain/commons'
-import type { Plan } from '../domain/plan'
-import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
+import type { Plan, PlanWithPlanningAgentRun } from '../domain/plan'
+import type {
+	InvalidCoreServiceOutputError,
+	InvalidInputError,
+	InvariantViolationError,
+	ResourceNotFoundError,
+	StorageOperationFailedError,
+} from '../errors'
+import type { CoreServices, CoreStorage } from '../services'
 import { sortByCreatedAtThenId } from './list-projects'
+import { planReadModels } from './plan-read-model'
 import { getRequired, listRecords, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
@@ -12,22 +19,43 @@ import { buildQueryHandler } from './utils/handler'
 const listPlansInputPipe = v.object({ projectId: idPipe })
 export type Input = PipeOutput<typeof listPlansInputPipe>
 
-export type Result = Plan[]
-export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
+export type Result = PlanWithPlanningAgentRun[]
+export type Error =
+	| InvalidInputError
+	| InvalidCoreServiceOutputError
+	| ResourceNotFoundError
+	| StorageOperationFailedError
+	| InvariantViolationError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createListPlansQuery(options: CoreServices): Operation {
 	return buildQueryHandler('listPlans', listPlansInputPipe, (input) =>
-		withTransaction(options, async (storage) => {
-			const project = await getRequired('project', storage, input.projectId)
-			if (!project.ok) return project
-
-			const plans = await listRecords('plan', storage, {
-				where: (filter, fields) => filter.eq(fields.projectId, project.value.id),
-			})
-			return plans.ok ? { ok: true, value: sortByCreatedAtThenId(plans.value) } : plans
-		}),
+		withTransaction(options, (storage) => listProjectPlanReadModels(storage, input.projectId)),
 	)
+}
+
+async function listProjectPlanReadModels(
+	storage: CoreStorage,
+	projectId: string,
+): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+	const project = await getRequired('project', storage, projectId)
+	return project.ok ? listPlansForProject(storage, project.value.id) : project
+}
+
+async function listPlansForProject(
+	storage: CoreStorage,
+	projectId: string,
+): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+	const plans = await listRecords('plan', storage, { where: (filter, fields) => filter.eq(fields.projectId, projectId) })
+	return plans.ok ? listPlanReadModelsForPlans(storage, plans.value) : plans
+}
+
+async function listPlanReadModelsForPlans(
+	storage: CoreStorage,
+	plans: Plan[],
+): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+	const agentRuns = await listRecords('agent-run', storage)
+	return agentRuns.ok ? planReadModels(sortByCreatedAtThenId(plans), agentRuns.value) : agentRuns
 }
 
 if (import.meta.vitest) {
@@ -35,12 +63,17 @@ if (import.meta.vitest) {
 	const { createTestCoreServices, seedProject, stamp } = await import('../utils/test-helpers')
 
 	describe('listPlans query', () => {
+		registerInputBoundaryTests()
+		registerProjectBoundaryTests()
+		registerPlanReadModelTests()
+		registerStorageFailureTests()
+	})
+
+	function registerInputBoundaryTests() {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.projects.fail.get = true
-			const query = createListPlansQuery(options)
-
-			const result = await query({ projectId: '' })
+			const result = await createListPlansQuery(options)({ projectId: '' })
 
 			expect(result).toMatchObject({
 				ok: false,
@@ -48,55 +81,82 @@ if (import.meta.vitest) {
 			})
 			expect(options.transactionCalls()).toBe(0)
 		})
+	}
 
+	function registerProjectBoundaryTests() {
 		it('returns not-found when the target Project does not exist', async () => {
-			const query = createListPlansQuery(createTestCoreServices())
-
-			const result = await query({ projectId: 'project-1' })
+			const result = await createListPlansQuery(createTestCoreServices())({ projectId: 'project-1' })
 
 			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'project', id: 'project-1' } })
 		})
+	}
 
-		it('lists Plans for one Project in creation order', async () => {
-			const options = createTestCoreServices()
-			seedProject(options.tx, 'project-1')
-			seedProject(options.tx, 'project-2')
-			options.tx.plans.records.set(
-				'plan-b',
-				plan({ id: 'plan-b', projectId: 'project-1', title: 'Later', createdAt: '2026-06-10T00:00:00.000Z' }),
-			)
-			options.tx.plans.records.set(
-				'plan-a',
-				plan({ id: 'plan-a', projectId: 'project-1', title: 'Earlier', createdAt: '2026-06-09T00:00:00.000Z' }),
-			)
-			options.tx.plans.records.set('plan-other', plan({ id: 'plan-other', projectId: 'project-2', title: 'Other' }))
-			const query = createListPlansQuery(options)
+	function registerPlanReadModelTests() {
+		it('lists Plans with Planning Agent Runs for one Project in creation order', async () => {
+			const records = seedPlanListRecords()
 
-			const result = await query({ projectId: 'project-1' })
+			const result = await createListPlansQuery(records.options)({ projectId: 'project-1' })
 
 			expect(result).toEqual({
 				ok: true,
 				value: [
-					plan({ id: 'plan-a', projectId: 'project-1', title: 'Earlier', createdAt: '2026-06-09T00:00:00.000Z' }),
-					plan({ id: 'plan-b', projectId: 'project-1', title: 'Later', createdAt: '2026-06-10T00:00:00.000Z' }),
+					{ ...records.planA, agentRun: records.runA },
+					{ ...records.planB, agentRun: records.runB },
 				],
 			})
 		})
 
-		it('returns storage errors when Plan reads fail', async () => {
+		it('returns invariant violations when a listed Plan is missing its Planning Agent Run', async () => {
 			const options = createTestCoreServices()
 			seedProject(options.tx, 'project-1')
-			options.tx.plans.fail.list = true
-			const query = createListPlansQuery(options)
+			options.tx.plans.records.set('plan-1', plan({ id: 'plan-1', projectId: 'project-1', title: 'Plan' }))
 
-			const result = await query({ projectId: 'project-1' })
+			const result = await createListPlansQuery(options)({ projectId: 'project-1' })
 
 			expect(result).toEqual({
 				ok: false,
-				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'plan' } },
+				error: { type: 'invariant-violation', message: 'Plan plan-1 expected exactly one Planning Agent Run but found 0.' },
 			})
 		})
-	})
+	}
+
+	function registerStorageFailureTests() {
+		it('returns storage errors when Plan or Agent Run reads fail', async () => {
+			await expect(createListPlansQuery(planListReadFailure('plan'))({ projectId: 'project-1' })).resolves.toEqual({
+				ok: false,
+				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'plan' } },
+			})
+			await expect(createListPlansQuery(planListReadFailure('agent-run'))({ projectId: 'project-1' })).resolves.toEqual({
+				ok: false,
+				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'agent-run' } },
+			})
+		})
+	}
+
+	function seedPlanListRecords() {
+		const options = createTestCoreServices()
+		seedProject(options.tx, 'project-1')
+		seedProject(options.tx, 'project-2')
+		const planB = plan({ id: 'plan-b', projectId: 'project-1', title: 'Later', createdAt: '2026-06-10T00:00:00.000Z' })
+		const planA = plan({ id: 'plan-a', projectId: 'project-1', title: 'Earlier', createdAt: '2026-06-09T00:00:00.000Z' })
+		options.tx.plans.records.set('plan-b', planB)
+		options.tx.plans.records.set('plan-a', planA)
+		options.tx.plans.records.set('plan-other', plan({ id: 'plan-other', projectId: 'project-2', title: 'Other' }))
+		const runA = planningRun('agent-run-a', 'plan-a')
+		const runB = planningRun('agent-run-b', 'plan-b')
+		options.tx.agentRuns.records.set(runA.id, runA)
+		options.tx.agentRuns.records.set(runB.id, runB)
+		options.tx.agentRuns.records.set('agent-run-other', planningRun('agent-run-other', 'plan-other'))
+		return { options, planA, planB, runA, runB }
+	}
+
+	function planListReadFailure(resource: 'plan' | 'agent-run') {
+		const options = createTestCoreServices()
+		seedProject(options.tx, 'project-1')
+		if (resource === 'plan') options.tx.plans.fail.list = true
+		if (resource === 'agent-run') options.tx.agentRuns.fail.list = true
+		return options
+	}
 
 	function plan(input: { id: string; projectId: string; title: string; createdAt?: string }): Plan {
 		return {
@@ -105,6 +165,16 @@ if (import.meta.vitest) {
 			title: input.title,
 			config: null,
 			created: { origin: 'imported', at: input.createdAt ?? stamp.at },
+		}
+	}
+
+	function planningRun(id: string, planId: string) {
+		return {
+			id,
+			agent: { type: 'model' as const, modelId: 'model-1' },
+			purpose: { type: 'planning' as const, planId },
+			started: { at: stamp.at },
+			completed: null,
 		}
 	}
 }

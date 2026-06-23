@@ -34,6 +34,9 @@ export function throwSelectionRequired(): never {
 
 const badRequestCoreErrorMessages: Record<string, string> = {
 	'invalid-input': 'Invalid Core input',
+	'agent-run-model-unresolved': 'Planning Model is not configured',
+	'archived-model-reference': 'Selected Model is archived',
+	'archived-model-provider-reference': 'Selected Model Provider is archived',
 	'duplicate-repository-target': 'Repository target already exists for this Project',
 	'project-source-type-mismatch': 'Project does not support source control Repositories',
 	'secret-not-active': 'Repository access Secret is not active',

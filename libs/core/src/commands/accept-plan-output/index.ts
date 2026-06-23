@@ -176,16 +176,116 @@ function resultValue<TValue>(result: CoreResult<TValue, unknown>): TValue {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedProject, seedSecret } =
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedProject, seedSecret, seedSelectableModel, stamp } =
 		await import('../../utils/test-helpers')
 	const { createCreatePlanCommand } = await import('../create-plan')
 	const { createCreateRepositoryCommand } = await import('../create-repository')
 
+	const acceptedPlanOutputInput = {
+		planId: 'plan-1',
+		output: {
+			proposedDeliveries: [
+				{
+					proposedDeliveryKey: 'api',
+					title: 'Build API',
+					target: { type: 'source-control' as const, repositoryId: 'repository-1', targetBranch: 'main' },
+					dependsOnDeliveryIds: [],
+					dependsOnProposedDeliveryKeys: [],
+					slices: [
+						{
+							proposedSliceKey: 'schema',
+							title: 'Schema',
+							instruction: { body: 'Build schema.' },
+							dependsOnProposedSliceKeys: [],
+						},
+						{
+							proposedSliceKey: 'route',
+							title: 'Route',
+							instruction: { body: 'Build route.' },
+							dependsOnProposedSliceKeys: ['schema'],
+						},
+					],
+				},
+			],
+			proposedMemories: [
+				{
+					proposedMemoryKey: 'constraint',
+					title: 'Constraint',
+					body: 'Use existing style.',
+					type: 'constraint' as const,
+					links: [{ type: 'supports' as const, to: { type: 'proposed-delivery' as const, proposedDeliveryKey: 'api' } }],
+				},
+			],
+		},
+	}
+
+	const expectedMaterializedPlanOutput = {
+		ok: true,
+		value: {
+			deliveries: [
+				{
+					id: 'delivery-1',
+					projectId: 'project-1',
+					planId: 'plan-1',
+					title: 'Build API',
+					target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
+					config: null,
+					accepted: localStamp(),
+					queued: null,
+					closed: null,
+				},
+			],
+			slices: [
+				{
+					id: 'slice-1',
+					deliveryId: 'delivery-1',
+					order: 0,
+					title: 'Schema',
+					instruction: { body: 'Build schema.' },
+					accepted: localStamp(),
+				},
+				{
+					id: 'slice-2',
+					deliveryId: 'delivery-1',
+					order: 1,
+					title: 'Route',
+					instruction: { body: 'Build route.' },
+					accepted: localStamp(),
+				},
+			],
+			memories: [{ id: 'memory-1', title: 'Constraint', body: 'Use existing style.', type: 'constraint', created: localStamp() }],
+			links: [
+				{
+					id: 'link-1',
+					type: 'depends-on',
+					from: { type: 'slice', id: 'slice-2' },
+					to: { type: 'slice', id: 'slice-1' },
+					created: localStamp(),
+					archivePeriods: [],
+				},
+				{
+					id: 'link-2',
+					type: 'supports',
+					from: { type: 'memory', id: 'memory-1' },
+					to: { type: 'delivery', id: 'delivery-1' },
+					created: localStamp(),
+					archivePeriods: [],
+				},
+				{
+					id: 'link-3',
+					type: 'produced',
+					from: { type: 'plan', id: 'plan-1' },
+					to: { type: 'memory', id: 'memory-1' },
+					created: localStamp(),
+					archivePeriods: [],
+				},
+			],
+		},
+	}
+
 	describe('acceptPlanOutput command', () => {
 		it('validates input before reading storage', async () => {
-			const command = createAcceptPlanOutputCommand(createTestCoreRuntime())
-
-			const result = await command({} as never, context)
+			const result = await createAcceptPlanOutputCommand(createTestCoreRuntime())({} as never, context)
 
 			expect(result).toMatchObject({
 				ok: false,
@@ -194,122 +294,45 @@ if (import.meta.vitest) {
 		})
 
 		it('materializes deliveries, ordered slices, memories, dependencies, and Plan-produced Memory links', async () => {
-			const options = createTestCoreServices()
-			seedProject(options.tx, 'project-1')
-			seedSecret(options.tx, 'secret-1')
-			await createCreatePlanCommand(createTestCoreRuntime(options))({ projectId: 'project-1', title: 'Plan', config: null }, context)
-			await createCreateRepositoryCommand(createTestCoreRuntime(options))(
-				{ projectId: 'project-1', config: { provider: 'github', owner: 'Org', name: 'Repo', secretId: 'secret-1' } },
-				context,
-			)
-			const command = createAcceptPlanOutputCommand(createTestCoreRuntime(options))
+			const command = await acceptPlanOutputCommandFixture()
 
-			const result = await command(
-				{
-					planId: 'plan-1',
-					output: {
-						proposedDeliveries: [
-							{
-								proposedDeliveryKey: 'api',
-								title: 'Build API',
-								target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
-								dependsOnDeliveryIds: [],
-								dependsOnProposedDeliveryKeys: [],
-								slices: [
-									{
-										proposedSliceKey: 'schema',
-										title: 'Schema',
-										instruction: { body: 'Build schema.' },
-										dependsOnProposedSliceKeys: [],
-									},
-									{
-										proposedSliceKey: 'route',
-										title: 'Route',
-										instruction: { body: 'Build route.' },
-										dependsOnProposedSliceKeys: ['schema'],
-									},
-								],
-							},
-						],
-						proposedMemories: [
-							{
-								proposedMemoryKey: 'constraint',
-								title: 'Constraint',
-								body: 'Use existing style.',
-								type: 'constraint',
-								links: [{ type: 'supports', to: { type: 'proposed-delivery', proposedDeliveryKey: 'api' } }],
-							},
-						],
-					},
-				},
-				context,
-			)
+			const result = await command(acceptedPlanOutputInput, context)
 
-			expect(result).toEqual({
-				ok: true,
-				value: {
-					deliveries: [
-						{
-							id: 'delivery-1',
-							projectId: 'project-1',
-							planId: 'plan-1',
-							title: 'Build API',
-							target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
-							config: null,
-							accepted: localStamp(),
-							queued: null,
-							closed: null,
-						},
-					],
-					slices: [
-						{
-							id: 'slice-1',
-							deliveryId: 'delivery-1',
-							order: 0,
-							title: 'Schema',
-							instruction: { body: 'Build schema.' },
-							accepted: localStamp(),
-						},
-						{
-							id: 'slice-2',
-							deliveryId: 'delivery-1',
-							order: 1,
-							title: 'Route',
-							instruction: { body: 'Build route.' },
-							accepted: localStamp(),
-						},
-					],
-					memories: [
-						{ id: 'memory-1', title: 'Constraint', body: 'Use existing style.', type: 'constraint', created: localStamp() },
-					],
-					links: [
-						{
-							id: 'link-1',
-							type: 'depends-on',
-							from: { type: 'slice', id: 'slice-2' },
-							to: { type: 'slice', id: 'slice-1' },
-							created: localStamp(),
-							archivePeriods: [],
-						},
-						{
-							id: 'link-2',
-							type: 'supports',
-							from: { type: 'memory', id: 'memory-1' },
-							to: { type: 'delivery', id: 'delivery-1' },
-							created: localStamp(),
-							archivePeriods: [],
-						},
-						{
-							id: 'link-3',
-							type: 'produced',
-							from: { type: 'plan', id: 'plan-1' },
-							to: { type: 'memory', id: 'memory-1' },
-							created: localStamp(),
-							archivePeriods: [],
-						},
-					],
-				},
-			})
+			expect(result).toEqual(expectedMaterializedPlanOutput)
 		})
 	})
+
+	async function acceptPlanOutputCommandFixture() {
+		const options = createTestCoreServices()
+		seedProject(options.tx, 'project-1')
+		seedSecret(options.tx, 'secret-1')
+		seedSelectableModel(options.tx, 'model-1')
+		options.tx.portfolioConfig.record = portfolioConfig()
+		const planCreation = await createCreatePlanCommand(createTestCoreRuntime(options))(
+			{ projectId: 'project-1', title: 'Plan', config: null },
+			context,
+		)
+		expect(planCreation).toMatchObject({ ok: true })
+		await createCreateRepositoryCommand(createTestCoreRuntime(options))(
+			{ projectId: 'project-1', config: { provider: 'github', owner: 'Org', name: 'Repo', secretId: 'secret-1' } },
+			context,
+		)
+		return createAcceptPlanOutputCommand(createTestCoreRuntime(options))
+	}
+
+	function portfolioConfig() {
+		return {
+			configured: stamp,
+			value: {
+				model: {
+					defaultModelId: 'model-1',
+					planningModelId: null,
+					revisionPlanningModelId: null,
+					executionModelId: null,
+					revisionExecutionModelId: null,
+				},
+				work: null,
+			},
+		}
+	}
 }

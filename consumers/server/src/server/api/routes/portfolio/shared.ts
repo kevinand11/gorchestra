@@ -26,6 +26,7 @@ const repositoryConfigRequestSchema = v.discriminate((value) => value.provider, 
 export const createRepositoryRequestSchema = v.object({ config: repositoryConfigRequestSchema })
 
 const localActorRefResponseSchema = v.object({ type: v.string(), id: v.string() })
+const runtimeRecordResponseSchema = v.object({ at: isoDateTimePipe })
 export const auditStampResponseSchema = v.discriminate((value) => value.origin, {
 	local: v.object({
 		origin: v.is('local' as const),
@@ -96,12 +97,22 @@ export const listedProjectResponseSchema = v.object({
 	created: auditStampResponseSchema,
 })
 
+const modelAgentResponseSchema = v.object({ type: v.is('model' as const), modelId: idPipe })
+const planningAgentRunResponseSchema = v.object({
+	id: idPipe,
+	agent: modelAgentResponseSchema,
+	purpose: v.object({ type: v.is('planning' as const), planId: idPipe }),
+	started: runtimeRecordResponseSchema,
+	completed: v.nullable(runtimeRecordResponseSchema),
+})
+
 export const planResponseSchema = v.object({
 	id: idPipe,
 	projectId: idPipe,
 	title: nonEmptyStringPipe,
 	config: v.nullable(planConfigRecordResponseSchema),
 	created: auditStampResponseSchema,
+	agentRun: planningAgentRunResponseSchema,
 })
 
 const sourceControlDeliveryTargetResponseSchema = v.object({

@@ -15,7 +15,7 @@
 			<div v-else-if="plans.length === 0" class="m-3 border border-dashed border-dimmer p-5">
 				<h2 class="m-0 text-sz-subsection font-semibold">No Plans yet.</h2>
 				<p class="m-0 mt-1 max-w-[680px] text-sz-helper leading-5 text-dim">
-					Plans capture Planning context for this Project. Plan Output generation is not available in this slice.
+					Plans start Planning Agent Runs for this Project. Plan Output generation is not available in this slice.
 				</p>
 				<NuxtLink
 					class="mt-4 inline-flex border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline"
@@ -35,7 +35,7 @@
 						<span class="text-sz-helper text-dim">Created {{ formatDate(plan.created.at) }}</span>
 					</span>
 					<span class="justify-self-start border border-dimmer bg-secondary px-2 py-0.5 text-sz-micro font-semibold text-dim">
-						Planning
+						{{ plan.agentRun.completed === null ? 'Planning' : 'Completed' }}
 					</span>
 				</NuxtLink>
 			</div>
