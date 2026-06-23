@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+import { useState } from 'nuxt/app'
 
 export type ToastKind = 'success' | 'error' | 'info'
 
@@ -15,10 +15,11 @@ type ToastInput = {
 	durationMs?: number
 }
 
-export const useToastStore = defineStore('toasts', () => {
-	const toasts = ref<ToastMessage[]>([])
-	const dismissTimers = new Map<string, number>()
-	let nextToastId = 0
+const dismissTimers = new Map<string, number>()
+
+export function useToasts() {
+	const toasts = useState<ToastMessage[]>('gorchestra.toasts', () => [])
+	const nextToastId = useState<number>('gorchestra.toasts.next-id', () => 0)
 
 	function success(input: ToastInput): ToastMessage {
 		return add('success', input)
@@ -43,9 +44,9 @@ export const useToastStore = defineStore('toasts', () => {
 	}
 
 	function add(kind: ToastKind, input: ToastInput): ToastMessage {
-		nextToastId += 1
+		nextToastId.value += 1
 		const toast: ToastMessage = {
-			id: `toast-${nextToastId}`,
+			id: `toast-${nextToastId.value}`,
 			kind,
 			title: input.title,
 			...(input.body === undefined ? {} : { body: input.body }),
@@ -61,12 +62,12 @@ export const useToastStore = defineStore('toasts', () => {
 		dismissTimers.set(id, timer)
 	}
 
-	function clearDismissTimer(id: string): void {
-		const timer = dismissTimers.get(id)
-		if (timer === undefined) return
-		window.clearTimeout(timer)
-		dismissTimers.delete(id)
-	}
-
 	return { toasts, success, error, info, dismiss, clear }
-})
+}
+
+function clearDismissTimer(id: string): void {
+	const timer = dismissTimers.get(id)
+	if (timer === undefined) return
+	window.clearTimeout(timer)
+	dismissTimers.delete(id)
+}

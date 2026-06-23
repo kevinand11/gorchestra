@@ -69,13 +69,13 @@ import { useQueryCache } from '../../composables/query-cache'
 import { useSelectedPortfolio } from '../../composables/selected-portfolio'
 import { useServerApi } from '../../composables/useServerApi'
 import { SecretCreationFormFactory } from '../../forms/secret'
-import { useToastStore } from '../../stores/toasts'
+import { useToasts } from '../../composables/toasts'
 
 definePageMeta({ middleware: ['has-selection'] })
 
 const { portfolio } = useSelectedPortfolio()
 const serverApi = useServerApi()
-const toastStore = useToastStore()
+const toasts = useToasts()
 const { queryKeys, invalidate } = useQueryCache()
 const secretCreationForm = new SecretCreationFormFactory()
 
@@ -86,7 +86,7 @@ const {
 } = useApiAction(async () => {
 	const secret = await serverApi.createSecret(secretCreationForm.toModel())
 	invalidate(queryKeys.portfolio.secrets(portfolio.value.id), { exact: true })
-	toastStore.success({ title: 'Secret created.', body: secret.name })
+	toasts.success({ title: 'Secret created.', body: secret.name })
 	await navigateTo(`/secrets/${secret.id}`)
 })
 </script>

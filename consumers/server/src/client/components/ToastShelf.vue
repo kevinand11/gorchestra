@@ -6,7 +6,7 @@
 		aria-live="polite"
 		aria-label="Notifications">
 		<article
-			v-for="toast in toastStore.toasts"
+			v-for="toast in toastMessages"
 			:key="toast.id"
 			class="pointer-events-auto rounded-card border bg-card p-4 text-card-contrast shadow-panel"
 			:class="kindClass(toast.kind)"
@@ -20,7 +20,7 @@
 					type="button"
 					class="rounded-pill px-2 text-dim transition hover:text-current"
 					:aria-label="`Dismiss notification: ${toast.title}`"
-					@click="toastStore.dismiss(toast.id)">
+					@click="dismiss(toast.id)">
 					×
 				</button>
 			</div>
@@ -31,9 +31,9 @@
 <script setup lang="ts">
 import UiHeading from './ui/UiHeading.vue'
 import UiText from './ui/UiText.vue'
-import { useToastStore, type ToastKind } from '../stores/toasts'
+import { useToasts, type ToastKind } from '../composables/toasts'
 
-const toastStore = useToastStore()
+const { toasts: toastMessages, dismiss } = useToasts()
 
 function kindClass(kind: ToastKind): string {
 	const classes = {

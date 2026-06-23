@@ -129,7 +129,7 @@ import UiText from '../components/ui/UiText.vue'
 import { useApiAction } from '../composables/action-state'
 import { isAuthenticatedSession, useAuthState } from '../composables/auth-state'
 import { EmailOtpChallengeFormFactory, EmailOtpVerificationFormFactory } from '../forms/auth'
-import { useToastStore } from '../stores/toasts'
+import { useToasts } from '../composables/toasts'
 
 definePageMeta({
 	middleware: [
@@ -142,7 +142,7 @@ definePageMeta({
 })
 
 const authState = useAuthState()
-const toastStore = useToastStore()
+const toasts = useToasts()
 
 const emailOtpChallengeForm = new EmailOtpChallengeFormFactory()
 const emailOtpVerificationForm = new EmailOtpVerificationFormFactory()
@@ -164,7 +164,7 @@ const {
 	await authState.requestEmailOtp(input.email)
 	emailOtpVerificationForm.loadEntity({ email: input.email, code: '' })
 	challengeRequested.value = true
-	toastStore.success({ title: 'Sign-in code sent.', body: 'Check your email for the six-digit code.' })
+	toasts.success({ title: 'Sign-in code sent.', body: 'Check your email for the six-digit code.' })
 })
 
 const {

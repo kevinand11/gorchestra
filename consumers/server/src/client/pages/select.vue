@@ -134,14 +134,14 @@ import { useAuthState, useSelectionAccess } from '../composables/auth-state'
 import { useQueryCache } from '../composables/query-cache'
 import { useServerApi, type ServerApi } from '../composables/useServerApi'
 import { ProvisionWorkspaceFormFactory } from '../forms/workspace'
-import { useToastStore } from '../stores/toasts'
+import { useToasts } from '../composables/toasts'
 
 definePageMeta({ middleware: ['is-authenticated'] })
 
 type WorkspacePortfolios = Awaited<ReturnType<ServerApi['listWorkspacePortfolios']>>
 
 const authState = useAuthState()
-const toastStore = useToastStore()
+const toasts = useToasts()
 const serverApi = useServerApi()
 const queryCache = useQueryCache()
 const { queryKeys } = queryCache
@@ -166,7 +166,7 @@ const {
 	execute: provisionWorkspace,
 } = useApiAction(async () => {
 	await authState.provisionDefaultWorkspace(provisionWorkspaceForm.toModel())
-	toastStore.success({ title: 'Workspace created and Portfolio selected.' })
+	toasts.success({ title: 'Workspace created and Portfolio selected.' })
 	await navigateTo('/projects')
 })
 
@@ -176,7 +176,7 @@ const {
 	execute: executeSelectPortfolio,
 } = useApiAction(async (workspaceId: string, portfolioId: string) => {
 	await authState.setSelection(workspaceId, portfolioId)
-	toastStore.success({ title: 'Portfolio selected.' })
+	toasts.success({ title: 'Portfolio selected.' })
 	await navigateTo('/projects')
 })
 
@@ -191,7 +191,7 @@ const {
 	execute: clearSelection,
 } = useApiAction(async () => {
 	await authState.clearSelection()
-	toastStore.info({ title: 'Selection cleared.' })
+	toasts.info({ title: 'Selection cleared.' })
 })
 
 const {

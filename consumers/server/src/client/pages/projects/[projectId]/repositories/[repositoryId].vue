@@ -61,7 +61,7 @@ import {
 	usePortfolioSecretsQuery,
 } from '../../../../composables/portfolio-resource-queries'
 import { useServerApi, type ServerApi } from '../../../../composables/useServerApi'
-import { useToastStore } from '../../../../stores/toasts'
+import { useToasts } from '../../../../composables/toasts'
 import { formatDate } from '../../../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
@@ -70,7 +70,7 @@ type RepositoryPreflightEvidence = Awaited<ReturnType<ServerApi['preflightReposi
 
 const route = useRoute()
 const serverApi = useServerApi()
-const toastStore = useToastStore()
+const toasts = useToasts()
 const projectId = computed(() => route.params.projectId as string)
 const repositoryId = computed(() => route.params.repositoryId as string)
 const preflightEvidence = ref<RepositoryPreflightEvidence | null>(null)
@@ -134,7 +134,7 @@ const {
 } = useApiAction(async () => {
 	const evidence = await serverApi.preflightRepository(projectId.value, repositoryId.value)
 	preflightEvidence.value = evidence
-	if (evidence.passed) toastStore.success({ title: 'Repository preflight passed.', body: evidence.summary })
-	else toastStore.info({ title: 'Repository preflight failed.', body: evidence.summary })
+	if (evidence.passed) toasts.success({ title: 'Repository preflight passed.', body: evidence.summary })
+	else toasts.info({ title: 'Repository preflight failed.', body: evidence.summary })
 })
 </script>

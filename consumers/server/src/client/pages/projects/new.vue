@@ -58,13 +58,13 @@ import { useQueryCache } from '../../composables/query-cache'
 import { useSelectedPortfolio } from '../../composables/selected-portfolio'
 import { useServerApi } from '../../composables/useServerApi'
 import { ProjectCreationFormFactory } from '../../forms/project'
-import { useToastStore } from '../../stores/toasts'
+import { useToasts } from '../../composables/toasts'
 
 definePageMeta({ middleware: ['has-selection'] })
 
 const { portfolio } = useSelectedPortfolio()
 const serverApi = useServerApi()
-const toastStore = useToastStore()
+const toasts = useToasts()
 const queryCache = useQueryCache()
 const { queryKeys } = queryCache
 const projectCreationForm = new ProjectCreationFormFactory()
@@ -76,7 +76,7 @@ const {
 } = useApiAction(async () => {
 	const project = await serverApi.createProject(projectCreationForm.toModel())
 	queryCache.invalidate(queryKeys.portfolio.projects(portfolio.value.id), { exact: true })
-	toastStore.success({ title: 'Project created.', body: project.title })
+	toasts.success({ title: 'Project created.', body: project.title })
 	await navigateTo(`/projects/${project.id}`)
 })
 </script>

@@ -114,7 +114,7 @@ import { useQueryCache } from '../../../../composables/query-cache'
 import { useSelectedPortfolio } from '../../../../composables/selected-portfolio'
 import { useServerApi } from '../../../../composables/useServerApi'
 import { RepositoryCreationFormFactory } from '../../../../forms/repository'
-import { useToastStore } from '../../../../stores/toasts'
+import { useToasts } from '../../../../composables/toasts'
 
 definePageMeta({ middleware: ['has-selection'] })
 
@@ -123,7 +123,7 @@ const projectId = computed(() => route.params.projectId as string)
 const { portfolio } = useSelectedPortfolio()
 const portfolioId = computed(() => portfolio.value.id)
 const serverApi = useServerApi()
-const toastStore = useToastStore()
+const toasts = useToasts()
 const { queryKeys, invalidate } = useQueryCache()
 const repositoryCreationForm = new RepositoryCreationFormFactory()
 
@@ -160,7 +160,7 @@ const {
 	const repository = await serverApi.createRepository(projectId.value, repositoryCreationForm.toModel())
 	invalidate(queryKeys.portfolio.projects(portfolioId.value), { exact: true })
 	invalidate(queryKeys.portfolio.project(portfolioId.value, projectId.value))
-	toastStore.success({ title: 'Repository created.', body: `${repository.config.owner}/${repository.config.name}` })
+	toasts.success({ title: 'Repository created.', body: `${repository.config.owner}/${repository.config.name}` })
 	await navigateTo(`/projects/${projectId.value}/repositories/${repository.id}`)
 })
 </script>
