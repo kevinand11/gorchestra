@@ -1,5 +1,3 @@
-import { navigateTo } from 'nuxt/app'
-
 import { useFetchAction } from './action-state'
 import { useQueryCache } from './query-cache'
 import { useServerApi, type ServerApi } from './useServerApi'

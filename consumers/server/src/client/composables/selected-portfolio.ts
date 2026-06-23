@@ -1,4 +1,4 @@
-import { computed } from '@vue/reactivity'
+import { computed } from 'vue'
 
 import { isSelectedPortfolio, useSelectionAccess } from './auth-state'
 

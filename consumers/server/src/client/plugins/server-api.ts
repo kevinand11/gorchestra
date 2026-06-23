@@ -1,5 +1,3 @@
-import { defineNuxtPlugin, navigateTo, tryUseNuxtApp, useRequestHeaders, useRequestURL } from 'nuxt/app'
-
 import { useQueryCache } from '../composables/query-cache'
 import { setAuthenticationLostHandler, setPreconditionRequiredHandler, setServerApiOptionsResolver } from '../composables/useServerApi'
 

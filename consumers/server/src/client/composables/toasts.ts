@@ -1,5 +1,3 @@
-import { useState } from 'nuxt/app'
-
 export type ToastKind = 'success' | 'error' | 'info'
 
 export type ToastMessage = {

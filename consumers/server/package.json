@@ -10,7 +10,6 @@
 	},
 	"dependencies": {
 		"@gorchestra/core": "workspace:*",
-		"@vue/reactivity": "3.5.38",
 		"axios": "^1.18.0",
 		"equipped": "latest",
 		"h3": "1.15.11",

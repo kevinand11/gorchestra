@@ -1,6 +1,4 @@
-import { readonly, ref, shallowRef, type Ref } from '@vue/reactivity'
-import { showError, tryUseNuxtApp, useNuxtApp } from 'nuxt/app'
-import { onScopeDispose, onServerPrefetch } from 'vue'
+import { onScopeDispose, onServerPrefetch, readonly, ref, shallowRef, type Ref } from 'vue'
 
 import { useQueryCacheControllerForFetch } from './query-cache'
 

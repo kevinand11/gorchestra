@@ -1,5 +1,4 @@
-import { isRef, readonly, ref, shallowRef, type Ref } from '@vue/reactivity'
-import { tryUseNuxtApp, useState, type useNuxtApp } from 'nuxt/app'
+import { isRef, readonly, ref, shallowRef, type Ref } from 'vue'
 
 type QueryKey = readonly string[]
 

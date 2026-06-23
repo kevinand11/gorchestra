@@ -1,5 +1,3 @@
-import { defineNuxtRouteMiddleware, navigateTo } from 'nuxt/app'
-
 import { isAuthenticatedSession, isSelectedPortfolio, useAuthState } from '../composables/auth-state'
 
 export default defineNuxtRouteMiddleware(async () => {

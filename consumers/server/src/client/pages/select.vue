@@ -122,8 +122,6 @@
 </template>
 
 <script setup lang="ts">
-import { definePageMeta } from '#app/composables/pages'
-import { navigateTo } from 'nuxt/app'
 import { ref } from 'vue'
 
 import UiButton from '../components/ui/UiButton.vue'

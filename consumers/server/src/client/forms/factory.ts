@@ -1,5 +1,5 @@
-import { isProxy, isReactive, isRef, markRaw, reactive, toRaw } from '@vue/reactivity'
 import { differ, v, type Pipe } from 'valleyed'
+import { isProxy, isReactive, isRef, markRaw, reactive, toRaw } from 'vue'
 
 class FactoryValidationError extends Error {
 	constructor(factoryName: string) {
