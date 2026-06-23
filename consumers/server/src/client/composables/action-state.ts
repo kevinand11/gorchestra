@@ -1,4 +1,4 @@
-import { onScopeDispose, onServerPrefetch, readonly, ref, shallowRef, type Ref } from 'vue'
+import { onScopeDispose, onServerPrefetch, ref, shallowRef, type Ref } from 'vue'
 
 import { useQueryCacheControllerForFetch } from './query-cache'
 
@@ -72,7 +72,7 @@ export function useFetchAction<TResult, TData = Awaited<TResult>>(action: () => 
 		})
 	}
 
-	return { ...state, data: readonly(data), execute, reset: () => resetFetchActionState(state) }
+	return { ...state, data: computed(() => data.value), execute, reset: () => resetFetchActionState(state) }
 }
 
 type ActionState = ReturnType<typeof createActionState>

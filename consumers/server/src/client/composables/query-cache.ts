@@ -63,6 +63,18 @@ const queryKeys = {
 		project(portfolioId: string, projectId: string): QueryKey {
 			return ['portfolio', portfolioId, 'projects', projectId]
 		},
+		plans(portfolioId: string, projectId: string): QueryKey {
+			return ['portfolio', portfolioId, 'projects', projectId, 'plans']
+		},
+		plan(portfolioId: string, projectId: string, planId: string): QueryKey {
+			return ['portfolio', portfolioId, 'projects', projectId, 'plans', planId]
+		},
+		deliveries(portfolioId: string, projectId: string): QueryKey {
+			return ['portfolio', portfolioId, 'projects', projectId, 'deliveries']
+		},
+		delivery(portfolioId: string, projectId: string, deliveryId: string): QueryKey {
+			return ['portfolio', portfolioId, 'projects', projectId, 'deliveries', deliveryId]
+		},
 		repositories(portfolioId: string, projectId: string): QueryKey {
 			return ['portfolio', portfolioId, 'projects', projectId, 'repositories']
 		},

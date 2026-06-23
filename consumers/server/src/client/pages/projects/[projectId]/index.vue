@@ -1,5 +1,5 @@
 <script setup lang="ts">
 definePageMeta({
-	middleware: ['has-selection', (to) => `/projects/${to.params.projectId}/repositories`],
+	middleware: ['has-selection', (to) => `/projects/${to.params.projectId}/deliveries`],
 })
 </script>

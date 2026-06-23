@@ -15,8 +15,9 @@
 				<nav class="mt-3 flex gap-4" aria-label="Project navigation">
 					<NuxtLink
 						v-for="{ label, to } in [
-							{ label: 'Repositories', to: `/projects/${projectId}/repositories` },
 							{ label: 'Deliveries', to: `/projects/${projectId}/deliveries` },
+							{ label: 'Plans', to: `/projects/${projectId}/plans` },
+							{ label: 'Repositories', to: `/projects/${projectId}/repositories` },
 						]"
 						:key="to"
 						:to="to"
@@ -57,7 +58,10 @@ const {
 	isLoading: isLoadingProject,
 	error: projectError,
 	hasExecuted: hasLoadedProject,
-} = usePortfolioProjectQuery(serverApi, computed(() => props.projectId))
+} = usePortfolioProjectQuery(
+	serverApi,
+	computed(() => props.projectId),
+)
 
 const isLoadingInitialProject = computed(() => isLoadingProject.value && !hasLoadedProject.value)
 const projectTitle = computed(() => {

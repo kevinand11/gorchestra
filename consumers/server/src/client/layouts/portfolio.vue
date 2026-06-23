@@ -49,7 +49,7 @@
 						:key="to"
 						:to="to"
 						class="flex min-h-8 items-center justify-between gap-2 px-2 py-1.5 text-sz-helper font-semibold no-underline"
-						:class="route.path.startsWith(to) ? 'bg-secondary text-body' :  'text-dim hover:bg-secondary hover:text-body'">
+						:class="route.path.startsWith(to) ? 'bg-secondary text-body' : 'text-dim hover:bg-secondary hover:text-body'">
 						<span>{{ label }}</span>
 					</NuxtLink>
 				</nav>

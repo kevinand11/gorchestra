@@ -1,15 +1,23 @@
 import type { CoreRuntime } from '../runtime'
+import { createGetDeliveryQuery } from './get-delivery'
+import { createGetPlanQuery } from './get-plan'
 import { createGetProjectQuery } from './get-project'
 import { createGetRepositoryQuery } from './get-repository'
 import { createGetSecretQuery } from './get-secret'
+import { createListDeliveriesQuery } from './list-deliveries'
+import { createListPlansQuery } from './list-plans'
 import { createListProjectsQuery } from './list-projects'
 import { createListRepositoriesQuery } from './list-repositories'
 import { createListSecretReferencesQuery } from './list-secret-references'
 import { createListSecretsQuery } from './list-secrets'
 
+export type * as GetDelivery from './get-delivery'
+export type * as GetPlan from './get-plan'
 export type * as GetProject from './get-project'
 export type * as GetRepository from './get-repository'
 export type * as GetSecret from './get-secret'
+export type * as ListDeliveries from './list-deliveries'
+export type * as ListPlans from './list-plans'
 export type * as ListProjects from './list-projects'
 export type * as ListRepositories from './list-repositories'
 export type * as ListSecretReferences from './list-secret-references'
@@ -21,6 +29,10 @@ export function createCoreQueries(runtime: CoreRuntime) {
 	return {
 		listProjects: createListProjectsQuery(services),
 		getProject: createGetProjectQuery(services),
+		listPlans: createListPlansQuery(services),
+		getPlan: createGetPlanQuery(services),
+		listDeliveries: createListDeliveriesQuery(services),
+		getDelivery: createGetDeliveryQuery(services),
 		listRepositories: createListRepositoriesQuery(services),
 		getRepository: createGetRepositoryQuery(services),
 		listSecrets: createListSecretsQuery(services),
@@ -40,9 +52,13 @@ if (import.meta.vitest) {
 		it('returns an object with the expected query keys', () => {
 			const queries = createCoreQueries(createCoreRuntime(createTestCoreServices())) as Record<string, unknown>
 			const queryNames = [
+				'getDelivery',
+				'getPlan',
 				'getProject',
 				'getRepository',
 				'getSecret',
+				'listDeliveries',
+				'listPlans',
 				'listProjects',
 				'listRepositories',
 				'listSecretReferences',

@@ -89,6 +89,23 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async getProject(projectId: string) {
 			return routes.request('get', '/api/portfolio/projects/:projectId', { params: { projectId } })
 		},
+		async listPlans(projectId: string) {
+			return routes.request('get', '/api/portfolio/projects/:projectId/plans', { params: { projectId } })
+		},
+		async createPlan(projectId: string, input: { title: string }) {
+			return routes.request('post', '/api/portfolio/projects/:projectId/plans', { params: { projectId }, body: input })
+		},
+		async getPlan(projectId: string, planId: string) {
+			return routes.request('get', '/api/portfolio/projects/:projectId/plans/:planId', { params: { projectId, planId } })
+		},
+		async listDeliveries(projectId: string) {
+			return routes.request('get', '/api/portfolio/projects/:projectId/deliveries', { params: { projectId } })
+		},
+		async getDelivery(projectId: string, deliveryId: string) {
+			return routes.request('get', '/api/portfolio/projects/:projectId/deliveries/:deliveryId', {
+				params: { projectId, deliveryId },
+			})
+		},
 		async listRepositories(projectId: string) {
 			return routes.request('get', '/api/portfolio/projects/:projectId/repositories', { params: { projectId } })
 		},
