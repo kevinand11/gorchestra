@@ -52,6 +52,10 @@ _Avoid_: Credential, token, key, sensitive value
 A consumer-specific protected token that lets the owning Consumer resolve Secret plaintext without Core storing plaintext. It may be an external protected-store reference or an inline encrypted value envelope.
 _Avoid_: Plaintext secret, decrypted secret value
 
+**Secret Reference**:
+A Core-owned Portfolio usage of a Secret for a specific purpose. Secret References describe where a Secret is used; they do not expose plaintext and do not expose a Secret to Agent Runs unless the usage is a Secret Binding.
+_Avoid_: Secret Link, credential usage
+
 **Environment Variable**:
 A Secret exposed to Agent Runs as a named runtime environment variable through a Secret Binding.
 _Avoid_: Environment, environment secret

@@ -3,6 +3,7 @@ import { v, type PipeOutput } from 'valleyed'
 import type { Secret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
+import { listSecretReferencesBySecretId, type SecretReference } from './list-secret-references'
 import { buildQueryHandler } from './utils'
 import { isArchived } from '../utils/command-storage'
 import { listRecords, withTransaction } from '../utils/storage'
@@ -11,7 +12,7 @@ import type { Result as CoreResult } from '../utils/types'
 const listSecretsInputPipe = v.object({})
 export type Input = PipeOutput<typeof listSecretsInputPipe>
 
-export type ListedSecret = Omit<Secret, 'valueRef' | 'archivePeriods'> & { archived: boolean }
+export type ListedSecret = Omit<Secret, 'valueRef' | 'archivePeriods'> & { archived: boolean; references: SecretReference[] }
 
 export type Result = ListedSecret[]
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
@@ -21,18 +22,25 @@ export function createListSecretsQuery(options: CoreServices): Operation {
 	return buildQueryHandler('listSecrets', listSecretsInputPipe, () =>
 		withTransaction(options, async (storage) => {
 			const secrets = await listRecords('secret', storage)
-			return secrets.ok ? { ok: true, value: listSecrets(secrets.value) } : secrets
+			if (!secrets.ok) return secrets
+
+			const sortedSecrets = sortByCreatedAtThenId(secrets.value)
+			const references = await listSecretReferencesBySecretId(
+				storage,
+				sortedSecrets.map((secret) => secret.id),
+			)
+			return references.ok ? { ok: true, value: listSecrets(sortedSecrets, references.value) } : references
 		}),
 	)
 }
 
-function listSecrets(secrets: Secret[]): ListedSecret[] {
-	return sortByCreatedAtThenId(secrets).map(listSecret)
+function listSecrets(secrets: Secret[], referencesBySecretId: Map<string, SecretReference[]>): ListedSecret[] {
+	return secrets.map((secret) => listSecret(secret, referencesBySecretId.get(secret.id) ?? []))
 }
 
-export function listSecret(secret: Secret): ListedSecret {
+export function listSecret(secret: Secret, references: SecretReference[]): ListedSecret {
 	const { valueRef: _valueRef, archivePeriods, ...secretFields } = secret
-	return { ...secretFields, archived: isArchived(archivePeriods) }
+	return { ...secretFields, archived: isArchived(archivePeriods), references }
 }
 
 function sortByCreatedAtThenId<T extends { id: string; created: { at: string } }>(records: T[]): T[] {
@@ -88,6 +96,40 @@ if (import.meta.vitest) {
 			})
 		})
 
+		it('includes Secret References for each listed Secret', async () => {
+			const options = createTestCoreServices()
+			options.tx.secrets.records.set('secret-1', secret({ id: 'secret-1', name: 'GitHub PAT' }))
+			options.tx.repositories.records.set('repository-1', {
+				id: 'repository-1',
+				projectId: 'project-1',
+				config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
+				created: { origin: 'imported', at: '2026-06-12T00:00:00.000Z' },
+			})
+			const query = createListSecretsQuery(options)
+
+			const result = await query({})
+
+			expect(result).toEqual({
+				ok: true,
+				value: [
+					{
+						...redactedSecret({ id: 'secret-1', name: 'GitHub PAT' }),
+						references: [
+							{
+								type: 'repository-access',
+								repositoryId: 'repository-1',
+								projectId: 'project-1',
+								provider: 'github',
+								owner: 'Octo',
+								name: 'Repo',
+								created: { origin: 'imported', at: '2026-06-12T00:00:00.000Z' },
+							},
+						],
+					},
+				],
+			})
+		})
+
 		it('returns storage errors when Secret reads fail', async () => {
 			const options = createTestCoreServices()
 			options.tx.secrets.fail.list = true
@@ -120,6 +162,7 @@ if (import.meta.vitest) {
 			created: { origin: 'imported', at: input.createdAt ?? stamp.at },
 			replaced: null,
 			archived: input.archived ?? false,
+			references: [],
 		}
 	}
 }

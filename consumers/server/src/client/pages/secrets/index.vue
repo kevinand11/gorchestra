@@ -56,12 +56,13 @@
 					v-for="secret in visibleSecrets"
 					:key="secret.id"
 					:to="`/secrets/${secret.id}`"
-					class="grid min-h-[52px] grid-cols-[24px_minmax(0,1fr)_110px] items-center gap-2 border-b border-dimmer px-3 py-2 text-body no-underline hover:bg-card focus-visible:bg-secondary">
+					class="grid min-h-[52px] grid-cols-[24px_minmax(0,1fr)_92px_110px] items-center gap-2 border-b border-dimmer px-3 py-2 text-body no-underline hover:bg-card focus-visible:bg-secondary">
 					<span class="grid size-5 place-items-center border border-dimmer text-sz-micro text-dim">S</span>
 					<span class="min-w-0">
 						<strong class="block truncate font-semibold">{{ secret.name }}</strong>
 						<span class="text-sz-helper text-dim">Created {{ formatDate(secret.created.at) }}</span>
 					</span>
+					<span class="text-sz-helper text-dim">{{ referenceCountLabel(secret.references.length) }}</span>
 					<span class="justify-self-start" :class="secret.archived ? archivedBadgeClass : activeBadgeClass">
 						<span class="size-2 rounded-full" :class="secret.archived ? 'bg-dim' : 'bg-success'" />
 						{{ secret.archived ? 'archived' : 'active' }}
@@ -129,6 +130,10 @@ function matchesSecretTab(secret: ListedSecret, tab: SecretTab): boolean {
 	if (tab === 'active') return !secret.archived
 	if (tab === 'archived') return secret.archived
 	return true
+}
+
+function referenceCountLabel(count: number): string {
+	return `${count} ${count === 1 ? 'ref' : 'refs'}`
 }
 
 function secretFilterPillClass(tab: SecretTab): string {

@@ -4,6 +4,7 @@ import { createGetRepositoryQuery } from './get-repository'
 import { createGetSecretQuery } from './get-secret'
 import { createListProjectsQuery } from './list-projects'
 import { createListRepositoriesQuery } from './list-repositories'
+import { createListSecretReferencesQuery } from './list-secret-references'
 import { createListSecretsQuery } from './list-secrets'
 
 export type * as GetProject from './get-project'
@@ -11,6 +12,7 @@ export type * as GetRepository from './get-repository'
 export type * as GetSecret from './get-secret'
 export type * as ListProjects from './list-projects'
 export type * as ListRepositories from './list-repositories'
+export type * as ListSecretReferences from './list-secret-references'
 export type * as ListSecrets from './list-secrets'
 
 export function createCoreQueries(runtime: CoreRuntime) {
@@ -23,6 +25,7 @@ export function createCoreQueries(runtime: CoreRuntime) {
 		getRepository: createGetRepositoryQuery(services),
 		listSecrets: createListSecretsQuery(services),
 		getSecret: createGetSecretQuery(services),
+		listSecretReferences: createListSecretReferencesQuery(services),
 	}
 }
 
@@ -36,7 +39,15 @@ if (import.meta.vitest) {
 	describe('Core queries', () => {
 		it('returns an object with the expected query keys', () => {
 			const queries = createCoreQueries(createCoreRuntime(createTestCoreServices())) as Record<string, unknown>
-			const queryNames = ['getProject', 'getRepository', 'getSecret', 'listProjects', 'listRepositories', 'listSecrets']
+			const queryNames = [
+				'getProject',
+				'getRepository',
+				'getSecret',
+				'listProjects',
+				'listRepositories',
+				'listSecretReferences',
+				'listSecrets',
+			]
 
 			expect(Object.keys(queries).sort()).toEqual([...queryNames].sort())
 			for (const queryName of queryNames) {

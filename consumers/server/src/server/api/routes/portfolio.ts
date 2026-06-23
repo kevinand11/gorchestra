@@ -75,12 +75,59 @@ const listedProjectResponseSchema = v.object({
 	config: v.nullable(projectConfigRecordResponseSchema),
 	created: auditStampResponseSchema,
 })
+const secretBindingScopeResponseSchema = v.discriminate((value) => value.type, {
+	portfolio: v.object({ type: v.is('portfolio' as const) }),
+	project: v.object({ type: v.is('project' as const), projectId: idPipe }),
+	delivery: v.object({ type: v.is('delivery' as const), deliveryId: idPipe }),
+})
+const modelProviderProtocolResponseSchema = v.in(['anthropic-messages', 'openai-responses', 'openai-completions', 'google-generative-ai'])
+const repositoryAccessSecretReferenceResponseSchema = v.object({
+	type: v.is('repository-access' as const),
+	repositoryId: idPipe,
+	projectId: idPipe,
+	provider: v.is('github' as const),
+	owner: nonEmptyStringPipe,
+	name: nonEmptyStringPipe,
+	created: auditStampResponseSchema,
+})
+const secretBindingSecretReferenceResponseSchema = v.object({
+	type: v.is('secret-binding' as const),
+	secretBindingId: idPipe,
+	scope: secretBindingScopeResponseSchema,
+	envName: nonEmptyStringPipe,
+	archived: v.boolean(),
+	created: auditStampResponseSchema,
+})
+const modelProviderAuthSecretReferenceResponseSchema = v.object({
+	type: v.is('model-provider-auth' as const),
+	modelProviderId: idPipe,
+	name: nonEmptyStringPipe,
+	protocol: modelProviderProtocolResponseSchema,
+	archived: v.boolean(),
+	created: auditStampResponseSchema,
+})
+const modelProviderHeaderSecretReferenceResponseSchema = v.object({
+	type: v.is('model-provider-header' as const),
+	modelProviderId: idPipe,
+	name: nonEmptyStringPipe,
+	protocol: modelProviderProtocolResponseSchema,
+	headerName: nonEmptyStringPipe,
+	archived: v.boolean(),
+	created: auditStampResponseSchema,
+})
+const secretReferenceResponseSchema = v.discriminate((value) => value.type, {
+	'repository-access': repositoryAccessSecretReferenceResponseSchema,
+	'secret-binding': secretBindingSecretReferenceResponseSchema,
+	'model-provider-auth': modelProviderAuthSecretReferenceResponseSchema,
+	'model-provider-header': modelProviderHeaderSecretReferenceResponseSchema,
+})
 const secretResponseSchema = v.object({
 	id: idPipe,
 	name: nonEmptyStringPipe,
 	created: auditStampResponseSchema,
 	replaced: v.nullable(auditStampResponseSchema),
 	archived: v.boolean(),
+	references: v.array(secretReferenceResponseSchema),
 })
 const repositoryPreflightEvidenceResponseSchema = v.object({
 	type: v.is('validation' as const),
@@ -279,7 +326,7 @@ function createSelectedPortfolioSecret(
 }
 
 function secretResponseFromCreatedSecret(secret: Domain.Secret.Secret): Queries.GetSecret.Result {
-	return { id: secret.id, name: secret.name, created: secret.created, replaced: secret.replaced, archived: false }
+	return { id: secret.id, name: secret.name, created: secret.created, replaced: secret.replaced, archived: false, references: [] }
 }
 
 if (import.meta.vitest) {
@@ -319,6 +366,7 @@ if (import.meta.vitest) {
 				created: { origin: 'imported', at: '2026-06-21T00:00:00.000Z' },
 				replaced: null,
 				archived: false,
+				references: [],
 			})
 		})
 	})
