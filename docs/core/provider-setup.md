@@ -20,7 +20,7 @@ Typical setup:
 2. Configure a Repository with the GitHub provider, owner/name target, and the Secret reference used for provider access.
 3. Run Repository Preflight before relying on the Repository for Source Control Project work.
 
-Repository Preflight is observational. It verifies stored Repository facts, active provider access Secret references, plaintext Secret resolution, and provider repository reachability. It returns safe Validation Evidence and does not write Portfolio lifecycle facts.
+Repository Preflight is observational. It verifies stored Repository facts, active provider access Secret references, plaintext Secret resolution, and provider repository reachability. It returns safe Validation Evidence and does not write Portfolio lifecycle facts, readiness state, or history.
 
 ## Model Provider Protocol setup
 

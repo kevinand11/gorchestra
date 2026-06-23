@@ -109,8 +109,8 @@ A Source Control Project-managed source control target. For Source Control Proje
 _Avoid_: Project, repo
 
 **Repository Preflight**:
-An observational validation operation that checks whether a stored Repository is ready for Source Control Provider access. Repository Preflight returns Validation Evidence and does not record lifecycle facts. Expected readiness failures, including missing or inactive provider access Secrets and provider access failures, are reported as failed Validation Evidence; missing target Repository records, storage failures, and invalid Core Service Outputs remain operation errors.
-_Avoid_: Repository status, Repository health state, access lifecycle event
+An observational validation operation that checks whether Core can currently resolve and use a stored Repository's Source Control Provider configuration. Repository Preflight returns transient Validation Evidence and does not record lifecycle facts, readiness state, or history. Expected validation failures, including missing or inactive provider access Secrets and provider access failures, are reported as failed Validation Evidence; missing target Repository records, storage failures, and invalid Core Service Outputs remain operation errors.
+_Avoid_: Repository status, Repository health state, Repository readiness, access lifecycle event
 
 **Plan**:
 A Project-level reusable planning and discovery artifact. A Plan belongs to exactly one Project, captures research, analysis, requirements, and architectural discussion, and may produce zero, one, or many Plan Outputs for its Project.
