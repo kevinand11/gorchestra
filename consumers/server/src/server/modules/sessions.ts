@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import { v, type PipeOutput } from 'valleyed'
 
-import { deleteCachedValue, getCachedJson, setCachedJson } from '../cache'
+import type { ServerCache } from '../cache'
 import { signJwtPayload, verifySignedJwtPayload } from '../signed-jwt'
 import { normalizeEmailAddress } from './email-otp'
 
@@ -53,6 +53,7 @@ export type ServerSessionCookie = {
 }
 
 export type CreateSessionInput = {
+	serverCache: ServerCache
 	userId: string
 	email: string
 	now: Date
@@ -67,6 +68,7 @@ export type CreateSessionResult = {
 }
 
 export type VerifySessionTokenInput = {
+	serverCache: ServerCache
 	token?: string | null
 	now: Date
 	signingKey: string
@@ -77,6 +79,7 @@ export type VerifySessionTokenResult =
 	| { authenticated: false; reason: 'missing-token' | 'invalid-token' | 'expired' | 'not-current' }
 
 export type RefreshSessionTokenInput = {
+	serverCache: ServerCache
 	token: string
 	now: Date
 	signingKey: string
@@ -88,6 +91,7 @@ export type RefreshSessionTokenResult =
 	| { refreshed: false; reason: 'not-authenticated' }
 
 export type RevokeSessionInput = {
+	serverCache: ServerCache
 	userId: string
 }
 
@@ -102,7 +106,13 @@ export async function createSession(input: CreateSessionInput): Promise<CreateSe
 		exp: issuedAt + sessionLifetimeSeconds,
 	}
 	const token = signSessionJwt(payload, input.signingKey)
-	await storeSessionTokens({ currentToken: token, currentExpiresAt: payload.exp, userId: payload.sub, now: input.now })
+	await storeSessionTokens({
+		serverCache: input.serverCache,
+		currentToken: token,
+		currentExpiresAt: payload.exp,
+		userId: payload.sub,
+		now: input.now,
+	})
 	return { token, session: sessionFromPayload(payload), cookie: buildSessionCookie(token) }
 }
 
@@ -110,7 +120,7 @@ export async function verifySessionToken(input: VerifySessionTokenInput): Promis
 	const payloadLookup = getVerifiedSessionPayload(input)
 	if (!payloadLookup.verified) return { authenticated: false, reason: payloadLookup.reason }
 
-	const cachedSession = await getCachedJson<CachedServerSession>(getSessionCacheKey(payloadLookup.payload.sub))
+	const cachedSession = await input.serverCache.getJson<CachedServerSession>(getSessionCacheKey(payloadLookup.payload.sub))
 	if (!isCurrentSessionToken(payloadLookup.token, cachedSession)) return { authenticated: false, reason: 'not-current' }
 
 	const session = sessionFromPayload(payloadLookup.payload)
@@ -126,7 +136,7 @@ export async function refreshSessionToken(input: RefreshSessionTokenInput): Prom
 }
 
 export async function revokeSession(input: RevokeSessionInput): Promise<void> {
-	await deleteCachedValue(getSessionCacheKey(requireUserId(input.userId)))
+	await input.serverCache.deleteValue(getSessionCacheKey(requireUserId(input.userId)))
 }
 
 export function buildSessionCookie(token: string): ServerSessionCookie {
@@ -169,12 +179,24 @@ async function createRefreshedSession(input: RefreshSessionTokenInput & { sessio
 		exp: issuedAt + sessionLifetimeSeconds,
 	}
 	const token = signSessionJwt(payload, input.signingKey)
-	await storeSessionTokens({ currentToken: token, currentExpiresAt: payload.exp, userId: payload.sub, now: input.now })
+	await storeSessionTokens({
+		serverCache: input.serverCache,
+		currentToken: token,
+		currentExpiresAt: payload.exp,
+		userId: payload.sub,
+		now: input.now,
+	})
 	return { token, session: sessionFromPayload(payload), cookie: buildSessionCookie(token) }
 }
 
-async function storeSessionTokens(input: { currentToken: string; currentExpiresAt: number; userId: string; now: Date }): Promise<void> {
-	await setCachedJson(
+async function storeSessionTokens(input: {
+	serverCache: ServerCache
+	currentToken: string
+	currentExpiresAt: number
+	userId: string
+	now: Date
+}): Promise<void> {
+	await input.serverCache.setJson(
 		getSessionCacheKey(input.userId),
 		{ currentToken: input.currentToken },
 		getCacheTtlSeconds(input.currentExpiresAt, input.now),
@@ -249,6 +271,7 @@ function getCacheTtlSeconds(expiresAt: number, now: Date): number {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
+	const { createTestServerCache } = await import('../testing/server-cache')
 
 	const signingKey = 'test-session-signing-key'
 	const testNow = new Date('2026-06-19T00:00:00.000Z')
@@ -257,8 +280,9 @@ if (import.meta.vitest) {
 		return `user-${crypto.randomUUID()}`
 	}
 
-	function sessionInput(overrides: Partial<CreateSessionInput> = {}): CreateSessionInput {
+	function sessionInput(serverCache: ServerCache, overrides: Partial<Omit<CreateSessionInput, 'serverCache'>> = {}): CreateSessionInput {
 		return {
+			serverCache,
 			userId: uniqueUserId(),
 			email: '  Person+Ops@Example.COM  ',
 			now: testNow,
@@ -269,8 +293,9 @@ if (import.meta.vitest) {
 	}
 
 	async function testCreateAndVerifySession(): Promise<void> {
-		const created = await createSession(sessionInput({ generateSessionId: () => 'session-1' }))
-		const verified = await verifySessionToken({ token: created.token, now: testNow, signingKey })
+		const serverCache = createTestServerCache()
+		const created = await createSession(sessionInput(serverCache, { generateSessionId: () => 'session-1' }))
+		const verified = await verifySessionToken({ serverCache, token: created.token, now: testNow, signingKey })
 
 		expect(created.session).toEqual({
 			userId: created.session.userId,
@@ -292,16 +317,19 @@ if (import.meta.vitest) {
 	}
 
 	async function testOneActiveSessionPerUser(): Promise<void> {
+		const serverCache = createTestServerCache()
 		const userId = uniqueUserId()
 		const secondSessionStart = new Date(testNow.getTime() + 1000)
-		const first = await createSession(sessionInput({ userId, generateSessionId: () => 'first-session' }))
-		const second = await createSession(sessionInput({ userId, now: secondSessionStart, generateSessionId: () => 'second-session' }))
+		const first = await createSession(sessionInput(serverCache, { userId, generateSessionId: () => 'first-session' }))
+		const second = await createSession(
+			sessionInput(serverCache, { userId, now: secondSessionStart, generateSessionId: () => 'second-session' }),
+		)
 
-		expect(await verifySessionToken({ token: first.token, now: secondSessionStart, signingKey })).toEqual({
+		expect(await verifySessionToken({ serverCache, token: first.token, now: secondSessionStart, signingKey })).toEqual({
 			authenticated: false,
 			reason: 'not-current',
 		})
-		expect(await verifySessionToken({ token: second.token, now: secondSessionStart, signingKey })).toEqual({
+		expect(await verifySessionToken({ serverCache, token: second.token, now: secondSessionStart, signingKey })).toEqual({
 			authenticated: true,
 			session: second.session,
 			refreshRecommended: false,
@@ -309,47 +337,51 @@ if (import.meta.vitest) {
 	}
 
 	async function testRevokesSession(): Promise<void> {
-		const created = await createSession(sessionInput())
-		await revokeSession({ userId: created.session.userId })
+		const serverCache = createTestServerCache()
+		const created = await createSession(sessionInput(serverCache))
+		await revokeSession({ serverCache, userId: created.session.userId })
 
-		expect(await verifySessionToken({ token: created.token, now: testNow, signingKey })).toEqual({
+		expect(await verifySessionToken({ serverCache, token: created.token, now: testNow, signingKey })).toEqual({
 			authenticated: false,
 			reason: 'not-current',
 		})
 	}
 
 	async function testRejectsInvalidAndExpiredTokens(): Promise<void> {
-		const created = await createSession(sessionInput())
+		const serverCache = createTestServerCache()
+		const created = await createSession(sessionInput(serverCache))
 		const afterExpiry = new Date(testNow.getTime() + sessionLifetimeSeconds * 1000)
 
-		expect(await verifySessionToken({ token: `${created.token}x`, now: testNow, signingKey })).toEqual({
+		expect(await verifySessionToken({ serverCache, token: `${created.token}x`, now: testNow, signingKey })).toEqual({
 			authenticated: false,
 			reason: 'invalid-token',
 		})
-		expect(await verifySessionToken({ token: created.token, now: afterExpiry, signingKey })).toEqual({
+		expect(await verifySessionToken({ serverCache, token: created.token, now: afterExpiry, signingKey })).toEqual({
 			authenticated: false,
 			reason: 'expired',
 		})
 	}
 
 	async function testRefreshDecisionAndImmediateTokenReplacement(): Promise<void> {
+		const serverCache = createTestServerCache()
 		const userId = uniqueUserId()
-		const created = await createSession(sessionInput({ userId, generateSessionId: () => 'initial-session' }))
+		const created = await createSession(sessionInput(serverCache, { userId, generateSessionId: () => 'initial-session' }))
 		const beforeRefreshThreshold = new Date(testNow.getTime() + 5 * 24 * 60 * 60 * 1000)
 		const atRefreshThreshold = new Date(testNow.getTime() + 6 * 24 * 60 * 60 * 1000)
 
-		expect(await verifySessionToken({ token: created.token, now: beforeRefreshThreshold, signingKey })).toEqual({
+		expect(await verifySessionToken({ serverCache, token: created.token, now: beforeRefreshThreshold, signingKey })).toEqual({
 			authenticated: true,
 			session: created.session,
 			refreshRecommended: false,
 		})
-		expect(await verifySessionToken({ token: created.token, now: atRefreshThreshold, signingKey })).toEqual({
+		expect(await verifySessionToken({ serverCache, token: created.token, now: atRefreshThreshold, signingKey })).toEqual({
 			authenticated: true,
 			session: created.session,
 			refreshRecommended: true,
 		})
 
 		const refreshed = await refreshSessionToken({
+			serverCache,
 			token: created.token,
 			now: atRefreshThreshold,
 			signingKey,
@@ -358,15 +390,15 @@ if (import.meta.vitest) {
 		expect(refreshed.refreshed).toBe(true)
 		if (!refreshed.refreshed) return
 		expect(refreshed.session).toMatchObject({ userId, email: created.session.email, sessionId: 'refreshed-session' })
-		expect(await verifySessionToken({ token: created.token, now: atRefreshThreshold, signingKey })).toEqual({
+		expect(await verifySessionToken({ serverCache, token: created.token, now: atRefreshThreshold, signingKey })).toEqual({
 			authenticated: false,
 			reason: 'not-current',
 		})
-		expect(await refreshSessionToken({ token: created.token, now: atRefreshThreshold, signingKey })).toEqual({
+		expect(await refreshSessionToken({ serverCache, token: created.token, now: atRefreshThreshold, signingKey })).toEqual({
 			refreshed: false,
 			reason: 'not-authenticated',
 		})
-		expect(await verifySessionToken({ token: refreshed.token, now: atRefreshThreshold, signingKey })).toEqual({
+		expect(await verifySessionToken({ serverCache, token: refreshed.token, now: atRefreshThreshold, signingKey })).toEqual({
 			authenticated: true,
 			session: refreshed.session,
 			refreshRecommended: false,

@@ -1,6 +1,7 @@
 import { createEmailOtpChallenge, type EmailOtpMailMessage, verifyEmailOtpChallenge, type VerifyEmailOtpChallengeResult } from './email-otp'
 import { findEmailAuthenticationIdentityByEmail, getOrCreateUserByVerifiedEmail } from './identities'
 import { createSession, type CreateSessionInput, type CreateSessionResult, verifySessionToken } from './sessions'
+import type { ServerCache } from '../cache'
 import type { ServerStorage } from '../storage/repo'
 import type { EmailAuthenticationIdentity, ServerUser } from '../storage/schemas'
 
@@ -8,6 +9,7 @@ type EmailOtpSignInFailureReason = Extract<VerifyEmailOtpChallengeResult, { veri
 
 export type VerifyEmailOtpSignInInput = {
 	serverStorage: ServerStorage
+	serverCache: ServerCache
 	email: string
 	code: string
 	now: Date
@@ -28,7 +30,12 @@ export type VerifyEmailOtpSignInResult =
 	| { signedIn: false; reason: EmailOtpSignInFailureReason }
 
 export async function verifyEmailOtpSignIn(input: VerifyEmailOtpSignInInput): Promise<VerifyEmailOtpSignInResult> {
-	const verifiedEmail = await verifyEmailOtpChallenge({ email: input.email, code: input.code, now: input.now })
+	const verifiedEmail = await verifyEmailOtpChallenge({
+		serverCache: input.serverCache,
+		email: input.email,
+		code: input.code,
+		now: input.now,
+	})
 	if (!verifiedEmail.verified) return { signedIn: false, reason: verifiedEmail.reason }
 
 	const identity = await getOrCreateUserByVerifiedEmail({
@@ -42,6 +49,7 @@ export async function verifyEmailOtpSignIn(input: VerifyEmailOtpSignInInput): Pr
 
 function buildCreateSessionInput(input: VerifyEmailOtpSignInInput, userId: string, email: string): CreateSessionInput {
 	return {
+		serverCache: input.serverCache,
 		userId,
 		email,
 		now: input.now,
@@ -58,6 +66,7 @@ function getOptionalGenerateSessionId(
 
 if (import.meta.vitest) {
 	const { afterEach, describe, expect, it } = import.meta.vitest
+	const { createTestServerCache } = await import('../testing/server-cache')
 	const { createTempServerStorageTestHarness } = await import('../testing/server-storage')
 
 	const { cleanupTempServerStorage, withTempServerStorage } = createTempServerStorageTestHarness('gorchestra-server-email-otp-sign-in-')
@@ -79,17 +88,19 @@ if (import.meta.vitest) {
 		}
 	}
 
-	async function createOtp(email: string, code: string, now = testNow): Promise<void> {
-		await createEmailOtpChallenge({ email, generateCode: () => code, mailService: captureMailService([]), now })
+	async function createOtp(serverCache: ServerCache, email: string, code: string, now = testNow): Promise<void> {
+		await createEmailOtpChallenge({ serverCache, email, generateCode: () => code, mailService: captureMailService([]), now })
 	}
 
 	async function testVerifiedEmailOtpCreatesUserIdentityAndSession(): Promise<void> {
 		await withTempServerStorage(async (serverStorage) => {
+			const serverCache = createTestServerCache()
 			const email = uniqueEmail()
-			await createOtp(`  ${email.toUpperCase()}  `, '123456')
+			await createOtp(serverCache, `  ${email.toUpperCase()}  `, '123456')
 
 			const result = await verifyEmailOtpSignIn({
 				serverStorage,
+				serverCache,
 				email,
 				code: '123456',
 				now: testNow,
@@ -109,7 +120,7 @@ if (import.meta.vitest) {
 				secure: true,
 				sameSite: 'lax',
 			})
-			expect(await verifySessionToken({ token: result.token, now: testNow, signingKey })).toEqual({
+			expect(await verifySessionToken({ serverCache, token: result.token, now: testNow, signingKey })).toEqual({
 				authenticated: true,
 				session: result.session,
 				refreshRecommended: false,
@@ -119,10 +130,11 @@ if (import.meta.vitest) {
 
 	async function testInvalidEmailOtpDoesNotCreateIdentity(): Promise<void> {
 		await withTempServerStorage(async (serverStorage) => {
+			const serverCache = createTestServerCache()
 			const email = uniqueEmail()
-			await createOtp(email, '123456')
+			await createOtp(serverCache, email, '123456')
 
-			expect(await verifyEmailOtpSignIn({ serverStorage, email, code: '000000', now: testNow, signingKey })).toEqual({
+			expect(await verifyEmailOtpSignIn({ serverStorage, serverCache, email, code: '000000', now: testNow, signingKey })).toEqual({
 				signedIn: false,
 				reason: 'invalid-code',
 			})
@@ -132,12 +144,13 @@ if (import.meta.vitest) {
 
 	async function testEmailOtpSignInIsSingleUse(): Promise<void> {
 		await withTempServerStorage(async (serverStorage) => {
+			const serverCache = createTestServerCache()
 			const email = uniqueEmail()
-			await createOtp(email, '222222')
+			await createOtp(serverCache, email, '222222')
 
-			const first = await verifyEmailOtpSignIn({ serverStorage, email, code: '222222', now: testNow, signingKey })
+			const first = await verifyEmailOtpSignIn({ serverStorage, serverCache, email, code: '222222', now: testNow, signingKey })
 			expect(first.signedIn).toBe(true)
-			expect(await verifyEmailOtpSignIn({ serverStorage, email, code: '222222', now: testNow, signingKey })).toEqual({
+			expect(await verifyEmailOtpSignIn({ serverStorage, serverCache, email, code: '222222', now: testNow, signingKey })).toEqual({
 				signedIn: false,
 				reason: 'not-found',
 			})
@@ -146,11 +159,13 @@ if (import.meta.vitest) {
 
 	async function testExistingEmailIdentityUserGetsNewCurrentSession(): Promise<void> {
 		await withTempServerStorage(async (serverStorage) => {
+			const serverCache = createTestServerCache()
 			const email = uniqueEmail()
 			const secondSignInTime = new Date(testNow.getTime() + 1000)
-			await createOtp(email, '333333')
+			await createOtp(serverCache, email, '333333')
 			const first = await verifyEmailOtpSignIn({
 				serverStorage,
+				serverCache,
 				email,
 				code: '333333',
 				now: testNow,
@@ -159,9 +174,10 @@ if (import.meta.vitest) {
 			})
 			if (!first.signedIn) throw new Error('expected first Email OTP Sign-in to succeed')
 
-			await createOtp(email, '444444', secondSignInTime)
+			await createOtp(serverCache, email, '444444', secondSignInTime)
 			const second = await verifyEmailOtpSignIn({
 				serverStorage,
+				serverCache,
 				email,
 				code: '444444',
 				now: secondSignInTime,
@@ -175,11 +191,11 @@ if (import.meta.vitest) {
 			expect(second.user).toEqual(first.user)
 			expect(second.emailAuthenticationIdentity).toEqual(first.emailAuthenticationIdentity)
 			expect(second.session).toMatchObject({ userId: first.user.id, email, sessionId: 'second-session' })
-			expect(await verifySessionToken({ token: first.token, now: secondSignInTime, signingKey })).toEqual({
+			expect(await verifySessionToken({ serverCache, token: first.token, now: secondSignInTime, signingKey })).toEqual({
 				authenticated: false,
 				reason: 'not-current',
 			})
-			expect(await verifySessionToken({ token: second.token, now: secondSignInTime, signingKey })).toEqual({
+			expect(await verifySessionToken({ serverCache, token: second.token, now: secondSignInTime, signingKey })).toEqual({
 				authenticated: true,
 				session: second.session,
 				refreshRecommended: false,

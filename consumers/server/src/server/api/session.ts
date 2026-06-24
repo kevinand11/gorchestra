@@ -24,7 +24,12 @@ export type ApiSessionAuthentication =
 	| { authenticated: false; reason: Extract<VerifySessionTokenResult, { authenticated: false }>['reason'] }
 
 export async function authenticateApiSession(context: ServerApiContext, token?: string | null): Promise<ApiSessionAuthentication> {
-	const result = await verifySessionToken({ token: token ?? null, now: context.now(), signingKey: context.sessionSigningKey })
+	const result = await verifySessionToken({
+		serverCache: context.serverCache,
+		token: token ?? null,
+		now: context.now(),
+		signingKey: context.sessionSigningKey,
+	})
 	if (!result.authenticated) return result
 	return {
 		authenticated: true,
@@ -36,12 +41,12 @@ export async function authenticateApiSession(context: ServerApiContext, token?: 
 
 export async function refreshApiSession(context: ServerApiContext, token?: string | null): Promise<RefreshSessionTokenResult> {
 	if (!token) return { refreshed: false, reason: 'not-authenticated' }
-	return refreshSessionToken({ token, now: context.now(), signingKey: context.sessionSigningKey })
+	return refreshSessionToken({ serverCache: context.serverCache, token, now: context.now(), signingKey: context.sessionSigningKey })
 }
 
 export async function revokeApiSessionIfAuthenticated(context: ServerApiContext, token?: string | null): Promise<void> {
 	const authentication = await authenticateApiSession(context, token)
-	if (authentication.authenticated) await revokeSession({ userId: authentication.session.userId })
+	if (authentication.authenticated) await revokeSession({ serverCache: context.serverCache, userId: authentication.session.userId })
 }
 
 export function getSessionToken(cookies: Record<string, string | undefined>): string | undefined {

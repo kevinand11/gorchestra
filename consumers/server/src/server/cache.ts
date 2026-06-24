@@ -1,39 +1,99 @@
-import { InMemoryCache } from 'equipped/cache/adapters/in-memory'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+
+import type { Cache } from 'equipped/cache'
+import { JsonCache } from 'equipped/cache/adapters/json'
 
 import { ensureServerInstance } from './instance'
 
-let serverCache: InMemoryCache | null = null
-
-function getServerCache(): InMemoryCache {
-	ensureServerInstance()
-	serverCache ??= InMemoryCache.create({})
-	return serverCache
+export type ServerCache = {
+	getJson: <T>(key: string) => Promise<T | null>
+	setJson: (key: string, value: unknown, ttlSeconds: number) => Promise<void>
+	deleteValue: (key: string) => Promise<void>
 }
 
-export async function getCachedJson<T>(key: string): Promise<T | null> {
-	const raw = await getServerCache().get(key)
-	return raw === null ? null : (JSON.parse(raw) as T)
+export type ServerCacheRuntime = ServerCache & {
+	adapter: JsonCache
 }
 
-export async function setCachedJson(key: string, value: unknown, ttlSeconds: number): Promise<void> {
-	await getServerCache().set(key, JSON.stringify(value), ttlSeconds)
+export type StartServerCacheInput = {
+	dataDir: string
 }
 
-export async function deleteCachedValue(key: string): Promise<void> {
-	await getServerCache().delete(key)
+let activeServerCache: ServerCacheRuntime | null = null
+let activeServerCacheStartup: Promise<ServerCacheRuntime> | null = null
+
+export async function startServerCache(input: StartServerCacheInput): Promise<ServerCacheRuntime> {
+	if (activeServerCache) return activeServerCache
+	activeServerCacheStartup ??= openServerCache(input)
+		.then((cache) => {
+			activeServerCache = cache
+			return cache
+		})
+		.catch((error: unknown) => {
+			activeServerCacheStartup = null
+			throw error
+		})
+	return activeServerCacheStartup
+}
+
+export async function openServerCache(input: StartServerCacheInput): Promise<ServerCacheRuntime> {
+	const instance = ensureServerInstance()
+	const filePath = getDefaultServerCacheFilePath(input.dataDir)
+	await mkdir(dirname(filePath), { recursive: true })
+	const adapter = JsonCache.create({ filePath })
+	await instance.start()
+	return { adapter, ...createServerCacheFromAdapter(adapter) }
+}
+
+export function createServerCacheFromAdapter(adapter: Cache): ServerCache {
+	return {
+		async getJson<T>(key: string): Promise<T | null> {
+			const raw = await adapter.get(key)
+			return raw === null ? null : (JSON.parse(raw) as T)
+		},
+		async setJson(key: string, value: unknown, ttlSeconds: number): Promise<void> {
+			await adapter.set(key, JSON.stringify(value), ttlSeconds)
+		},
+		async deleteValue(key: string): Promise<void> {
+			await adapter.delete(key)
+		},
+	}
+}
+
+export function getDefaultServerCacheFilePath(dataDir: string): string {
+	return join(dataDir, 'server', 'cache.json')
 }
 
 if (import.meta.vitest) {
-	const { describe, it, expect } = import.meta.vitest
+	const { afterAll, describe, it, expect } = import.meta.vitest
+
+	const tempDataDirs: string[] = []
+
+	afterAll(async () => {
+		await Promise.all(tempDataDirs.map((path) => rm(path, { recursive: true, force: true })))
+	})
+
+	async function createTempDataDir(): Promise<string> {
+		const dataDir = await mkdtemp(join(tmpdir(), 'gorchestra-server-cache-'))
+		tempDataDirs.push(dataDir)
+		return dataDir
+	}
 
 	describe('Server cache helpers', () => {
-		it('stores, reads, and deletes JSON values through the Server cache', async () => {
-			const key = `cache-test:${crypto.randomUUID()}`
-			await setCachedJson(key, { value: 'cached' }, 60)
-			await expect(getCachedJson<{ value: string }>(key)).resolves.toEqual({ value: 'cached' })
+		it('keeps the default JSON cache path under the Server namespace', () => {
+			expect(getDefaultServerCacheFilePath('/tmp/gorchestra')).toBe('/tmp/gorchestra/server/cache.json')
+		})
 
-			await deleteCachedValue(key)
-			await expect(getCachedJson(key)).resolves.toBeNull()
+		it('stores, reads, and deletes JSON values through the Server cache', async () => {
+			const cache = await startServerCache({ dataDir: await createTempDataDir() })
+			const key = `cache-test:${crypto.randomUUID()}`
+			await cache.setJson(key, { value: 'cached' }, 60)
+			await expect(cache.getJson<{ value: string }>(key)).resolves.toEqual({ value: 'cached' })
+
+			await cache.deleteValue(key)
+			await expect(cache.getJson(key)).resolves.toBeNull()
 		})
 	})
 }

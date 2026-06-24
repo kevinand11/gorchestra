@@ -1,6 +1,6 @@
 import { Random } from 'equipped/utilities'
 
-import { deleteCachedValue, getCachedJson, setCachedJson } from '../cache'
+import type { ServerCache } from '../cache'
 
 const emailOtpChallengeTtlMs = 10 * 60 * 1000
 const emailOtpChallengeTtlSeconds = emailOtpChallengeTtlMs / 1000
@@ -28,6 +28,7 @@ export type EmailOtpMailService = {
 }
 
 export type CreateEmailOtpChallengeInput = {
+	serverCache: ServerCache
 	email: string
 	mailService?: EmailOtpMailService
 	now: Date
@@ -39,6 +40,7 @@ export type CreateEmailOtpChallengeResult = {
 }
 
 export type VerifyEmailOtpChallengeInput = {
+	serverCache: ServerCache
 	email: string
 	code: string
 	now: Date
@@ -61,16 +63,16 @@ export function normalizeEmailAddress(email: string): string {
 
 export async function createEmailOtpChallenge(input: CreateEmailOtpChallengeInput): Promise<CreateEmailOtpChallengeResult> {
 	const challenge = buildEmailOtpChallenge(input)
-	await storeEmailOtpChallenge(challenge)
+	await storeEmailOtpChallenge(input.serverCache, challenge)
 	await sendEmailOtpChallenge(input.mailService ?? consoleMailService, challenge)
 	return { requested: true }
 }
 
 export async function verifyEmailOtpChallenge(input: VerifyEmailOtpChallengeInput): Promise<VerifyEmailOtpChallengeResult> {
 	const context = getVerifyEmailOtpContext(input)
-	const lookup = await findActiveEmailOtpChallenge(context.cacheKey, context.now)
+	const lookup = await findActiveEmailOtpChallenge(input.serverCache, context.cacheKey, context.now)
 	if (!lookup.found) return lookup.result
-	return verifyActiveEmailOtpChallenge(context, lookup.challenge)
+	return verifyActiveEmailOtpChallenge(input.serverCache, context, lookup.challenge)
 }
 
 function buildEmailOtpChallenge(input: CreateEmailOtpChallengeInput): EmailOtpChallenge {
@@ -91,8 +93,8 @@ function getEmailOtpCode(generateCode?: () => string): string {
 	return code
 }
 
-async function storeEmailOtpChallenge(challenge: EmailOtpChallenge): Promise<void> {
-	await setCachedJson(getEmailOtpChallengeCacheKey(challenge.normalizedEmail), challenge, emailOtpChallengeTtlSeconds)
+async function storeEmailOtpChallenge(serverCache: ServerCache, challenge: EmailOtpChallenge): Promise<void> {
+	await serverCache.setJson(getEmailOtpChallengeCacheKey(challenge.normalizedEmail), challenge, emailOtpChallengeTtlSeconds)
 }
 
 async function sendEmailOtpChallenge(mailService: EmailOtpMailService, challenge: EmailOtpChallenge): Promise<void> {
@@ -112,40 +114,46 @@ function getVerifyEmailOtpContext(input: VerifyEmailOtpChallengeInput) {
 	}
 }
 
-async function findActiveEmailOtpChallenge(cacheKey: string, now: Date): Promise<ActiveEmailOtpChallengeLookup> {
-	const challenge = await getCachedJson<EmailOtpChallenge>(cacheKey)
+async function findActiveEmailOtpChallenge(serverCache: ServerCache, cacheKey: string, now: Date): Promise<ActiveEmailOtpChallengeLookup> {
+	const challenge = await serverCache.getJson<EmailOtpChallenge>(cacheKey)
 	if (!challenge) return { found: false, result: { verified: false, reason: 'not-found' } }
 	if (challenge.expiresAt > now.getTime()) return { found: true, challenge }
-	await deleteCachedValue(cacheKey)
+	await serverCache.deleteValue(cacheKey)
 	return { found: false, result: { verified: false, reason: 'expired' } }
 }
 
 async function verifyActiveEmailOtpChallenge(
+	serverCache: ServerCache,
 	context: ReturnType<typeof getVerifyEmailOtpContext>,
 	challenge: EmailOtpChallenge,
 ): Promise<VerifyEmailOtpChallengeResult> {
-	if (context.code === challenge.code) return consumeVerifiedEmailOtpChallenge(context.cacheKey, challenge)
-	return recordFailedEmailOtpAttempt(context.cacheKey, challenge, context.now)
+	if (context.code === challenge.code) return consumeVerifiedEmailOtpChallenge(serverCache, context.cacheKey, challenge)
+	return recordFailedEmailOtpAttempt(serverCache, context.cacheKey, challenge, context.now)
 }
 
-async function consumeVerifiedEmailOtpChallenge(cacheKey: string, challenge: EmailOtpChallenge): Promise<VerifyEmailOtpChallengeResult> {
-	await deleteCachedValue(cacheKey)
+async function consumeVerifiedEmailOtpChallenge(
+	serverCache: ServerCache,
+	cacheKey: string,
+	challenge: EmailOtpChallenge,
+): Promise<VerifyEmailOtpChallengeResult> {
+	await serverCache.deleteValue(cacheKey)
 	return { verified: true, normalizedEmail: challenge.normalizedEmail }
 }
 
 async function recordFailedEmailOtpAttempt(
+	serverCache: ServerCache,
 	cacheKey: string,
 	challenge: EmailOtpChallenge,
 	now: Date,
 ): Promise<VerifyEmailOtpChallengeResult> {
 	const failedAttempts = challenge.failedAttempts + 1
-	if (failedAttempts >= maxFailedAttempts) return invalidateEmailOtpChallenge(cacheKey)
-	await setCachedJson(cacheKey, { ...challenge, failedAttempts }, getRemainingTtlSeconds(challenge.expiresAt, now))
+	if (failedAttempts >= maxFailedAttempts) return invalidateEmailOtpChallenge(serverCache, cacheKey)
+	await serverCache.setJson(cacheKey, { ...challenge, failedAttempts }, getRemainingTtlSeconds(challenge.expiresAt, now))
 	return { verified: false, reason: 'invalid-code' }
 }
 
-async function invalidateEmailOtpChallenge(cacheKey: string): Promise<VerifyEmailOtpChallengeResult> {
-	await deleteCachedValue(cacheKey)
+async function invalidateEmailOtpChallenge(serverCache: ServerCache, cacheKey: string): Promise<VerifyEmailOtpChallengeResult> {
+	await serverCache.deleteValue(cacheKey)
 	return { verified: false, reason: 'too-many-failed-attempts' }
 }
 
@@ -169,6 +177,7 @@ function getRemainingTtlSeconds(expiresAt: number, now: Date): number {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
+	const { createTestServerCache } = await import('../testing/server-cache')
 
 	const testNow = new Date('2026-06-19T00:00:00.000Z')
 
@@ -190,53 +199,102 @@ if (import.meta.vitest) {
 	}
 
 	async function testLatestOnlyEmailOtpChallenge(): Promise<void> {
+		const serverCache = createTestServerCache()
 		const email = uniqueEmail()
 		const messages: EmailOtpMailMessage[] = []
 		const mailService = captureMailService(messages)
 
-		await createEmailOtpChallenge({ email: `  ${email.toUpperCase()}  `, generateCode: () => '111111', mailService, now: testNow })
-		await createEmailOtpChallenge({ email, generateCode: () => '222222', mailService, now: testNow })
+		await createEmailOtpChallenge({
+			serverCache,
+			email: `  ${email.toUpperCase()}  `,
+			generateCode: () => '111111',
+			mailService,
+			now: testNow,
+		})
+		await createEmailOtpChallenge({ serverCache, email, generateCode: () => '222222', mailService, now: testNow })
 
 		expect(messages.map(({ code, to }) => ({ code, to }))).toEqual([
 			{ code: '111111', to: email },
 			{ code: '222222', to: email },
 		])
-		expect(await verifyEmailOtpChallenge({ email, code: '111111', now: testNow })).toEqual({ verified: false, reason: 'invalid-code' })
-		expect(await verifyEmailOtpChallenge({ email, code: '222222', now: testNow })).toEqual({ verified: true, normalizedEmail: email })
+		expect(await verifyEmailOtpChallenge({ serverCache, email, code: '111111', now: testNow })).toEqual({
+			verified: false,
+			reason: 'invalid-code',
+		})
+		expect(await verifyEmailOtpChallenge({ serverCache, email, code: '222222', now: testNow })).toEqual({
+			verified: true,
+			normalizedEmail: email,
+		})
 	}
 
 	async function testSingleUseEmailOtpChallenge(): Promise<void> {
+		const serverCache = createTestServerCache()
 		const email = uniqueEmail()
-		await createEmailOtpChallenge({ email, generateCode: () => '333333', mailService: captureMailService([]), now: testNow })
+		await createEmailOtpChallenge({
+			serverCache,
+			email,
+			generateCode: () => '333333',
+			mailService: captureMailService([]),
+			now: testNow,
+		})
 
-		expect(await verifyEmailOtpChallenge({ email, code: '333333', now: testNow })).toEqual({ verified: true, normalizedEmail: email })
-		expect(await verifyEmailOtpChallenge({ email, code: '333333', now: testNow })).toEqual({ verified: false, reason: 'not-found' })
+		expect(await verifyEmailOtpChallenge({ serverCache, email, code: '333333', now: testNow })).toEqual({
+			verified: true,
+			normalizedEmail: email,
+		})
+		expect(await verifyEmailOtpChallenge({ serverCache, email, code: '333333', now: testNow })).toEqual({
+			verified: false,
+			reason: 'not-found',
+		})
 	}
 
 	async function testExpiredEmailOtpChallenge(): Promise<void> {
+		const serverCache = createTestServerCache()
 		const email = uniqueEmail()
 		const afterExpiry = new Date(testNow.getTime() + emailOtpChallengeTtlMs + 1)
-		await createEmailOtpChallenge({ email, generateCode: () => '444444', mailService: captureMailService([]), now: testNow })
+		await createEmailOtpChallenge({
+			serverCache,
+			email,
+			generateCode: () => '444444',
+			mailService: captureMailService([]),
+			now: testNow,
+		})
 
-		expect(await verifyEmailOtpChallenge({ email, code: '444444', now: afterExpiry })).toEqual({ verified: false, reason: 'expired' })
-		expect(await verifyEmailOtpChallenge({ email, code: '444444', now: afterExpiry })).toEqual({ verified: false, reason: 'not-found' })
+		expect(await verifyEmailOtpChallenge({ serverCache, email, code: '444444', now: afterExpiry })).toEqual({
+			verified: false,
+			reason: 'expired',
+		})
+		expect(await verifyEmailOtpChallenge({ serverCache, email, code: '444444', now: afterExpiry })).toEqual({
+			verified: false,
+			reason: 'not-found',
+		})
 	}
 
 	async function testFailedAttemptsEmailOtpChallenge(): Promise<void> {
+		const serverCache = createTestServerCache()
 		const email = uniqueEmail()
-		await createEmailOtpChallenge({ email, generateCode: () => '555555', mailService: captureMailService([]), now: testNow })
+		await createEmailOtpChallenge({
+			serverCache,
+			email,
+			generateCode: () => '555555',
+			mailService: captureMailService([]),
+			now: testNow,
+		})
 
 		for (const _attempt of [1, 2, 3, 4]) {
-			expect(await verifyEmailOtpChallenge({ email, code: '000000', now: testNow })).toEqual({
+			expect(await verifyEmailOtpChallenge({ serverCache, email, code: '000000', now: testNow })).toEqual({
 				verified: false,
 				reason: 'invalid-code',
 			})
 		}
-		expect(await verifyEmailOtpChallenge({ email, code: '000000', now: testNow })).toEqual({
+		expect(await verifyEmailOtpChallenge({ serverCache, email, code: '000000', now: testNow })).toEqual({
 			verified: false,
 			reason: 'too-many-failed-attempts',
 		})
-		expect(await verifyEmailOtpChallenge({ email, code: '555555', now: testNow })).toEqual({ verified: false, reason: 'not-found' })
+		expect(await verifyEmailOtpChallenge({ serverCache, email, code: '555555', now: testNow })).toEqual({
+			verified: false,
+			reason: 'not-found',
+		})
 	}
 
 	describe('Email OTP Sign-in', () => {

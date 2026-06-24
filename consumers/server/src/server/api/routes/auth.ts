@@ -49,7 +49,7 @@ export function createAuthApiRouter(context: ServerApiContext) {
 				defaultStatusCode: StatusCodes.NoContent,
 			},
 		})(async (req) => {
-			await createEmailOtpChallenge({ email: req.body.email, now: context.now() })
+			await createEmailOtpChallenge({ serverCache: context.serverCache, email: req.body.email, now: context.now() })
 			return req.res({ status: StatusCodes.NoContent, body: undefined })
 		})
 		.post('/email-otp/sign-in', {
@@ -66,6 +66,7 @@ export function createAuthApiRouter(context: ServerApiContext) {
 		})(async (req) => {
 			const result = await verifyEmailOtpSignIn({
 				serverStorage: context.serverStorage,
+				serverCache: context.serverCache,
 				email: req.body.email,
 				code: req.body.code,
 				now: context.now(),

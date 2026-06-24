@@ -5,6 +5,7 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { createServerApiServer } from './api/app'
 import { createServerApiContext } from './api/context'
+import { startServerCache } from './cache'
 import { readServerEnv } from './env'
 import { createDeferredServerConsumerNotFoundHandler, createServerConsumerNotFoundHandler } from './runtime/not-found'
 import { createNuxtDevRuntime, type NuxtDevRuntime } from './runtime/nuxt-dev'
@@ -65,8 +66,9 @@ async function startServerConsumerDev(): Promise<boolean> {
 
 async function createServerConsumerApiRuntime() {
 	const env = readServerEnv()
+	const serverCache = await startServerCache({ dataDir: env.GORCHESTRA_DATA_DIR })
 	const serverStorage = await startServerStorage({ dataDir: env.GORCHESTRA_DATA_DIR })
-	const context = createServerApiContext({ serverStorage, env })
+	const context = createServerApiContext({ serverStorage, serverCache, env })
 	const server = createServerApiServer(context, env)
 	return { server }
 }

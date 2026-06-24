@@ -117,6 +117,7 @@ function requireSelectedPortfolioOwner(selectedContext: SelectedPortfolioCoreCon
 
 if (import.meta.vitest) {
 	const { afterEach, describe, expect, it } = import.meta.vitest
+	const { createTestServerCache } = await import('../testing/server-cache')
 	const { createTempServerStorageTestHarness } = await import('../testing/server-storage')
 	const { openServerStorage } = await import('../storage/repo')
 	const { createUser } = await import('../modules/identities')
@@ -231,8 +232,10 @@ if (import.meta.vitest) {
 	async function createPortfolioContextFixture() {
 		const dataDir = await createTempServerDataDir()
 		const serverStorage = await openServerStorage({ dataDir })
+		const serverCache = createTestServerCache()
 		const apiContext = createServerApiContext({
 			serverStorage,
+			serverCache,
 			env: {
 				GORCHESTRA_PORT: 0,
 				GORCHESTRA_DATA_DIR: dataDir,
@@ -244,6 +247,7 @@ if (import.meta.vitest) {
 		})
 		const user = await createUser({ serverStorage, now })
 		const session = await createSession({
+			serverCache,
 			userId: user.id,
 			email: 'person@example.com',
 			now,
