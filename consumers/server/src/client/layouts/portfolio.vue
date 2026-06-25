@@ -44,6 +44,7 @@
 					<NuxtLink
 						v-for="{ label, to } in [
 							{ label: 'Projects', to: '/projects' },
+							{ label: 'Brain', to: '/brain' },
 							{ label: 'Secrets', to: '/secrets' },
 						]"
 						:key="to"
@@ -74,7 +75,7 @@ import { useSelectedPortfolio } from '../composables/selected-portfolio'
 import DefaultLayout from './default.vue'
 
 withDefaults(defineProps<{ topbarSearchLabel?: string }>(), {
-	topbarSearchLabel: 'Search Projects, Repositories, Secrets, Deliveries…',
+	topbarSearchLabel: 'Search Projects, Memories, Repositories, Secrets, Deliveries…',
 })
 
 const route = useRoute()

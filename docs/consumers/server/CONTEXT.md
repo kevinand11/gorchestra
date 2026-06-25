@@ -76,6 +76,14 @@ _Avoid_: Core Portfolio record, Portfolio metadata in Core
 The oldest Portfolio registered for a Workspace. The Default Portfolio is administered by the Workspace's Active Workspace Owners.
 _Avoid_: Personal Portfolio, Workspace data
 
+**Brain**:
+The selected-Portfolio Server Consumer surface for exploring and curating Core Portfolio Memory. Brain is UI/product language; Core domain language remains Portfolio Memory, Memory, and Link.
+_Avoid_: Project Brain, Workspace Brain, knowledge base
+
+**Memory Ledger**:
+The Brain view that lists Portfolio Memories as rows for search, filtering, and inspection. It presents Core Memory read models without creating a separate Memory ownership scope.
+_Avoid_: Memory database, Project memory list
+
 **Workspace Member**:
 A User's durable identity inside a Workspace. Workspace Members are preserved for attribution even when their active membership changes over time.
 _Avoid_: WorkspaceUser, participant

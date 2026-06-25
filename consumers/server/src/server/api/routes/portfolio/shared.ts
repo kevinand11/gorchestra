@@ -36,6 +36,10 @@ export const auditStampResponseSchema = v.discriminate((value) => value.origin, 
 	}),
 	imported: v.object({ origin: v.is('imported' as const), at: isoDateTimePipe }),
 })
+export const archivePeriodResponseSchema = v.object({
+	archived: auditStampResponseSchema,
+	unarchived: v.nullable(auditStampResponseSchema),
+})
 
 const deliveryWorkConfigResponseSchema = v.object({
 	maxProcessableSliceSlots: positiveIntegerPipe,
@@ -113,6 +117,42 @@ export const planResponseSchema = v.object({
 	config: v.nullable(planConfigRecordResponseSchema),
 	created: auditStampResponseSchema,
 	agentRun: planningAgentRunResponseSchema,
+})
+
+export const graphNodeRefResponseSchema = v.discriminate((value) => value.type, {
+	plan: v.object({ type: v.is('plan' as const), id: idPipe }),
+	project: v.object({ type: v.is('project' as const), id: idPipe }),
+	delivery: v.object({ type: v.is('delivery' as const), id: idPipe }),
+	slice: v.object({ type: v.is('slice' as const), id: idPipe }),
+	memory: v.object({ type: v.is('memory' as const), id: idPipe }),
+})
+const linkTypeResponseSchema = v.in(['produced', 'references', 'supersedes', 'supports', 'contradicts', 'depends-on'] as const)
+const linkResponseSchema = v.object({
+	id: idPipe,
+	type: linkTypeResponseSchema,
+	from: graphNodeRefResponseSchema,
+	to: graphNodeRefResponseSchema,
+	created: auditStampResponseSchema,
+	archivePeriods: v.array(archivePeriodResponseSchema),
+})
+const memoryTypeResponseSchema = v.in([
+	'decision',
+	'fact',
+	'constraint',
+	'assumption',
+	'risk',
+	'architecture',
+	'workflow',
+	'convention',
+] as const)
+export const memoryResponseSchema = v.object({
+	id: idPipe,
+	title: nonEmptyStringPipe,
+	body: v.string(),
+	type: v.nullable(memoryTypeResponseSchema),
+	created: auditStampResponseSchema,
+	status: v.in(['current', 'superseded'] as const),
+	links: v.array(linkResponseSchema),
 })
 
 const sourceControlDeliveryTargetResponseSchema = v.object({

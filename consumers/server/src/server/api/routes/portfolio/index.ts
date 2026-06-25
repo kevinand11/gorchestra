@@ -1,6 +1,7 @@
 import { Router } from 'equipped/server'
 
 import { createDeliveriesApiRouter } from './deliveries'
+import { createMemoriesApiRouter } from './memories'
 import { createPlansApiRouter } from './plans'
 import { createProjectsApiRouter } from './projects'
 import { createRepositoriesApiRouter } from './repositories'
@@ -12,6 +13,7 @@ export function createPortfolioApiRouter(context: ServerApiContext) {
 		.nest(createProjectsApiRouter(context))
 		.nest(createPlansApiRouter(context))
 		.nest(createDeliveriesApiRouter(context))
+		.nest(createMemoriesApiRouter(context))
 		.nest(createRepositoriesApiRouter(context))
 		.nest(createSecretsApiRouter(context))
 }
