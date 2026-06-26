@@ -12,7 +12,7 @@ type LinkType = 'produced' | 'references' | 'supersedes' | 'supports' | 'contrad
 type GraphNodeType = 'project' | 'plan' | 'delivery' | 'slice' | 'memory'
 type GraphNodeRef = { type: GraphNodeType; id: string }
 type GraphNodeSelector = { type: 'node-type'; nodeType: GraphNodeType } | { type: 'node'; node: GraphNodeRef }
-type MemoryTypeFilter = { type: 'all' } | { type: 'types'; values: Array<MemoryType | null> }
+type MemoryTypeFilter = { type: 'all' } | { type: 'types'; values: MemoryType[] }
 type LinkTypeFilter = { type: 'all' } | { type: 'types'; values: LinkType[] }
 type LinkedNodeFilter = { type: 'all' } | { type: 'nodes'; values: GraphNodeSelector[] }
 type DirectMemoryLinkFilter = { linkTypes: LinkTypeFilter; linkedNodes: LinkedNodeFilter }
@@ -23,7 +23,7 @@ type CreateMemoryLink = { type: 'supersedes'; toMemoryId: string }
 export type CreateMemoryInput = {
 	title: string
 	body: string
-	type: MemoryType | null
+	type: MemoryType
 	links: CreateMemoryLink[]
 }
 

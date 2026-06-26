@@ -6,7 +6,7 @@ type QueryValue = string | string[] | null | undefined
 type QueryState = Record<string, QueryValue>
 type RouteWithQuery = { query: QueryState }
 type MemoryStatus = ListMemoriesInput['status']
-type MemoryType = 'decision' | 'fact' | 'constraint' | 'assumption' | 'risk' | 'architecture' | 'workflow' | 'convention' | null
+type MemoryType = 'decision' | 'fact' | 'constraint' | 'assumption' | 'risk' | 'architecture' | 'workflow' | 'convention'
 type LinkType = 'produced' | 'references' | 'supersedes' | 'supports' | 'contradicts' | 'depends-on'
 type GraphNodeType = 'project' | 'plan' | 'delivery' | 'slice' | 'memory'
 type GraphNodeSelector = { type: 'node-type'; nodeType: GraphNodeType } | { type: 'node'; node: { type: GraphNodeType; id: string } }
@@ -18,9 +18,16 @@ const searchQueryStringPipe = v.string().pipe(
 	v.custom((value) => value !== 'null'),
 )
 const searchQueryPipe = v.fromJson(v.nullable(searchQueryStringPipe))
-const memoryTypeValuePipe = v.nullable(
-	v.in(['decision', 'fact', 'constraint', 'assumption', 'risk', 'architecture', 'workflow', 'convention'] as const),
-)
+const memoryTypeValuePipe = v.in([
+	'decision',
+	'fact',
+	'constraint',
+	'assumption',
+	'risk',
+	'architecture',
+	'workflow',
+	'convention',
+] as const)
 const memoryTypeFilterPipe = v.fromJson(
 	v.discriminate((value) => value.type, {
 		all: v.object({ type: v.eq('all') }),
@@ -61,7 +68,7 @@ const linkFilterPipe = v.fromJson(
 export type MemoryLedgerDraft = {
 	status: MemoryStatus
 	search: string
-	memoryType: 'all' | Exclude<MemoryType, null> | 'uncategorized'
+	memoryType: 'all' | MemoryType
 	linkedBy: 'any' | Exclude<LinkType, 'depends-on'>
 	linkedTo: 'any' | GraphNodeType
 }
@@ -113,12 +120,11 @@ function searchQueryValue(search: string): string {
 
 function memoryTypeValueFromFilter(filter: ListMemoriesInput['typeFilter']): MemoryLedgerDraft['memoryType'] {
 	if (filter.type === 'all') return 'all'
-	const value = filter.values[0]
-	return value === null ? 'uncategorized' : (value ?? 'all')
+	return filter.values[0] ?? 'all'
 }
 
 function memoryTypeFilterFromValue(value: MemoryLedgerDraft['memoryType']): ListMemoriesInput['typeFilter'] {
-	return value === 'all' ? { type: 'all' } : { type: 'types', values: [value === 'uncategorized' ? null : value] }
+	return value === 'all' ? { type: 'all' } : { type: 'types', values: [value] }
 }
 
 function linkControlsFromFilter(filter: ListMemoriesInput['linkFilter']): Pick<MemoryLedgerDraft, 'linkedBy' | 'linkedTo'> {

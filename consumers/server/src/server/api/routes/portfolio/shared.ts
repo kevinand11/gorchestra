@@ -16,7 +16,7 @@ const createMemoryLinkRequestSchema = v.discriminate((value) => value.type, {
 export const createMemoryRequestSchema = v.object({
 	title: Domain.Commons.nonEmptyTrimmedStringPipe,
 	body: Domain.Memory.memoryBodyPipe,
-	type: v.nullable(Domain.Memory.memoryTypePipe),
+	type: Domain.Memory.memoryTypePipe,
 	links: v.array(createMemoryLinkRequestSchema),
 })
 export const createSecretRequestSchema = v.object({

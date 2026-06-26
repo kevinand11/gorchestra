@@ -97,7 +97,7 @@ const orderedLinks = computed(() =>
 )
 
 function memoryTypeLabel(type: MemoryDetails['type']): string {
-	return type === null ? 'Uncategorized' : titleCase(type)
+	return titleCase(type)
 }
 
 function memoryStatusLabel(status: MemoryDetails['status']): string {

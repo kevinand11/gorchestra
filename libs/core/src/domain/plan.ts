@@ -60,7 +60,7 @@ export const proposedMemoryPipe = v.object({
 	proposedMemoryKey: nonEmptyTrimmedStringPipe,
 	title: nonEmptyTrimmedStringPipe,
 	body: freeFormStringPipe,
-	type: v.nullable(memoryTypePipe),
+	type: memoryTypePipe,
 	links: v.array(proposedMemoryLinkPipe),
 })
 export type ProposedMemory = PipeOutput<typeof proposedMemoryPipe>

@@ -12,7 +12,7 @@ export const memoryPipe = v.object({
 	id: idPipe,
 	title: nonEmptyTrimmedStringPipe,
 	body: memoryBodyPipe,
-	type: v.nullable(memoryTypePipe),
+	type: memoryTypePipe,
 	created: auditStampPipe,
 })
 export type Memory = PipeOutput<typeof memoryPipe>

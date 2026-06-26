@@ -12,12 +12,11 @@ import type { Result as CoreResult } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
 export const memoryStatusFilterPipe = v.in(['current', 'superseded', 'all'])
-export const memoryTypeFilterValuePipe = v.nullable(memoryTypePipe)
 export const memoryTypeFilterPipe = v.discriminate((value) => value.type, {
 	all: v.object({ type: v.eq('all') }),
 	types: v.object({
 		type: v.eq('types'),
-		values: v.array(memoryTypeFilterValuePipe).pipe(v.min(1), v.asSet<MemoryType | null>(memoryTypeFilterValueKey)),
+		values: v.array(memoryTypePipe).pipe(v.min(1), v.asSet<MemoryType>(memoryTypeFilterValueKey)),
 	}),
 })
 export const graphNodeTypePipe = v.in(['project', 'plan', 'delivery', 'slice', 'memory'])
@@ -108,23 +107,8 @@ function applyTypeStorageFactories(filter: FilterGroup, factories: Array<(group:
 	return factories.length === 1 ? factories[0]!(filter) : filter.or(factories)
 }
 
-function typeStorageFactories(fields: MemorySchemaFields, values: Array<MemoryType | null>): Array<(group: FilterGroup) => FilterGroup> {
-	return [...nonNullTypeStorageFactories(fields, values), ...nullTypeStorageFactories(fields, values)]
-}
-
-function nonNullTypeStorageFactories(
-	fields: MemorySchemaFields,
-	values: Array<MemoryType | null>,
-): Array<(group: FilterGroup) => FilterGroup> {
-	const nonNullTypes = values.filter((value): value is MemoryType => value !== null)
-	return nonNullTypes.length === 0 ? [] : [(group) => group.in(fields.type, nonNullTypes)]
-}
-
-function nullTypeStorageFactories(
-	fields: MemorySchemaFields,
-	values: Array<MemoryType | null>,
-): Array<(group: FilterGroup) => FilterGroup> {
-	return values.includes(null) ? [(group) => group.eq(fields.type, null)] : []
+function typeStorageFactories(fields: MemorySchemaFields, values: MemoryType[]): Array<(group: FilterGroup) => FilterGroup> {
+	return values.length === 0 ? [] : [(group) => group.in(fields.type, values)]
 }
 
 async function linksForMemories(
@@ -179,8 +163,8 @@ function sortNewestFirst<T extends { id: string; created: { at: string } }>(reco
 	return [...records].sort((left, right) => right.created.at.localeCompare(left.created.at) || right.id.localeCompare(left.id))
 }
 
-function memoryTypeFilterValueKey(value: MemoryType | null): string {
-	return value ?? 'uncategorized'
+function memoryTypeFilterValueKey(value: MemoryType): string {
+	return value
 }
 
 function graphNodeSelectorKey(selector: GraphNodeSelector): string {
@@ -295,7 +279,7 @@ if (import.meta.vitest) {
 			type: 'architecture',
 			createdAt: '2026-06-10T00:00:00.000Z',
 		})
-		const currentTieB = memory({ id: 'memory-c', title: 'Tie C', body: '', type: null, createdAt: '2026-06-09T00:00:00.000Z' })
+		const currentTieB = memory({ id: 'memory-c', title: 'Tie C', body: '', type: 'fact', createdAt: '2026-06-09T00:00:00.000Z' })
 		const superseded = memory({
 			id: 'memory-a',
 			title: 'Old risk',
@@ -322,7 +306,7 @@ if (import.meta.vitest) {
 		return { options, currentLater, currentTieB, superseded, producedLink, supersedesLink, archivedSupportsLink }
 	}
 
-	function memory(input: { id: string; title: string; body: string; type: MemoryType | null; createdAt: string }): Memory {
+	function memory(input: { id: string; title: string; body: string; type: MemoryType; createdAt: string }): Memory {
 		return {
 			id: input.id,
 			title: input.title,
@@ -338,7 +322,10 @@ if (import.meta.vitest) {
 
 	function memoryListReadFailure(resource: 'memory' | 'link') {
 		const options = createTestCoreServices()
-		options.tx.memories.records.set('memory-1', memory({ id: 'memory-1', title: 'Memory', body: '', type: null, createdAt: stamp.at }))
+		options.tx.memories.records.set(
+			'memory-1',
+			memory({ id: 'memory-1', title: 'Memory', body: '', type: 'fact', createdAt: stamp.at }),
+		)
 		if (resource === 'memory') options.tx.memories.fail.list = true
 		if (resource === 'link') options.tx.links.fail.list = true
 		return options

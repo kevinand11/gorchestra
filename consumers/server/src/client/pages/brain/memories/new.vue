@@ -19,11 +19,19 @@
 				</UiText>
 
 				<label class="grid gap-1.5 font-semibold" for="memory-type">
-					Type
-					<UiSelect id="memory-type" v-model="memoryCreationForm.memoryType">
+					Memory Type
+					<UiSelect
+						id="memory-type"
+						v-model="memoryCreationForm.memoryType"
+						required
+						:invalid="!!memoryCreationForm.errors.memoryType">
+						<option value="" disabled>Select a Memory Type</option>
 						<option v-for="option in memoryTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
 					</UiSelect>
 				</label>
+				<UiText v-if="memoryCreationForm.errors.memoryType" tone="error" size="helper">
+					{{ memoryCreationForm.errors.memoryType }}
+				</UiText>
 
 				<label class="grid gap-1.5 font-semibold" for="memory-body">
 					Body
@@ -91,8 +99,8 @@ import { useApiAction } from '../../../composables/action-state'
 import { usePortfolioMemoriesQuery } from '../../../composables/portfolio-resource-queries'
 import { useQueryCache } from '../../../composables/query-cache'
 import { useSelectedPortfolio } from '../../../composables/selected-portfolio'
-import { useServerApi, type ListMemoriesInput, type ServerApi } from '../../../composables/useServerApi'
 import { useToasts } from '../../../composables/toasts'
+import { useServerApi, type ListMemoriesInput, type ServerApi } from '../../../composables/useServerApi'
 import { MemoryCreationFormFactory } from '../../../forms/memory'
 
 definePageMeta({ middleware: ['has-selection'] })
@@ -100,7 +108,6 @@ definePageMeta({ middleware: ['has-selection'] })
 type ListedMemory = Awaited<ReturnType<ServerApi['listMemories']>>[number]
 
 const memoryTypeOptions = [
-	{ value: 'uncategorized', label: 'Uncategorized' },
 	{ value: 'decision', label: 'Decision' },
 	{ value: 'fact', label: 'Fact' },
 	{ value: 'constraint', label: 'Constraint' },
@@ -123,9 +130,7 @@ const { portfolio } = useSelectedPortfolio()
 const serverApi = useServerApi()
 const toasts = useToasts()
 const { queryKeys, invalidate } = useQueryCache()
-const memoryCreationForm = new MemoryCreationFormFactory()
-const initialSupersededMemoryId = supersededMemoryIdFromQuery(route.query.supersedes)
-if (initialSupersededMemoryId !== '') memoryCreationForm.supersededMemoryId = initialSupersededMemoryId
+const memoryCreationForm = new MemoryCreationFormFactory({ supersededMemoryId: supersededMemoryIdFromQuery(route.query.supersedes) })
 
 const {
 	data: memoryOptions,
@@ -155,15 +160,7 @@ const {
 })
 
 function memoryOptionLabel(memory: ListedMemory): string {
-	return `${memory.title} — ${memoryStatusLabel(memory.status)} — ${memoryTypeLabel(memory.type)}`
-}
-
-function memoryStatusLabel(status: ListedMemory['status']): string {
-	return titleCase(status)
-}
-
-function memoryTypeLabel(type: ListedMemory['type']): string {
-	return type === null ? 'Uncategorized' : titleCase(type)
+	return `${memory.title} — ${titleCase(memory.status)} — ${titleCase(memory.type)}`
 }
 
 function supersededMemoryIdFromQuery(value: unknown): string {

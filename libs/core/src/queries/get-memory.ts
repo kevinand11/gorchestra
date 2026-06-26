@@ -99,7 +99,7 @@ if (import.meta.vitest) {
 
 	function testRecords() {
 		return {
-			memory: (id: string) => ({ id, title: 'Memory', body: 'Body', type: null, created: stamp }),
+			memory: (id: string) => ({ id, title: 'Memory', body: 'Body', type: 'fact' as const, created: stamp }),
 			link: (
 				id: string,
 				type: 'supersedes' | 'supports',

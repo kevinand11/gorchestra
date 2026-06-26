@@ -24,7 +24,7 @@ export type CreateMemoryLink = PipeOutput<typeof createMemoryLinkPipe>
 export const inputPipe = v.object({
 	title: nonEmptyTrimmedStringPipe,
 	body: memoryBodyPipe,
-	type: v.nullable(memoryTypePipe),
+	type: memoryTypePipe,
 	links: v.array(createMemoryLinkPipe).pipe(v.asSet<CreateMemoryLink>(createMemoryLinkKey)),
 })
 export type Input = PipeOutput<typeof inputPipe>
@@ -212,7 +212,20 @@ if (import.meta.vitest) {
 			options.tx.memories.fail.put = true
 			const command = createCreateMemoryCommand(createTestCoreRuntime(options))
 
-			const result = await command({ title: '', body: '', type: null, links: [] }, context)
+			const result = await command({ title: '', body: '', type: 'fact', links: [] }, context)
+
+			expect(result).toMatchObject({
+				ok: false,
+				error: { type: 'invalid-input', boundary: 'command', operation: 'createMemory' },
+			})
+			expect(options.transactionCalls()).toBe(0)
+		})
+
+		it('rejects Memories without a Memory Type', async () => {
+			const options = createTestCoreServices()
+			const command = createCreateMemoryCommand(createTestCoreRuntime(options))
+
+			const result = await command({ title: 'Memory', body: '', type: null, links: [] } as unknown as Input, context)
 
 			expect(result).toMatchObject({
 				ok: false,
@@ -248,8 +261,8 @@ if (import.meta.vitest) {
 			const options = createTestCoreServices()
 			const command = createCreateMemoryCommand(createTestCoreRuntime(options))
 
-			const blank = await command({ title: 'Blank', body: '   ', type: null, links: [] }, context)
-			const spaced = await command({ title: 'Spaced', body: '  keep spaces  ', type: null, links: [] }, context)
+			const blank = await command({ title: 'Blank', body: '   ', type: 'fact', links: [] }, context)
+			const spaced = await command({ title: 'Spaced', body: '  keep spaces  ', type: 'fact', links: [] }, context)
 
 			expect(blank).toMatchObject({ ok: true, value: { body: '' } })
 			expect(spaced).toMatchObject({ ok: true, value: { body: '  keep spaces  ' } })
@@ -288,7 +301,7 @@ if (import.meta.vitest) {
 				{
 					title: 'New convention',
 					body: '',
-					type: null,
+					type: 'fact',
 					links: [
 						{ type: 'supersedes', toMemoryId: 'memory-old' },
 						{ type: 'supersedes', toMemoryId: 'memory-old' },
@@ -315,7 +328,7 @@ if (import.meta.vitest) {
 			const command = createCreateMemoryCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ title: 'New convention', body: '', type: null, links: [{ type: 'supersedes', toMemoryId: 'missing-memory' }] },
+				{ title: 'New convention', body: '', type: 'convention', links: [{ type: 'supersedes', toMemoryId: 'missing-memory' }] },
 				context,
 			)
 
@@ -330,7 +343,7 @@ if (import.meta.vitest) {
 			const command = createCreateMemoryCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ title: 'New convention', body: '', type: null, links: [{ type: 'supersedes', toMemoryId: 'memory-1' }] },
+				{ title: 'New convention', body: '', type: 'convention', links: [{ type: 'supersedes', toMemoryId: 'memory-1' }] },
 				context,
 			)
 
@@ -346,7 +359,7 @@ if (import.meta.vitest) {
 			const command = createCreateMemoryCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ title: 'New convention', body: '', type: null, links: [{ type: 'supersedes', toMemoryId: 'memory-old' }] },
+				{ title: 'New convention', body: '', type: 'convention', links: [{ type: 'supersedes', toMemoryId: 'memory-old' }] },
 				context,
 			)
 

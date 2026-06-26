@@ -253,8 +253,12 @@ The Portfolio's second brain: the collection of Memories preserved across planni
 _Avoid_: Workspace Memory, Wiki, knowledge base
 
 **Memory**:
-An immutable Portfolio-owned context artifact. Memories may capture decisions, facts, constraints, assumptions, risks, architecture, workflows, or conventions; newer Memories may supersede older ones.
+An immutable Portfolio-owned context artifact. Every Memory has one Memory Type, and newer Memories may supersede older Memories.
 _Avoid_: Wiki, note, record, knowledge record
+
+**Memory Type**:
+The required classification of a Memory as a decision, fact, constraint, assumption, risk, architecture note, workflow, or convention.
+_Avoid_: Category, tag, optional classification, uncategorized
 
 **Standalone Memory**:
 A Memory with no direct Links. A Standalone Memory still belongs to Portfolio Memory and may be linked or superseded later.

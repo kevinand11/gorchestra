@@ -134,7 +134,6 @@ const memoryTypeOptions = [
 	{ value: 'architecture', label: 'Architecture' },
 	{ value: 'workflow', label: 'Workflow' },
 	{ value: 'convention', label: 'Convention' },
-	{ value: 'uncategorized', label: 'Uncategorized' },
 ] as const
 const linkedByOptions = [
 	{ value: 'any', label: 'Any' },
@@ -174,7 +173,7 @@ function applyFilters() {
 }
 
 function memoryTypeLabel(type: ListedMemory['type']): string {
-	return type === null ? 'Uncategorized' : titleCase(type)
+	return titleCase(type)
 }
 
 function memoryStatusLabel(status: ListedMemory['status']): string {

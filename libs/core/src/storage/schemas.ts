@@ -130,7 +130,7 @@ export const memorySchema = Schema.from('memories')
 	.pk('id', idPipe, explicitCoreIdRequired)
 	.field('title', nonEmptyTrimmedStringPipe)
 	.field('body', memoryBodyPipe)
-	.field('type', v.nullable(memoryTypePipe))
+	.field('type', memoryTypePipe)
 	.field('created', auditStampPipe)
 	.build()
 
