@@ -13,6 +13,7 @@ type DeliveryDetails = Awaited<ReturnType<ServerApi['getDelivery']>>
 type RepositoryDetails = Awaited<ReturnType<ServerApi['getRepository']>>
 type ListedSecret = Awaited<ReturnType<ServerApi['listSecrets']>>[number]
 type ListedMemory = Awaited<ReturnType<ServerApi['listMemories']>>[number]
+type MemoryDetails = Awaited<ReturnType<ServerApi['getMemory']>>
 
 export function usePortfolioProjectQuery(serverApi: ServerApi, projectId: Ref<string>) {
 	const { portfolioId, queryKeys } = usePortfolioQueryContext()
@@ -67,6 +68,14 @@ export function usePortfolioSecretsQuery(serverApi: ServerApi) {
 	return useFetchAction(() => serverApi.listSecrets(), {
 		queryKey: queryKeys.portfolio.secrets(portfolioId.value),
 		initialData: [] as ListedSecret[],
+	})
+}
+
+export function usePortfolioMemoryQuery(serverApi: ServerApi, memoryId: Ref<string>) {
+	const { portfolioId, queryKeys } = usePortfolioQueryContext()
+	return useFetchAction(() => serverApi.getMemory(memoryId.value), {
+		queryKey: queryKeys.portfolio.memory(portfolioId.value, memoryId.value),
+		initialData: null as MemoryDetails | null,
 	})
 }
 

@@ -12,7 +12,7 @@
 						:key="to"
 						:to="to"
 						class="border-b-2 px-0 pb-2 text-sz-helper font-semibold no-underline"
-						:class="route.path === to ? 'border-primary text-body' : 'border-transparent text-dim hover:text-body'">
+						:class="isActiveBrainTab(to) ? 'border-primary text-body' : 'border-transparent text-dim hover:text-body'">
 						{{ label }}
 					</NuxtLink>
 				</nav>
@@ -40,4 +40,8 @@ const brainTabs = [
 	{ label: 'Graph', to: '/brain' },
 	{ label: 'Memories', to: '/brain/memories' },
 ]
+
+function isActiveBrainTab(to: string): boolean {
+	return to === '/brain' ? route.path === to : route.path === to || route.path.startsWith(`${to}/`)
+}
 </script>

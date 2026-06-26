@@ -58,8 +58,6 @@ const linkFilterPipe = v.fromJson(
 		}),
 	}),
 )
-const selectedMemoryIdPipe = v.fromJson(v.string().pipe(v.asTrimmed(), v.min(1)))
-
 export type MemoryLedgerDraft = {
 	status: MemoryStatus
 	search: string
@@ -82,10 +80,6 @@ export function listMemoriesInputFromRoute(route: RouteWithQuery): ListMemoriesI
 	}
 }
 
-export function selectedMemoryIdFromRoute(route: RouteWithQuery): string | null {
-	return queryValue(route.query.selectedMemoryId, null, selectedMemoryIdPipe)
-}
-
 export function draftFromInput(input: ListMemoriesInput): MemoryLedgerDraft {
 	return {
 		status: input.status,
@@ -96,22 +90,14 @@ export function draftFromInput(input: ListMemoriesInput): MemoryLedgerDraft {
 }
 
 export function queryFromDraft(draft: MemoryLedgerDraft, existingQuery: QueryState): QueryState {
+	const { selectedMemoryId: _selectedMemoryId, ...query } = existingQuery
 	return {
-		...existingQuery,
+		...query,
 		status: draft.status,
 		search: searchQueryValue(draft.search),
 		typeFilter: JSON.stringify(memoryTypeFilterFromValue(draft.memoryType)),
 		linkFilter: JSON.stringify(linkFilterFromControls(draft.linkedBy, draft.linkedTo)),
 	}
-}
-
-export function queryWithSelectedMemory(existingQuery: QueryState, memoryId: string): QueryState {
-	return { ...existingQuery, selectedMemoryId: memoryId }
-}
-
-export function queryWithoutSelectedMemory(existingQuery: QueryState): QueryState {
-	const { selectedMemoryId: _selectedMemoryId, ...query } = existingQuery
-	return query
 }
 
 function queryValue<T>(value: QueryValue, fallback: T, pipe: Pipe<unknown, T>): T {

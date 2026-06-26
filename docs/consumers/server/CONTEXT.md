@@ -84,6 +84,10 @@ _Avoid_: Project Brain, Workspace Brain, knowledge base
 The Brain view that lists Portfolio Memories as rows for search, filtering, and inspection. It presents Core Memory read models without creating a separate Memory ownership scope.
 _Avoid_: Memory database, Project memory list
 
+**Memory Detail**:
+The Brain view for inspecting one Portfolio Memory and its Links. Memory Detail presents a Portfolio Memory in context without creating a separate Memory ownership scope.
+_Avoid_: selected Memory panel, Memory record page
+
 **Workspace Member**:
 A User's durable identity inside a Workspace. Workspace Members are preserved for attribution even when their active membership changes over time.
 _Avoid_: WorkspaceUser, participant
