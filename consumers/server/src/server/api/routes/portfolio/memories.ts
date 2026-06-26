@@ -1,9 +1,9 @@
-import { Queries } from '@gorchestra/core'
+import { Queries, type Domain } from '@gorchestra/core'
 import { Router } from 'equipped/server'
 import { v, type PipeOutput } from 'valleyed'
 
-import { listMemoriesResponsePipe, memoryResponsePipe } from './response-pipes'
-import { portfolioRequestCookieSchema, type PortfolioRequestCookies } from './shared'
+import { createdMemoryResponsePipe, listMemoriesResponsePipe, memoryResponsePipe } from './response-pipes'
+import { createMemoryRequestSchema, portfolioRequestCookieSchema, type CreateMemoryRequest, type PortfolioRequestCookies } from './shared'
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
 import { withSelectedPortfolioCore } from '../../portfolio-context'
@@ -27,6 +27,9 @@ export function createMemoriesApiRouter(context: ServerApiContext) {
 		.get('/memories', {
 			schema: { cookies: portfolioRequestCookieSchema, query: listMemoriesQuerySchema, response: listMemoriesResponsePipe },
 		})(async (req) => listSelectedPortfolioMemories(context, req.cookies, req.query as unknown as ListMemoriesQuery))
+		.post('/memories', {
+			schema: { cookies: portfolioRequestCookieSchema, body: createMemoryRequestSchema, response: createdMemoryResponsePipe },
+		})(async (req) => createSelectedPortfolioMemory(context, req.cookies, req.body as unknown as CreateMemoryRequest))
 		.get('/memories/:memoryId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
@@ -44,6 +47,20 @@ function listSelectedPortfolioMemories(
 	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
 		const memories = await core.queries.listMemories(listMemoriesInput(query))
 		return memories.ok ? memories.value : throwCoreOperationError(memories.error)
+	})
+}
+
+function createSelectedPortfolioMemory(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	input: CreateMemoryRequest,
+): Promise<Domain.Memory.Memory> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
+		const memory = await core.commands.createMemory(input, {
+			actor: { type: 'workspace-member', id: workspaceMember.id },
+			correlationId: null,
+		})
+		return memory.ok ? memory.value : throwCoreOperationError(memory.error)
 	})
 }
 

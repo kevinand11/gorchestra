@@ -18,6 +18,15 @@ type LinkedNodeFilter = { type: 'all' } | { type: 'nodes'; values: GraphNodeSele
 type DirectMemoryLinkFilter = { linkTypes: LinkTypeFilter; linkedNodes: LinkedNodeFilter }
 type MemoryLinkFilterSet = { type: 'none' } | { type: 'filters'; match: 'any' | 'all'; filters: DirectMemoryLinkFilter[] }
 
+type CreateMemoryLink = { type: 'supersedes'; toMemoryId: string }
+
+export type CreateMemoryInput = {
+	title: string
+	body: string
+	type: MemoryType | null
+	links: CreateMemoryLink[]
+}
+
 export type ListMemoriesInput = {
 	status: 'current' | 'superseded' | 'all'
 	search: string | null
@@ -154,6 +163,9 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		},
 		async listMemories(input: ListMemoriesInput) {
 			return routes.request('get', '/api/portfolio/memories', { query: listMemoriesRouteQuery(input) })
+		},
+		async createMemory(input: CreateMemoryInput) {
+			return routes.request('post', '/api/portfolio/memories', { body: input })
 		},
 		async getMemory(memoryId: string) {
 			return routes.request('get', '/api/portfolio/memories/:memoryId', { params: { memoryId } })

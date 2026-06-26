@@ -39,6 +39,17 @@
 		</section>
 
 		<template v-if="memory" #right>
+			<div v-if="memory.status === 'current'">
+				<div class="border-b border-dimmer px-3 py-2 font-semibold">Actions</div>
+				<div class="border-b border-dimmer px-3 py-3">
+					<NuxtLink
+						:to="{ path: '/brain/memories/new', query: { supersedes: memory.id } }"
+						class="inline-flex border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline hover:brightness-110">
+						Supersede Memory
+					</NuxtLink>
+					<p class="m-0 mt-2 text-sz-helper leading-5 text-dim">Create a newer Memory that supersedes this one.</p>
+				</div>
+			</div>
 			<div class="border-b border-dimmer px-3 py-2 font-semibold">Links</div>
 			<div class="border-b border-dimmer px-3 py-3 text-sz-helper leading-5 text-dim">
 				Active Links appear first. Linked node references are shown as plain text in this slice.

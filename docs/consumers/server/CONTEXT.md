@@ -88,6 +88,10 @@ _Avoid_: Memory database, Project memory list
 The Brain view for inspecting one Portfolio Memory and its Links. Memory Detail presents a Portfolio Memory in context without creating a separate Memory ownership scope.
 _Avoid_: selected Memory panel, Memory record page
 
+**New Memory**:
+The Brain view for manually creating one Portfolio Memory. New Memory may create a Standalone Memory or supersede an older Memory without creating a separate Memory ownership scope.
+_Avoid_: Memory editor, Memory draft, Create Memory page
+
 **Workspace Member**:
 A User's durable identity inside a Workspace. Workspace Members are preserved for attribution even when their active membership changes over time.
 _Avoid_: WorkspaceUser, participant

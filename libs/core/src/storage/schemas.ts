@@ -9,7 +9,6 @@ import { deliveryArtifactConfigPipe, sliceArtifactConfigPipe, type DeliveryArtif
 import {
 	archivePeriodPipe,
 	auditStampPipe,
-	freeFormStringPipe,
 	idPipe,
 	nonEmptyTrimmedStringPipe,
 	nonNegativeIntegerPipe,
@@ -25,7 +24,7 @@ import {
 } from '../domain/config'
 import { deliveryClosedPipe, deliveryTargetPipe, type Delivery } from '../domain/delivery'
 import { graphNodeRefPipe, linkTypePipe, type Link } from '../domain/graph'
-import { memoryTypePipe, type Memory } from '../domain/memory'
+import { memoryBodyPipe, memoryTypePipe, type Memory } from '../domain/memory'
 import { type Model } from '../domain/model'
 import { modelProviderAuthPipe, modelProviderHeaderPipe, modelProviderProtocolPipe, type ModelProvider } from '../domain/model-provider'
 import { instructionSourcePipe, type Plan } from '../domain/plan'
@@ -130,7 +129,7 @@ export const linkSchema = Schema.from('links')
 export const memorySchema = Schema.from('memories')
 	.pk('id', idPipe, explicitCoreIdRequired)
 	.field('title', nonEmptyTrimmedStringPipe)
-	.field('body', freeFormStringPipe)
+	.field('body', memoryBodyPipe)
 	.field('type', v.nullable(memoryTypePipe))
 	.field('created', auditStampPipe)
 	.build()

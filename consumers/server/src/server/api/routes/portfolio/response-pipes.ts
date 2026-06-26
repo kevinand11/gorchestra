@@ -20,6 +20,7 @@ export const listRepositoriesResponsePipe: Pipe<unknown, ServerResponse<Queries.
 export const repositoryResponsePipe: Pipe<unknown, ServerResponse<Queries.GetRepository.Result>> = Queries.GetRepository.resultPipe
 export const listMemoriesResponsePipe: Pipe<unknown, ServerResponse<Queries.ListMemories.Result>> = Queries.ListMemories.resultPipe
 export const memoryResponsePipe: Pipe<unknown, ServerResponse<Queries.GetMemory.Result>> = Queries.GetMemory.resultPipe
+export const createdMemoryResponsePipe: Pipe<unknown, ServerResponse<Domain.Memory.Memory>> = Domain.Memory.memoryPipe
 export const listSecretsResponsePipe: Pipe<unknown, ServerResponse<Queries.ListSecrets.Result>> = Queries.ListSecrets.resultPipe
 export const secretResponsePipe: Pipe<unknown, ServerResponse<Queries.GetSecret.Result>> = Queries.GetSecret.resultPipe
 export const validationEvidenceResponsePipe: Pipe<unknown, ServerResponse<Domain.Evidence.ValidationEvidence>> = Domain.Evidence

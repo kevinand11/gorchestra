@@ -5,7 +5,14 @@
 				<span class="text-sz-helper text-dim"
 					>{{ memories.length }} {{ memories.length === 1 ? 'Memory' : 'Memories' }} · newest first</span
 				>
-				<span v-if="isRefreshingMemories" class="text-sz-helper text-dim">Refreshing Memories…</span>
+				<div class="flex items-center gap-2">
+					<span v-if="isRefreshingMemories" class="text-sz-helper text-dim">Refreshing Memories…</span>
+					<NuxtLink
+						to="/brain/memories/new"
+						class="border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline hover:brightness-110">
+						New Memory
+					</NuxtLink>
+				</div>
 			</div>
 
 			<div v-if="isLoadingMemories && !hasLoadedMemories" class="border-b border-dimmer px-3 py-4 text-dim">Loading Memories…</div>

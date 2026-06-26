@@ -256,9 +256,21 @@ _Avoid_: Workspace Memory, Wiki, knowledge base
 An immutable Portfolio-owned context artifact. Memories may capture decisions, facts, constraints, assumptions, risks, architecture, workflows, or conventions; newer Memories may supersede older ones.
 _Avoid_: Wiki, note, record, knowledge record
 
+**Standalone Memory**:
+A Memory with no direct Links. A Standalone Memory still belongs to Portfolio Memory and may be linked or superseded later.
+_Avoid_: Orphan Memory, unowned Memory
+
 **Current Memory**:
 A Memory that has not been superseded by another Memory.
-_Avoid_: Active Memory, latest Memory
+_Avoid_: Active Memory, latest Memory, unsuperseded Memory
+
+**Superseded Memory**:
+An older Memory that has been replaced by one or more newer Memories through Memory Supersession.
+_Avoid_: Deleted Memory, outdated record, superseding Memory
+
+**Memory Supersession**:
+The relationship where a newer Memory replaces an older Memory without changing the older Memory. Supersession is represented as part of Portfolio Memory history, so the older Memory remains inspectable.
+_Avoid_: Memory edit, Memory overwrite, Memory deletion
 
 **Link**:
 A typed directed relationship between graph nodes such as Plans, Projects, Deliveries, Slices, and Memories. Portfolio is the graph boundary, not a graph node. Links connect graph nodes, not other Links. Links between Project-level nodes stay within one Project; Portfolio Memories may link to nodes in any Project. A Link reads as “from node, link-type verb, to node”; for example, a depends-on Link means the `from` node depends on the `to` node. Common Link types include produced, references, supersedes, supports, contradicts, and depends-on.

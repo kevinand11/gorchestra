@@ -8,6 +8,7 @@ import { createArchiveSecretBindingCommand } from './archive-secret-binding'
 import { createBindSecretCommand } from './bind-secret'
 import { createCloseRevisionGateCommand } from './close-revision-gate'
 import { createConfigureDeliveryCommand } from './configure-delivery'
+import { createCreateMemoryCommand } from './create-memory'
 import { createCreateModelCommand } from './create-model'
 import { createCreateModelProviderCommand } from './create-model-provider'
 import { createCreatePlanCommand } from './create-plan'
@@ -45,6 +46,7 @@ export type * as BindSecret from './bind-secret'
 export type * as CloseRevisionGate from './close-revision-gate'
 export type * as ConfigureDelivery from './configure-delivery'
 export type * as CreateModel from './create-model'
+export type * as CreateMemory from './create-memory'
 export type * as CreateModelProvider from './create-model-provider'
 export type * as CreatePlan from './create-plan'
 export type * as CreateProject from './create-project'
@@ -82,6 +84,7 @@ export function createCoreCommands(runtime: CoreRuntime) {
 		unarchiveModel: createUnarchiveModelCommand(runtime),
 		preflightModel: createPreflightModelCommand(runtime),
 		preflightRepository: createPreflightRepositoryCommand(runtime),
+		createMemory: createCreateMemoryCommand(runtime),
 		createPlan: createCreatePlanCommand(runtime),
 		acceptPlanOutput: createAcceptPlanOutputCommand(runtime),
 		rejectPlanOutput: createRejectPlanOutputCommand(runtime),
@@ -130,6 +133,7 @@ if (import.meta.vitest) {
 				'unarchiveModel',
 				'preflightModel',
 				'preflightRepository',
+				'createMemory',
 				'createPlan',
 				'acceptPlanOutput',
 				'rejectPlanOutput',
