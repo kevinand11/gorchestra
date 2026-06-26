@@ -9,15 +9,20 @@ import { createPortfolioApiRouter } from './routes/portfolio'
 import { createSelectionApiRouter } from './routes/selection'
 import { createWorkspaceApiRouter } from './routes/workspace'
 
-export function createServerApiRouter(context: ServerApiContext) {
-	return new Router({ path: '/api' })
+const buildServerApiRouter = (context: ServerApiContext) =>
+	new Router({ path: '/api' })
 		.nest(createAuthApiRouter(context))
 		.nest(createWorkspaceApiRouter(context))
 		.nest(createSelectionApiRouter(context))
 		.nest(createPortfolioApiRouter(context))
+
+export type ServerApiRouter = ReturnType<typeof buildServerApiRouter>
+
+export function createServerApiRouter(context: ServerApiContext): ServerApiRouter {
+	return buildServerApiRouter(context)
 }
 
-export function createServerApiServer(context: ServerApiContext, env: ServerEnv) {
+const buildServerApiServer = (context: ServerApiContext, env: ServerEnv) => {
 	ensureServerInstance()
 	return FastifyServer.create({
 		port: env.GORCHESTRA_PORT,
@@ -30,4 +35,10 @@ export function createServerApiServer(context: ServerApiContext, env: ServerEnv)
 			slowdown: { enabled: false },
 		},
 	}).addRouter(createServerApiRouter(context))
+}
+
+export type ServerApiServer = ReturnType<typeof buildServerApiServer>
+
+export function createServerApiServer(context: ServerApiContext, env: ServerEnv): ServerApiServer {
+	return buildServerApiServer(context, env)
 }

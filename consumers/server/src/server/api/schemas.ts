@@ -1,15 +1,15 @@
+import { Domain } from '@gorchestra/core'
 import { v } from 'valleyed'
 
 import { selectionCookieName } from '../modules/selection-cookie'
 import { sessionCookieName } from '../modules/sessions'
 
-export const idPipe = v.string().pipe(v.min(1))
-export const nonEmptyStringPipe = v.string().pipe(v.min(1))
-export const isoDateTimePipe = v.string().pipe(v.min(1))
-export const emailPipe = v.string().pipe(v.email(), v.min(1))
-export const integerPipe = v.number().pipe(v.int())
-export const positiveIntegerPipe = integerPipe.pipe(v.gte(1))
-export const nonNegativeIntegerPipe = integerPipe.pipe(v.gte(0))
+export const idPipe = Domain.Commons.nonEmptyRawStringPipe
+export const nonEmptyStringPipe = Domain.Commons.nonEmptyRawStringPipe
+export const isoDateTimePipe = Domain.Commons.nonEmptyRawStringPipe
+export const emailPipe = Domain.Commons.nonEmptyRawStringPipe.pipe(v.email())
+export const positiveIntegerPipe = Domain.Commons.positiveIntegerPipe
+export const nonNegativeIntegerPipe = Domain.Commons.nonNegativeIntegerPipe
 
 export const workspaceResponseSchema = v.object({
 	id: idPipe,

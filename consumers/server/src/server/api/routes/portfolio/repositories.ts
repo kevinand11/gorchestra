@@ -2,11 +2,10 @@ import type { Domain, Queries } from '@gorchestra/core'
 import { Router } from 'equipped/server'
 import { v } from 'valleyed'
 
+import { listRepositoriesResponsePipe, repositoryResponsePipe, validationEvidenceResponsePipe } from './response-pipes'
 import {
 	createRepositoryRequestSchema,
 	portfolioRequestCookieSchema,
-	repositoryPreflightEvidenceResponseSchema,
-	repositoryResponseSchema,
 	type CreateRepositoryRequest,
 	type PortfolioRequestCookies,
 	type RepositoryPreflightEvidence,
@@ -22,7 +21,7 @@ export function createRepositoriesApiRouter(context: ServerApiContext) {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: idPipe }),
-				response: v.array(repositoryResponseSchema),
+				response: listRepositoriesResponsePipe,
 			},
 		})(async (req) => listSelectedProjectRepositories(context, req.cookies, req.params.projectId))
 		.post('/projects/:projectId/repositories', {
@@ -30,21 +29,23 @@ export function createRepositoriesApiRouter(context: ServerApiContext) {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: idPipe }),
 				body: createRepositoryRequestSchema,
-				response: repositoryResponseSchema,
+				response: repositoryResponsePipe,
 			},
-		})(async (req) => createSelectedProjectRepository(context, req.cookies, req.params.projectId, req.body))
+		})(async (req) =>
+			createSelectedProjectRepository(context, req.cookies, req.params.projectId, req.body as unknown as CreateRepositoryRequest),
+		)
 		.get('/projects/:projectId/repositories/:repositoryId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: idPipe, repositoryId: idPipe }),
-				response: repositoryResponseSchema,
+				response: repositoryResponsePipe,
 			},
 		})(async (req) => getSelectedProjectRepository(context, req.cookies, req.params.projectId, req.params.repositoryId))
 		.post('/projects/:projectId/repositories/:repositoryId/preflight', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: idPipe, repositoryId: idPipe }),
-				response: repositoryPreflightEvidenceResponseSchema,
+				response: validationEvidenceResponsePipe,
 			},
 		})(async (req) => preflightSelectedProjectRepository(context, req.cookies, req.params.projectId, req.params.repositoryId))
 }

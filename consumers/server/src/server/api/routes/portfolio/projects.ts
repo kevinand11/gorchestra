@@ -2,13 +2,8 @@ import type { Domain, Queries } from '@gorchestra/core'
 import { Router } from 'equipped/server'
 import { v } from 'valleyed'
 
-import {
-	createProjectRequestSchema,
-	listedProjectResponseSchema,
-	portfolioRequestCookieSchema,
-	type CreateProjectRequest,
-	type PortfolioRequestCookies,
-} from './shared'
+import { projectResponsePipe, listProjectsResponsePipe } from './response-pipes'
+import { createProjectRequestSchema, portfolioRequestCookieSchema, type CreateProjectRequest, type PortfolioRequestCookies } from './shared'
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
 import { withSelectedPortfolioCore, withSelectedPortfolioOwnerCore } from '../../portfolio-context'
@@ -17,7 +12,7 @@ import { idPipe } from '../../schemas'
 export function createProjectsApiRouter(context: ServerApiContext) {
 	return new Router()
 		.get('/projects', {
-			schema: { cookies: portfolioRequestCookieSchema, response: v.array(listedProjectResponseSchema) },
+			schema: { cookies: portfolioRequestCookieSchema, response: listProjectsResponsePipe },
 		})(async (req) =>
 			withSelectedPortfolioCore(context, req.cookies, async ({ core }) => {
 				const projects = await core.queries.listProjects({})
@@ -25,13 +20,13 @@ export function createProjectsApiRouter(context: ServerApiContext) {
 			}),
 		)
 		.post('/projects', {
-			schema: { cookies: portfolioRequestCookieSchema, body: createProjectRequestSchema, response: listedProjectResponseSchema },
+			schema: { cookies: portfolioRequestCookieSchema, body: createProjectRequestSchema, response: projectResponsePipe },
 		})(async (req) => createSelectedPortfolioProject(context, req.cookies, req.body))
 		.get('/projects/:projectId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: idPipe }),
-				response: listedProjectResponseSchema,
+				response: projectResponsePipe,
 			},
 		})(async (req) => getSelectedPortfolioProject(context, req.cookies, req.params.projectId))
 }

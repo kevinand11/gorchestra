@@ -9,16 +9,21 @@ export const coreStorageMigrations = [
 		tx: true,
 		changes: [
 			createTable('portfolio_config', [objectField('configured'), objectField('value')]),
-			createTable('projects', [stringField('title'), objectField('source'), nullableObjectField('config'), objectField('created')]),
+			createTable('projects', [
+				stringField('title'),
+				objectField('source'),
+				nullableField(objectField('config')),
+				objectField('created'),
+			]),
 			createTable('repositories', [stringField('projectId'), objectField('config'), objectField('created')]),
 			createTable('model_providers', [
 				stringField('name'),
 				stringField('protocol'),
 				stringField('baseUrl'),
-				nullableObjectField('auth'),
+				nullableField(objectField('auth')),
 				arrayField('headers'),
 				objectField('created'),
-				nullableObjectField('updated'),
+				nullableField(objectField('updated')),
 				arrayField('archivePeriods'),
 			]),
 			createTable('models', [
@@ -26,19 +31,24 @@ export const coreStorageMigrations = [
 				stringField('name'),
 				stringField('providerModelId'),
 				objectField('created'),
-				nullableObjectField('updated'),
+				nullableField(objectField('updated')),
 				arrayField('archivePeriods'),
 			]),
-			createTable('plans', [stringField('projectId'), stringField('title'), nullableObjectField('config'), objectField('created')]),
+			createTable('plans', [
+				stringField('projectId'),
+				stringField('title'),
+				nullableField(objectField('config')),
+				objectField('created'),
+			]),
 			createTable('deliveries', [
 				stringField('projectId'),
 				stringField('planId'),
 				stringField('title'),
 				objectField('target'),
-				nullableObjectField('config'),
+				nullableField(objectField('config')),
 				objectField('accepted'),
-				nullableObjectField('queued'),
-				nullableObjectField('closed'),
+				nullableField(objectField('queued')),
+				nullableField(objectField('closed')),
 			]),
 			createTable('slices', [
 				stringField('deliveryId'),
@@ -54,33 +64,38 @@ export const coreStorageMigrations = [
 				objectField('created'),
 				arrayField('archivePeriods'),
 			]),
-			createTable('memories', [stringField('title'), stringField('body'), nullableStringField('type'), objectField('created')]),
+			createTable('memories', [
+				stringField('title'),
+				stringField('body'),
+				nullableField(stringField('type')),
+				objectField('created'),
+			]),
 			createTable('delivery_artifacts', [stringField('deliveryId'), objectField('config'), objectField('created')]),
 			createTable('slice_artifacts', [stringField('sliceId'), objectField('config'), objectField('created')]),
 			createTable('actions', [
 				stringField('deliveryId'),
 				objectField('performed'),
-				nullableObjectField('authorized'),
+				nullableField(objectField('authorized')),
 				objectField('result'),
 			]),
 			createTable('agent_runs', [
 				objectField('agent'),
 				objectField('purpose'),
 				objectField('started'),
-				nullableObjectField('completed'),
+				nullableField(objectField('completed')),
 			]),
 			createTable('review_surfaces', [
 				objectField('scope'),
 				objectField('config'),
 				stringField('title'),
-				nullableObjectField('closed'),
+				nullableField(objectField('closed')),
 				objectField('created'),
 			]),
 			createTable('revision_gates', [
 				objectField('scope'),
 				stringField('reviewSurfaceId'),
 				objectField('opened'),
-				nullableObjectField('closed'),
+				nullableField(objectField('closed')),
 			]),
 			createTable('revisions', [
 				stringField('revisionGateId'),
@@ -93,7 +108,7 @@ export const coreStorageMigrations = [
 				stringField('name'),
 				stringField('valueRef'),
 				objectField('created'),
-				nullableObjectField('replaced'),
+				nullableField(objectField('replaced')),
 				arrayField('archivePeriods'),
 			]),
 			createTable('secret_bindings', [
@@ -115,10 +130,6 @@ function stringField(name: string): CoreFieldSpec {
 	return { name, type: 'string' }
 }
 
-function nullableStringField(name: string): CoreFieldSpec {
-	return { ...stringField(name), nullable: true }
-}
-
 function numberField(name: string): CoreFieldSpec {
 	return { name, type: 'number' }
 }
@@ -127,8 +138,8 @@ function objectField(name: string): CoreFieldSpec {
 	return { name, type: 'object' }
 }
 
-function nullableObjectField(name: string): CoreFieldSpec {
-	return { ...objectField(name), nullable: true }
+function nullableField(field: CoreFieldSpec): CoreFieldSpec {
+	return { ...field, nullable: true }
 }
 
 function arrayField(name: string): CoreFieldSpec {

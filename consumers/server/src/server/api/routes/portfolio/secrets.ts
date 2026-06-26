@@ -2,13 +2,8 @@ import type { Domain, Queries } from '@gorchestra/core'
 import { Router } from 'equipped/server'
 import { v } from 'valleyed'
 
-import {
-	createSecretRequestSchema,
-	portfolioRequestCookieSchema,
-	secretResponseSchema,
-	type CreateSecretRequest,
-	type PortfolioRequestCookies,
-} from './shared'
+import { listSecretsResponsePipe, secretResponsePipe } from './response-pipes'
+import { createSecretRequestSchema, portfolioRequestCookieSchema, type CreateSecretRequest, type PortfolioRequestCookies } from './shared'
 import { protectSecretPlaintext } from '../../../modules/secret-protection'
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
@@ -18,13 +13,17 @@ import { idPipe } from '../../schemas'
 export function createSecretsApiRouter(context: ServerApiContext) {
 	return new Router()
 		.get('/secrets', {
-			schema: { cookies: portfolioRequestCookieSchema, response: v.array(secretResponseSchema) },
+			schema: { cookies: portfolioRequestCookieSchema, response: listSecretsResponsePipe },
 		})(async (req) => listSelectedPortfolioSecrets(context, req.cookies))
 		.post('/secrets', {
-			schema: { cookies: portfolioRequestCookieSchema, body: createSecretRequestSchema, response: secretResponseSchema },
+			schema: { cookies: portfolioRequestCookieSchema, body: createSecretRequestSchema, response: secretResponsePipe },
 		})(async (req) => createSelectedPortfolioSecret(context, req.cookies, req.body))
 		.get('/secrets/:secretId', {
-			schema: { cookies: portfolioRequestCookieSchema, params: v.object({ secretId: idPipe }), response: secretResponseSchema },
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ secretId: idPipe }),
+				response: secretResponsePipe,
+			},
 		})(async (req) => getSelectedPortfolioSecret(context, req.cookies, req.params.secretId))
 }
 

@@ -2,7 +2,8 @@ import type { Queries } from '@gorchestra/core'
 import { Router } from 'equipped/server'
 import { v } from 'valleyed'
 
-import { deliveryResponseSchema, portfolioRequestCookieSchema, type PortfolioRequestCookies } from './shared'
+import { deliveryResponsePipe, listDeliveriesResponsePipe } from './response-pipes'
+import { portfolioRequestCookieSchema, type PortfolioRequestCookies } from './shared'
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
 import { withSelectedPortfolioCore } from '../../portfolio-context'
@@ -14,14 +15,14 @@ export function createDeliveriesApiRouter(context: ServerApiContext) {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: idPipe }),
-				response: v.array(deliveryResponseSchema),
+				response: listDeliveriesResponsePipe,
 			},
 		})(async (req) => listSelectedProjectDeliveries(context, req.cookies, req.params.projectId))
 		.get('/projects/:projectId/deliveries/:deliveryId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: idPipe, deliveryId: idPipe }),
-				response: deliveryResponseSchema,
+				response: deliveryResponsePipe,
 			},
 		})(async (req) => getSelectedProjectDelivery(context, req.cookies, req.params.projectId, req.params.deliveryId))
 }

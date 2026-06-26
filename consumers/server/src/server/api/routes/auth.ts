@@ -86,17 +86,17 @@ export function createAuthApiRouter(context: ServerApiContext) {
 		.get('/session', {
 			schema: {
 				cookies: sessionCookieSchema,
-				response: v.or([
-					v.object({
-						authenticated: v.is(true as const),
+				response: v.discriminate((v) => v.authenticated.toString(), {
+					true: v.object({
+						authenticated: v.is(true),
 						session: sessionResponseSchema,
 						refreshRecommended: v.boolean(),
 					}),
-					v.object({
-						authenticated: v.is(false as const),
-						reason: v.in(['missing-token', 'invalid-token', 'expired', 'not-current'] as const),
+					false: v.object({
+						authenticated: v.is(false),
+						reason: v.in(['missing-token', 'invalid-token', 'expired', 'not-current']),
 					}),
-				]),
+				}),
 			},
 		})(async (req) => authenticateApiSession(context, getSessionToken(req.cookies)))
 		.post('/refresh', {
