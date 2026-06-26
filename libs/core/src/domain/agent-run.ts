@@ -14,8 +14,11 @@ export const executionModePipe = v.discriminate((value) => value.type, {
 })
 export type ExecutionMode = PipeOutput<typeof executionModePipe>
 
+export const planningAgentRunPurposePipe = v.object({ type: v.eq('planning'), planId: idPipe })
+export type PlanningAgentRunPurpose = PipeOutput<typeof planningAgentRunPurposePipe>
+
 export const agentRunPurposePipe = v.discriminate((value) => value.type, {
-	planning: v.object({ type: v.eq('planning'), planId: idPipe }),
+	planning: planningAgentRunPurposePipe,
 	'revision-planning': v.object({ type: v.eq('revision-planning'), revisionGateId: idPipe }),
 	execution: v.object({ type: v.eq('execution'), deliveryId: idPipe, sliceId: idPipe, mode: executionModePipe }),
 	'revision-execution': v.object({ type: v.eq('revision-execution'), revisionId: idPipe, actionId: idPipe }),
@@ -30,3 +33,12 @@ export const agentRunPipe = v.object({
 	completed: v.nullable(runtimeRecordPipe),
 })
 export type AgentRun = PipeOutput<typeof agentRunPipe>
+
+export const planningAgentRunPipe = v.object({
+	id: idPipe,
+	agent: agentPipe,
+	purpose: planningAgentRunPurposePipe,
+	started: runtimeRecordPipe,
+	completed: v.nullable(runtimeRecordPipe),
+})
+export type PlanningAgentRun = PipeOutput<typeof planningAgentRunPipe>

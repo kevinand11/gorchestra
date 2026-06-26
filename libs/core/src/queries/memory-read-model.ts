@@ -1,12 +1,5 @@
 import type { GraphNodeRef, Link } from '../domain/graph'
-import type { Memory } from '../domain/memory'
-
-export type MemoryStatus = 'current' | 'superseded'
-
-export type MemoryReadModel = Memory & {
-	status: MemoryStatus
-	links: Link[]
-}
+import type { Memory, MemoryReadModel, MemoryStatus } from '../domain/memory'
 
 export function memoryReadModel(memory: Memory, links: Link[]): MemoryReadModel {
 	return { ...memory, status: memoryStatus(memory, links), links: linksForMemory(memory.id, links) }

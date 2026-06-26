@@ -2,30 +2,30 @@ import type { FilterGroup, SchemaFields } from 'equipped/orm'
 import { v, type PipeOutput } from 'valleyed'
 
 import { graphNodeRefPipe, linkTypePipe, type GraphNodeRef, type Link, type LinkType } from '../domain/graph'
-import { memoryTypePipe, type Memory, type MemoryType } from '../domain/memory'
+import { memoryReadModelPipe, memoryTypePipe, type Memory, type MemoryReadModel, type MemoryType } from '../domain/memory'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
 import type { CoreServices, CoreStorage } from '../services'
-import { graphRefKey, memoryReadModels, memoryRefKey, type MemoryReadModel } from './memory-read-model'
+import { graphRefKey, memoryReadModels, memoryRefKey } from './memory-read-model'
 import { listRecords, withTransaction } from '../storage/helpers'
 import type { memorySchema } from '../storage/schemas'
 import type { Result as CoreResult } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
-const memoryStatusFilterPipe = v.in(['current', 'superseded', 'all'])
-const memoryTypeFilterValuePipe = v.nullable(memoryTypePipe)
-const memoryTypeFilterPipe = v.discriminate((value) => value.type, {
+export const memoryStatusFilterPipe = v.in(['current', 'superseded', 'all'])
+export const memoryTypeFilterValuePipe = v.nullable(memoryTypePipe)
+export const memoryTypeFilterPipe = v.discriminate((value) => value.type, {
 	all: v.object({ type: v.eq('all') }),
 	types: v.object({
 		type: v.eq('types'),
 		values: v.array(memoryTypeFilterValuePipe).pipe(v.min(1), v.asSet<MemoryType | null>(memoryTypeFilterValueKey)),
 	}),
 })
-const graphNodeTypePipe = v.in(['project', 'plan', 'delivery', 'slice', 'memory'])
-const graphNodeSelectorPipe = v.discriminate((value) => value.type, {
+export const graphNodeTypePipe = v.in(['project', 'plan', 'delivery', 'slice', 'memory'])
+export const graphNodeSelectorPipe = v.discriminate((value) => value.type, {
 	'node-type': v.object({ type: v.eq('node-type'), nodeType: graphNodeTypePipe }),
 	node: v.object({ type: v.eq('node'), node: graphNodeRefPipe }),
 })
-const linkTypeFilterPipe = v.discriminate((value) => value.type, {
+export const linkTypeFilterPipe = v.discriminate((value) => value.type, {
 	all: v.object({ type: v.eq('all') }),
 	types: v.object({
 		type: v.eq('types'),
@@ -35,16 +35,16 @@ const linkTypeFilterPipe = v.discriminate((value) => value.type, {
 		),
 	}),
 })
-const linkedNodeFilterPipe = v.discriminate((value) => value.type, {
+export const linkedNodeFilterPipe = v.discriminate((value) => value.type, {
 	all: v.object({ type: v.eq('all') }),
 	nodes: v.object({
 		type: v.eq('nodes'),
 		values: v.array(graphNodeSelectorPipe).pipe(v.min(1), v.asSet<GraphNodeSelector>(graphNodeSelectorKey)),
 	}),
 })
-const directMemoryLinkFilterPipe = v.object({ linkTypes: linkTypeFilterPipe, linkedNodes: linkedNodeFilterPipe })
-type DirectMemoryLinkFilter = PipeOutput<typeof directMemoryLinkFilterPipe>
-const memoryLinkFilterSetPipe = v.discriminate((value) => value.type, {
+export const directMemoryLinkFilterPipe = v.object({ linkTypes: linkTypeFilterPipe, linkedNodes: linkedNodeFilterPipe })
+export type DirectMemoryLinkFilter = PipeOutput<typeof directMemoryLinkFilterPipe>
+export const memoryLinkFilterSetPipe = v.discriminate((value) => value.type, {
 	none: v.object({ type: v.eq('none') }),
 	filters: v.object({
 		type: v.eq('filters'),
@@ -53,27 +53,28 @@ const memoryLinkFilterSetPipe = v.discriminate((value) => value.type, {
 	}),
 })
 
-const listMemoriesInputPipe = v.object({
+export const inputPipe = v.object({
 	status: memoryStatusFilterPipe,
 	search: v.nullable(v.string().pipe(v.asTrimmed(), v.min(1))),
 	typeFilter: memoryTypeFilterPipe,
 	linkFilter: memoryLinkFilterSetPipe,
 })
-export type Input = PipeOutput<typeof listMemoriesInputPipe>
+export type Input = PipeOutput<typeof inputPipe>
 
-type MemoryTypeFilter = PipeOutput<typeof memoryTypeFilterPipe>
-type GraphNodeSelector = PipeOutput<typeof graphNodeSelectorPipe>
-type LinkTypeFilter = PipeOutput<typeof linkTypeFilterPipe>
-type LinkedNodeFilter = PipeOutput<typeof linkedNodeFilterPipe>
-type MemoryLinkFilterSet = PipeOutput<typeof memoryLinkFilterSetPipe>
+export type MemoryTypeFilter = PipeOutput<typeof memoryTypeFilterPipe>
+export type GraphNodeSelector = PipeOutput<typeof graphNodeSelectorPipe>
+export type LinkTypeFilter = PipeOutput<typeof linkTypeFilterPipe>
+export type LinkedNodeFilter = PipeOutput<typeof linkedNodeFilterPipe>
+export type MemoryLinkFilterSet = PipeOutput<typeof memoryLinkFilterSetPipe>
 type MemorySchemaFields = SchemaFields<typeof memorySchema>
 
-export type Result = MemoryReadModel[]
+export const resultPipe = v.array(memoryReadModelPipe)
+export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createListMemoriesQuery(options: CoreServices): Operation {
-	return buildQueryHandler('listMemories', listMemoriesInputPipe, (input) =>
+	return buildQueryHandler('listMemories', inputPipe, (input) =>
 		withTransaction(options, (storage) => listMemoryReadModels(storage, input)),
 	)
 }

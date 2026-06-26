@@ -1,7 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe } from '../domain/commons'
-import type { Plan, PlanWithPlanningAgentRun } from '../domain/plan'
+import { planWithPlanningAgentRunPipe, type Plan } from '../domain/plan'
 import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
@@ -15,10 +15,11 @@ import { getRequired, listRecords, notFound, withTransaction } from '../storage/
 import type { Result as CoreResult } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
-const getPlanInputPipe = v.object({ projectId: idPipe, planId: idPipe })
-export type Input = PipeOutput<typeof getPlanInputPipe>
+export const inputPipe = v.object({ projectId: idPipe, planId: idPipe })
+export type Input = PipeOutput<typeof inputPipe>
 
-export type Result = PlanWithPlanningAgentRun
+export const resultPipe = planWithPlanningAgentRunPipe
+export type Result = PipeOutput<typeof resultPipe>
 export type Error =
 	| InvalidInputError
 	| InvalidCoreServiceOutputError
@@ -28,7 +29,7 @@ export type Error =
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createGetPlanQuery(options: CoreServices): Operation {
-	return buildQueryHandler('getPlan', getPlanInputPipe, (input) =>
+	return buildQueryHandler('getPlan', inputPipe, (input) =>
 		withTransaction(options, (storage) => getProjectPlanReadModel(storage, input.projectId, input.planId)),
 	)
 }

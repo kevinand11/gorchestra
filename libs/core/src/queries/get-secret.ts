@@ -1,23 +1,25 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe } from '../domain/commons'
+import { listedSecretPipe } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
 import { listSecretReferencesBySecretId } from './list-secret-references'
-import { listSecret, type ListedSecret } from './list-secrets'
+import { listSecret } from './list-secrets'
 import { getRequired, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
-const getSecretInputPipe = v.object({ secretId: idPipe })
-export type Input = PipeOutput<typeof getSecretInputPipe>
+export const inputPipe = v.object({ secretId: idPipe })
+export type Input = PipeOutput<typeof inputPipe>
 
-export type Result = ListedSecret
+export const resultPipe = listedSecretPipe
+export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createGetSecretQuery(options: CoreServices): Operation {
-	return buildQueryHandler('getSecret', getSecretInputPipe, (input) =>
+	return buildQueryHandler('getSecret', inputPipe, (input) =>
 		withTransaction(options, async (storage) => {
 			const secret = await getRequired('secret', storage, input.secretId)
 			if (!secret.ok) return secret

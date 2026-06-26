@@ -1,26 +1,27 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe } from '../domain/commons'
-import type { Delivery } from '../domain/delivery'
+import { deliveryReadModelPipe, type Delivery, type DeliveryReadModel } from '../domain/delivery'
 import type { Repository } from '../domain/repository'
 import type { Slice } from '../domain/slice'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices, CoreStorage } from '../services'
 import { getRequired, listRecords, withTransaction, type StorageBoundaryError } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
-import { deliveryReadModels, type DeliveryReadModel } from './utils/delivery-read-model'
+import { deliveryReadModels } from './utils/delivery-read-model'
 import { buildQueryHandler } from './utils/handler'
 import { listOrderedDeliverySlices } from './utils/slice-read-model'
 
-const listDeliveriesInputPipe = v.object({ projectId: idPipe })
-export type Input = PipeOutput<typeof listDeliveriesInputPipe>
+export const inputPipe = v.object({ projectId: idPipe })
+export type Input = PipeOutput<typeof inputPipe>
 
-export type Result = DeliveryReadModel[]
+export const resultPipe = v.array(deliveryReadModelPipe)
+export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createListDeliveriesQuery(options: CoreServices): Operation {
-	return buildQueryHandler('listDeliveries', listDeliveriesInputPipe, (input) =>
+	return buildQueryHandler('listDeliveries', inputPipe, (input) =>
 		withTransaction(options, async (storage) => {
 			const project = await getRequired('project', storage, input.projectId)
 			if (!project.ok) return project

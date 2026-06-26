@@ -1,69 +1,33 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { isArchived } from '../commands/utils/storage'
-import { idPipe, type AuditStamp, type Id } from '../domain/commons'
-import type { ModelProvider, ModelProviderProtocol } from '../domain/model-provider'
+import { idPipe, type Id } from '../domain/commons'
+import type { ModelProvider } from '../domain/model-provider'
 import type { Repository } from '../domain/repository'
-import type { SecretBinding, SecretBindingScope } from '../domain/secret'
+import { secretReferencePipe, type SecretBinding, type SecretReference } from '../domain/secret'
+export type {
+	ModelProviderAuthSecretReference,
+	ModelProviderHeaderSecretReference,
+	RepositoryAccessSecretReference,
+	SecretBindingSecretReference,
+	SecretReference,
+} from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices, CoreStorage } from '../services'
 import { getRequired, listRecords, withTransaction, type StorageBoundaryError } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
-const listSecretReferencesInputPipe = v.object({ secretId: idPipe })
-export type Input = PipeOutput<typeof listSecretReferencesInputPipe>
+export const inputPipe = v.object({ secretId: idPipe })
+export type Input = PipeOutput<typeof inputPipe>
 
-export type RepositoryAccessSecretReference = {
-	type: 'repository-access'
-	repositoryId: Id
-	projectId: Id
-	provider: 'github'
-	owner: string
-	name: string
-	created: AuditStamp
-}
-
-export type SecretBindingSecretReference = {
-	type: 'secret-binding'
-	secretBindingId: Id
-	scope: SecretBindingScope
-	envName: string
-	archived: boolean
-	created: AuditStamp
-}
-
-export type ModelProviderAuthSecretReference = {
-	type: 'model-provider-auth'
-	modelProviderId: Id
-	name: string
-	protocol: ModelProviderProtocol
-	archived: boolean
-	created: AuditStamp
-}
-
-export type ModelProviderHeaderSecretReference = {
-	type: 'model-provider-header'
-	modelProviderId: Id
-	name: string
-	protocol: ModelProviderProtocol
-	headerName: string
-	archived: boolean
-	created: AuditStamp
-}
-
-export type SecretReference =
-	| RepositoryAccessSecretReference
-	| SecretBindingSecretReference
-	| ModelProviderAuthSecretReference
-	| ModelProviderHeaderSecretReference
-
-export type Result = SecretReference[]
+export const resultPipe = v.array(secretReferencePipe)
+export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createListSecretReferencesQuery(options: CoreServices): Operation {
-	return buildQueryHandler('listSecretReferences', listSecretReferencesInputPipe, (input) =>
+	return buildQueryHandler('listSecretReferences', inputPipe, (input) =>
 		withTransaction(options, async (storage) => {
 			const secret = await getRequired('secret', storage, input.secretId)
 			if (!secret.ok) return secret

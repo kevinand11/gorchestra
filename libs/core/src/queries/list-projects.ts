@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { Project } from '../domain/project'
+import { listedProjectPipe, type ListedProject, type Project } from '../domain/project'
+export type { ListedProject, SourceControlProjectListSource } from '../domain/project'
 import type { Repository } from '../domain/repository'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
@@ -8,22 +9,16 @@ import { listRecords, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
-const listProjectsInputPipe = v.object({})
-export type Input = PipeOutput<typeof listProjectsInputPipe>
+export const inputPipe = v.object({})
+export type Input = PipeOutput<typeof inputPipe>
 
-export type SourceControlProjectListSource = {
-	type: 'source-control'
-	repositories: Repository[]
-}
-
-export type ListedProject = Omit<Project, 'source'> & { source: SourceControlProjectListSource }
-
-export type Result = ListedProject[]
+export const resultPipe = v.array(listedProjectPipe)
+export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createListProjectsQuery(options: CoreServices): Operation {
-	return buildQueryHandler('listProjects', listProjectsInputPipe, () =>
+	return buildQueryHandler('listProjects', inputPipe, () =>
 		withTransaction(options, async (storage) => {
 			const projects = await listRecords('project', storage)
 			if (!projects.ok) return projects

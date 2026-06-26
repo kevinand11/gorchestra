@@ -1,25 +1,25 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { isArchived } from '../commands/utils/storage'
-import type { Secret } from '../domain/secret'
+import { listedSecretPipe, type ListedSecret, type Secret, type SecretReference } from '../domain/secret'
+export type { ListedSecret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
-import { listSecretReferencesBySecretId, type SecretReference } from './list-secret-references'
+import { listSecretReferencesBySecretId } from './list-secret-references'
 import { listRecords, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
-const listSecretsInputPipe = v.object({})
-export type Input = PipeOutput<typeof listSecretsInputPipe>
+export const inputPipe = v.object({})
+export type Input = PipeOutput<typeof inputPipe>
 
-export type ListedSecret = Omit<Secret, 'valueRef' | 'archivePeriods'> & { archived: boolean; references: SecretReference[] }
-
-export type Result = ListedSecret[]
+export const resultPipe = v.array(listedSecretPipe)
+export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createListSecretsQuery(options: CoreServices): Operation {
-	return buildQueryHandler('listSecrets', listSecretsInputPipe, () =>
+	return buildQueryHandler('listSecrets', inputPipe, () =>
 		withTransaction(options, async (storage) => {
 			const secrets = await listRecords('secret', storage)
 			if (!secrets.ok) return secrets

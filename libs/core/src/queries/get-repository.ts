@@ -2,7 +2,7 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { validateSourceControlProject } from '../commands/utils/storage'
 import { idPipe } from '../domain/commons'
-import type { Repository } from '../domain/repository'
+import { repositoryPipe, type Repository } from '../domain/repository'
 import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
@@ -15,10 +15,11 @@ import { getRequired, notFound, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
-const getRepositoryInputPipe = v.object({ projectId: idPipe, repositoryId: idPipe })
-export type Input = PipeOutput<typeof getRepositoryInputPipe>
+export const inputPipe = v.object({ projectId: idPipe, repositoryId: idPipe })
+export type Input = PipeOutput<typeof inputPipe>
 
-export type Result = Repository
+export const resultPipe = repositoryPipe
+export type Result = PipeOutput<typeof resultPipe>
 export type Error =
 	| InvalidInputError
 	| InvalidCoreServiceOutputError
@@ -28,7 +29,7 @@ export type Error =
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createGetRepositoryQuery(options: CoreServices): Operation {
-	return buildQueryHandler('getRepository', getRepositoryInputPipe, (input) =>
+	return buildQueryHandler('getRepository', inputPipe, (input) =>
 		withTransaction(options, async (storage) => {
 			const project = await validateSourceControlProject(storage, input.projectId)
 			if (!project.ok) return project

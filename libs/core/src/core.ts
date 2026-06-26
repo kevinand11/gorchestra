@@ -1,6 +1,7 @@
 import * as Commands from './commands'
 import type { CorePreflightError, OpenCoreError } from './errors'
-import * as Queries from './queries'
+import type { Core as CoreQueries } from './queries'
+import { createCoreQueries } from './queries/create-core-queries'
 import { createCoreRuntime } from './runtime'
 import {
 	coreServicePreflightOutputPipe,
@@ -19,7 +20,7 @@ import { validateCoreInput, validateCoreServiceOutput } from './validation'
 export interface GorchestraCore {
 	preflight(): Promise<Result<CorePreflightReport, CorePreflightError>>
 	commands: Commands.Core
-	queries: Queries.Core
+	queries: CoreQueries
 	snapshots: Snapshots.Core
 }
 
@@ -35,7 +36,7 @@ export function openCore(services: CoreServices): Result<GorchestraCore, OpenCor
 		value: {
 			preflight: () => preflightCore(runtime.services),
 			commands: Commands.createCoreCommands(runtime),
-			queries: Queries.createCoreQueries(runtime),
+			queries: createCoreQueries(runtime),
 			snapshots: Snapshots.createCoreSnapshots(runtime),
 		},
 	}

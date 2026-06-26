@@ -1,22 +1,24 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe } from '../domain/commons'
+import { listedProjectPipe } from '../domain/project'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
-import { listedProjectFromProjectAndRepositories, sortByCreatedAtThenId, type ListedProject } from './list-projects'
+import { listedProjectFromProjectAndRepositories, sortByCreatedAtThenId } from './list-projects'
 import { getRequired, listRecords, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
-const getProjectInputPipe = v.object({ projectId: idPipe })
-export type Input = PipeOutput<typeof getProjectInputPipe>
+export const inputPipe = v.object({ projectId: idPipe })
+export type Input = PipeOutput<typeof inputPipe>
 
-export type Result = ListedProject
+export const resultPipe = listedProjectPipe
+export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createGetProjectQuery(options: CoreServices): Operation {
-	return buildQueryHandler('getProject', getProjectInputPipe, (input) =>
+	return buildQueryHandler('getProject', inputPipe, (input) =>
 		withTransaction(options, async (storage) => {
 			const project = await getRequired('project', storage, input.projectId)
 			if (!project.ok) return project

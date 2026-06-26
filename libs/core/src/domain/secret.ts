@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { archivePeriodPipe, auditStampPipe, idPipe, nonEmptyTrimmedStringPipe } from './commons'
+import { modelProviderProtocolPipe } from './model-provider'
 
 export const secretValueRefPipe = nonEmptyTrimmedStringPipe
 export const envNamePipe = nonEmptyTrimmedStringPipe.pipe(
@@ -33,6 +34,66 @@ export const secretBindingPipe = v.object({
 	archivePeriods: v.array(archivePeriodPipe),
 })
 export type SecretBinding = PipeOutput<typeof secretBindingPipe>
+
+export const repositoryAccessSecretReferencePipe = v.object({
+	type: v.eq('repository-access'),
+	repositoryId: idPipe,
+	projectId: idPipe,
+	provider: v.eq('github'),
+	owner: nonEmptyTrimmedStringPipe,
+	name: nonEmptyTrimmedStringPipe,
+	created: auditStampPipe,
+})
+export type RepositoryAccessSecretReference = PipeOutput<typeof repositoryAccessSecretReferencePipe>
+
+export const secretBindingSecretReferencePipe = v.object({
+	type: v.eq('secret-binding'),
+	secretBindingId: idPipe,
+	scope: secretBindingScopePipe,
+	envName: envNamePipe,
+	archived: v.boolean(),
+	created: auditStampPipe,
+})
+export type SecretBindingSecretReference = PipeOutput<typeof secretBindingSecretReferencePipe>
+
+export const modelProviderAuthSecretReferencePipe = v.object({
+	type: v.eq('model-provider-auth'),
+	modelProviderId: idPipe,
+	name: nonEmptyTrimmedStringPipe,
+	protocol: modelProviderProtocolPipe,
+	archived: v.boolean(),
+	created: auditStampPipe,
+})
+export type ModelProviderAuthSecretReference = PipeOutput<typeof modelProviderAuthSecretReferencePipe>
+
+export const modelProviderHeaderSecretReferencePipe = v.object({
+	type: v.eq('model-provider-header'),
+	modelProviderId: idPipe,
+	name: nonEmptyTrimmedStringPipe,
+	protocol: modelProviderProtocolPipe,
+	headerName: nonEmptyTrimmedStringPipe,
+	archived: v.boolean(),
+	created: auditStampPipe,
+})
+export type ModelProviderHeaderSecretReference = PipeOutput<typeof modelProviderHeaderSecretReferencePipe>
+
+export const secretReferencePipe = v.discriminate((value) => value.type, {
+	'repository-access': repositoryAccessSecretReferencePipe,
+	'secret-binding': secretBindingSecretReferencePipe,
+	'model-provider-auth': modelProviderAuthSecretReferencePipe,
+	'model-provider-header': modelProviderHeaderSecretReferencePipe,
+})
+export type SecretReference = PipeOutput<typeof secretReferencePipe>
+
+export const listedSecretPipe = v.object({
+	id: idPipe,
+	name: nonEmptyTrimmedStringPipe,
+	created: auditStampPipe,
+	replaced: v.nullable(auditStampPipe),
+	archived: v.boolean(),
+	references: v.array(secretReferencePipe),
+})
+export type ListedSecret = PipeOutput<typeof listedSecretPipe>
 
 export type ResolvedSecretEnvironment = Array<{
 	envName: string

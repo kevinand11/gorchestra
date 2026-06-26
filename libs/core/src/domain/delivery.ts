@@ -8,6 +8,8 @@ import {
 	type DeliveryWorkConfig,
 	type DeliveryWorkConfigResolution,
 } from './config'
+import { repositoryPipe } from './repository'
+import { slicePipe } from './slice'
 
 /**
  * Derived in priority order: closed, unqueued, dependency-blocked,
@@ -72,5 +74,31 @@ export const deliveryPipe = v.object({
 	closed: v.nullable(deliveryClosedPipe),
 })
 export type Delivery = PipeOutput<typeof deliveryPipe>
+
+export const sourceControlDeliveryReadTargetPipe = v.object({
+	type: v.eq('source-control'),
+	repository: repositoryPipe,
+	targetBranch: nonEmptyTrimmedStringPipe,
+})
+export type SourceControlDeliveryReadTarget = PipeOutput<typeof sourceControlDeliveryReadTargetPipe>
+
+export const deliveryReadTargetPipe = v.discriminate((value) => value.type, {
+	'source-control': sourceControlDeliveryReadTargetPipe,
+})
+export type DeliveryReadTarget = PipeOutput<typeof deliveryReadTargetPipe>
+
+export const deliveryReadModelPipe = v.object({
+	id: idPipe,
+	projectId: idPipe,
+	planId: idPipe,
+	title: nonEmptyTrimmedStringPipe,
+	target: deliveryReadTargetPipe,
+	config: v.nullable(deliveryConfigRecordPipe),
+	accepted: auditStampPipe,
+	queued: v.nullable(auditStampPipe),
+	closed: v.nullable(deliveryClosedPipe),
+	slices: v.array(slicePipe),
+})
+export type DeliveryReadModel = PipeOutput<typeof deliveryReadModelPipe>
 
 export type { DeliveryConfig, DeliveryConfigRecord, DeliveryWorkConfig, DeliveryWorkConfigResolution }

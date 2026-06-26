@@ -2,7 +2,7 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { validateSourceControlProject } from '../commands/utils/storage'
 import { idPipe } from '../domain/commons'
-import type { Repository } from '../domain/repository'
+import { repositoryPipe, type Repository } from '../domain/repository'
 import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
@@ -16,10 +16,11 @@ import { listRecords, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
-const listRepositoriesInputPipe = v.object({ projectId: idPipe })
-export type Input = PipeOutput<typeof listRepositoriesInputPipe>
+export const inputPipe = v.object({ projectId: idPipe })
+export type Input = PipeOutput<typeof inputPipe>
 
-export type Result = Repository[]
+export const resultPipe = v.array(repositoryPipe)
+export type Result = PipeOutput<typeof resultPipe>
 export type Error =
 	| InvalidInputError
 	| InvalidCoreServiceOutputError
@@ -29,7 +30,7 @@ export type Error =
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createListRepositoriesQuery(options: CoreServices): Operation {
-	return buildQueryHandler('listRepositories', listRepositoriesInputPipe, (input) =>
+	return buildQueryHandler('listRepositories', inputPipe, (input) =>
 		withTransaction(options, async (storage) => {
 			const project = await validateSourceControlProject(storage, input.projectId)
 			if (!project.ok) return project

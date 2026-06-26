@@ -1,22 +1,24 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe } from '../domain/commons'
+import { memoryReadModelPipe } from '../domain/memory'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices, CoreStorage } from '../services'
-import { memoryReadModel, type MemoryReadModel } from './memory-read-model'
+import { memoryReadModel } from './memory-read-model'
 import { getRequired, listRecords, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
-const getMemoryInputPipe = v.object({ memoryId: idPipe })
-export type Input = PipeOutput<typeof getMemoryInputPipe>
+export const inputPipe = v.object({ memoryId: idPipe })
+export type Input = PipeOutput<typeof inputPipe>
 
-export type Result = MemoryReadModel
+export const resultPipe = memoryReadModelPipe
+export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createGetMemoryQuery(options: CoreServices): Operation {
-	return buildQueryHandler('getMemory', getMemoryInputPipe, (input) =>
+	return buildQueryHandler('getMemory', inputPipe, (input) =>
 		withTransaction(options, (storage) => getMemoryReadModel(storage, input.memoryId)),
 	)
 }
