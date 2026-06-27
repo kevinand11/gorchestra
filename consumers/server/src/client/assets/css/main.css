@@ -68,9 +68,21 @@
 }
 
 @layer base {
-	* {
+	*,
+	*::before,
+	*::after {
 		box-sizing: border-box;
 		max-width: 100%;
+		min-width: 0;
+	}
+
+	:where(img, picture, video, canvas, svg, iframe, embed, object) {
+		display: block;
+		max-width: 100%;
+	}
+
+	:where(p, h1, h2, h3, h4, h5, h6, li, dd, dt, blockquote, figcaption, th, td) {
+		overflow-wrap: break-word;
 	}
 
 	body {
@@ -92,14 +104,17 @@
 
 	button,
 	input,
-	select {
+	select,
+	textarea {
 		font: inherit;
+		max-width: 100%;
 	}
 
 	button:focus-visible,
 	a:focus-visible,
 	input:focus-visible,
-	select:focus-visible {
+	select:focus-visible,
+	textarea:focus-visible {
 		outline: 2px solid var(--color-primary);
 		outline-offset: 2px;
 	}
