@@ -92,6 +92,10 @@ _Avoid_: selected Memory panel, Memory record page
 The Brain interaction that adds a direct outgoing Link from the Memory being inspected, whether Current or Superseded, to another existing Portfolio Memory. Memory Link Creation does not create a new Memory or a separate Memory ownership scope.
 _Avoid_: relationship editor, bidirectional Link creation, Memory Type assignment
 
+**Memory Link Archive State**:
+The Brain interaction that archives or unarchives an existing archivable Link from Memory Detail. It changes Link Archive Period history only; it does not delete the Link, reverse the Link direction, or apply to immutable produced, supersedes, or depends-on Links.
+_Avoid_: delete link, remove relationship, toggle edge
+
 **New Memory**:
 The Brain view for manually creating one Portfolio Memory. New Memory may create a Standalone Memory or supersede an older Memory without creating a separate Memory ownership scope.
 _Avoid_: Memory editor, Memory draft, Create Memory page

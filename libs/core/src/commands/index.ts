@@ -1,7 +1,6 @@
 import { createAbandonDeliveryCommand } from './abandon-delivery'
 import { createAcceptPlanOutputCommand } from './accept-plan-output'
 import { createAcceptRevisionOutputCommand } from './accept-revision-output'
-import { createArchiveLinkCommand } from './archive-link'
 import { createArchiveModelCommand } from './archive-model'
 import { createArchiveModelProviderCommand } from './archive-model-provider'
 import { createArchiveSecretCommand } from './archive-secret'
@@ -25,6 +24,7 @@ import { createRejectPlanOutputCommand } from './reject-plan-output'
 import { createReplaceSecretCommand } from './replace-secret'
 import { createRetryDeliveryPreflightCommand } from './retry-delivery-preflight'
 import { createRunDeliveryWorkCommand } from './run-delivery-work'
+import { createSetLinkArchiveStateCommand } from './set-link-archive-state'
 import { createSetPortfolioConfigCommand } from './set-portfolio-config'
 import { createSetProjectConfigCommand } from './set-project-config'
 import { createShipDeliveryCommand } from './ship-delivery'
@@ -40,7 +40,6 @@ import type { CoreRuntime } from '../runtime'
 export type * as AbandonDelivery from './abandon-delivery'
 export type * as AcceptPlanOutput from './accept-plan-output'
 export type * as AcceptRevisionOutput from './accept-revision-output'
-export type * as ArchiveLink from './archive-link'
 export type * as ArchiveModel from './archive-model'
 export type * as ArchiveModelProvider from './archive-model-provider'
 export type * as ArchiveSecret from './archive-secret'
@@ -64,6 +63,7 @@ export type * as RejectPlanOutput from './reject-plan-output'
 export type * as ReplaceSecret from './replace-secret'
 export type * as RetryDeliveryPreflight from './retry-delivery-preflight'
 export type * as RunDeliveryWork from './run-delivery-work'
+export type * as SetLinkArchiveState from './set-link-archive-state'
 export type * as SetPortfolioConfig from './set-portfolio-config'
 export type * as SetProjectConfig from './set-project-config'
 export type * as ShipDelivery from './ship-delivery'
@@ -89,7 +89,7 @@ export function createCoreCommands(runtime: CoreRuntime) {
 		preflightModel: createPreflightModelCommand(runtime),
 		preflightRepository: createPreflightRepositoryCommand(runtime),
 		createLink: createCreateLinkCommand(runtime),
-		archiveLink: createArchiveLinkCommand(runtime),
+		setLinkArchiveState: createSetLinkArchiveStateCommand(runtime),
 		createMemory: createCreateMemoryCommand(runtime),
 		createPlan: createCreatePlanCommand(runtime),
 		acceptPlanOutput: createAcceptPlanOutputCommand(runtime),
@@ -140,7 +140,7 @@ if (import.meta.vitest) {
 				'preflightModel',
 				'preflightRepository',
 				'createLink',
-				'archiveLink',
+				'setLinkArchiveState',
 				'createMemory',
 				'createPlan',
 				'acceptPlanOutput',

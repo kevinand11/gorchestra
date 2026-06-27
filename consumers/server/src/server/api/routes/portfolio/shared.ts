@@ -30,6 +30,7 @@ export const createLinkRequestSchema = v.object({
 	from: memoryNodeRefSchema,
 	to: memoryNodeRefSchema,
 })
+export const setLinkArchiveStateRequestSchema = v.object({ archived: v.boolean() })
 
 export type PortfolioRequestCookies = Record<string, string | undefined>
 export type CreateProjectRequest = PipeOutput<typeof createProjectRequestSchema>
@@ -38,4 +39,5 @@ export type CreateMemoryRequest = PipeOutput<typeof createMemoryRequestSchema>
 export type CreateSecretRequest = PipeOutput<typeof createSecretRequestSchema>
 export type CreateRepositoryRequest = PipeOutput<typeof createRepositoryRequestSchema>
 export type CreateLinkRequest = PipeOutput<typeof createLinkRequestSchema>
+export type SetLinkArchiveStateRequest = PipeOutput<typeof setLinkArchiveStateRequestSchema>
 export type RepositoryPreflightEvidence = Domain.Evidence.ValidationEvidence & { operation: { type: 'repository-preflight' } }

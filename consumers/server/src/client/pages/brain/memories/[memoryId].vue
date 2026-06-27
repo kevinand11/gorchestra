@@ -100,8 +100,11 @@
 				</form>
 			</div>
 			<div class="border-b border-dimmer px-3 py-3 text-sz-helper leading-5 text-dim">
-				Active Links appear first. Linked node references are shown as plain text in this slice.
+				Active Links appear first. References, Supports, and Contradicts Links can be archived or unarchived here.
 			</div>
+			<UiText v-if="setLinkArchiveStateError" class="border-b border-dimmer px-3 py-3" tone="error">
+				{{ setLinkArchiveStateError }}
+			</UiText>
 			<div v-if="orderedLinks.length === 0" class="border-b border-dimmer px-3 py-3 text-sz-helper text-dim">No Links.</div>
 			<div v-else>
 				<div
@@ -111,7 +114,18 @@
 					:class="isArchivedLink(link) ? 'opacity-75' : ''">
 					<span class="block text-sz-helper font-semibold text-primary">{{ link.type }}</span>
 					<span class="mt-1 block text-sz-helper leading-5">{{ linkSentence(link, memory) }}</span>
-					<span class="mt-1 block text-sz-micro text-dim">{{ isArchivedLink(link) ? 'Archived Link' : 'Current Link' }}</span>
+					<div class="mt-2 flex items-center justify-between gap-2">
+						<span class="block text-sz-micro text-dim">{{ isArchivedLink(link) ? 'Archived Link' : 'Current Link' }}</span>
+						<UiButton
+							v-if="isArchivableLink(link)"
+							type="button"
+							variant="secondary"
+							:loading="isUpdatingLinkArchiveState(link)"
+							:disabled="isSettingLinkArchiveState"
+							@click="setLinkArchiveState(link)">
+							{{ isArchivedLink(link) ? 'Unarchive' : 'Archive' }}
+						</UiButton>
+					</div>
 				</div>
 			</div>
 		</template>
@@ -147,7 +161,9 @@ const { queryKeys, invalidate, set } = useQueryCache()
 const memoryId = computed(() => route.params.memoryId as string)
 const showLinkCreationForm = ref(false)
 const linkTypeOptions = memoryLinkCreationTypeOptions
+const archivableLinkTypes = new Set<MemoryLink['type']>(['references', 'supports', 'contradicts'])
 const linkCreationForm = new LinkCreationFormFactory({ sourceMemoryId: memoryId.value })
+const updatingLinkArchiveStateId = ref<string | null>(null)
 const allMemoriesInput = computed<ListMemoriesInput>(() => ({
 	status: 'all',
 	search: null,
@@ -192,9 +208,26 @@ const {
 	const link = await serverApi.createLink(linkCreationForm.toModel())
 	if (memory.value)
 		set(queryKeys.portfolio.memory(portfolio.value.id, memory.value.id), { ...memory.value, links: [...memory.value.links, link] })
-	invalidate([...queryKeys.portfolio.root(portfolio.value.id), 'memories'])
+	invalidatePortfolioMemories()
 	linkCreationForm.reset()
 	toasts.success({ title: 'Link created.', body: `${titleCase(link.type)} Link added.` })
+})
+
+const {
+	isLoading: isSettingLinkArchiveState,
+	error: setLinkArchiveStateError,
+	execute: setLinkArchiveState,
+} = useApiAction(async (link: MemoryLink) => {
+	updatingLinkArchiveStateId.value = link.id
+	try {
+		const archived = !isArchivedLink(link)
+		const updatedLink = await serverApi.setLinkArchiveState(link.id, archived)
+		replaceCachedMemoryLink(updatedLink)
+		invalidatePortfolioMemories()
+		toasts.success({ title: archived ? 'Link archived.' : 'Link unarchived.', body: `${titleCase(link.type)} Link updated.` })
+	} finally {
+		updatingLinkArchiveStateId.value = null
+	}
 })
 
 function memoryStatusClass(status: MemoryDetails['status']): string {
@@ -215,8 +248,29 @@ function nodeRefLabel(ref: MemoryLink['from']): string {
 	return `${titleCase(ref.type)} ${ref.id}`
 }
 
+function isArchivableLink(link: MemoryLink): boolean {
+	return archivableLinkTypes.has(link.type)
+}
+
+function isUpdatingLinkArchiveState(link: MemoryLink): boolean {
+	return isSettingLinkArchiveState.value && updatingLinkArchiveStateId.value === link.id
+}
+
 function isArchivedLink(link: MemoryLink): boolean {
 	return link.archivePeriods.some((period) => period.unarchived === null)
+}
+
+function replaceCachedMemoryLink(link: MemoryLink): void {
+	if (!memory.value) return
+
+	set(queryKeys.portfolio.memory(portfolio.value.id, memory.value.id), {
+		...memory.value,
+		links: memory.value.links.map((existingLink) => (existingLink.id === link.id ? link : existingLink)),
+	})
+}
+
+function invalidatePortfolioMemories(): void {
+	invalidate([...queryKeys.portfolio.root(portfolio.value.id), 'memories'])
 }
 
 function memoryOptionLabel(memory: ListedMemory): string {

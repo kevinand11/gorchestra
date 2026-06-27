@@ -2,7 +2,14 @@ import { Domain } from '@gorchestra/core'
 import { Router } from 'equipped/server'
 import { v } from 'valleyed'
 
-import { createLinkRequestSchema, portfolioRequestCookieSchema, type CreateLinkRequest, type PortfolioRequestCookies } from './shared'
+import {
+	createLinkRequestSchema,
+	portfolioRequestCookieSchema,
+	setLinkArchiveStateRequestSchema,
+	type CreateLinkRequest,
+	type PortfolioRequestCookies,
+	type SetLinkArchiveStateRequest,
+} from './shared'
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
 import { withSelectedPortfolioCore } from '../../portfolio-context'
@@ -13,9 +20,14 @@ export function createLinksApiRouter(context: ServerApiContext) {
 		.post('/links', {
 			schema: { cookies: portfolioRequestCookieSchema, body: createLinkRequestSchema, response: Domain.Graph.linkPipe },
 		})(async (req) => createSelectedPortfolioLink(context, req.cookies, req.body))
-		.post('/links/:linkId/archive', {
-			schema: { cookies: portfolioRequestCookieSchema, params: v.object({ linkId: idPipe }), response: Domain.Graph.linkPipe },
-		})(async (req) => archiveSelectedPortfolioLink(context, req.cookies, req.params.linkId))
+		.post('/links/:linkId/archive-state', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ linkId: idPipe }),
+				body: setLinkArchiveStateRequestSchema,
+				response: Domain.Graph.linkPipe,
+			},
+		})(async (req) => setSelectedPortfolioLinkArchiveState(context, req.cookies, req.params.linkId, req.body))
 }
 
 function createSelectedPortfolioLink(
@@ -32,14 +44,15 @@ function createSelectedPortfolioLink(
 	})
 }
 
-function archiveSelectedPortfolioLink(
+function setSelectedPortfolioLinkArchiveState(
 	context: ServerApiContext,
 	cookies: PortfolioRequestCookies,
 	linkId: string,
+	input: SetLinkArchiveStateRequest,
 ): Promise<Domain.Graph.Link> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
-		const link = await core.commands.archiveLink(
-			{ linkId },
+		const link = await core.commands.setLinkArchiveState(
+			{ linkId, archived: input.archived },
 			{
 				actor: { type: 'workspace-member', id: workspaceMember.id },
 				correlationId: null,

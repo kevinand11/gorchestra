@@ -181,8 +181,8 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async createLink(input: CreateLinkInput) {
 			return routes.request('post', '/api/portfolio/links', { body: input })
 		},
-		async archiveLink(linkId: string) {
-			return routes.request('post', '/api/portfolio/links/:linkId/archive', { params: { linkId } })
+		async setLinkArchiveState(linkId: string, archived: boolean) {
+			return routes.request('post', '/api/portfolio/links/:linkId/archive-state', { params: { linkId }, body: { archived } })
 		},
 		async provisionDefaultWorkspace(input: { workspaceDisplayName: string; portfolioDisplayName: string }) {
 			return routes.request('post', '/api/workspaces/provision-default', { body: input })

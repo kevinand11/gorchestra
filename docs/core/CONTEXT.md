@@ -277,7 +277,7 @@ The relationship where a newer Memory replaces an older Memory without changing 
 _Avoid_: Memory edit, Memory overwrite, Memory deletion
 
 **Link**:
-A typed directed relationship between graph nodes such as Plans, Projects, Deliveries, Slices, and Memories. Portfolio is the graph boundary, not a graph node. Links connect graph nodes, not other Links. Links between Project-level nodes stay within one Project; Portfolio Memories may link to nodes in any Project. A Link reads as “from node, link-type verb, to node”; for example, a depends-on Link means the `from` node depends on the `to` node. Common Link types include produced, references, supersedes, supports, contradicts, and depends-on.
+A typed directed relationship between graph nodes such as Plans, Projects, Deliveries, Slices, and Memories. Portfolio is the graph boundary, not a graph node. Links connect graph nodes, not other Links. Links between Project-level nodes stay within one Project; Portfolio Memories may link to nodes in any Project. A Link reads as “from node, link-type verb, to node”; for example, a depends-on Link means the `from` node depends on the `to` node. Common Link types include produced, references, supersedes, supports, contradicts, and depends-on. References, supports, and contradicts Links may move between archived and active states through Archive Periods; produced, supersedes, and depends-on Links remain immutable historical or execution facts.
 _Avoid_: Relationship, edge, reference, edge-as-node
 
 **Preflight**:
