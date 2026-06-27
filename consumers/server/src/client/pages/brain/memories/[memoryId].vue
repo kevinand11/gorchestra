@@ -50,7 +50,61 @@
 					<p class="m-0 mt-2 text-sz-helper leading-5 text-dim">Create a newer Memory that supersedes this one.</p>
 				</div>
 			</div>
-			<div class="border-b border-dimmer px-3 py-2 font-semibold">Links</div>
+			<div class="flex items-center justify-between gap-2 border-b border-dimmer px-3 py-2">
+				<span class="font-semibold">Links</span>
+				<UiButton type="button" variant="secondary" @click="showLinkCreationForm = !showLinkCreationForm">
+					{{ showLinkCreationForm ? 'Cancel' : 'Add Link' }}
+				</UiButton>
+			</div>
+			<div v-if="showLinkCreationForm" class="border-b border-dimmer px-3 py-3">
+				<form class="grid gap-3" @submit.prevent="createLink()">
+					<label class="grid gap-1.5 text-sz-helper font-semibold text-dim" for="memory-link-type">
+						Link Type
+						<UiSelect
+							id="memory-link-type"
+							v-model="linkCreationForm.linkType"
+							required
+							:invalid="!!linkCreationForm.errors.linkType">
+							<option value="" disabled>Select a Link Type</option>
+							<option v-for="option in linkTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+						</UiSelect>
+					</label>
+					<UiText v-if="linkCreationForm.errors.linkType" tone="error" size="helper">
+						{{ linkCreationForm.errors.linkType }}
+					</UiText>
+
+					<label class="grid gap-1.5 text-sz-helper font-semibold text-dim" for="memory-link-target">
+						Target Memory
+						<UiSelect
+							id="memory-link-target"
+							v-model="linkCreationForm.targetMemoryId"
+							required
+							:disabled="isLoadingMemoryOptions && !hasLoadedMemoryOptions"
+							:invalid="!!linkCreationForm.errors.targetMemoryId">
+							<option value="" disabled>Select a target Memory</option>
+							<option v-for="option in eligibleTargetMemories" :key="option.id" :value="option.id">
+								{{ memoryOptionLabel(option) }}
+							</option>
+						</UiSelect>
+					</label>
+					<UiText v-if="linkCreationForm.errors.targetMemoryId" tone="error" size="helper">
+						{{ linkCreationForm.errors.targetMemoryId }}
+					</UiText>
+					<UiText v-if="isLoadingMemoryOptions && !hasLoadedMemoryOptions" tone="muted" size="helper">Loading Memories…</UiText>
+					<UiText v-else-if="memoryOptionsError" tone="error" size="helper">{{ memoryOptionsError }}</UiText>
+					<UiText v-else-if="eligibleTargetMemories.length === 0" tone="muted" size="helper">
+						No eligible target Memories for this Link Type.
+					</UiText>
+					<UiText v-else tone="muted" size="helper">
+						Choose the existing Memory this Memory should {{ selectedLinkVerb }}.
+					</UiText>
+
+					<div>
+						<UiButton type="submit" :loading="isCreatingLink" :disabled="!linkCreationForm.valid">Create Link</UiButton>
+					</div>
+					<UiText v-if="createLinkError" tone="error">{{ createLinkError }}</UiText>
+				</form>
+			</div>
 			<div class="border-b border-dimmer px-3 py-3 text-sz-helper leading-5 text-dim">
 				Active Links appear first. Linked node references are shown as plain text in this slice.
 			</div>
@@ -71,20 +125,42 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
-import { usePortfolioMemoryQuery } from '../../../composables/portfolio-resource-queries'
-import { useServerApi, type ServerApi } from '../../../composables/useServerApi'
+import UiButton from '../../../components/ui/UiButton.vue'
+import UiSelect from '../../../components/ui/UiSelect.vue'
+import UiText from '../../../components/ui/UiText.vue'
+import { useApiAction } from '../../../composables/action-state'
+import { usePortfolioMemoriesQuery, usePortfolioMemoryQuery } from '../../../composables/portfolio-resource-queries'
+import { useQueryCache } from '../../../composables/query-cache'
+import { useSelectedPortfolio } from '../../../composables/selected-portfolio'
+import { useToasts } from '../../../composables/toasts'
+import { useServerApi, type CreateLinkInput, type ListMemoriesInput, type ServerApi } from '../../../composables/useServerApi'
+import { MemoryLinkCreationFormFactory, memoryLinkCreationTypeOptions } from '../../../forms/link'
 import { formatDate } from '../../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
 
+type ListedMemory = Awaited<ReturnType<ServerApi['listMemories']>>[number]
 type MemoryDetails = Awaited<ReturnType<ServerApi['getMemory']>>
 type MemoryLink = MemoryDetails['links'][number]
 
 const route = useRoute()
 const serverApi = useServerApi()
+const toasts = useToasts()
+const { portfolio } = useSelectedPortfolio()
+const { queryKeys, invalidate, set } = useQueryCache()
 const memoryId = computed(() => route.params.memoryId as string)
+const showLinkCreationForm = ref(false)
+const linkTypeOptions = memoryLinkCreationTypeOptions
+const linkCreationForm = new MemoryLinkCreationFormFactory({ sourceMemoryId: memoryId.value })
+const allMemoriesInput = computed<ListMemoriesInput>(() => ({
+	status: 'all',
+	search: null,
+	typeFilter: { type: 'all' },
+	linkFilter: { type: 'none' },
+}))
+
 const {
 	data: memory,
 	isLoading: isLoadingMemory,
@@ -92,9 +168,56 @@ const {
 	hasExecuted: hasLoadedMemory,
 } = usePortfolioMemoryQuery(serverApi, memoryId)
 
+const {
+	data: memoryOptions,
+	isLoading: isLoadingMemoryOptions,
+	error: memoryOptionsError,
+	hasExecuted: hasLoadedMemoryOptions,
+} = usePortfolioMemoriesQuery(serverApi, allMemoriesInput)
+
 const orderedLinks = computed(() =>
 	[...(memory.value?.links ?? [])].sort((left, right) => Number(isArchivedLink(left)) - Number(isArchivedLink(right))),
 )
+const eligibleTargetMemories = computed(() => {
+	const sourceId = memory.value?.id ?? memoryId.value
+	const duplicateTargetIds = outgoingDuplicateTargetIds.value
+	return memoryOptions.value.filter((option) => option.id !== sourceId && !duplicateTargetIds.has(option.id))
+})
+const outgoingDuplicateTargetIds = computed(() => {
+	const linkType = linkCreationForm.linkType
+	if (!isMemoryLinkCreationType(linkType)) return new Set<string>()
+	return new Set(
+		(memory.value?.links ?? []).filter((link) => isExactOutgoingMemoryLink(link, memoryId.value, linkType)).map((link) => link.to.id),
+	)
+})
+const eligibleTargetIds = computed(() => eligibleTargetMemories.value.map((option) => option.id))
+const selectedLinkVerb = computed(() => (linkCreationForm.linkType === '' ? 'link to' : linkCreationForm.linkType))
+
+watch(memoryId, (sourceId) => {
+	linkCreationForm.setSourceMemoryId(sourceId)
+	linkCreationForm.resetTarget()
+})
+
+watch(
+	eligibleTargetIds,
+	(targetIds) => {
+		linkCreationForm.setEligibleTargetIds(targetIds)
+		if (linkCreationForm.targetMemoryId !== '' && !targetIds.includes(linkCreationForm.targetMemoryId)) linkCreationForm.resetTarget()
+	},
+	{ immediate: true },
+)
+
+const {
+	isLoading: isCreatingLink,
+	error: createLinkError,
+	execute: createLink,
+} = useApiAction(async () => {
+	const link = await serverApi.createLink(linkCreationForm.toModel())
+	primeCurrentMemoryLink(link)
+	invalidate([...queryKeys.portfolio.root(portfolio.value.id), 'memories'])
+	linkCreationForm.resetTarget()
+	toasts.success({ title: 'Link created.', body: `${linkTypeLabel(link.type)} Link added.` })
+})
 
 function memoryTypeLabel(type: MemoryDetails['type']): string {
 	return titleCase(type)
@@ -124,6 +247,27 @@ function nodeRefLabel(ref: MemoryLink['from']): string {
 
 function isArchivedLink(link: MemoryLink): boolean {
 	return link.archivePeriods.some((period) => period.unarchived === null)
+}
+
+function memoryOptionLabel(memory: ListedMemory): string {
+	return `${memory.title} — ${titleCase(memory.status)} — ${titleCase(memory.type)}`
+}
+
+function linkTypeLabel(type: string): string {
+	return titleCase(type)
+}
+
+function isMemoryLinkCreationType(value: string): value is CreateLinkInput['type'] {
+	return memoryLinkCreationTypeOptions.some((option) => option.value === value)
+}
+
+function isExactOutgoingMemoryLink(link: MemoryLink, sourceMemoryId: string, linkType: CreateLinkInput['type']): boolean {
+	return link.type === linkType && link.from.type === 'memory' && link.from.id === sourceMemoryId && link.to.type === 'memory'
+}
+
+function primeCurrentMemoryLink(link: MemoryLink): void {
+	if (memory.value === null) return
+	set(queryKeys.portfolio.memory(portfolio.value.id, memory.value.id), { ...memory.value, links: [...memory.value.links, link] })
 }
 
 function titleCase(value: string): string {

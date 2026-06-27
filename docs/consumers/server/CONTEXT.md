@@ -88,6 +88,10 @@ _Avoid_: Memory database, Project memory list
 The Brain view for inspecting one Portfolio Memory and its Links. Memory Detail presents a Portfolio Memory in context without creating a separate Memory ownership scope.
 _Avoid_: selected Memory panel, Memory record page
 
+**Memory Link Creation**:
+The Brain interaction that adds a direct outgoing Link from the Memory being inspected, whether Current or Superseded, to another existing Portfolio Memory. Memory Link Creation does not create a new Memory or a separate Memory ownership scope.
+_Avoid_: relationship editor, bidirectional Link creation, Memory Type assignment
+
 **New Memory**:
 The Brain view for manually creating one Portfolio Memory. New Memory may create a Standalone Memory or supersede an older Memory without creating a separate Memory ownership scope.
 _Avoid_: Memory editor, Memory draft, Create Memory page
