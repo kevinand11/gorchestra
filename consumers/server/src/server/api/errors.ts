@@ -35,6 +35,10 @@ export function throwSelectionRequired(): never {
 const badRequestCoreErrorMessages: Record<string, string> = {
 	'invalid-input': 'Invalid Core input',
 	'invalid-memory-link': 'Invalid Memory Link',
+	'invalid-link': 'Invalid Link',
+	'duplicate-link': 'Link already exists',
+	'link-not-archivable': 'Link type cannot be archived',
+	'already-archived': 'Resource is already archived',
 	'agent-run-model-unresolved': 'Planning Model is not configured',
 	'archived-model-reference': 'Selected Model is archived',
 	'archived-model-provider-reference': 'Selected Model Provider is archived',

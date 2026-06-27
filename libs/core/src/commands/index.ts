@@ -1,6 +1,7 @@
 import { createAbandonDeliveryCommand } from './abandon-delivery'
 import { createAcceptPlanOutputCommand } from './accept-plan-output'
 import { createAcceptRevisionOutputCommand } from './accept-revision-output'
+import { createArchiveLinkCommand } from './archive-link'
 import { createArchiveModelCommand } from './archive-model'
 import { createArchiveModelProviderCommand } from './archive-model-provider'
 import { createArchiveSecretCommand } from './archive-secret'
@@ -8,6 +9,7 @@ import { createArchiveSecretBindingCommand } from './archive-secret-binding'
 import { createBindSecretCommand } from './bind-secret'
 import { createCloseRevisionGateCommand } from './close-revision-gate'
 import { createConfigureDeliveryCommand } from './configure-delivery'
+import { createCreateLinkCommand } from './create-link'
 import { createCreateMemoryCommand } from './create-memory'
 import { createCreateModelCommand } from './create-model'
 import { createCreateModelProviderCommand } from './create-model-provider'
@@ -38,6 +40,7 @@ import type { CoreRuntime } from '../runtime'
 export type * as AbandonDelivery from './abandon-delivery'
 export type * as AcceptPlanOutput from './accept-plan-output'
 export type * as AcceptRevisionOutput from './accept-revision-output'
+export type * as ArchiveLink from './archive-link'
 export type * as ArchiveModel from './archive-model'
 export type * as ArchiveModelProvider from './archive-model-provider'
 export type * as ArchiveSecret from './archive-secret'
@@ -45,6 +48,7 @@ export type * as ArchiveSecretBinding from './archive-secret-binding'
 export type * as BindSecret from './bind-secret'
 export type * as CloseRevisionGate from './close-revision-gate'
 export type * as ConfigureDelivery from './configure-delivery'
+export type * as CreateLink from './create-link'
 export type * as CreateModel from './create-model'
 export type * as CreateMemory from './create-memory'
 export type * as CreateModelProvider from './create-model-provider'
@@ -84,6 +88,8 @@ export function createCoreCommands(runtime: CoreRuntime) {
 		unarchiveModel: createUnarchiveModelCommand(runtime),
 		preflightModel: createPreflightModelCommand(runtime),
 		preflightRepository: createPreflightRepositoryCommand(runtime),
+		createLink: createCreateLinkCommand(runtime),
+		archiveLink: createArchiveLinkCommand(runtime),
 		createMemory: createCreateMemoryCommand(runtime),
 		createPlan: createCreatePlanCommand(runtime),
 		acceptPlanOutput: createAcceptPlanOutputCommand(runtime),
@@ -133,6 +139,8 @@ if (import.meta.vitest) {
 				'unarchiveModel',
 				'preflightModel',
 				'preflightRepository',
+				'createLink',
+				'archiveLink',
 				'createMemory',
 				'createPlan',
 				'acceptPlanOutput',

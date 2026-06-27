@@ -19,12 +19,20 @@ type DirectMemoryLinkFilter = { linkTypes: LinkTypeFilter; linkedNodes: LinkedNo
 type MemoryLinkFilterSet = { type: 'none' } | { type: 'filters'; match: 'any' | 'all'; filters: DirectMemoryLinkFilter[] }
 
 type CreateMemoryLink = { type: 'supersedes'; toMemoryId: string }
+type CreatePortfolioLinkType = 'references' | 'supports' | 'contradicts' | 'supersedes'
+type CreatePortfolioMemoryNodeRef = { type: 'memory'; id: string }
 
 export type CreateMemoryInput = {
 	title: string
 	body: string
 	type: MemoryType
 	links: CreateMemoryLink[]
+}
+
+export type CreateLinkInput = {
+	type: CreatePortfolioLinkType
+	from: CreatePortfolioMemoryNodeRef
+	to: CreatePortfolioMemoryNodeRef
 }
 
 export type ListMemoriesInput = {
@@ -169,6 +177,12 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		},
 		async getMemory(memoryId: string) {
 			return routes.request('get', '/api/portfolio/memories/:memoryId', { params: { memoryId } })
+		},
+		async createLink(input: CreateLinkInput) {
+			return routes.request('post', '/api/portfolio/links', { body: input })
+		},
+		async archiveLink(linkId: string) {
+			return routes.request('post', '/api/portfolio/links/:linkId/archive', { params: { linkId } })
 		},
 		async provisionDefaultWorkspace(input: { workspaceDisplayName: string; portfolioDisplayName: string }) {
 			return routes.request('post', '/api/workspaces/provision-default', { body: input })

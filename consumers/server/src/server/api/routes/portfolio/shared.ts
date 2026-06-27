@@ -6,6 +6,7 @@ import { optionalCookiePipe } from '../../http'
 import { sessionCookieSchema } from '../../session'
 
 const selectionCookieSchema = optionalCookiePipe(selectionCookieName)
+const memoryNodeRefSchema = v.object({ type: v.eq('memory'), id: Domain.Commons.idPipe })
 
 export const portfolioRequestCookieSchema = v.merge(sessionCookieSchema, selectionCookieSchema)
 export const createProjectRequestSchema = v.object({ title: Domain.Commons.nonEmptyTrimmedStringPipe })
@@ -24,6 +25,11 @@ export const createSecretRequestSchema = v.object({
 	value: v.string().pipe(v.custom<string>((value) => value.trim().length > 0, 'Secret value is required')),
 })
 export const createRepositoryRequestSchema = v.object({ config: Domain.Repository.repositoryConfigPipe })
+export const createLinkRequestSchema = v.object({
+	type: v.in(['references', 'supports', 'contradicts', 'supersedes']),
+	from: memoryNodeRefSchema,
+	to: memoryNodeRefSchema,
+})
 
 export type PortfolioRequestCookies = Record<string, string | undefined>
 export type CreateProjectRequest = PipeOutput<typeof createProjectRequestSchema>
@@ -31,4 +37,5 @@ export type CreatePlanRequest = PipeOutput<typeof createPlanRequestSchema>
 export type CreateMemoryRequest = PipeOutput<typeof createMemoryRequestSchema>
 export type CreateSecretRequest = PipeOutput<typeof createSecretRequestSchema>
 export type CreateRepositoryRequest = PipeOutput<typeof createRepositoryRequestSchema>
+export type CreateLinkRequest = PipeOutput<typeof createLinkRequestSchema>
 export type RepositoryPreflightEvidence = Domain.Evidence.ValidationEvidence & { operation: { type: 'repository-preflight' } }

@@ -150,6 +150,23 @@ export interface DuplicateRepositoryTargetError {
 	name: string
 }
 
+export interface DuplicateLinkError {
+	type: 'duplicate-link'
+	linkType: LinkType
+	from: GraphNodeRef
+	to: GraphNodeRef
+}
+
+export interface InvalidLinkError {
+	type: 'invalid-link'
+	reason: 'self-link'
+}
+
+export interface LinkNotArchivableError {
+	type: 'link-not-archivable'
+	linkType: LinkType
+}
+
 export interface ProjectSourceTypeMismatchError {
 	type: 'project-source-type-mismatch'
 	projectId: Id
@@ -227,6 +244,9 @@ export type CoreError =
 	| NotArchivedError
 	| StorageOperationFailedError
 	| DuplicateSecretBindingError
+	| DuplicateLinkError
+	| InvalidLinkError
+	| LinkNotArchivableError
 	| ArchivedSecretReferenceError
 	| ArchivedModelReferenceError
 	| ArchivedModelProviderReferenceError
