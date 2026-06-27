@@ -459,7 +459,7 @@ function linkProjectBoundary(
 }
 
 function isValidProjectBoundary(plan: Plan, boundary: { from: Id | 0 | null; to: Id | 0 | null }): boolean {
-	return boundary.from === 'memory' || boundary.to === 'memory' || (boundary.from === plan.projectId && boundary.to === plan.projectId)
+	return boundary.from === 0 || boundary.to === 0 || (boundary.from === plan.projectId && boundary.to === plan.projectId)
 }
 
 function invalidBoundaryRef(plan: Plan, link: PlannedLink, boundary: { from: Id | 0 | null; to: Id | 0 | null }): GraphNodeRef {
