@@ -45,7 +45,7 @@
 					<p class="m-0 text-sz-helper leading-5 text-dim">Create a newer Memory that supersedes this one.</p>
 					<NuxtLink
 						:to="{ path: '/brain/memories/new', query: { supersedes: memory.id } }"
-						class="inline-flex mt-2 border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline hover:brightness-110">
+						class="inline-flex mt-2 border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast hover:brightness-110">
 						Supersede Memory
 					</NuxtLink>
 				</div>
@@ -173,9 +173,7 @@ const orderedLinks = computed(() =>
 	[...(memory.value?.links ?? [])].sort((left, right) => Number(isArchivedLink(left)) - Number(isArchivedLink(right))),
 )
 const eligibleTargetMemories = computed(() => {
-	const duplicateTargetIds = new Set(
-		(memory.value?.links ?? []).flatMap((link) => [link.from.id, link.to.id]),
-	)
+	const duplicateTargetIds = new Set((memory.value?.links ?? []).flatMap((link) => [link.from.id, link.to.id]))
 	return memoryOptions.value.filter((option) => !duplicateTargetIds.has(option.id))
 })
 const eligibleTargetMemoryOptions = computed(() =>
@@ -192,7 +190,8 @@ const {
 	execute: createLink,
 } = useApiAction(async () => {
 	const link = await serverApi.createLink(linkCreationForm.toModel())
-	if (memory.value) set(queryKeys.portfolio.memory(portfolio.value.id, memory.value.id), { ...memory.value, links: [...memory.value.links, link] })
+	if (memory.value)
+		set(queryKeys.portfolio.memory(portfolio.value.id, memory.value.id), { ...memory.value, links: [...memory.value.links, link] })
 	invalidate([...queryKeys.portfolio.root(portfolio.value.id), 'memories'])
 	linkCreationForm.reset()
 	toasts.success({ title: 'Link created.', body: `${titleCase(link.type)} Link added.` })

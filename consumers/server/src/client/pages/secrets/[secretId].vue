@@ -66,7 +66,7 @@
 							v-for="reference in group.linkedReferences"
 							:key="referenceKey(reference)"
 							:to="`/projects/${reference.projectId}/repositories/${reference.repositoryId}`"
-							class="block border border-dimmer bg-card p-2 text-body no-underline hover:border-primary hover:bg-secondary">
+							class="block border border-dimmer bg-card p-2 text-body hover:border-primary hover:bg-secondary">
 							<span class="flex items-center justify-between gap-2">
 								<strong class="min-w-0 truncate text-sz-helper font-semibold">{{ referenceTitle(reference) }}</strong>
 								<span :class="referenceBadgeClass(reference)">{{ referenceStatusLabel(reference) }}</span>

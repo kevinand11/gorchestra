@@ -1,8 +1,7 @@
-import type { Domain, Queries } from '@gorchestra/core'
+import { type Domain, Queries } from '@gorchestra/core'
 import { Router } from 'equipped/server'
 import { v } from 'valleyed'
 
-import { listPlansResponsePipe, planResponsePipe } from './response-pipes'
 import { createPlanRequestSchema, portfolioRequestCookieSchema, type CreatePlanRequest, type PortfolioRequestCookies } from './shared'
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
@@ -15,7 +14,7 @@ export function createPlansApiRouter(context: ServerApiContext) {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: idPipe }),
-				response: listPlansResponsePipe,
+				response: Queries.ListPlans.resultPipe,
 			},
 		})(async (req) => listSelectedProjectPlans(context, req.cookies, req.params.projectId))
 		.post('/projects/:projectId/plans', {
@@ -23,14 +22,14 @@ export function createPlansApiRouter(context: ServerApiContext) {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: idPipe }),
 				body: createPlanRequestSchema,
-				response: planResponsePipe,
+				response: Queries.GetPlan.resultPipe,
 			},
 		})(async (req) => createSelectedProjectPlan(context, req.cookies, req.params.projectId, req.body))
 		.get('/projects/:projectId/plans/:planId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: idPipe, planId: idPipe }),
-				response: planResponsePipe,
+				response: Queries.GetPlan.resultPipe,
 			},
 		})(async (req) => getSelectedProjectPlan(context, req.cookies, req.params.projectId, req.params.planId))
 }

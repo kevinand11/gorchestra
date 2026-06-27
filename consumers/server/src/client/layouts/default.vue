@@ -2,7 +2,7 @@
 	<AppFrame :topbar="topbar">
 		<template #topbar-left>
 			<slot name="topbar-left">
-				<NuxtLink to="/" class="flex min-w-0 items-center gap-2 text-body no-underline">
+				<NuxtLink to="/" class="flex min-w-0 items-center gap-2 text-body">
 					<GorchestraMark />
 					<span class="truncate font-semibold">Gorchestra</span>
 				</NuxtLink>

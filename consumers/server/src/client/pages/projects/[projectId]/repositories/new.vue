@@ -11,7 +11,7 @@
 						A GitHub Repository needs an active Secret containing a GitHub PAT before it can be configured.
 					</p>
 					<NuxtLink
-						class="mt-4 inline-flex border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline"
+						class="mt-4 inline-flex border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast"
 						to="/secrets/new">
 						Create Secret
 					</NuxtLink>

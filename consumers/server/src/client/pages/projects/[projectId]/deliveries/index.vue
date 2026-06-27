@@ -23,7 +23,7 @@
 					v-for="delivery in deliveries"
 					:key="delivery.id"
 					:to="`/projects/${projectId}/deliveries/${delivery.id}`"
-					class="grid min-h-[62px] grid-cols-[24px_minmax(0,1fr)_110px] items-center gap-2 border-b border-dimmer px-3 py-2 text-body no-underline hover:bg-card focus-visible:bg-secondary">
+					class="grid min-h-[62px] grid-cols-[24px_minmax(0,1fr)_110px] items-center gap-2 border-b border-dimmer px-3 py-2 text-body hover:bg-card focus-visible:bg-secondary">
 					<span class="grid size-5 place-items-center border border-dimmer text-sz-micro text-dim">D</span>
 					<span class="min-w-0">
 						<strong class="block truncate font-semibold">{{ delivery.title }}</strong>

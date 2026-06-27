@@ -70,6 +70,7 @@
 @layer base {
 	* {
 		box-sizing: border-box;
+		max-width: 100%;
 	}
 
 	body {
@@ -86,6 +87,7 @@
 
 	a {
 		cursor: pointer;
+		text-decoration: none;
 	}
 
 	button,

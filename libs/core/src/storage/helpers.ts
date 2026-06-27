@@ -57,7 +57,7 @@ export async function getPortfolioConfig(
 ): Promise<Result<CoreStorageRecord<'portfolio-config'> | null, StorageBoundaryError>> {
 	try {
 		const record = await storage.on(portfolioConfigSchema).one().id(portfolioConfigStorageId).find()
-		return { ok: true, value: record as unknown as CoreStorageRecord<'portfolio-config'> | null }
+		return { ok: true, value: record }
 	} catch (error) {
 		return readStorageError('portfolio-config', { type: 'get', resource: 'portfolio-config', id: null }, error)
 	}
@@ -97,7 +97,7 @@ async function updatePortfolioConfigRecord(
 ): Promise<Result<CoreStorageRecord<'portfolio-config'>, StorageOperationFailedError | InvariantViolationError>> {
 	try {
 		const updated = await storage.on(portfolioConfigSchema).one().id(portfolioConfigStorageId).update(record)
-		return { ok: true, value: (updated ?? portfolioConfigRecord(record)) as unknown as CoreStorageRecord<'portfolio-config'> }
+		return { ok: true, value: updated ?? portfolioConfigRecord(record) }
 	} catch (error) {
 		return writeStorageError('portfolio-config', { type: 'update', resource: 'portfolio-config', id: portfolioConfigStorageId }, error)
 	}

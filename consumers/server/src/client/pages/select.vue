@@ -73,7 +73,7 @@
 						</span>
 						<NuxtLink
 							v-if="isCurrentSelection(access.workspace.id, access.portfolio.id)"
-							class="border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline"
+							class="border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast"
 							to="/projects">
 							Go to Projects
 						</NuxtLink>

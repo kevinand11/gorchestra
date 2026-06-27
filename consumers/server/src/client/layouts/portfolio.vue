@@ -2,7 +2,7 @@
 	<DefaultLayout>
 		<template #topbar-left>
 			<slot name="topbar-left">
-				<NuxtLink to="/" class="flex min-w-0 items-center gap-2 text-body no-underline">
+				<NuxtLink to="/" class="flex min-w-0 items-center gap-2 text-body">
 					<GorchestraMark />
 					<span class="truncate font-semibold">Gorchestra</span>
 				</NuxtLink>
@@ -36,7 +36,7 @@
 					</div>
 					<NuxtLink
 						to="/select"
-						class="shrink-0 border border-dimmer bg-secondary px-2 py-1 text-sz-micro font-semibold text-secondary-contrast no-underline hover:border-primary">
+						class="shrink-0 border border-dimmer bg-secondary px-2 py-1 text-sz-micro font-semibold text-secondary-contrast hover:border-primary">
 						Change
 					</NuxtLink>
 				</div>
@@ -49,7 +49,7 @@
 						]"
 						:key="to"
 						:to="to"
-						class="flex min-h-8 items-center justify-between gap-2 px-2 py-1.5 text-sz-helper font-semibold no-underline"
+						class="flex min-h-8 items-center justify-between gap-2 px-2 py-1.5 text-sz-helper font-semibold"
 						:class="route.path.startsWith(to) ? 'bg-secondary text-body' : 'text-dim hover:bg-secondary hover:text-body'">
 						<span>{{ label }}</span>
 					</NuxtLink>

@@ -9,7 +9,7 @@
 					<span v-if="isRefreshingMemories" class="text-sz-helper text-dim">Refreshing Memories…</span>
 					<NuxtLink
 						to="/brain/memories/new"
-						class="border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline hover:brightness-110">
+						class="border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast hover:brightness-110">
 						New Memory
 					</NuxtLink>
 				</div>
@@ -29,7 +29,7 @@
 					v-for="memory in memories"
 					:key="memory.id"
 					:to="`/brain/memories/${memory.id}`"
-					class="grid w-full grid-cols-[24px_minmax(0,1fr)] items-center gap-2 border-0 border-b border-dimmer bg-transparent px-3 py-2 text-left text-body no-underline hover:bg-card focus-visible:bg-secondary lg:grid-cols-[24px_minmax(0,1fr)_minmax(140px,auto)]">
+					class="grid w-full grid-cols-[24px_minmax(0,1fr)] items-center gap-2 border-0 border-b border-dimmer bg-transparent px-3 py-2 text-left text-body hover:bg-card focus-visible:bg-secondary lg:grid-cols-[24px_minmax(0,1fr)_minmax(140px,auto)]">
 					<span class="grid size-5 place-items-center border border-dimmer text-sz-micro font-semibold text-dim">M</span>
 					<span class="min-w-0">
 						<strong class="block truncate font-semibold">{{ memory.title }}</strong>

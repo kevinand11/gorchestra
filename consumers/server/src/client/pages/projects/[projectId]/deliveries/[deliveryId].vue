@@ -62,7 +62,7 @@
 			</div>
 			<div class="px-3 py-3">
 				<NuxtLink
-					class="inline-flex border border-dimmer bg-secondary px-3 py-1.5 text-sz-helper font-semibold text-secondary-contrast no-underline hover:bg-card"
+					class="inline-flex border border-dimmer bg-secondary px-3 py-1.5 text-sz-helper font-semibold text-secondary-contrast hover:bg-card"
 					:to="`/projects/${projectId}/plans/${delivery.planId}`">
 					View source Plan
 				</NuxtLink>

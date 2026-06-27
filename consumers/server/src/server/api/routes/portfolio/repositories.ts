@@ -1,8 +1,7 @@
-import type { Domain, Queries } from '@gorchestra/core'
+import { Domain, Queries } from '@gorchestra/core'
 import { Router } from 'equipped/server'
 import { v } from 'valleyed'
 
-import { listRepositoriesResponsePipe, repositoryResponsePipe, validationEvidenceResponsePipe } from './response-pipes'
 import {
 	createRepositoryRequestSchema,
 	portfolioRequestCookieSchema,
@@ -21,7 +20,7 @@ export function createRepositoriesApiRouter(context: ServerApiContext) {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: idPipe }),
-				response: listRepositoriesResponsePipe,
+				response: Queries.ListRepositories.resultPipe,
 			},
 		})(async (req) => listSelectedProjectRepositories(context, req.cookies, req.params.projectId))
 		.post('/projects/:projectId/repositories', {
@@ -29,23 +28,21 @@ export function createRepositoriesApiRouter(context: ServerApiContext) {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: idPipe }),
 				body: createRepositoryRequestSchema,
-				response: repositoryResponsePipe,
+				response: Queries.GetRepository.resultPipe,
 			},
-		})(async (req) =>
-			createSelectedProjectRepository(context, req.cookies, req.params.projectId, req.body as unknown as CreateRepositoryRequest),
-		)
+		})(async (req) => createSelectedProjectRepository(context, req.cookies, req.params.projectId, req.body))
 		.get('/projects/:projectId/repositories/:repositoryId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: idPipe, repositoryId: idPipe }),
-				response: repositoryResponsePipe,
+				response: Queries.GetRepository.resultPipe,
 			},
 		})(async (req) => getSelectedProjectRepository(context, req.cookies, req.params.projectId, req.params.repositoryId))
 		.post('/projects/:projectId/repositories/:repositoryId/preflight', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: idPipe, repositoryId: idPipe }),
-				response: validationEvidenceResponsePipe,
+				response: Domain.Evidence.validationEvidencePipe,
 			},
 		})(async (req) => preflightSelectedProjectRepository(context, req.cookies, req.params.projectId, req.params.repositoryId))
 }

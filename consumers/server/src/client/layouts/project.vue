@@ -21,7 +21,7 @@
 						]"
 						:key="to"
 						:to="to"
-						class="border-b-2 px-0 pb-2 text-sz-helper font-semibold no-underline"
+						class="border-b-2 px-0 pb-2 text-sz-helper font-semibold"
 						:class="route.path.startsWith(to) ? 'border-primary text-body' : 'text-dim hover:text-body border-transparent'">
 						{{ label }}
 					</NuxtLink>

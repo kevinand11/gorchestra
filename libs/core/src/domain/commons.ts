@@ -1,7 +1,5 @@
 import { v, type Pipe, type PipeOutput } from 'valleyed'
 
-type Brand<T, Name extends string> = T & { readonly __brand?: Name }
-
 const rawStringPipe = v.string()
 export const nonEmptyRawStringPipe = rawStringPipe.pipe(v.min(1))
 const trimmedStringPipe = rawStringPipe.pipe(v.asTrimmed())
@@ -12,10 +10,10 @@ const integerPipe = v.number().pipe(v.int())
 export const positiveIntegerPipe = integerPipe.pipe(v.gte(1))
 export const nonNegativeIntegerPipe = integerPipe.pipe(v.gte(0))
 
-export const idPipe = nonEmptyTrimmedStringPipe as Pipe<string, Brand<string, 'Id'>>
+export const idPipe = nonEmptyTrimmedStringPipe
 export type Id = PipeOutput<typeof idPipe>
 
-export const isoDateTimePipe = v.time().pipe(v.asISOString()) as Pipe<string, Brand<string, 'IsoDateTime'>>
+export const isoDateTimePipe = v.time().pipe(v.asISOString()) as Pipe<string, string>
 export type IsoDateTime = PipeOutput<typeof isoDateTimePipe>
 
 const localActorRefPipe = v.object({ type: rawStringPipe, id: rawStringPipe })

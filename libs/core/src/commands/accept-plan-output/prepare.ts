@@ -458,15 +458,11 @@ function linkProjectBoundary(
 	return isValidProjectBoundary(plan, boundary) ? { type: 'valid' } : { type: 'invalid', ref: invalidBoundaryRef(plan, link, boundary) }
 }
 
-function isValidProjectBoundary(plan: Plan, boundary: { from: Id | 'memory' | null; to: Id | 'memory' | null }): boolean {
+function isValidProjectBoundary(plan: Plan, boundary: { from: Id | 0 | null; to: Id | 0 | null }): boolean {
 	return boundary.from === 'memory' || boundary.to === 'memory' || (boundary.from === plan.projectId && boundary.to === plan.projectId)
 }
 
-function invalidBoundaryRef(
-	plan: Plan,
-	link: PlannedLink,
-	boundary: { from: Id | 'memory' | null; to: Id | 'memory' | null },
-): GraphNodeRef {
+function invalidBoundaryRef(plan: Plan, link: PlannedLink, boundary: { from: Id | 0 | null; to: Id | 0 | null }): GraphNodeRef {
 	return boundary.from === plan.projectId ? link.to : link.from
 }
 
@@ -475,9 +471,9 @@ function refProject(
 	plan: Plan,
 	existing: ExistingRefIndex,
 	materializationPlan: PlanOutputMaterializationPlan,
-): Id | 'memory' | null {
+): Id | 0 | null {
 	const resolvers = {
-		memory: () => 'memory' as const,
+		memory: () => 0 as const,
 		project: () => ref.id,
 		plan: () => planRefProject(ref.id, plan, existing),
 		delivery: () => deliveryRefProject(ref.id, plan, existing, materializationPlan),

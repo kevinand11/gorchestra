@@ -7,7 +7,7 @@
 					<p class="m-0 mt-1 text-sz-helper text-dim">Create and inspect protected Secrets in the selected Portfolio.</p>
 				</div>
 				<NuxtLink
-					class="border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline hover:brightness-110"
+					class="border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast hover:brightness-110"
 					to="/secrets/new">
 					New Secret
 				</NuxtLink>
@@ -20,7 +20,7 @@
 					v-for="(tab, index) in secretTabs"
 					:key="tab.value"
 					:to="secretTabLocation(tab.value)"
-					class="px-2 py-1 text-sz-helper no-underline"
+					class="px-2 py-1 text-sz-helper"
 					:class="[secretFilterPillClass(tab.value), index === secretTabs.length - 1 ? '' : 'border-r border-dimmer']">
 					{{ tab.shortLabel }}
 				</NuxtLink>
@@ -37,7 +37,7 @@
 				<h2 class="m-0 text-sz-subsection font-semibold">No Secrets yet.</h2>
 				<p class="m-0 mt-1 text-sz-helper text-dim">Create a protected Secret before configuring Repository access.</p>
 				<NuxtLink
-					class="mt-4 inline-flex border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline"
+					class="mt-4 inline-flex border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast"
 					to="/secrets/new">
 					Create your first Secret
 				</NuxtLink>
@@ -46,7 +46,7 @@
 				<h2 class="m-0 text-sz-subsection font-semibold">No Secrets match {{ currentSecretTabLabel }}.</h2>
 				<p class="m-0 mt-1 text-sz-helper text-dim">Change the filter to inspect another Secret slice.</p>
 				<NuxtLink
-					class="mt-4 inline-flex border border-dimmer bg-secondary px-3 py-1.5 text-sz-helper font-semibold text-secondary-contrast no-underline"
+					class="mt-4 inline-flex border border-dimmer bg-secondary px-3 py-1.5 text-sz-helper font-semibold text-secondary-contrast"
 					:to="secretTabLocation('all')">
 					Show all Secrets
 				</NuxtLink>
@@ -56,7 +56,7 @@
 					v-for="secret in visibleSecrets"
 					:key="secret.id"
 					:to="`/secrets/${secret.id}`"
-					class="grid min-h-[52px] grid-cols-[24px_minmax(0,1fr)_92px_110px] items-center gap-2 border-b border-dimmer px-3 py-2 text-body no-underline hover:bg-card focus-visible:bg-secondary">
+					class="grid min-h-[52px] grid-cols-[24px_minmax(0,1fr)_92px_110px] items-center gap-2 border-b border-dimmer px-3 py-2 text-body hover:bg-card focus-visible:bg-secondary">
 					<span class="grid size-5 place-items-center border border-dimmer text-sz-micro text-dim">S</span>
 					<span class="min-w-0">
 						<strong class="block truncate font-semibold">{{ secret.name }}</strong>

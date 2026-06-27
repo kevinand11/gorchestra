@@ -3,7 +3,7 @@
 		v-bind="attrs"
 		:type="buttonType"
 		:disabled="isDisabled"
-		class="inline-flex cursor-pointer items-center justify-center border px-3 py-1.5 text-sz-helper font-semibold no-underline transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+		class="inline-flex cursor-pointer items-center justify-center border px-3 py-1.5 text-sz-helper font-semibold transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
 		:class="variantClass">
 		<slot />
 	</button>

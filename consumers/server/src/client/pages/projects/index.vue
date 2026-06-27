@@ -7,7 +7,7 @@
 					<p class="m-0 mt-1 text-sz-helper text-dim">Create and inspect Projects in the selected Portfolio.</p>
 				</div>
 				<NuxtLink
-					class="border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline hover:brightness-110"
+					class="border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast hover:brightness-110"
 					to="/projects/new">
 					New Project
 				</NuxtLink>
@@ -20,7 +20,7 @@
 					v-for="(tab, index) in projectTabs"
 					:key="tab.value"
 					:to="projectTabLocation(tab.value)"
-					class="px-2 py-1 text-sz-helper no-underline"
+					class="px-2 py-1 text-sz-helper"
 					:class="[
 						currentProjectTab === tab.value ? 'bg-card font-semibold text-body' : 'text-dim hover:bg-secondary hover:text-body',
 						index === projectTabs.length - 1 ? '' : 'border-r border-dimmer',
@@ -42,7 +42,7 @@
 					Create the first Project in this Portfolio to attach Repositories and prepare delivery work.
 				</p>
 				<NuxtLink
-					class="mt-4 inline-flex border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline"
+					class="mt-4 inline-flex border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast"
 					to="/projects/new">
 					Create your first Project
 				</NuxtLink>
@@ -51,7 +51,7 @@
 				<h2 class="m-0 text-sz-subsection font-semibold">No Projects match {{ currentProjectTabLabel }}.</h2>
 				<p class="m-0 mt-1 text-sz-helper text-dim">Change the filter to inspect another Project slice.</p>
 				<NuxtLink
-					class="mt-4 inline-flex border border-dimmer bg-secondary px-3 py-1.5 text-sz-helper font-semibold text-secondary-contrast no-underline"
+					class="mt-4 inline-flex border border-dimmer bg-secondary px-3 py-1.5 text-sz-helper font-semibold text-secondary-contrast"
 					:to="projectTabLocation('all')">
 					Show all Projects
 				</NuxtLink>
@@ -61,7 +61,7 @@
 					v-for="project in visibleProjects"
 					:key="project.id"
 					:to="`/projects/${project.id}`"
-					class="grid min-h-[58px] grid-cols-[24px_minmax(0,1fr)] items-center gap-2 border-b border-dimmer px-3 py-2 text-body no-underline hover:bg-card focus-visible:bg-secondary lg:grid-cols-[24px_minmax(0,1fr)_150px]">
+					class="grid min-h-[58px] grid-cols-[24px_minmax(0,1fr)] items-center gap-2 border-b border-dimmer px-3 py-2 text-body hover:bg-card focus-visible:bg-secondary lg:grid-cols-[24px_minmax(0,1fr)_150px]">
 					<span class="grid size-5 place-items-center border border-dimmer text-sz-micro text-dim">P</span>
 					<span class="min-w-0">
 						<strong class="block truncate font-semibold">{{ project.title }}</strong>

@@ -4,7 +4,7 @@
 			<div class="flex min-h-11 items-center justify-between gap-3 border-b border-dimmer px-3 py-2">
 				<span class="text-sz-helper text-dim">{{ plans.length }} {{ plans.length === 1 ? 'Plan' : 'Plans' }}</span>
 				<NuxtLink
-					class="border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline hover:brightness-110"
+					class="border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast hover:brightness-110"
 					:to="`/projects/${projectId}/plans/new`">
 					New Plan
 				</NuxtLink>
@@ -18,7 +18,7 @@
 					Plans start Planning Agent Runs for this Project. Plan Output generation is not available in this slice.
 				</p>
 				<NuxtLink
-					class="mt-4 inline-flex border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline"
+					class="mt-4 inline-flex border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast"
 					:to="`/projects/${projectId}/plans/new`">
 					Create your first Plan
 				</NuxtLink>
@@ -28,7 +28,7 @@
 					v-for="plan in plans"
 					:key="plan.id"
 					:to="`/projects/${projectId}/plans/${plan.id}`"
-					class="grid min-h-[58px] grid-cols-[24px_minmax(0,1fr)_120px] items-center gap-2 border-b border-dimmer px-3 py-2 text-body no-underline hover:bg-card focus-visible:bg-secondary">
+					class="grid min-h-[58px] grid-cols-[24px_minmax(0,1fr)_120px] items-center gap-2 border-b border-dimmer px-3 py-2 text-body hover:bg-card focus-visible:bg-secondary">
 					<span class="grid size-5 place-items-center border border-dimmer text-sz-micro text-dim">P</span>
 					<span class="min-w-0">
 						<strong class="block truncate font-semibold">{{ plan.title }}</strong>

@@ -1,8 +1,7 @@
-import { type Domain } from '@gorchestra/core'
+import { Domain } from '@gorchestra/core'
 import { Router } from 'equipped/server'
 import { v } from 'valleyed'
 
-import { linkResponsePipe } from './response-pipes'
 import { createLinkRequestSchema, portfolioRequestCookieSchema, type CreateLinkRequest, type PortfolioRequestCookies } from './shared'
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
@@ -12,10 +11,10 @@ import { idPipe } from '../../schemas'
 export function createLinksApiRouter(context: ServerApiContext) {
 	return new Router()
 		.post('/links', {
-			schema: { cookies: portfolioRequestCookieSchema, body: createLinkRequestSchema, response: linkResponsePipe },
-		})(async (req) => createSelectedPortfolioLink(context, req.cookies, req.body as unknown as CreateLinkRequest))
+			schema: { cookies: portfolioRequestCookieSchema, body: createLinkRequestSchema, response: Domain.Graph.linkPipe },
+		})(async (req) => createSelectedPortfolioLink(context, req.cookies, req.body))
 		.post('/links/:linkId/archive', {
-			schema: { cookies: portfolioRequestCookieSchema, params: v.object({ linkId: idPipe }), response: linkResponsePipe },
+			schema: { cookies: portfolioRequestCookieSchema, params: v.object({ linkId: idPipe }), response: Domain.Graph.linkPipe },
 		})(async (req) => archiveSelectedPortfolioLink(context, req.cookies, req.params.linkId))
 }
 

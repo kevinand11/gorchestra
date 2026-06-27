@@ -1,8 +1,7 @@
-import { Queries, type Domain } from '@gorchestra/core'
+import { Domain, Queries } from '@gorchestra/core'
 import { Router } from 'equipped/server'
 import { v, type PipeOutput } from 'valleyed'
 
-import { createdMemoryResponsePipe, listMemoriesResponsePipe, memoryResponsePipe } from './response-pipes'
 import { createMemoryRequestSchema, portfolioRequestCookieSchema, type CreateMemoryRequest, type PortfolioRequestCookies } from './shared'
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
@@ -25,16 +24,16 @@ type ListMemoriesQuery = PipeOutput<typeof listMemoriesQuerySchema>
 export function createMemoriesApiRouter(context: ServerApiContext) {
 	return new Router()
 		.get('/memories', {
-			schema: { cookies: portfolioRequestCookieSchema, query: listMemoriesQuerySchema, response: listMemoriesResponsePipe },
-		})(async (req) => listSelectedPortfolioMemories(context, req.cookies, req.query as unknown as ListMemoriesQuery))
+			schema: { cookies: portfolioRequestCookieSchema, query: listMemoriesQuerySchema, response: Queries.ListMemories.resultPipe },
+		})(async (req) => listSelectedPortfolioMemories(context, req.cookies, req.query))
 		.post('/memories', {
-			schema: { cookies: portfolioRequestCookieSchema, body: createMemoryRequestSchema, response: createdMemoryResponsePipe },
-		})(async (req) => createSelectedPortfolioMemory(context, req.cookies, req.body as unknown as CreateMemoryRequest))
+			schema: { cookies: portfolioRequestCookieSchema, body: createMemoryRequestSchema, response: Domain.Memory.memoryPipe },
+		})(async (req) => createSelectedPortfolioMemory(context, req.cookies, req.body))
 		.get('/memories/:memoryId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ memoryId: idPipe }),
-				response: memoryResponsePipe,
+				response: Queries.GetMemory.resultPipe,
 			},
 		})(async (req) => getSelectedPortfolioMemory(context, req.cookies, req.params.memoryId))
 }

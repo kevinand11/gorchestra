@@ -45,7 +45,7 @@
 					<UiButton type="submit" :loading="isCreatingMemory" :disabled="!memoryCreationForm.valid">Create Memory</UiButton>
 					<NuxtLink
 						to="/brain/memories"
-						class="inline-flex items-center justify-center border border-dimmer bg-secondary px-3 py-1.5 text-sz-helper font-semibold text-secondary-contrast no-underline hover:border-dim hover:brightness-110">
+						class="inline-flex items-center justify-center border border-dimmer bg-secondary px-3 py-1.5 text-sz-helper font-semibold text-secondary-contrast hover:border-dim hover:brightness-110">
 						Cancel
 					</NuxtLink>
 				</div>

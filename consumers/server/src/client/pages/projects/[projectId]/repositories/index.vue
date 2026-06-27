@@ -7,7 +7,7 @@
 						v-for="(tab, index) in repositoryTabs"
 						:key="tab.value"
 						:to="repositoryTabLocation(tab.value)"
-						class="px-2 py-1 text-sz-helper no-underline"
+						class="px-2 py-1 text-sz-helper"
 						:class="[
 							repositoryFilterPillClass(tab.value),
 							index === repositoryTabs.length - 1 ? '' : 'border-r border-dimmer',
@@ -17,7 +17,7 @@
 				</div>
 				<NuxtLink
 					v-if="project"
-					class="border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline hover:brightness-110"
+					class="border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast hover:brightness-110"
 					:to="`/projects/${project.id}/repositories/new`">
 					New Repository
 				</NuxtLink>
@@ -33,7 +33,7 @@
 					<h2 class="m-0 text-sz-subsection font-semibold">No Repositories configured.</h2>
 					<p class="m-0 mt-1 text-sz-helper text-dim">Add a GitHub Repository to prepare this Project for Deliveries.</p>
 					<NuxtLink
-						class="mt-4 inline-flex border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline"
+						class="mt-4 inline-flex border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast"
 						:to="`/projects/${project.id}/repositories/new`">
 						New Repository
 					</NuxtLink>
@@ -42,7 +42,7 @@
 					<h2 class="m-0 text-sz-subsection font-semibold">No Repositories match {{ currentRepositoryTabLabel }}.</h2>
 					<p class="m-0 mt-1 text-sz-helper text-dim">Change the filter to inspect another Repository slice.</p>
 					<NuxtLink
-						class="mt-4 inline-flex border border-dimmer bg-secondary px-3 py-1.5 text-sz-helper font-semibold text-secondary-contrast no-underline"
+						class="mt-4 inline-flex border border-dimmer bg-secondary px-3 py-1.5 text-sz-helper font-semibold text-secondary-contrast"
 						:to="repositoryTabLocation('all')">
 						Show all Repositories
 					</NuxtLink>
@@ -52,7 +52,7 @@
 						v-for="repository in visibleRepositories"
 						:key="repository.id"
 						:to="`/projects/${project.id}/repositories/${repository.id}`"
-						class="grid min-h-[58px] grid-cols-[24px_minmax(0,1fr)] items-center gap-2 border-b border-dimmer px-3 py-2 text-body no-underline hover:bg-card focus-visible:bg-secondary lg:grid-cols-[24px_minmax(0,1fr)_126px]">
+						class="grid min-h-[58px] grid-cols-[24px_minmax(0,1fr)] items-center gap-2 border-b border-dimmer px-3 py-2 text-body hover:bg-card focus-visible:bg-secondary lg:grid-cols-[24px_minmax(0,1fr)_126px]">
 						<span class="grid size-5 place-items-center border border-dimmer text-sz-micro text-dim">R</span>
 						<span class="min-w-0">
 							<strong class="block truncate font-semibold">{{ repository.config.owner }}/{{ repository.config.name }}</strong>
@@ -78,7 +78,7 @@
 				v-for="issue in repositoryIssues"
 				:key="issue.repository.id"
 				:to="`/projects/${project?.id}/repositories/${issue.repository.id}`"
-				class="grid grid-cols-[14px_minmax(0,1fr)_auto] gap-2 border-b border-dimmer px-3 py-2 text-body no-underline hover:bg-card">
+				class="grid grid-cols-[14px_minmax(0,1fr)_auto] gap-2 border-b border-dimmer px-3 py-2 text-body hover:bg-card">
 				<span class="mt-1.5 size-2 rounded-full bg-primary" />
 				<span class="min-w-0"
 					><strong class="block truncate font-semibold"
