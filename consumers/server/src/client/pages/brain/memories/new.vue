@@ -18,17 +18,15 @@
 					{{ memoryCreationForm.errors.title }}
 				</UiText>
 
-				<label class="grid gap-1.5 font-semibold" for="memory-type">
-					Memory Type
+				<div class="grid gap-1.5 font-semibold">
+					<label for="memory-type">Memory Type</label>
 					<UiSelect
 						id="memory-type"
 						v-model="memoryCreationForm.memoryType"
-						required
-						:invalid="!!memoryCreationForm.errors.memoryType">
-						<option value="" disabled>Select a Memory Type</option>
-						<option v-for="option in memoryTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-					</UiSelect>
-				</label>
+						:options="memoryTypeOptions"
+						placeholder="Select a Memory Type"
+						:invalid="!!memoryCreationForm.errors.memoryType" />
+				</div>
 				<UiText v-if="memoryCreationForm.errors.memoryType" tone="error" size="helper">
 					{{ memoryCreationForm.errors.memoryType }}
 				</UiText>
@@ -58,15 +56,14 @@
 		<template #right>
 			<div class="border-b border-dimmer px-3 py-2 font-semibold">Supersession</div>
 			<div class="grid gap-3 border-b border-dimmer px-3 py-3">
-				<label class="grid gap-1.5 text-sz-helper font-semibold text-dim" for="superseded-memory">
-					Superseded Memory
-					<UiSelect id="superseded-memory" v-model="memoryCreationForm.supersededMemoryId">
-						<option value="">No superseded Memory</option>
-						<option v-for="memory in memoryOptions" :key="memory.id" :value="memory.id">
-							{{ memoryOptionLabel(memory) }}
-						</option>
-					</UiSelect>
-				</label>
+				<div class="grid gap-1.5 text-sz-helper font-semibold text-dim">
+					<label for="superseded-memory">Superseded Memory</label>
+					<UiSelect
+						id="superseded-memory"
+						v-model="memoryCreationForm.supersededMemoryId"
+						:options="supersededMemoryOptions"
+						placeholder="No superseded Memory" />
+				</div>
 				<UiText v-if="isLoadingMemoryOptions && !hasLoadedMemoryOptions" tone="muted" size="helper"> Loading Memories… </UiText>
 				<UiText v-else-if="memoryOptionsError" tone="error" size="helper">{{ memoryOptionsError }}</UiText>
 				<UiText v-else tone="muted" size="helper"> Choose an older Memory only when this new Memory should replace it. </UiText>
@@ -138,6 +135,10 @@ const {
 	error: memoryOptionsError,
 	hasExecuted: hasLoadedMemoryOptions,
 } = usePortfolioMemoriesQuery(serverApi, allMemoriesInput)
+const supersededMemoryOptions = computed(() => [
+	{ value: '', label: 'No superseded Memory' },
+	...memoryOptions.value.map((memory) => ({ value: memory.id, label: memoryOptionLabel(memory) })),
+])
 
 watch(
 	[memoryOptions, hasLoadedMemoryOptions],

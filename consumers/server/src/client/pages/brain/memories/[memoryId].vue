@@ -9,7 +9,7 @@
 			<article v-else-if="memory">
 				<header class="border-b border-dimmer px-3 py-3">
 					<p class="m-0 text-sz-tiny font-bold uppercase tracking-[0.08em] text-primary">
-						{{ memoryStatusLabel(memory.status) }} Memory · {{ memoryTypeLabel(memory.type) }}
+						{{ titleCase(memory.status) }} Memory · {{ titleCase(memory.type) }}
 					</p>
 					<h2 class="m-0 mt-2 max-w-[760px] text-[32px] leading-[1.08] font-semibold tracking-[-0.03em]">
 						{{ memory.title }}
@@ -19,9 +19,9 @@
 				<div class="border-b border-dimmer px-3 py-2">
 					<div class="flex flex-wrap gap-1.5">
 						<span class="border border-dimmer bg-secondary px-1.5 py-0.5 text-sz-micro font-semibold text-dim">{{
-							memoryTypeLabel(memory.type)
+							titleCase(memory.type)
 						}}</span>
-						<span :class="memoryStatusClass(memory.status)">{{ memoryStatusLabel(memory.status) }}</span>
+						<span :class="memoryStatusClass(memory.status)">{{ titleCase(memory.status) }}</span>
 						<span class="border border-dimmer bg-secondary px-1.5 py-0.5 text-sz-micro font-semibold text-dim"
 							>Created {{ formatDate(memory.created.at) }}</span
 						>
@@ -42,12 +42,12 @@
 			<div v-if="memory.status === 'current'">
 				<div class="border-b border-dimmer px-3 py-2 font-semibold">Actions</div>
 				<div class="border-b border-dimmer px-3 py-3">
+					<p class="m-0 text-sz-helper leading-5 text-dim">Create a newer Memory that supersedes this one.</p>
 					<NuxtLink
 						:to="{ path: '/brain/memories/new', query: { supersedes: memory.id } }"
-						class="inline-flex border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline hover:brightness-110">
+						class="inline-flex mt-2 border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast no-underline hover:brightness-110">
 						Supersede Memory
 					</NuxtLink>
-					<p class="m-0 mt-2 text-sz-helper leading-5 text-dim">Create a newer Memory that supersedes this one.</p>
 				</div>
 			</div>
 			<div class="flex items-center justify-between gap-2 border-b border-dimmer px-3 py-2">
@@ -58,35 +58,29 @@
 			</div>
 			<div v-if="showLinkCreationForm" class="border-b border-dimmer px-3 py-3">
 				<form class="grid gap-3" @submit.prevent="createLink()">
-					<label class="grid gap-1.5 text-sz-helper font-semibold text-dim" for="memory-link-type">
-						Link Type
+					<div class="grid gap-1.5 text-sz-helper font-semibold text-dim">
+						<label for="memory-link-type">Link Type</label>
 						<UiSelect
 							id="memory-link-type"
-							v-model="linkCreationForm.linkType"
-							required
-							:invalid="!!linkCreationForm.errors.linkType">
-							<option value="" disabled>Select a Link Type</option>
-							<option v-for="option in linkTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-						</UiSelect>
-					</label>
-					<UiText v-if="linkCreationForm.errors.linkType" tone="error" size="helper">
-						{{ linkCreationForm.errors.linkType }}
+							v-model="linkCreationForm.type"
+							:options="linkTypeOptions"
+							placeholder="Select a Link Type"
+							:invalid="!!linkCreationForm.errors.type" />
+					</div>
+					<UiText v-if="linkCreationForm.errors.type" tone="error" size="helper">
+						{{ linkCreationForm.errors.type }}
 					</UiText>
 
-					<label class="grid gap-1.5 text-sz-helper font-semibold text-dim" for="memory-link-target">
-						Target Memory
+					<div class="grid gap-1.5 text-sz-helper font-semibold text-dim">
+						<label for="memory-link-target">Target Memory</label>
 						<UiSelect
 							id="memory-link-target"
 							v-model="linkCreationForm.targetMemoryId"
-							required
+							:options="eligibleTargetMemoryOptions"
+							placeholder="Select a target Memory"
 							:disabled="isLoadingMemoryOptions && !hasLoadedMemoryOptions"
-							:invalid="!!linkCreationForm.errors.targetMemoryId">
-							<option value="" disabled>Select a target Memory</option>
-							<option v-for="option in eligibleTargetMemories" :key="option.id" :value="option.id">
-								{{ memoryOptionLabel(option) }}
-							</option>
-						</UiSelect>
-					</label>
+							:invalid="!!linkCreationForm.errors.targetMemoryId" />
+					</div>
 					<UiText v-if="linkCreationForm.errors.targetMemoryId" tone="error" size="helper">
 						{{ linkCreationForm.errors.targetMemoryId }}
 					</UiText>
@@ -96,7 +90,7 @@
 						No eligible target Memories for this Link Type.
 					</UiText>
 					<UiText v-else tone="muted" size="helper">
-						Choose the existing Memory this Memory should {{ selectedLinkVerb }}.
+						Choose the existing Memory this Memory should {{ linkCreationForm.type }}.
 					</UiText>
 
 					<div>
@@ -135,8 +129,8 @@ import { usePortfolioMemoriesQuery, usePortfolioMemoryQuery } from '../../../com
 import { useQueryCache } from '../../../composables/query-cache'
 import { useSelectedPortfolio } from '../../../composables/selected-portfolio'
 import { useToasts } from '../../../composables/toasts'
-import { useServerApi, type CreateLinkInput, type ListMemoriesInput, type ServerApi } from '../../../composables/useServerApi'
-import { MemoryLinkCreationFormFactory, memoryLinkCreationTypeOptions } from '../../../forms/link'
+import { useServerApi, type ListMemoriesInput, type ServerApi } from '../../../composables/useServerApi'
+import { LinkCreationFormFactory, memoryLinkCreationTypeOptions } from '../../../forms/link'
 import { formatDate } from '../../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
@@ -153,7 +147,7 @@ const { queryKeys, invalidate, set } = useQueryCache()
 const memoryId = computed(() => route.params.memoryId as string)
 const showLinkCreationForm = ref(false)
 const linkTypeOptions = memoryLinkCreationTypeOptions
-const linkCreationForm = new MemoryLinkCreationFormFactory({ sourceMemoryId: memoryId.value })
+const linkCreationForm = new LinkCreationFormFactory({ sourceMemoryId: memoryId.value })
 const allMemoriesInput = computed<ListMemoriesInput>(() => ({
 	status: 'all',
 	search: null,
@@ -179,33 +173,18 @@ const orderedLinks = computed(() =>
 	[...(memory.value?.links ?? [])].sort((left, right) => Number(isArchivedLink(left)) - Number(isArchivedLink(right))),
 )
 const eligibleTargetMemories = computed(() => {
-	const sourceId = memory.value?.id ?? memoryId.value
-	const duplicateTargetIds = outgoingDuplicateTargetIds.value
-	return memoryOptions.value.filter((option) => option.id !== sourceId && !duplicateTargetIds.has(option.id))
-})
-const outgoingDuplicateTargetIds = computed(() => {
-	const linkType = linkCreationForm.linkType
-	if (!isMemoryLinkCreationType(linkType)) return new Set<string>()
-	return new Set(
-		(memory.value?.links ?? []).filter((link) => isExactOutgoingMemoryLink(link, memoryId.value, linkType)).map((link) => link.to.id),
+	const duplicateTargetIds = new Set(
+		(memory.value?.links ?? []).flatMap((link) => [link.from.id, link.to.id]),
 	)
+	return memoryOptions.value.filter((option) => !duplicateTargetIds.has(option.id))
 })
-const eligibleTargetIds = computed(() => eligibleTargetMemories.value.map((option) => option.id))
-const selectedLinkVerb = computed(() => (linkCreationForm.linkType === '' ? 'link to' : linkCreationForm.linkType))
+const eligibleTargetMemoryOptions = computed(() =>
+	eligibleTargetMemories.value.map((memory) => ({ value: memory.id, label: memoryOptionLabel(memory) })),
+)
 
 watch(memoryId, (sourceId) => {
-	linkCreationForm.setSourceMemoryId(sourceId)
-	linkCreationForm.resetTarget()
+	linkCreationForm.sourceMemoryId = sourceId
 })
-
-watch(
-	eligibleTargetIds,
-	(targetIds) => {
-		linkCreationForm.setEligibleTargetIds(targetIds)
-		if (linkCreationForm.targetMemoryId !== '' && !targetIds.includes(linkCreationForm.targetMemoryId)) linkCreationForm.resetTarget()
-	},
-	{ immediate: true },
-)
 
 const {
 	isLoading: isCreatingLink,
@@ -213,19 +192,11 @@ const {
 	execute: createLink,
 } = useApiAction(async () => {
 	const link = await serverApi.createLink(linkCreationForm.toModel())
-	primeCurrentMemoryLink(link)
+	if (memory.value) set(queryKeys.portfolio.memory(portfolio.value.id, memory.value.id), { ...memory.value, links: [...memory.value.links, link] })
 	invalidate([...queryKeys.portfolio.root(portfolio.value.id), 'memories'])
-	linkCreationForm.resetTarget()
-	toasts.success({ title: 'Link created.', body: `${linkTypeLabel(link.type)} Link added.` })
+	linkCreationForm.reset()
+	toasts.success({ title: 'Link created.', body: `${titleCase(link.type)} Link added.` })
 })
-
-function memoryTypeLabel(type: MemoryDetails['type']): string {
-	return titleCase(type)
-}
-
-function memoryStatusLabel(status: MemoryDetails['status']): string {
-	return titleCase(status)
-}
 
 function memoryStatusClass(status: MemoryDetails['status']): string {
 	const base = 'inline-flex border px-1.5 py-0.5 text-sz-micro font-semibold'
@@ -251,23 +222,6 @@ function isArchivedLink(link: MemoryLink): boolean {
 
 function memoryOptionLabel(memory: ListedMemory): string {
 	return `${memory.title} — ${titleCase(memory.status)} — ${titleCase(memory.type)}`
-}
-
-function linkTypeLabel(type: string): string {
-	return titleCase(type)
-}
-
-function isMemoryLinkCreationType(value: string): value is CreateLinkInput['type'] {
-	return memoryLinkCreationTypeOptions.some((option) => option.value === value)
-}
-
-function isExactOutgoingMemoryLink(link: MemoryLink, sourceMemoryId: string, linkType: CreateLinkInput['type']): boolean {
-	return link.type === linkType && link.from.type === 'memory' && link.from.id === sourceMemoryId && link.to.type === 'memory'
-}
-
-function primeCurrentMemoryLink(link: MemoryLink): void {
-	if (memory.value === null) return
-	set(queryKeys.portfolio.memory(portfolio.value.id, memory.value.id), { ...memory.value, links: [...memory.value.links, link] })
 }
 
 function titleCase(value: string): string {

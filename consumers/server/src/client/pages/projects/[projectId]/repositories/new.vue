@@ -47,19 +47,15 @@
 						</UiText>
 					</div>
 
-					<label class="grid gap-1.5 font-semibold" for="github-secret">
-						GitHub access Secret
+					<div class="grid gap-1.5 font-semibold">
+						<label for="github-secret">GitHub access Secret</label>
 						<UiSelect
 							id="github-secret"
 							v-model="repositoryCreationForm.secretId"
-							required
-							:invalid="!!repositoryCreationForm.errors.secretId">
-							<option value="">Select an active Secret</option>
-							<option v-for="secret in activeSecrets" :key="secret.id" :value="secret.id">
-								{{ secret.name }}
-							</option>
-						</UiSelect>
-					</label>
+							:options="activeSecretOptions"
+							placeholder="Select an active Secret"
+							:invalid="!!repositoryCreationForm.errors.secretId" />
+					</div>
 					<UiText v-if="repositoryCreationForm.errors.secretId" tone="error" size="helper">
 						{{ repositoryCreationForm.errors.secretId }}
 					</UiText>
@@ -132,6 +128,7 @@ const {
 } = usePortfolioSecretsQuery(serverApi)
 
 const activeSecrets = computed(() => secrets.value.filter((secret) => !secret.archived))
+const activeSecretOptions = computed(() => activeSecrets.value.map((secret) => ({ value: secret.id, label: secret.name })))
 
 const isLoadingSetup = computed(() => isLoadingSecrets.value && !hasLoadedSecrets.value)
 const setupError = computed(() => secretsError.value)

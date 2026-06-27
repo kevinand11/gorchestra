@@ -69,30 +69,34 @@
 						class="w-full border border-dimmer bg-canvas px-2 py-1.5 text-body"
 						placeholder="route contract" />
 				</label>
-				<label class="grid gap-1 text-sz-helper font-semibold text-dim">
-					<span>Status</span>
-					<select v-model="draft.status" class="w-full border border-dimmer bg-canvas px-2 py-1.5 text-body">
-						<option v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-					</select>
-				</label>
-				<label class="grid gap-1 text-sz-helper font-semibold text-dim">
-					<span>Type</span>
-					<select v-model="draft.memoryType" class="w-full border border-dimmer bg-canvas px-2 py-1.5 text-body">
-						<option v-for="option in memoryTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-					</select>
-				</label>
-				<label class="grid gap-1 text-sz-helper font-semibold text-dim">
-					<span>Linked by</span>
-					<select v-model="draft.linkedBy" class="w-full border border-dimmer bg-canvas px-2 py-1.5 text-body">
-						<option v-for="option in linkedByOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-					</select>
-				</label>
-				<label class="grid gap-1 text-sz-helper font-semibold text-dim">
-					<span>Linked to</span>
-					<select v-model="draft.linkedTo" class="w-full border border-dimmer bg-canvas px-2 py-1.5 text-body">
-						<option v-for="option in linkedToOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-					</select>
-				</label>
+				<div class="grid gap-1 text-sz-helper font-semibold text-dim">
+					<label for="memory-filter-status">Status</label>
+					<UiSelect id="memory-filter-status" v-model="draft.status" :options="statusOptions" placeholder="Select status" />
+				</div>
+				<div class="grid gap-1 text-sz-helper font-semibold text-dim">
+					<label for="memory-filter-type">Type</label>
+					<UiSelect
+						id="memory-filter-type"
+						v-model="draft.memoryType"
+						:options="memoryTypeOptions"
+						placeholder="Select Memory Type" />
+				</div>
+				<div class="grid gap-1 text-sz-helper font-semibold text-dim">
+					<label for="memory-filter-linked-by">Linked by</label>
+					<UiSelect
+						id="memory-filter-linked-by"
+						v-model="draft.linkedBy"
+						:options="linkedByOptions"
+						placeholder="Select Link Type" />
+				</div>
+				<div class="grid gap-1 text-sz-helper font-semibold text-dim">
+					<label for="memory-filter-linked-to">Linked to</label>
+					<UiSelect
+						id="memory-filter-linked-to"
+						v-model="draft.linkedTo"
+						:options="linkedToOptions"
+						placeholder="Select Linked Node" />
+				</div>
 				<button
 					class="justify-self-start border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast hover:brightness-110"
 					type="submit">
@@ -109,10 +113,11 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 
-import { usePortfolioMemoriesQuery } from '../../composables/portfolio-resource-queries'
-import { useServerApi, type ServerApi } from '../../composables/useServerApi'
-import { formatDate } from '../../utils/time'
-import { draftFromInput, listMemoriesInputFromRoute, queryFromDraft, type MemoryLedgerDraft } from './memory-ledger-state'
+import UiSelect from '../../../components/ui/UiSelect.vue'
+import { usePortfolioMemoriesQuery } from '../../../composables/portfolio-resource-queries.js'
+import { useServerApi, type ServerApi } from '../../../composables/useServerApi.js'
+import { formatDate } from '../../../utils/time.js'
+import { draftFromInput, listMemoriesInputFromRoute, queryFromDraft, type MemoryLedgerDraft } from '../memory-ledger-state.js'
 
 definePageMeta({ middleware: ['has-selection'] })
 
