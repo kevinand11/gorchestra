@@ -6,7 +6,7 @@ settings:
 
 overrides:
     equipped: file://~/Desktop/code/packages/equipped
-    valleyed: 4.5.22
+    valleyed: 4.5.23
 
 importers:
     .:
@@ -69,8 +69,8 @@ importers:
                 specifier: ^4.4.8
                 version: 4.4.8(@babel/plugin-syntax-jsx@7.29.7(@babel/core@7.29.7))(@babel/plugin-syntax-typescript@7.29.7(@babel/core@7.29.7))(@parcel/watcher@2.5.6)(@types/node@25.9.2)(@vue/compiler-sfc@3.5.38)(cac@6.7.14)(db0@0.3.4)(eslint@9.39.1(jiti@2.7.0))(ioredis@5.11.1)(lightningcss@1.32.0)(magicast@0.5.3)(meow@13.2.0)(optionator@0.9.4)(pinia@3.0.4(typescript@6.0.3)(vue@3.5.38(typescript@6.0.3)))(rollup-plugin-visualizer@7.0.1(rollup@4.61.1))(rollup@4.61.1)(srvx@0.11.16)(terser@5.48.0)(tsx@4.22.4)(typescript@6.0.3)(vite@7.3.5(@types/node@25.9.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))(yaml@2.9.0)
             valleyed:
-                specifier: 4.5.22
-                version: 4.5.22
+                specifier: 4.5.23
+                version: 4.5.23
             vue:
                 specifier: 3.5.38
                 version: 3.5.38(typescript@6.0.3)
@@ -106,14 +106,14 @@ importers:
                 specifier: ^6.42.0
                 version: 6.42.0(ws@8.21.0)
             valleyed:
-                specifier: 4.5.22
-                version: 4.5.22
+                specifier: 4.5.23
+                version: 4.5.23
 
     libs/form-draft:
         devDependencies:
             valleyed:
-                specifier: 4.5.22
-                version: 4.5.22
+                specifier: 4.5.23
+                version: 4.5.23
             vue:
                 specifier: 3.5.38
                 version: 3.5.38(typescript@6.0.3)
@@ -6212,8 +6212,8 @@ packages:
         resolution: { integrity: sha512-0/A9rDy9P7cJ+8w1c9WD9V//9Wj15Ce2MPz8Ri6032usz+NfePxx5AcN3bN+r6ZL6jEo066/yNYB3tn4pQEx+A== }
         hasBin: true
 
-    valleyed@4.5.22:
-        resolution: { integrity: sha512-35LqzMX24sS6nTKvk8oF863BgdIPWu89Ow8OdEmpHo+ZNETNE6Mh5CfHFOzvBEdg0cTVLzbjkup+19kZKt+v5Q== }
+    valleyed@4.5.23:
+        resolution: { integrity: sha512-15JZNOqFadJZQCEw/+esQid8i1yr2yqoVprnaVeG7cmB+Ir3ABxOXAfZgwdJyY9E+jSSDpIeoRVy0F08aAGfVg== }
 
     vary@1.1.2:
         resolution: { integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg== }
@@ -9647,7 +9647,7 @@ snapshots:
             socket.io: 4.8.3
             supertest: 7.2.2
             ulid: 3.0.2
-            valleyed: 4.5.22
+            valleyed: 4.5.23
         transitivePeerDependencies:
             - '@aws-sdk/credential-providers'
             - '@mongodb-js/zstd'
@@ -13111,7 +13111,7 @@ snapshots:
 
     uuid@11.1.0: {}
 
-    valleyed@4.5.22:
+    valleyed@4.5.23:
         dependencies:
             '@standard-schema/spec': 1.1.0
             url-regex-safe: 4.0.0

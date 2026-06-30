@@ -88,20 +88,24 @@ _Avoid_: Memory graph, Project graph, relationship map
 A Brain Graph visual connector that shows containment or navigation context between graph nodes without representing a Core Link or stored Portfolio fact.
 _Avoid_: Link, relationship, dependency
 
-**Memory Ledger**:
+**Memories**:
 The Brain hierarchy view that lists root Memories and lets users navigate parent-child Memory structure. It presents Portfolio Memory like a database-backed Obsidian vault tree rather than a flat Memory database.
-_Avoid_: Memory database, Project memory list, flat note list
+_Avoid_: Memory Ledger, Memory database, Project memory list, flat note list
 
 **Memory Detail**:
-The Brain view for one Memory. Memory Detail presents the Memory's latest revision content and, when present, its child Memories in the same hierarchy model as the Memory Ledger root.
+The Brain view for one Memory. Memory Detail presents the Memory's current revision content, supports Memory Editing for current content, and, when present, shows child Memories in the same hierarchy model as the Memories root.
 _Avoid_: selected Memory panel, Memory record page
+
+**Memory Editing**:
+The Brain interaction that saves a new Memory Revision for an existing Memory's title or body. Memory Editing changes current revision content without changing the Memory's parent relationship.
+_Avoid_: Memory editor, reparenting, Memory Inline Link Editing
 
 **Memory Inline Link Editing**:
 The Brain interaction that creates, removes, or changes authored Memory-to-Memory links inside a Memory Revision body. Memory Inline Link Editing is note editing, not standalone Core Link creation.
 _Avoid_: Core Link creation, relationship editor, bidirectional Link creation
 
 **New Memory**:
-The Brain view for manually creating one Portfolio Memory. New Memory may create a Standalone Memory or supersede an older Memory without creating a separate Memory ownership scope.
+The Brain interaction for manually creating one root or child Memory in Portfolio Memory. New Memory chooses the parent relationship at creation time and then makes the created Memory the active Memory Detail.
 _Avoid_: Memory editor, Memory draft, Create Memory page
 
 **Workspace Member**:

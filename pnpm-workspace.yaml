@@ -13,8 +13,9 @@ allowBuilds:
 
 overrides:
     equipped: file://~/Desktop/code/packages/equipped
-    valleyed: 4.5.22
+    valleyed: 4.5.23
 
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
     - equipped
+    - valleyed
