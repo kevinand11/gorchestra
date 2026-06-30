@@ -7,39 +7,16 @@ export type ServerApiOptions = {
 	headers?: { cookie: string }
 }
 
-type MemoryType = 'decision' | 'fact' | 'constraint' | 'assumption' | 'risk' | 'architecture' | 'workflow' | 'convention'
-type LinkType = 'produced' | 'references' | 'supersedes' | 'supports' | 'contradicts' | 'depends-on'
-type GraphNodeType = 'project' | 'plan' | 'delivery' | 'slice' | 'memory'
-type GraphNodeRef = { type: GraphNodeType; id: string }
-type GraphNodeSelector = { type: 'node-type'; nodeType: GraphNodeType } | { type: 'node'; node: GraphNodeRef }
-type MemoryTypeFilter = { type: 'all' } | { type: 'types'; values: MemoryType[] }
-type LinkTypeFilter = { type: 'all' } | { type: 'types'; values: LinkType[] }
-type LinkedNodeFilter = { type: 'all' } | { type: 'nodes'; values: GraphNodeSelector[] }
-type DirectMemoryLinkFilter = { linkTypes: LinkTypeFilter; linkedNodes: LinkedNodeFilter }
-type MemoryLinkFilterSet = { type: 'none' } | { type: 'filters'; match: 'any' | 'all'; filters: DirectMemoryLinkFilter[] }
-
-type CreateMemoryLink = { type: 'supersedes'; toMemoryId: string }
-type CreatePortfolioLinkType = 'references' | 'supports' | 'contradicts' | 'supersedes'
-type CreatePortfolioMemoryNodeRef = { type: 'memory'; id: string }
-
 export type CreateMemoryInput = {
+	parentId: string | null
 	title: string
 	body: string
-	type: MemoryType
-	links: CreateMemoryLink[]
 }
 
-export type CreateLinkInput = {
-	type: CreatePortfolioLinkType
-	from: CreatePortfolioMemoryNodeRef
-	to: CreatePortfolioMemoryNodeRef
-}
-
-export type ListMemoriesInput = {
-	status: 'current' | 'superseded' | 'all'
-	search: string | null
-	typeFilter: MemoryTypeFilter
-	linkFilter: MemoryLinkFilterSet
+export type CreateMemoryRevisionInput = {
+	expectedCurrentRevisionId: string
+	title: string
+	body: string
 }
 
 type ServerApiOptionsResolver = () => ServerApiOptions | null
@@ -169,8 +146,8 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async getSecret(secretId: string) {
 			return routes.request('get', '/api/portfolio/secrets/:secretId', { params: { secretId } })
 		},
-		async listMemories(input: ListMemoriesInput) {
-			return routes.request('get', '/api/portfolio/memories', { query: listMemoriesRouteQuery(input) })
+		async listMemoryChildren(parentId: string | null) {
+			return routes.request('get', '/api/portfolio/memories', { query: { parentId: queryValue(parentId) } })
 		},
 		async createMemory(input: CreateMemoryInput) {
 			return routes.request('post', '/api/portfolio/memories', { body: input })
@@ -178,11 +155,8 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async getMemory(memoryId: string) {
 			return routes.request('get', '/api/portfolio/memories/:memoryId', { params: { memoryId } })
 		},
-		async createLink(input: CreateLinkInput) {
-			return routes.request('post', '/api/portfolio/links', { body: input })
-		},
-		async setLinkArchiveState(linkId: string, archived: boolean) {
-			return routes.request('post', '/api/portfolio/links/:linkId/archive-state', { params: { linkId }, body: { archived } })
+		async createMemoryRevision(memoryId: string, input: CreateMemoryRevisionInput) {
+			return routes.request('post', '/api/portfolio/memories/:memoryId/revisions', { params: { memoryId }, body: input })
 		},
 		async provisionDefaultWorkspace(input: { workspaceDisplayName: string; portfolioDisplayName: string }) {
 			return routes.request('post', '/api/workspaces/provision-default', { body: input })
@@ -200,15 +174,6 @@ export function createServerApi(options: ServerApiOptions = {}) {
 }
 
 export type ServerApi = ReturnType<typeof createServerApi>
-
-function listMemoriesRouteQuery(input: ListMemoriesInput) {
-	return {
-		status: input.status,
-		search: queryValue(input.search),
-		typeFilter: queryValue(input.typeFilter),
-		linkFilter: queryValue(input.linkFilter),
-	}
-}
 
 function queryValue<T>(value: T): T {
 	return (typeof value === 'string' ? value : JSON.stringify(value)) as T

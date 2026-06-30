@@ -1,0 +1,3 @@
+# Memory hierarchy and revision-backed content
+
+Gorchestra Memory now models the Brain as a database-backed Obsidian-like hierarchy: every Memory is note-like, may contain child Memories through an immutable parent relationship, and stores a current revision snapshot for fast reads. Durable edit history lives in separate MemoryRevision records; creating or editing Memory content writes revision history and updates the current snapshot atomically. We chose this over flat typed immutable Memories and user-authored Memory Link records because the Brain surface is becoming a note hierarchy first, while graph, backlinks, tags, search, reorganization, and accepted Plan Output memory materialization can be added as later projections or features.

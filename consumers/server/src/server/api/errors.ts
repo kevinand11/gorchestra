@@ -4,6 +4,7 @@ import {
 	NotAuthorizedError,
 	NotFoundError,
 	PreconditionRequiredError,
+	RequestError,
 	TokenExpired,
 } from 'equipped/errors'
 
@@ -13,6 +14,12 @@ import type { WorkspacePortfolioAccessFailureReason } from '../modules/selection
 export function throwSessionAuthenticationError(reason: Extract<ApiSessionAuthentication, { authenticated: false }>['reason']): never {
 	if (reason === 'expired') throw new TokenExpired()
 	throw new NotAuthenticatedError()
+}
+
+class ConflictError extends RequestError {
+	constructor(message: string) {
+		super(message, 409, [{ message }])
+	}
 }
 
 export function throwBadRequest(message: string): never {
@@ -50,6 +57,7 @@ const badRequestCoreErrorMessages: Record<string, string> = {
 export function throwCoreOperationError(error: { type: string; resource?: string }): never {
 	const badRequestMessage = badRequestCoreErrorMessages[error.type]
 	if (badRequestMessage !== undefined) throw new BadRequestError(badRequestMessage)
+	if (error.type === 'revision-conflict') throw new ConflictError('Memory was changed by another revision')
 	if (error.type === 'not-found') throw new NotFoundError(notFoundCoreResourceMessage(error.resource))
 	throw new Error(`Core operation failed: ${error.type}`)
 }

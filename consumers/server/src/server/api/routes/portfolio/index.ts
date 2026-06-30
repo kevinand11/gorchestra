@@ -1,7 +1,6 @@
 import { Router } from 'equipped/server'
 
 import { createDeliveriesApiRouter } from './deliveries'
-import { createLinksApiRouter } from './links'
 import { createMemoriesApiRouter } from './memories'
 import { createPlansApiRouter } from './plans'
 import { createProjectsApiRouter } from './projects'
@@ -15,7 +14,6 @@ const buildPortfolioApiRouter = (context: ServerApiContext) =>
 		.nest(createPlansApiRouter(context))
 		.nest(createDeliveriesApiRouter(context))
 		.nest(createMemoriesApiRouter(context))
-		.nest(createLinksApiRouter(context))
 		.nest(createRepositoriesApiRouter(context))
 		.nest(createSecretsApiRouter(context))
 

@@ -3,89 +3,65 @@ import { v } from 'valleyed'
 
 import type { CreateMemoryInput } from '../composables/useServerApi'
 
-type MemoryCreationType = CreateMemoryInput['type']
-
-type MemoryCreationFormFields = {
+type MemoryFormFields = {
+	parentId: string | null
 	title: string
 	body: string
-	memoryType: MemoryCreationType | ''
-	supersededMemoryId: string
 }
 
 const memoryTitlePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a Memory title'))
-const memoryBodyPipe = v.string().pipe((body) => (body.trim().length === 0 ? '' : body))
-const memoryTypePipe = v.in(
-	['decision', 'fact', 'constraint', 'assumption', 'risk', 'architecture', 'workflow', 'convention'],
-	'Select a Memory Type',
-)
-const supersededMemoryIdPipe = v.string().pipe(v.asTrimmed())
+const memoryBodyPipe = v.string().pipe(v.asTrimmed())
 
-export class MemoryCreationFormDraft extends FormDraft<CreateMemoryInput, CreateMemoryInput, MemoryCreationFormFields> {
+export class MemoryFormDraft extends FormDraft<CreateMemoryInput, CreateMemoryInput, MemoryFormFields> {
 	protected readonly rules = {
+		parentId: v.nullable(v.string()),
 		title: memoryTitlePipe,
 		body: memoryBodyPipe,
-		memoryType: memoryTypePipe,
-		supersededMemoryId: supersededMemoryIdPipe,
 	}
 
-	constructor({ supersededMemoryId = '' }: { supersededMemoryId?: string } = {}) {
-		super({ title: '', body: '', memoryType: '', supersededMemoryId })
+	constructor(parentId: string | null) {
+		super({ parentId, title: '', body: '' })
 	}
 
-	protected model = (): CreateMemoryInput => ({
-		title: this.title,
-		body: this.body,
-		type: this.memoryType as MemoryCreationType,
-		links: this.supersededMemoryId === '' ? [] : [{ type: 'supersedes', toMemoryId: this.supersededMemoryId }],
-	})
+	protected model = (): CreateMemoryInput => ({ parentId: this.parentId, title: this.title, body: this.body })
 
 	protected load = (entity: CreateMemoryInput): void => {
+		this.parentId = entity.parentId
 		this.title = entity.title
 		this.body = entity.body
-		this.memoryType = entity.type
-		this.supersededMemoryId = entity.links[0]?.toMemoryId ?? ''
 	}
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
-	describe('MemoryCreationFormDraft', () => {
-		it('models Standalone Memories with trimmed titles, required types, and optional body', () => {
-			const factory = new MemoryCreationFormDraft()
+	describe('MemoryFormDraft', () => {
+		it('models root Memories with trimmed title and body', () => {
+			const draft = new MemoryFormDraft(null)
 
-			factory.title = '  Route Contracts  '
-			factory.body = '   '
-			factory.memoryType = 'convention'
+			draft.title = '  Route Contracts  '
+			draft.body = '  Body  '
 
-			expect(factory.valid).toBe(true)
-			expect(factory.toModel()).toEqual({ title: 'Route Contracts', body: '', type: 'convention', links: [] })
+			expect(draft.valid).toBe(true)
+			expect(draft.toModel()).toEqual({ parentId: null, title: 'Route Contracts', body: 'Body' })
 		})
 
-		it('preserves nonblank Memory body text and models optional supersession Links', () => {
-			const factory = new MemoryCreationFormDraft()
+		it('models child Memories with a parent id', () => {
+			const draft = new MemoryFormDraft('memory-parent')
 
-			factory.title = 'Convention'
-			factory.body = '  Preserve leading and trailing spaces.  '
-			factory.memoryType = 'convention'
-			factory.supersededMemoryId = ' memory-1 '
+			draft.title = 'Child'
+			draft.body = ''
 
-			expect(factory.toModel()).toEqual({
-				title: 'Convention',
-				body: '  Preserve leading and trailing spaces.  ',
-				type: 'convention',
-				links: [{ type: 'supersedes', toMemoryId: 'memory-1' }],
-			})
+			expect(draft.toModel()).toEqual({ parentId: 'memory-parent', title: 'Child', body: '' })
 		})
 
-		it('rejects empty Memory titles and missing Memory Types', () => {
-			const factory = new MemoryCreationFormDraft({})
+		it('rejects empty titles', () => {
+			const draft = new MemoryFormDraft(null)
 
-			factory.title = '  '
-			factory.memoryType = ''
+			draft.title = '  '
 
-			expect(factory.valid).toBe(false)
-			expect(factory.errors.title).toBe('Enter a Memory title')
+			expect(draft.valid).toBe(false)
+			expect(draft.errors.title).toBe('Enter a Memory title')
 		})
 	})
 }

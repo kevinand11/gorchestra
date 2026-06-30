@@ -84,8 +84,8 @@ const queryKeys = {
 		secrets(portfolioId: string): QueryKey {
 			return ['portfolio', portfolioId, 'secrets']
 		},
-		memories(portfolioId: string, status: string, search: string, typeFilter: string, linkFilter: string): QueryKey {
-			return ['portfolio', portfolioId, 'memories', status, search, typeFilter, linkFilter]
+		memories(portfolioId: string, parentScope: string): QueryKey {
+			return ['portfolio', portfolioId, 'memories', parentScope]
 		},
 		memory(portfolioId: string, memoryId: string): QueryKey {
 			return ['portfolio', portfolioId, 'memories', 'memory', memoryId]
