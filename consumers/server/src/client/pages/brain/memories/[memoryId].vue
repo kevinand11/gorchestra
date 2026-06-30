@@ -144,7 +144,7 @@ import { useQueryCache } from '../../../composables/query-cache'
 import { useSelectedPortfolio } from '../../../composables/selected-portfolio'
 import { useToasts } from '../../../composables/toasts'
 import { useServerApi, type ListMemoriesInput, type ServerApi } from '../../../composables/useServerApi'
-import { LinkCreationFormFactory, memoryLinkCreationTypeOptions } from '../../../forms/link'
+import { LinkCreationFormDraft, memoryLinkCreationTypeOptions } from '../../../forms/link'
 import { formatDate } from '../../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
@@ -162,7 +162,7 @@ const memoryId = computed(() => route.params.memoryId as string)
 const showLinkCreationForm = ref(false)
 const linkTypeOptions = memoryLinkCreationTypeOptions
 const archivableLinkTypes = new Set<MemoryLink['type']>(['references', 'supports', 'contradicts'])
-const linkCreationForm = new LinkCreationFormFactory({ sourceMemoryId: memoryId.value })
+const linkCreationForm = new LinkCreationFormDraft({ sourceMemoryId: memoryId.value })
 const updatingLinkArchiveStateId = ref<string | null>(null)
 const allMemoriesInput = computed<ListMemoriesInput>(() => ({
 	status: 'all',

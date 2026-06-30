@@ -1,10 +1,10 @@
 import { differ, v, type Pipe } from 'valleyed'
-import { isProxy, isReactive, isRef, markRaw, reactive, toRaw } from 'vue'
+import { isProxy, isReactive, isRef, markRaw, nextTick, reactive, toRaw } from 'vue'
 
-class FactoryValidationError extends Error {
-	constructor(factoryName: string) {
-		super(`Validation errors for ${factoryName}`)
-		this.name = 'FactoryValidationError'
+class FormDraftValidationError extends Error {
+	constructor(draftName: string) {
+		super(`Validation errors for ${draftName}`)
+		this.name = 'FormDraftValidationError'
 	}
 }
 
@@ -55,10 +55,11 @@ class LocalDataClass<Keys extends object> extends wrapWithProperties()<Keys> {
 	}
 }
 
-type FactoryLike<Entity = unknown, Model = unknown, Fields = unknown> = {
+type FormDraftLike<Entity = unknown, Model = unknown, Fields extends object = object> = {
 	readonly dirty: boolean
 	readonly listenerValue: Fields
 	readonly valid: boolean
+	isDirty(...keys: (keyof Fields)[]): boolean
 	listen(callback: () => void): void
 	loadEntity(entity: Entity): unknown
 	reset(): void
@@ -66,24 +67,24 @@ type FactoryLike<Entity = unknown, Model = unknown, Fields = unknown> = {
 }
 
 type FlatKeys<K extends object> = keyof {
-	[Key in keyof K as K[Key] extends FactoryLike ? never : Key]: boolean
+	[Key in keyof K as K[Key] extends FormDraftLike ? never : Key]: boolean
 }
 
-type InferEntity<T> = T extends FactoryLike<infer Entity, unknown, unknown> ? Entity : never
-type InferModel<T> = T extends FactoryLike<unknown, infer Model, unknown> ? Model : never
-type InferFields<T> = T extends FactoryLike<unknown, unknown, infer Fields> ? Fields : never
+type InferEntity<T> = T extends FormDraftLike<infer Entity, unknown, object> ? Entity : never
+type InferModel<T> = T extends FormDraftLike<unknown, infer Model, object> ? Model : never
+type InferFields<T> = T extends FormDraftLike<unknown, unknown, infer Fields> ? Fields : never
 type ValidationResult = ReturnType<typeof v.validate>
 type InvalidValidationResult = Extract<ValidationResult, { valid: false }>
-type FactoryRules<K extends object> = { [Key in keyof K]: Pipe<unknown, unknown> }
+type FormDraftRules<K extends object> = { [Key in keyof K]: Pipe<unknown, unknown> }
 
-export abstract class BaseFactory<Entity, Model, Fields extends object> extends LocalDataClass<Fields> {
+export abstract class FormDraft<Entity, Model, Fields extends object> extends LocalDataClass<Fields> {
 	#listeners: (() => void)[] = []
-	#embeds: Partial<Record<keyof Fields, FactoryLike>>
+	#embeds: Partial<Record<keyof Fields, FormDraftLike>>
 	readonly #originals: Fields
 
 	protected readonly values: Fields
 	protected readonly validities: Record<keyof Fields, ValidationResult>
-	protected abstract readonly rules: FactoryRules<Fields>
+	protected abstract readonly rules: FormDraftRules<Fields>
 	protected abstract model: () => Model
 	protected abstract load: (entity: Entity) => void
 	protected readonly onSet: { [Key in FlatKeys<Fields>]?: (value: Fields[Key]) => void } = {}
@@ -105,18 +106,18 @@ export abstract class BaseFactory<Entity, Model, Fields extends object> extends 
 		const accumulated = Object.entries(keys).reduce(
 			(acc, [key, value]) => {
 				const typedKey = key as keyof Fields
-				if (value instanceof BaseFactory) {
-					const child = value as FactoryLike<unknown, unknown, Fields[keyof Fields]>
+				if (value instanceof FormDraft) {
+					const child = value as FormDraftLike
 					acc.embeds[typedKey] = child
-					child.listen(() => this.set(typedKey, child.listenerValue))
-					acc.raw[typedKey] = child.listenerValue
+					child.listen(() => this.set(typedKey, child.listenerValue as Fields[typeof typedKey]))
+					acc.raw[typedKey] = child.listenerValue as Fields[typeof typedKey]
 				} else {
 					acc.raw[typedKey] = value as Fields[keyof Fields]
 				}
 				return acc
 			},
 			{
-				embeds: {} as Partial<Record<keyof Fields, FactoryLike>>,
+				embeds: {} as Partial<Record<keyof Fields, FormDraftLike>>,
 				raw: {} as Fields,
 			},
 		)
@@ -125,10 +126,7 @@ export abstract class BaseFactory<Entity, Model, Fields extends object> extends 
 		this.#originals = makeReactive(copy(accumulated.raw))
 		this.values = makeReactive(copy(accumulated.raw))
 		this.validities = makeReactive(createInitialValidities(keys))
-	}
-
-	protected initialize(): void {
-		this.reset()
+		void nextTick(() => this.validateInitialValues())
 	}
 
 	get valid(): boolean {
@@ -146,10 +144,7 @@ export abstract class BaseFactory<Entity, Model, Fields extends object> extends 
 	}
 
 	get dirty(): boolean {
-		return (
-			this.embedKeys.some((key) => this.#embeds[key]?.dirty) ||
-			this.flatKeys.some((key) => !differ.equal(this.#originals[key as keyof Fields], this.values[key as keyof Fields]))
-		)
+		return this.isDirty(...(this.keys as (keyof Fields)[]))
 	}
 
 	private fieldError(key: keyof Fields): string {
@@ -167,12 +162,21 @@ export abstract class BaseFactory<Entity, Model, Fields extends object> extends 
 		return !differ.equal(this.#originals[key], this.values[key])
 	}
 
+	private isKeyDirty(key: keyof Fields): boolean {
+		const child = this.#embeds[key]
+		return child === undefined ? this.fieldIsDirty(key) : this.fieldOrChildIsDirty(key, child)
+	}
+
+	private fieldOrChildIsDirty(key: keyof Fields, child: FormDraftLike): boolean {
+		return this.fieldIsDirty(key) || child.dirty
+	}
+
 	private isKeyValid(key: keyof Fields): boolean {
 		const child = this.#embeds[key]
 		return child === undefined ? this.fieldIsValid(key) : this.fieldAndChildAreValid(key, child)
 	}
 
-	private fieldAndChildAreValid(key: keyof Fields, child: FactoryLike): boolean {
+	private fieldAndChildAreValid(key: keyof Fields, child: FormDraftLike): boolean {
 		if (!this.fieldIsValid(key)) return false
 		return child.valid
 	}
@@ -204,6 +208,19 @@ export abstract class BaseFactory<Entity, Model, Fields extends object> extends 
 		return this.isValid(...(this.keys as (keyof Fields)[]).filter((key) => !keys.includes(key)))
 	}
 
+	isDirty(...keys: (keyof Fields)[]): boolean {
+		const keysToCheck = keys.length ? keys : (this.keys as (keyof Fields)[])
+		return keysToCheck.some((key) => this.isKeyDirty(key))
+	}
+
+	isDirtyExcept(...keys: (keyof Fields)[]): boolean {
+		return this.isDirty(...(this.keys as (keyof Fields)[]).filter((key) => !keys.includes(key)))
+	}
+
+	private validateInitialValues(): void {
+		;(this.keys as (keyof Fields)[]).forEach((key) => this.set(key, this.values[key]))
+	}
+
 	reset(...keys: (keyof Fields)[]): void {
 		const keysToReset = keys.length ? keys : (this.keys as (keyof Fields)[])
 		const reserved = this.reserved as (keyof Fields)[]
@@ -225,7 +242,7 @@ export abstract class BaseFactory<Entity, Model, Fields extends object> extends 
 	}
 
 	toModel(): Model {
-		if (!this.valid) throw new FactoryValidationError(this.factoryName)
+		if (!this.valid) throw new FormDraftValidationError(this.draftName)
 		return deepToRaw(this.model())
 	}
 
@@ -253,23 +270,22 @@ export abstract class BaseFactory<Entity, Model, Fields extends object> extends 
 		return Object.keys(this.#originals)
 	}
 
-	private get factoryName(): string {
-		return this.constructor.name.toLowerCase().replace('factory', '')
+	private get draftName(): string {
+		return this.constructor.name.toLowerCase().replace('formdraft', '').replace('draft', '')
 	}
 
-	static asArray<T extends FactoryLike>(factory: () => T): FactoryArray<T> {
-		return new FactoryArray(factory)
+	static asArray<T extends FormDraftLike>(factory: () => T): FormDraftArray<T> {
+		return new FormDraftArray(factory)
 	}
 }
 
-export class FactoryArray<T extends FactoryLike> extends BaseFactory<InferEntity<T>[], InferModel<T>[], object> {
+export class FormDraftArray<T extends FormDraftLike> extends FormDraft<InferEntity<T>[], InferModel<T>[], object> {
 	readonly rules = {}
 	#children = makeReactive({ value: [] as T[] })
 	#lastLoadedEntities: InferEntity<T>[] = []
 
 	constructor(private readonly factory: () => T) {
 		super({})
-		this.initialize()
 	}
 
 	*[Symbol.iterator](): Generator<T> {
@@ -305,6 +321,10 @@ export class FactoryArray<T extends FactoryLike> extends BaseFactory<InferEntity
 	}
 
 	override get dirty(): boolean {
+		return this.isDirty()
+	}
+
+	override isDirty(): boolean {
 		if (this.#children.value.some((instance) => toRaw(instance).dirty)) return true
 		return !differ.equal(deepToRaw(this.#lastLoadedEntities), this.childModels())
 	}
@@ -336,7 +356,7 @@ export class FactoryArray<T extends FactoryLike> extends BaseFactory<InferEntity
 	}
 }
 
-export const factoryPipe = <T extends FactoryLike>() => v.any<InferFields<T>>()
+export const formDraftPipe = <T extends FormDraftLike>() => v.any<InferFields<T>>()
 
 function createInitialValidities<Fields extends object>(fields: Fields): Record<keyof Fields, ValidationResult> {
 	return Object.keys(fields).reduce(
@@ -367,14 +387,13 @@ if (import.meta.vitest) {
 	type NameFields = { name: string }
 	type NameModel = { name: string }
 
-	class NameFactory extends BaseFactory<NameModel, NameModel, NameFields> {
+	class NameFormDraft extends FormDraft<NameModel, NameModel, NameFields> {
 		protected readonly rules = {
 			name: v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Name is required')),
 		}
 
 		constructor(initialName = '') {
 			super({ name: initialName })
-			this.initialize()
 		}
 
 		protected model = (): NameModel => ({ name: this.name })
@@ -384,18 +403,17 @@ if (import.meta.vitest) {
 		}
 	}
 
-	type ParentFields = { child: NameFactory; label: string }
+	type ParentFields = { child: NameFormDraft; label: string }
 	type ParentModel = { child: NameModel; label: string }
 
-	class ParentFactory extends BaseFactory<ParentModel, ParentModel, ParentFields> {
+	class ParentFormDraft extends FormDraft<ParentModel, ParentModel, ParentFields> {
 		protected readonly rules = {
-			child: factoryPipe<NameFactory>(),
+			child: formDraftPipe<NameFormDraft>(),
 			label: v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Label is required')),
 		}
 
 		constructor() {
-			super({ child: new NameFactory('child'), label: 'parent' })
-			this.initialize()
+			super({ child: new NameFormDraft('child'), label: 'parent' })
 		}
 
 		protected model = (): ParentModel => ({ child: this.child.toModel(), label: this.label })
@@ -406,17 +424,19 @@ if (import.meta.vitest) {
 		}
 	}
 
-	describe('BaseFactory', () => {
-		it('validates initial values immediately', () => {
-			const invalidFactory = new NameFactory()
-			const validFactory = new NameFactory('Gorchestra')
+	describe('FormDraft', () => {
+		it('validates initial values after the initialization tick', async () => {
+			const invalidFactory = new NameFormDraft()
+			const validFactory = new NameFormDraft('Gorchestra')
+
+			await nextTick()
 
 			expect(invalidFactory.valid).toBe(false)
 			expect(validFactory.valid).toBe(true)
 		})
 
 		it('sanitizes valid field values through Valleyed pipes', () => {
-			const factory = new NameFactory()
+			const factory = new NameFormDraft()
 
 			factory.name = '  Gorchestra  '
 
@@ -425,7 +445,7 @@ if (import.meta.vitest) {
 		})
 
 		it('exposes field errors for invalid changed values', () => {
-			const factory = new NameFactory('Gorchestra')
+			const factory = new NameFormDraft('Gorchestra')
 
 			factory.name = '   '
 
@@ -433,20 +453,24 @@ if (import.meta.vitest) {
 			expect(factory.errors.name).toBe('Name is required')
 		})
 
-		it('tracks dirty state and resets to originals', () => {
-			const factory = new NameFactory('Gorchestra')
+		it('tracks dirty state per field and resets to originals', () => {
+			const factory = new NameFormDraft('Gorchestra')
+
+			expect(factory.isDirty('name')).toBe(false)
 
 			factory.name = 'Changed'
 			expect(factory.dirty).toBe(true)
+			expect(factory.isDirty('name')).toBe(true)
 
 			factory.reset()
 
 			expect(factory.name).toBe('Gorchestra')
 			expect(factory.dirty).toBe(false)
+			expect(factory.isDirty('name')).toBe(false)
 		})
 
 		it('loads entities as clean originals', () => {
-			const factory = new NameFactory()
+			const factory = new NameFormDraft()
 
 			factory.loadEntity({ name: '  Loaded  ' })
 
@@ -456,26 +480,32 @@ if (import.meta.vitest) {
 			expect(factory.toModel()).toEqual({ name: 'Loaded' })
 		})
 
-		it('throws a factory validation error from toModel when invalid', () => {
-			const factory = new NameFactory()
+		it('throws a draft validation error from toModel when invalid', async () => {
+			const factory = new NameFormDraft()
+
+			await nextTick()
 
 			expect(() => factory.toModel()).toThrow('Validation errors for name')
 		})
 
-		it('includes nested factory validity and dirty state', () => {
-			const factory = new ParentFactory()
+		it('includes nested draft validity and dirty state', () => {
+			const factory = new ParentFormDraft()
 
 			expect(factory.valid).toBe(true)
 			expect(factory.dirty).toBe(false)
+			expect(factory.isDirty('child')).toBe(false)
+			expect(factory.isDirty('label')).toBe(false)
 
 			factory.child.name = '   '
 
 			expect(factory.valid).toBe(false)
 			expect(factory.dirty).toBe(true)
+			expect(factory.isDirty('child')).toBe(true)
+			expect(factory.isDirty('label')).toBe(false)
 		})
 
 		it('loads and resets nested factories as clean originals', () => {
-			const factory = new ParentFactory()
+			const factory = new ParentFormDraft()
 
 			factory.loadEntity({ child: { name: 'Loaded child' }, label: 'Loaded parent' })
 			factory.child.name = 'Changed child'
@@ -490,14 +520,15 @@ if (import.meta.vitest) {
 		})
 	})
 
-	describe('FactoryArray', () => {
-		it('adds, deletes, iterates, validates, and models child factories', () => {
-			const factories = BaseFactory.asArray(() => new NameFactory())
+	describe('FormDraftArray', () => {
+		it('adds, deletes, iterates, validates, and models child drafts', async () => {
+			const factories = FormDraft.asArray(() => new NameFormDraft())
 
 			expect(factories.valid).toBe(true)
 			expect(factories.dirty).toBe(false)
 
 			const first = factories.add()
+			await nextTick()
 			expect(factories.length).toBe(1)
 			expect(factories.valid).toBe(false)
 			expect(factories.dirty).toBe(true)
@@ -516,22 +547,25 @@ if (import.meta.vitest) {
 		})
 
 		it('loads arrays as clean originals and resets to the loaded entities', () => {
-			const factories = BaseFactory.asArray(() => new NameFactory())
+			const factories = FormDraft.asArray(() => new NameFormDraft())
 
 			factories.loadEntity([{ name: 'One' }, { name: 'Two' }])
 
 			expect(factories.length).toBe(2)
 			expect(factories.valid).toBe(true)
 			expect(factories.dirty).toBe(false)
+			expect(factories.isDirty()).toBe(false)
 			expect(factories.toModel()).toEqual([{ name: 'One' }, { name: 'Two' }])
 
 			factories.add().name = 'Three'
 			expect(factories.dirty).toBe(true)
+			expect(factories.isDirty()).toBe(true)
 
 			factories.reset()
 
 			expect(factories.length).toBe(2)
 			expect(factories.dirty).toBe(false)
+			expect(factories.isDirty()).toBe(false)
 			expect(factories.toModel()).toEqual([{ name: 'One' }, { name: 'Two' }])
 		})
 	})

@@ -131,7 +131,7 @@ import { useApiAction, useFetchAction } from '../composables/action-state'
 import { useAuthState, useSelectionAccess } from '../composables/auth-state'
 import { useQueryCache } from '../composables/query-cache'
 import { useServerApi, type ServerApi } from '../composables/useServerApi'
-import { ProvisionWorkspaceFormFactory } from '../forms/workspace'
+import { ProvisionWorkspaceFormDraft } from '../forms/workspace'
 import { useToasts } from '../composables/toasts'
 
 definePageMeta({ middleware: ['is-authenticated'] })
@@ -144,7 +144,7 @@ const serverApi = useServerApi()
 const queryCache = useQueryCache()
 const { queryKeys } = queryCache
 
-const provisionWorkspaceForm = new ProvisionWorkspaceFormFactory()
+const provisionWorkspaceForm = new ProvisionWorkspaceFormDraft()
 const selectingPortfolioKey = ref('')
 const { data: selection } = useSelectionAccess({ immediate: true })
 

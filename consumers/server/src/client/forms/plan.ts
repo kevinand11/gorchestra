@@ -1,6 +1,5 @@
+import { FormDraft } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
-
-import { BaseFactory } from './factory'
 
 type PlanCreationFormFields = {
 	title: string
@@ -12,14 +11,13 @@ type PlanCreationFormModel = {
 
 const planTitlePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a Plan title'))
 
-export class PlanCreationFormFactory extends BaseFactory<PlanCreationFormModel, PlanCreationFormModel, PlanCreationFormFields> {
+export class PlanCreationFormDraft extends FormDraft<PlanCreationFormModel, PlanCreationFormModel, PlanCreationFormFields> {
 	protected readonly rules = {
 		title: planTitlePipe,
 	}
 
 	constructor() {
 		super({ title: '' })
-		this.initialize()
 	}
 
 	protected model = (): PlanCreationFormModel => ({ title: this.title })
@@ -32,9 +30,9 @@ export class PlanCreationFormFactory extends BaseFactory<PlanCreationFormModel, 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
-	describe('PlanCreationFormFactory', () => {
+	describe('PlanCreationFormDraft', () => {
 		it('trims and models valid Plan titles', () => {
-			const factory = new PlanCreationFormFactory()
+			const factory = new PlanCreationFormDraft()
 
 			factory.title = '  Repository setup plan  '
 
@@ -43,7 +41,7 @@ if (import.meta.vitest) {
 		})
 
 		it('rejects empty Plan titles', () => {
-			const factory = new PlanCreationFormFactory()
+			const factory = new PlanCreationFormDraft()
 
 			factory.title = '  '
 

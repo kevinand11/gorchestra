@@ -53,6 +53,9 @@ importers:
             '@gorchestra/core':
                 specifier: workspace:*
                 version: link:../../libs/core
+            '@gorchestra/form-draft':
+                specifier: workspace:*
+                version: link:../../libs/form-draft
             axios:
                 specifier: ^1.18.0
                 version: 1.18.0
@@ -105,6 +108,15 @@ importers:
             valleyed:
                 specifier: 4.5.22
                 version: 4.5.22
+
+    libs/form-draft:
+        devDependencies:
+            valleyed:
+                specifier: 4.5.22
+                version: 4.5.22
+            vue:
+                specifier: 3.5.38
+                version: 3.5.38(typescript@6.0.3)
 
 packages:
     '@anthropic-ai/sdk@0.104.1':
@@ -3793,6 +3805,7 @@ packages:
     git-raw-commits@5.0.1:
         resolution: { integrity: sha512-Y+csSm2GD/PCSh6Isd/WiMjNAydu0VBiG9J7EdQsNA5P9uXvLayqjmTsNlK5Gs9IhblFZqOU0yid5Il5JPoLiQ== }
         engines: { node: '>=18' }
+        deprecated: Deprecated and no longer maintained. Use @conventional-changelog/git-client instead.
         hasBin: true
 
     glob-parent@5.1.2:

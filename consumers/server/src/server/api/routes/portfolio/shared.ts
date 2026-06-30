@@ -22,7 +22,7 @@ export const createMemoryRequestSchema = v.object({
 })
 export const createSecretRequestSchema = v.object({
 	name: Domain.Commons.nonEmptyTrimmedStringPipe,
-	value: v.string().pipe(v.custom<string>((value) => value.trim().length > 0, 'Secret value is required')),
+	value: v.string().pipe(v.asTrimmed(), v.min<string>(1)),
 })
 export const createRepositoryRequestSchema = v.object({ config: Domain.Repository.repositoryConfigPipe })
 export const createLinkRequestSchema = v.object({

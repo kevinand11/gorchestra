@@ -1,6 +1,5 @@
+import { FormDraft } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
-
-import { BaseFactory } from './factory'
 
 type SecretCreationFormFields = {
 	name: string
@@ -15,7 +14,7 @@ type SecretCreationFormModel = {
 const secretNamePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a Secret name'))
 const secretValuePipe = v.string().pipe(v.custom<string>((value) => value.trim().length > 0, 'Enter a Secret value'))
 
-export class SecretCreationFormFactory extends BaseFactory<SecretCreationFormModel, SecretCreationFormModel, SecretCreationFormFields> {
+export class SecretCreationFormDraft extends FormDraft<SecretCreationFormModel, SecretCreationFormModel, SecretCreationFormFields> {
 	protected readonly rules = {
 		name: secretNamePipe,
 		value: secretValuePipe,
@@ -23,7 +22,6 @@ export class SecretCreationFormFactory extends BaseFactory<SecretCreationFormMod
 
 	constructor() {
 		super({ name: '', value: '' })
-		this.initialize()
 	}
 
 	protected model = (): SecretCreationFormModel => ({ name: this.name, value: this.value })
@@ -37,9 +35,9 @@ export class SecretCreationFormFactory extends BaseFactory<SecretCreationFormMod
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
-	describe('SecretCreationFormFactory', () => {
+	describe('SecretCreationFormDraft', () => {
 		it('trims names but preserves valid Secret values', () => {
-			const factory = new SecretCreationFormFactory()
+			const factory = new SecretCreationFormDraft()
 
 			factory.name = '  GitHub PAT  '
 			factory.value = '  token-value  '
@@ -49,7 +47,7 @@ if (import.meta.vitest) {
 		})
 
 		it('rejects empty names and blank values', () => {
-			const factory = new SecretCreationFormFactory()
+			const factory = new SecretCreationFormDraft()
 
 			factory.name = '  '
 			factory.value = '  '

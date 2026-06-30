@@ -126,7 +126,7 @@ import UiInput from '../components/ui/UiInput.vue'
 import UiText from '../components/ui/UiText.vue'
 import { useApiAction } from '../composables/action-state'
 import { isAuthenticatedSession, useAuthState } from '../composables/auth-state'
-import { EmailOtpChallengeFormFactory, EmailOtpVerificationFormFactory } from '../forms/auth'
+import { EmailOtpChallengeFormDraft, EmailOtpVerificationFormDraft } from '../forms/auth'
 import { useToasts } from '../composables/toasts'
 
 definePageMeta({
@@ -142,8 +142,8 @@ definePageMeta({
 const authState = useAuthState()
 const toasts = useToasts()
 
-const emailOtpChallengeForm = new EmailOtpChallengeFormFactory()
-const emailOtpVerificationForm = new EmailOtpVerificationFormFactory()
+const emailOtpChallengeForm = new EmailOtpChallengeFormDraft()
+const emailOtpVerificationForm = new EmailOtpVerificationFormDraft()
 const challengeRequested = ref(false)
 
 watch(

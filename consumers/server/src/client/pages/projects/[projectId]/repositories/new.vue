@@ -107,7 +107,7 @@ import { usePortfolioSecretsQuery } from '../../../../composables/portfolio-reso
 import { useQueryCache } from '../../../../composables/query-cache'
 import { useSelectedPortfolio } from '../../../../composables/selected-portfolio'
 import { useServerApi } from '../../../../composables/useServerApi'
-import { RepositoryCreationFormFactory } from '../../../../forms/repository'
+import { RepositoryCreationFormDraft } from '../../../../forms/repository'
 import { useToasts } from '../../../../composables/toasts'
 
 definePageMeta({ middleware: ['has-selection'] })
@@ -118,7 +118,7 @@ const { portfolio } = useSelectedPortfolio()
 const serverApi = useServerApi()
 const toasts = useToasts()
 const { queryKeys, invalidate } = useQueryCache()
-const repositoryCreationForm = new RepositoryCreationFormFactory()
+const repositoryCreationForm = new RepositoryCreationFormDraft()
 
 const {
 	data: secrets,

@@ -1,6 +1,5 @@
+import { FormDraft } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
-
-import { BaseFactory } from './factory'
 
 type RepositoryCreationFormFields = {
 	owner: string
@@ -21,7 +20,7 @@ const repositoryOwnerPipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Ent
 const repositoryNamePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a GitHub Repository name'))
 const repositorySecretIdPipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Select a GitHub access Secret'))
 
-export class RepositoryCreationFormFactory extends BaseFactory<
+export class RepositoryCreationFormDraft extends FormDraft<
 	RepositoryCreationFormModel,
 	RepositoryCreationFormModel,
 	RepositoryCreationFormFields
@@ -34,7 +33,6 @@ export class RepositoryCreationFormFactory extends BaseFactory<
 
 	constructor() {
 		super({ owner: '', name: '', secretId: '' })
-		this.initialize()
 	}
 
 	protected model = (): RepositoryCreationFormModel => ({
@@ -51,9 +49,9 @@ export class RepositoryCreationFormFactory extends BaseFactory<
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
-	describe('RepositoryCreationFormFactory', () => {
+	describe('RepositoryCreationFormDraft', () => {
 		it('trims GitHub target fields and models fixed GitHub provider config', () => {
-			const factory = new RepositoryCreationFormFactory()
+			const factory = new RepositoryCreationFormDraft()
 
 			factory.owner = '  octocat  '
 			factory.name = '  Hello-World  '
@@ -66,7 +64,7 @@ if (import.meta.vitest) {
 		})
 
 		it('rejects blank GitHub target fields and missing Secret selection', () => {
-			const factory = new RepositoryCreationFormFactory()
+			const factory = new RepositoryCreationFormDraft()
 
 			factory.owner = '  '
 			factory.name = '  '

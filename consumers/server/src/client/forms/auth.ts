@@ -1,6 +1,5 @@
+import { FormDraft } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
-
-import { BaseFactory } from './factory'
 
 type EmailOtpChallengeFormFields = {
 	email: string
@@ -26,7 +25,7 @@ const emailOtpCodePipe = v.string().pipe(
 	v.custom((code) => /^\d{6}$/.test(code), 'Enter the six-digit code'),
 )
 
-export class EmailOtpChallengeFormFactory extends BaseFactory<
+export class EmailOtpChallengeFormDraft extends FormDraft<
 	EmailOtpChallengeFormModel,
 	EmailOtpChallengeFormModel,
 	EmailOtpChallengeFormFields
@@ -37,7 +36,6 @@ export class EmailOtpChallengeFormFactory extends BaseFactory<
 
 	constructor() {
 		super({ email: '' })
-		this.initialize()
 	}
 
 	protected model = (): EmailOtpChallengeFormModel => ({ email: this.email })
@@ -47,7 +45,7 @@ export class EmailOtpChallengeFormFactory extends BaseFactory<
 	}
 }
 
-export class EmailOtpVerificationFormFactory extends BaseFactory<
+export class EmailOtpVerificationFormDraft extends FormDraft<
 	EmailOtpVerificationFormModel,
 	EmailOtpVerificationFormModel,
 	EmailOtpVerificationFormFields
@@ -59,7 +57,6 @@ export class EmailOtpVerificationFormFactory extends BaseFactory<
 
 	constructor() {
 		super({ email: '', code: '' })
-		this.initialize()
 	}
 
 	protected model = (): EmailOtpVerificationFormModel => ({ email: this.email, code: this.code })
@@ -73,9 +70,9 @@ export class EmailOtpVerificationFormFactory extends BaseFactory<
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
-	describe('EmailOtpChallengeFormFactory', () => {
+	describe('EmailOtpChallengeFormDraft', () => {
 		it('trims and models valid email input', () => {
-			const factory = new EmailOtpChallengeFormFactory()
+			const factory = new EmailOtpChallengeFormDraft()
 
 			factory.email = '  person@example.com  '
 
@@ -84,7 +81,7 @@ if (import.meta.vitest) {
 		})
 
 		it('rejects invalid email input', () => {
-			const factory = new EmailOtpChallengeFormFactory()
+			const factory = new EmailOtpChallengeFormDraft()
 
 			factory.email = 'not-an-email'
 
@@ -93,9 +90,9 @@ if (import.meta.vitest) {
 		})
 	})
 
-	describe('EmailOtpVerificationFormFactory', () => {
+	describe('EmailOtpVerificationFormDraft', () => {
 		it('models valid email and OTP code input', () => {
-			const factory = new EmailOtpVerificationFormFactory()
+			const factory = new EmailOtpVerificationFormDraft()
 
 			factory.email = 'person@example.com'
 			factory.code = ' 123456 '
@@ -105,7 +102,7 @@ if (import.meta.vitest) {
 		})
 
 		it('rejects empty or non-six-digit OTP code input', () => {
-			const factory = new EmailOtpVerificationFormFactory()
+			const factory = new EmailOtpVerificationFormDraft()
 
 			factory.email = 'person@example.com'
 			factory.code = '123'

@@ -57,7 +57,7 @@ import { useApiAction } from '../../composables/action-state'
 import { useQueryCache } from '../../composables/query-cache'
 import { useSelectedPortfolio } from '../../composables/selected-portfolio'
 import { useServerApi } from '../../composables/useServerApi'
-import { ProjectCreationFormFactory } from '../../forms/project'
+import { ProjectCreationFormDraft } from '../../forms/project'
 import { useToasts } from '../../composables/toasts'
 
 definePageMeta({ middleware: ['has-selection'] })
@@ -67,7 +67,7 @@ const serverApi = useServerApi()
 const toasts = useToasts()
 const queryCache = useQueryCache()
 const { queryKeys } = queryCache
-const projectCreationForm = new ProjectCreationFormFactory()
+const projectCreationForm = new ProjectCreationFormDraft()
 
 const {
 	isLoading: isCreatingProject,

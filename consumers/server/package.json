@@ -10,6 +10,7 @@
 	},
 	"dependencies": {
 		"@gorchestra/core": "workspace:*",
+		"@gorchestra/form-draft": "workspace:*",
 		"axios": "^1.18.0",
 		"equipped": "latest",
 		"h3": "1.15.11",

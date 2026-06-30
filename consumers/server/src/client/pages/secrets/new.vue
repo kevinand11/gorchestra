@@ -68,7 +68,7 @@ import { useApiAction } from '../../composables/action-state'
 import { useQueryCache } from '../../composables/query-cache'
 import { useSelectedPortfolio } from '../../composables/selected-portfolio'
 import { useServerApi } from '../../composables/useServerApi'
-import { SecretCreationFormFactory } from '../../forms/secret'
+import { SecretCreationFormDraft } from '../../forms/secret'
 import { useToasts } from '../../composables/toasts'
 
 definePageMeta({ middleware: ['has-selection'] })
@@ -77,7 +77,7 @@ const { portfolio } = useSelectedPortfolio()
 const serverApi = useServerApi()
 const toasts = useToasts()
 const { queryKeys, invalidate } = useQueryCache()
-const secretCreationForm = new SecretCreationFormFactory()
+const secretCreationForm = new SecretCreationFormDraft()
 
 const {
 	isLoading: isCreatingSecret,

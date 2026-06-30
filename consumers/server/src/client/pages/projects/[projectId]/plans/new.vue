@@ -51,7 +51,7 @@ import { useQueryCache } from '../../../../composables/query-cache'
 import { useSelectedPortfolio } from '../../../../composables/selected-portfolio'
 import { useServerApi } from '../../../../composables/useServerApi'
 import { useToasts } from '../../../../composables/toasts'
-import { PlanCreationFormFactory } from '../../../../forms/plan'
+import { PlanCreationFormDraft } from '../../../../forms/plan'
 
 definePageMeta({ middleware: ['has-selection'] })
 
@@ -62,7 +62,7 @@ const serverApi = useServerApi()
 const toasts = useToasts()
 const queryCache = useQueryCache()
 const { queryKeys } = queryCache
-const planCreationForm = new PlanCreationFormFactory()
+const planCreationForm = new PlanCreationFormDraft()
 
 const {
 	isLoading: isCreatingPlan,

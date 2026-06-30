@@ -1,6 +1,6 @@
+import { FormDraft } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
-import { BaseFactory } from './factory'
 import type { CreateLinkInput } from '../composables/useServerApi'
 
 type MemoryLinkCreationType = CreateLinkInput['type']
@@ -18,7 +18,7 @@ export const memoryLinkCreationTypeOptions = [
 	{ value: 'supersedes', label: 'Supersedes' },
 ] as const
 
-export class LinkCreationFormFactory extends BaseFactory<CreateLinkInput, CreateLinkInput, MemoryLinkCreationFormFields> {
+export class LinkCreationFormDraft extends FormDraft<CreateLinkInput, CreateLinkInput, MemoryLinkCreationFormFields> {
 	protected readonly rules = {
 		type: v.in(['references', 'supports', 'contradicts', 'supersedes']),
 		sourceMemoryId: v.string(),

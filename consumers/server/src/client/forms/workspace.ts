@@ -1,6 +1,5 @@
+import { FormDraft } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
-
-import { BaseFactory } from './factory'
 
 type ProvisionWorkspaceFormFields = {
 	workspaceDisplayName: string
@@ -14,7 +13,7 @@ type ProvisionWorkspaceFormModel = {
 
 const displayNamePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a display name'))
 
-export class ProvisionWorkspaceFormFactory extends BaseFactory<
+export class ProvisionWorkspaceFormDraft extends FormDraft<
 	ProvisionWorkspaceFormModel,
 	ProvisionWorkspaceFormModel,
 	ProvisionWorkspaceFormFields
@@ -26,7 +25,6 @@ export class ProvisionWorkspaceFormFactory extends BaseFactory<
 
 	constructor() {
 		super({ workspaceDisplayName: 'Delivery Ops', portfolioDisplayName: 'Main Portfolio' })
-		this.initialize()
 	}
 
 	protected model = (): ProvisionWorkspaceFormModel => ({
@@ -43,16 +41,16 @@ export class ProvisionWorkspaceFormFactory extends BaseFactory<
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
-	describe('ProvisionWorkspaceFormFactory', () => {
+	describe('ProvisionWorkspaceFormDraft', () => {
 		it('starts valid with default display names', () => {
-			const factory = new ProvisionWorkspaceFormFactory()
+			const factory = new ProvisionWorkspaceFormDraft()
 
 			expect(factory.valid).toBe(true)
 			expect(factory.toModel()).toEqual({ workspaceDisplayName: 'Delivery Ops', portfolioDisplayName: 'Main Portfolio' })
 		})
 
 		it('trims display names in the model', () => {
-			const factory = new ProvisionWorkspaceFormFactory()
+			const factory = new ProvisionWorkspaceFormDraft()
 
 			factory.workspaceDisplayName = '  Team Ops  '
 			factory.portfolioDisplayName = '  Launch Portfolio  '
@@ -61,7 +59,7 @@ if (import.meta.vitest) {
 		})
 
 		it('rejects empty display names', () => {
-			const factory = new ProvisionWorkspaceFormFactory()
+			const factory = new ProvisionWorkspaceFormDraft()
 
 			factory.workspaceDisplayName = '  '
 			factory.portfolioDisplayName = ''

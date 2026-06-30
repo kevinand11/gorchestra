@@ -1,6 +1,5 @@
+import { FormDraft } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
-
-import { BaseFactory } from './factory'
 
 type ProjectCreationFormFields = {
 	title: string
@@ -12,14 +11,13 @@ type ProjectCreationFormModel = {
 
 const projectTitlePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a Project title'))
 
-export class ProjectCreationFormFactory extends BaseFactory<ProjectCreationFormModel, ProjectCreationFormModel, ProjectCreationFormFields> {
+export class ProjectCreationFormDraft extends FormDraft<ProjectCreationFormModel, ProjectCreationFormModel, ProjectCreationFormFields> {
 	protected readonly rules = {
 		title: projectTitlePipe,
 	}
 
 	constructor() {
 		super({ title: '' })
-		this.initialize()
 	}
 
 	protected model = (): ProjectCreationFormModel => ({ title: this.title })
@@ -32,9 +30,9 @@ export class ProjectCreationFormFactory extends BaseFactory<ProjectCreationFormM
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
-	describe('ProjectCreationFormFactory', () => {
+	describe('ProjectCreationFormDraft', () => {
 		it('trims and models valid Project titles', () => {
-			const factory = new ProjectCreationFormFactory()
+			const factory = new ProjectCreationFormDraft()
 
 			factory.title = '  Delivery Ops  '
 
@@ -43,7 +41,7 @@ if (import.meta.vitest) {
 		})
 
 		it('rejects empty Project titles', () => {
-			const factory = new ProjectCreationFormFactory()
+			const factory = new ProjectCreationFormDraft()
 
 			factory.title = '  '
 

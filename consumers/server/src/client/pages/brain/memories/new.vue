@@ -98,7 +98,7 @@ import { useQueryCache } from '../../../composables/query-cache'
 import { useSelectedPortfolio } from '../../../composables/selected-portfolio'
 import { useToasts } from '../../../composables/toasts'
 import { useServerApi, type ListMemoriesInput, type ServerApi } from '../../../composables/useServerApi'
-import { MemoryCreationFormFactory } from '../../../forms/memory'
+import { MemoryCreationFormDraft } from '../../../forms/memory'
 
 definePageMeta({ middleware: ['has-selection'] })
 
@@ -127,7 +127,7 @@ const { portfolio } = useSelectedPortfolio()
 const serverApi = useServerApi()
 const toasts = useToasts()
 const { queryKeys, invalidate } = useQueryCache()
-const memoryCreationForm = new MemoryCreationFormFactory({ supersededMemoryId: supersededMemoryIdFromQuery(route.query.supersedes) })
+const memoryCreationForm = new MemoryCreationFormDraft({ supersededMemoryId: supersededMemoryIdFromQuery(route.query.supersedes) })
 
 const {
 	data: memoryOptions,

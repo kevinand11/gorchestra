@@ -1,6 +1,6 @@
+import { FormDraft } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
-import { BaseFactory } from './factory'
 import type { CreateMemoryInput } from '../composables/useServerApi'
 
 type MemoryCreationType = CreateMemoryInput['type']
@@ -13,14 +13,14 @@ type MemoryCreationFormFields = {
 }
 
 const memoryTitlePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a Memory title'))
-const memoryBodyPipe = v.string()
+const memoryBodyPipe = v.string().pipe((body) => (body.trim().length === 0 ? '' : body))
 const memoryTypePipe = v.in(
 	['decision', 'fact', 'constraint', 'assumption', 'risk', 'architecture', 'workflow', 'convention'],
 	'Select a Memory Type',
 )
 const supersededMemoryIdPipe = v.string().pipe(v.asTrimmed())
 
-export class MemoryCreationFormFactory extends BaseFactory<CreateMemoryInput, CreateMemoryInput, MemoryCreationFormFields> {
+export class MemoryCreationFormDraft extends FormDraft<CreateMemoryInput, CreateMemoryInput, MemoryCreationFormFields> {
 	protected readonly rules = {
 		title: memoryTitlePipe,
 		body: memoryBodyPipe,
@@ -30,12 +30,11 @@ export class MemoryCreationFormFactory extends BaseFactory<CreateMemoryInput, Cr
 
 	constructor({ supersededMemoryId = '' }: { supersededMemoryId?: string } = {}) {
 		super({ title: '', body: '', memoryType: '', supersededMemoryId })
-		this.initialize()
 	}
 
 	protected model = (): CreateMemoryInput => ({
 		title: this.title,
-		body: normalizeBody(this.body),
+		body: this.body,
 		type: this.memoryType as MemoryCreationType,
 		links: this.supersededMemoryId === '' ? [] : [{ type: 'supersedes', toMemoryId: this.supersededMemoryId }],
 	})
@@ -48,16 +47,12 @@ export class MemoryCreationFormFactory extends BaseFactory<CreateMemoryInput, Cr
 	}
 }
 
-function normalizeBody(body: string): string {
-	return body.trim().length === 0 ? '' : body
-}
-
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
-	describe('MemoryCreationFormFactory', () => {
+	describe('MemoryCreationFormDraft', () => {
 		it('models Standalone Memories with trimmed titles, required types, and optional body', () => {
-			const factory = new MemoryCreationFormFactory()
+			const factory = new MemoryCreationFormDraft()
 
 			factory.title = '  Route Contracts  '
 			factory.body = '   '
@@ -68,7 +63,7 @@ if (import.meta.vitest) {
 		})
 
 		it('preserves nonblank Memory body text and models optional supersession Links', () => {
-			const factory = new MemoryCreationFormFactory()
+			const factory = new MemoryCreationFormDraft()
 
 			factory.title = 'Convention'
 			factory.body = '  Preserve leading and trailing spaces.  '
@@ -84,7 +79,7 @@ if (import.meta.vitest) {
 		})
 
 		it('rejects empty Memory titles and missing Memory Types', () => {
-			const factory = new MemoryCreationFormFactory({})
+			const factory = new MemoryCreationFormDraft({})
 
 			factory.title = '  '
 			factory.memoryType = ''
