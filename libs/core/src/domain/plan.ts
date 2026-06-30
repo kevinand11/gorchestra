@@ -4,7 +4,6 @@ import { planningAgentRunPipe, type PlanningAgentRun } from './agent-run'
 import { auditStampPipe, freeFormStringPipe, idPipe, nonEmptyTrimmedStringPipe } from './commons'
 import { planConfigRecordPipe, type PlanConfig, type PlanConfigRecord } from './config'
 import { graphNodeRefPipe } from './graph'
-import { memoryTypePipe } from './memory'
 
 export const instructionSourcePipe = v.object({ body: freeFormStringPipe })
 export type InstructionSource = PipeOutput<typeof instructionSourcePipe>
@@ -60,7 +59,6 @@ export const proposedMemoryPipe = v.object({
 	proposedMemoryKey: nonEmptyTrimmedStringPipe,
 	title: nonEmptyTrimmedStringPipe,
 	body: freeFormStringPipe,
-	type: memoryTypePipe,
 	links: v.array(proposedMemoryLinkPipe),
 })
 export type ProposedMemory = PipeOutput<typeof proposedMemoryPipe>

@@ -8,6 +8,10 @@ The Gorchestra core is the reusable Portfolio-level orchestration context. It ma
 A core orchestration boundary that groups Projects and shared reusable context or resources such as Memories and Secret Bindings.
 _Avoid_: Project Space, program, workspace
 
+**Portfolio Graph**:
+The Portfolio-scoped graph of Core graph nodes and Links. Projects, Plans, Deliveries, Slices, and Memories can be nodes whether or not they currently have Links; the Portfolio itself is the graph boundary, not a graph node.
+_Avoid_: Brain Graph, Workspace Graph, relationship map
+
 **Local Actor Ref**:
 An opaque consumer-supplied reference to the actor associated with a local core operation. A Local Actor Ref contains a consumer-defined actor type and actor id. Core validates only that these values are strings, stores them exactly as supplied for attribution, and does not inspect, trim, or interpret their contents.
 _Avoid_: User, Workspace Member, account
@@ -253,15 +257,15 @@ The Portfolio's second brain: the collection of Memories preserved across planni
 _Avoid_: Workspace Memory, Wiki, knowledge base
 
 **Memory**:
-An immutable Portfolio-owned context artifact. Every Memory has one Memory Type, and newer Memories may supersede older Memories.
-_Avoid_: Wiki, note, record, knowledge record
+A Portfolio-owned note-like and collection-capable item in Portfolio Memory. A Memory stores its current revision snapshot for fast reads, has durable Memory Revision history, and may contain child Memories through its immutable parent relationship.
+_Avoid_: Wiki, file, workspace note, graph node, folder-only record
 
-**Memory Type**:
-The required classification of a Memory as a decision, fact, constraint, assumption, risk, architecture note, workflow, or convention.
-_Avoid_: Category, tag, optional classification, uncategorized
+**Memory Revision**:
+An append-only record of a Memory's editable content at one save point. Memory Revisions preserve title and body history, while Memory stores the current revision snapshot for current reads.
+_Avoid_: embedded revision array, edit-in-place fields, draft
 
 **Standalone Memory**:
-A Memory with no direct Links. A Standalone Memory still belongs to Portfolio Memory and may be linked or superseded later.
+A Memory with no Memory Inline Links. A Standalone Memory still belongs to Portfolio Memory and may link to other Memories later.
 _Avoid_: Orphan Memory, unowned Memory
 
 **Current Memory**:
@@ -272,13 +276,17 @@ _Avoid_: Active Memory, latest Memory, unsuperseded Memory
 An older Memory that has been replaced by one or more newer Memories through Memory Supersession.
 _Avoid_: Deleted Memory, outdated record, superseding Memory
 
+**Memory Inline Link**:
+An authored link in a Memory Revision body that points to another Memory.
+_Avoid_: Core Link, edge, separate relationship record
+
 **Memory Supersession**:
-The relationship where a newer Memory replaces an older Memory without changing the older Memory. Supersession is represented as part of Portfolio Memory history, so the older Memory remains inspectable.
-_Avoid_: Memory edit, Memory overwrite, Memory deletion
+The relationship where one Memory replaces another Memory without deleting it. Supersession is represented through Memory-authored context rather than by editing or deleting the superseded Memory, so the superseded Memory remains inspectable.
+_Avoid_: Memory revision, Memory overwrite, Memory deletion
 
 **Link**:
-A typed directed relationship between graph nodes such as Plans, Projects, Deliveries, Slices, and Memories. Portfolio is the graph boundary, not a graph node. Links connect graph nodes, not other Links. Links between Project-level nodes stay within one Project; Portfolio Memories may link to nodes in any Project. A Link reads as “from node, link-type verb, to node”; for example, a depends-on Link means the `from` node depends on the `to` node. Common Link types include produced, references, supersedes, supports, contradicts, and depends-on. References, supports, and contradicts Links may move between archived and active states through Archive Periods; produced, supersedes, and depends-on Links remain immutable historical or execution facts.
-_Avoid_: Relationship, edge, reference, edge-as-node
+A typed directed relationship between Core graph nodes for system, provenance, or execution semantics. Portfolio is the graph boundary, not a graph node. Links connect graph nodes, not other Links. A Link reads as “from node, link-type verb, to node”; for example, a depends-on Link means the `from` node depends on the `to` node`. Core Links are reserved for durable Core facts such as produced provenance and depends-on execution dependencies; user-authored Memory-to-Memory references, support, contradiction, and supersession are expressed as Memory Inline Links instead.
+_Avoid_: Memory Inline Link, relationship, edge, reference, edge-as-node
 
 **Preflight**:
 A readiness validation performed before Gorchestra begins or resumes work. Top-level Core preflight is an opened-Core API that checks required deployment mechanics such as storage, Secrets, and Agent Run Sandbox. Its storage check verifies that Core can reach the configured storage boundary without auditing all stored Portfolio facts. It returns a transient readiness report for consumers and does not check optional logger/event publishing, Core-owned time/identifier mechanics, or provider-specific readiness. Delivery preflight runs before each bounded scheduler-actionable pass, after cheap closed, unqueued, dependency-blocked, and preflight-failed gates, and produces Delivery Work Resolution as transient scheduler data. Provider-backed Delivery preflight checks the Delivery target Repository and the selected execution Model before Delivery work runs or resumes. Successful Delivery preflight is normally not stored, except when explicit retry supersedes the latest failed Delivery preflight Action; failed Delivery preflight is recorded as a validate-preflight Action whose component checks determine whether the preflight passed. Explicit Delivery preflight retry records both passing and expected failed readiness outcomes as Delivery preflight Actions; setup-incomplete readiness, such as missing Portfolio Config, is preflight evidence, while storage failures, invalid Core Service Outputs, and missing referenced Portfolio facts that should exist remain operation errors rather than preflight evidence. A runDeliveryWork pass records scheduler work from the Delivery Context and Delivery Work Resolution it read at the start of the pass; later changes apply to later passes, and the scheduler or consumer runtime must ensure only one worker processes a Delivery at a time. A Delivery whose latest Delivery preflight Action failed is preflight-failed until an explicit retry records a later passing Delivery preflight Action. Other preflight results, such as explicit Repository preflight, may be returned to consumers as safe validation evidence without storing Actions or authoritative Portfolio facts. Preflight may check Project, Repository, Model Provider, Model, Secret Binding, or execution target readiness.

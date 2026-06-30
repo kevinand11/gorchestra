@@ -6,7 +6,7 @@ import { createGetProjectQuery } from './get-project'
 import { createGetRepositoryQuery } from './get-repository'
 import { createGetSecretQuery } from './get-secret'
 import { createListDeliveriesQuery } from './list-deliveries'
-import { createListMemoriesQuery } from './list-memories'
+import { createListMemoryChildrenQuery } from './list-memory-children'
 import { createListPlansQuery } from './list-plans'
 import { createListProjectsQuery } from './list-projects'
 import { createListRepositoriesQuery } from './list-repositories'
@@ -21,7 +21,7 @@ export function createCoreQueries(runtime: CoreRuntime) {
 		getProject: createGetProjectQuery(services),
 		listPlans: createListPlansQuery(services),
 		getPlan: createGetPlanQuery(services),
-		listMemories: createListMemoriesQuery(services),
+		listMemoryChildren: createListMemoryChildrenQuery(services),
 		getMemory: createGetMemoryQuery(services),
 		listDeliveries: createListDeliveriesQuery(services),
 		getDelivery: createGetDeliveryQuery(services),
@@ -51,7 +51,7 @@ if (import.meta.vitest) {
 				'getRepository',
 				'getSecret',
 				'listDeliveries',
-				'listMemories',
+				'listMemoryChildren',
 				'listPlans',
 				'listProjects',
 				'listRepositories',

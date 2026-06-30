@@ -9,7 +9,7 @@ import type { PortfolioConfigRecord } from '../domain/config'
 import type { Delivery } from '../domain/delivery'
 import type { ExternalOperation, ExternalOperationEvidence, ValidationEvidence, ValidationOperation } from '../domain/evidence'
 import type { Link } from '../domain/graph'
-import type { Memory } from '../domain/memory'
+import type { Memory, MemoryRevision } from '../domain/memory'
 import type { Model } from '../domain/model'
 import type { ModelProvider } from '../domain/model-provider'
 import type { Plan } from '../domain/plan'
@@ -29,6 +29,7 @@ import {
 	deliveryArtifactSchema,
 	deliverySchema,
 	linkSchema,
+	memoryRevisionSchema,
 	memorySchema,
 	modelProviderSchema,
 	modelSchema,
@@ -299,6 +300,7 @@ export interface TestStorageTransaction extends CoreStorage {
 	slices: TestTable<Slice>
 	links: TestTable<Link>
 	memories: TestTable<Memory>
+	memoryRevisions: TestTable<MemoryRevision>
 	deliveryArtifacts: TestTable<DeliveryArtifact>
 	sliceArtifacts: TestTable<SliceArtifact>
 	actions: TestTable<Action>
@@ -332,6 +334,7 @@ function testStorageTransaction(adapter: InMemoryAdapter): TestStorageTransactio
 		slices: tableView<Slice>(adapter, sliceSchema.name),
 		links: tableView<Link>(adapter, linkSchema.name),
 		memories: tableView<Memory>(adapter, memorySchema.name),
+		memoryRevisions: tableView<MemoryRevision>(adapter, memoryRevisionSchema.name),
 		deliveryArtifacts: tableView<DeliveryArtifact>(adapter, deliveryArtifactSchema.name),
 		sliceArtifacts: tableView<SliceArtifact>(adapter, sliceArtifactSchema.name),
 		actions: tableView<Action>(adapter, actionSchema.name),
@@ -433,6 +436,7 @@ function failureTables(tx: TestStorageTransaction): Map<string, { get?: boolean;
 		[sliceSchema.name, tx.slices.fail],
 		[linkSchema.name, tx.links.fail],
 		[memorySchema.name, tx.memories.fail],
+		[memoryRevisionSchema.name, tx.memoryRevisions.fail],
 		[deliveryArtifactSchema.name, tx.deliveryArtifacts.fail],
 		[sliceArtifactSchema.name, tx.sliceArtifacts.fail],
 		[actionSchema.name, tx.actions.fail],

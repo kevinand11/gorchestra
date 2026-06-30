@@ -24,7 +24,7 @@ import {
 } from '../domain/config'
 import { deliveryClosedPipe, deliveryTargetPipe, type Delivery } from '../domain/delivery'
 import { graphNodeRefPipe, linkTypePipe, type Link } from '../domain/graph'
-import { memoryBodyPipe, memoryTypePipe, type Memory } from '../domain/memory'
+import { currentMemoryRevisionPipe, memoryBodyPipe, memoryTitlePipe, type Memory, type MemoryRevision } from '../domain/memory'
 import { type Model } from '../domain/model'
 import { modelProviderAuthPipe, modelProviderHeaderPipe, modelProviderProtocolPipe, type ModelProvider } from '../domain/model-provider'
 import { instructionSourcePipe, type Plan } from '../domain/plan'
@@ -128,9 +128,16 @@ export const linkSchema = Schema.from('links')
 
 export const memorySchema = Schema.from('memories')
 	.pk('id', idPipe, explicitCoreIdRequired)
-	.field('title', nonEmptyTrimmedStringPipe)
+	.field('parentId', v.nullable(idPipe))
+	.field('currentRevision', currentMemoryRevisionPipe)
+	.field('created', auditStampPipe)
+	.build()
+
+export const memoryRevisionSchema = Schema.from('memory_revisions')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('memoryId', idPipe)
+	.field('title', memoryTitlePipe)
 	.field('body', memoryBodyPipe)
-	.field('type', memoryTypePipe)
 	.field('created', auditStampPipe)
 	.build()
 
@@ -219,6 +226,7 @@ export const coreStorageSchemas = [
 	sliceSchema,
 	linkSchema,
 	memorySchema,
+	memoryRevisionSchema,
 	deliveryArtifactSchema,
 	sliceArtifactSchema,
 	actionSchema,
@@ -240,6 +248,7 @@ export const coreIdResourceSchemas = {
 	slice: sliceSchema,
 	link: linkSchema,
 	memory: memorySchema,
+	'memory-revision': memoryRevisionSchema,
 	'delivery-artifact': deliveryArtifactSchema,
 	'slice-artifact': sliceArtifactSchema,
 	action: actionSchema,
@@ -266,6 +275,7 @@ export interface CoreIdStorageRecordMap {
 	slice: Slice
 	link: Link
 	memory: Memory
+	'memory-revision': MemoryRevision
 	'delivery-artifact': DeliveryArtifact
 	'slice-artifact': SliceArtifact
 	action: Action

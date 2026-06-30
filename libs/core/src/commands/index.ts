@@ -1,5 +1,4 @@
 import { createAbandonDeliveryCommand } from './abandon-delivery'
-import { createAcceptPlanOutputCommand } from './accept-plan-output'
 import { createAcceptRevisionOutputCommand } from './accept-revision-output'
 import { createArchiveModelCommand } from './archive-model'
 import { createArchiveModelProviderCommand } from './archive-model-provider'
@@ -8,8 +7,8 @@ import { createArchiveSecretBindingCommand } from './archive-secret-binding'
 import { createBindSecretCommand } from './bind-secret'
 import { createCloseRevisionGateCommand } from './close-revision-gate'
 import { createConfigureDeliveryCommand } from './configure-delivery'
-import { createCreateLinkCommand } from './create-link'
 import { createCreateMemoryCommand } from './create-memory'
+import { createCreateMemoryRevisionCommand } from './create-memory-revision'
 import { createCreateModelCommand } from './create-model'
 import { createCreateModelProviderCommand } from './create-model-provider'
 import { createCreatePlanCommand } from './create-plan'
@@ -24,7 +23,6 @@ import { createRejectPlanOutputCommand } from './reject-plan-output'
 import { createReplaceSecretCommand } from './replace-secret'
 import { createRetryDeliveryPreflightCommand } from './retry-delivery-preflight'
 import { createRunDeliveryWorkCommand } from './run-delivery-work'
-import { createSetLinkArchiveStateCommand } from './set-link-archive-state'
 import { createSetPortfolioConfigCommand } from './set-portfolio-config'
 import { createSetProjectConfigCommand } from './set-project-config'
 import { createShipDeliveryCommand } from './ship-delivery'
@@ -38,7 +36,6 @@ import { createUpdateRepositoryConfigCommand } from './update-repository-config'
 import type { CoreRuntime } from '../runtime'
 
 export type * as AbandonDelivery from './abandon-delivery'
-export type * as AcceptPlanOutput from './accept-plan-output'
 export type * as AcceptRevisionOutput from './accept-revision-output'
 export type * as ArchiveModel from './archive-model'
 export type * as ArchiveModelProvider from './archive-model-provider'
@@ -47,9 +44,9 @@ export type * as ArchiveSecretBinding from './archive-secret-binding'
 export type * as BindSecret from './bind-secret'
 export type * as CloseRevisionGate from './close-revision-gate'
 export type * as ConfigureDelivery from './configure-delivery'
-export type * as CreateLink from './create-link'
 export type * as CreateModel from './create-model'
 export type * as CreateMemory from './create-memory'
+export type * as CreateMemoryRevision from './create-memory-revision'
 export type * as CreateModelProvider from './create-model-provider'
 export type * as CreatePlan from './create-plan'
 export type * as CreateProject from './create-project'
@@ -63,7 +60,6 @@ export type * as RejectPlanOutput from './reject-plan-output'
 export type * as ReplaceSecret from './replace-secret'
 export type * as RetryDeliveryPreflight from './retry-delivery-preflight'
 export type * as RunDeliveryWork from './run-delivery-work'
-export type * as SetLinkArchiveState from './set-link-archive-state'
 export type * as SetPortfolioConfig from './set-portfolio-config'
 export type * as SetProjectConfig from './set-project-config'
 export type * as ShipDelivery from './ship-delivery'
@@ -88,11 +84,9 @@ export function createCoreCommands(runtime: CoreRuntime) {
 		unarchiveModel: createUnarchiveModelCommand(runtime),
 		preflightModel: createPreflightModelCommand(runtime),
 		preflightRepository: createPreflightRepositoryCommand(runtime),
-		createLink: createCreateLinkCommand(runtime),
-		setLinkArchiveState: createSetLinkArchiveStateCommand(runtime),
 		createMemory: createCreateMemoryCommand(runtime),
+		createMemoryRevision: createCreateMemoryRevisionCommand(runtime),
 		createPlan: createCreatePlanCommand(runtime),
-		acceptPlanOutput: createAcceptPlanOutputCommand(runtime),
 		rejectPlanOutput: createRejectPlanOutputCommand(runtime),
 		configureDelivery: createConfigureDeliveryCommand(runtime),
 		queueDelivery: createQueueDeliveryCommand(runtime),
@@ -139,11 +133,9 @@ if (import.meta.vitest) {
 				'unarchiveModel',
 				'preflightModel',
 				'preflightRepository',
-				'createLink',
-				'setLinkArchiveState',
 				'createMemory',
+				'createMemoryRevision',
 				'createPlan',
-				'acceptPlanOutput',
 				'rejectPlanOutput',
 				'configureDelivery',
 				'queueDelivery',

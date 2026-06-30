@@ -47,6 +47,7 @@ export type CoreIdResource =
 	| 'slice'
 	| 'link'
 	| 'memory'
+	| 'memory-revision'
 	| 'delivery-artifact'
 	| 'slice-artifact'
 	| 'action'

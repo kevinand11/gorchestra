@@ -64,12 +64,8 @@ export const coreStorageMigrations = [
 				objectField('created'),
 				arrayField('archivePeriods'),
 			]),
-			createTable('memories', [
-				stringField('title'),
-				stringField('body'),
-				nullableField(stringField('type')),
-				objectField('created'),
-			]),
+			createTable('memories', [nullableField(stringField('parentId')), objectField('currentRevision'), objectField('created')]),
+			createTable('memory_revisions', [stringField('memoryId'), stringField('title'), stringField('body'), objectField('created')]),
 			createTable('delivery_artifacts', [stringField('deliveryId'), objectField('config'), objectField('created')]),
 			createTable('slice_artifacts', [stringField('sliceId'), objectField('config'), objectField('created')]),
 			createTable('actions', [
