@@ -6,6 +6,7 @@ import { createArchiveSecretCommand } from './archive-secret'
 import { createArchiveSecretBindingCommand } from './archive-secret-binding'
 import { createBindSecretCommand } from './bind-secret'
 import { createCloseRevisionGateCommand } from './close-revision-gate'
+import { createCompactAgentRunContextCommand } from './compact-agent-run-context'
 import { createConfigureDeliveryCommand } from './configure-delivery'
 import { createCreateMemoryCommand } from './create-memory'
 import { createCreateMemoryRevisionCommand } from './create-memory-revision'
@@ -15,6 +16,7 @@ import { createCreatePlanCommand } from './create-plan'
 import { createCreateProjectCommand } from './create-project'
 import { createCreateRepositoryCommand } from './create-repository'
 import { createCreateSecretCommand } from './create-secret'
+import { createInterruptAgentRunCommand } from './interrupt-agent-run'
 import { createOpenRevisionGateCommand } from './open-revision-gate'
 import { createPreflightModelCommand } from './preflight-model'
 import { createPreflightRepositoryCommand } from './preflight-repository'
@@ -23,6 +25,8 @@ import { createRejectPlanOutputCommand } from './reject-plan-output'
 import { createReplaceSecretCommand } from './replace-secret'
 import { createRetryDeliveryPreflightCommand } from './retry-delivery-preflight'
 import { createRunDeliveryWorkCommand } from './run-delivery-work'
+import { createSelectAgentRunModelCommand } from './select-agent-run-model'
+import { createSendAgentRunMessageCommand } from './send-agent-run-message'
 import { createSetPortfolioConfigCommand } from './set-portfolio-config'
 import { createSetProjectConfigCommand } from './set-project-config'
 import { createShipDeliveryCommand } from './ship-delivery'
@@ -43,6 +47,7 @@ export type * as ArchiveSecret from './archive-secret'
 export type * as ArchiveSecretBinding from './archive-secret-binding'
 export type * as BindSecret from './bind-secret'
 export type * as CloseRevisionGate from './close-revision-gate'
+export type * as CompactAgentRunContext from './compact-agent-run-context'
 export type * as ConfigureDelivery from './configure-delivery'
 export type * as CreateModel from './create-model'
 export type * as CreateMemory from './create-memory'
@@ -52,6 +57,7 @@ export type * as CreatePlan from './create-plan'
 export type * as CreateProject from './create-project'
 export type * as CreateRepository from './create-repository'
 export type * as CreateSecret from './create-secret'
+export type * as InterruptAgentRun from './interrupt-agent-run'
 export type * as OpenRevisionGate from './open-revision-gate'
 export type * as PreflightModel from './preflight-model'
 export type * as PreflightRepository from './preflight-repository'
@@ -60,6 +66,8 @@ export type * as RejectPlanOutput from './reject-plan-output'
 export type * as ReplaceSecret from './replace-secret'
 export type * as RetryDeliveryPreflight from './retry-delivery-preflight'
 export type * as RunDeliveryWork from './run-delivery-work'
+export type * as SelectAgentRunModel from './select-agent-run-model'
+export type * as SendAgentRunMessage from './send-agent-run-message'
 export type * as SetPortfolioConfig from './set-portfolio-config'
 export type * as SetProjectConfig from './set-project-config'
 export type * as ShipDelivery from './ship-delivery'
@@ -87,6 +95,10 @@ export function createCoreCommands(runtime: CoreRuntime) {
 		createMemory: createCreateMemoryCommand(runtime),
 		createMemoryRevision: createCreateMemoryRevisionCommand(runtime),
 		createPlan: createCreatePlanCommand(runtime),
+		sendAgentRunMessage: createSendAgentRunMessageCommand(runtime),
+		interruptAgentRun: createInterruptAgentRunCommand(runtime),
+		selectAgentRunModel: createSelectAgentRunModelCommand(runtime),
+		compactAgentRunContext: createCompactAgentRunContextCommand(runtime),
 		rejectPlanOutput: createRejectPlanOutputCommand(runtime),
 		configureDelivery: createConfigureDeliveryCommand(runtime),
 		queueDelivery: createQueueDeliveryCommand(runtime),
@@ -136,6 +148,10 @@ if (import.meta.vitest) {
 				'createMemory',
 				'createMemoryRevision',
 				'createPlan',
+				'sendAgentRunMessage',
+				'interruptAgentRun',
+				'selectAgentRunModel',
+				'compactAgentRunContext',
 				'rejectPlanOutput',
 				'configureDelivery',
 				'queueDelivery',

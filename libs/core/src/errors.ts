@@ -227,6 +227,16 @@ export interface AgentRunModelUnresolvedError {
 	purpose: AgentRunPurpose
 }
 
+export interface AgentRunNotInteractiveError {
+	type: 'agent-run-not-interactive'
+	agentRunId: Id
+}
+
+export interface AgentRunNotActiveError {
+	type: 'agent-run-not-active'
+	agentRunId: Id
+}
+
 export interface ExternalOperationFailedError {
 	type: 'external-operation-failed'
 	evidence: ExternalOperationEvidence
@@ -265,6 +275,8 @@ export type CoreError =
 	| DeliveryClosedError
 	| ReviewSurfaceAlreadyMergedError
 	| AgentRunModelUnresolvedError
+	| AgentRunNotInteractiveError
+	| AgentRunNotActiveError
 	| ExternalOperationFailedError
 
 export type CommandStubError = InvalidInputError | NotImplementedError
