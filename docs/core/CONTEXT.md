@@ -117,7 +117,7 @@ An observational validation operation that checks whether Core can currently res
 _Avoid_: Repository status, Repository health state, Repository readiness, access lifecycle event
 
 **Plan**:
-A Project-level reusable planning and discovery artifact. A Plan belongs to exactly one Project, captures research, analysis, requirements, and architectural discussion, starts exactly one Planning Agent Run when created, and may produce zero, one, or many Plan Outputs for its Project.
+A Project-level reusable planning and discovery artifact. A Plan belongs to exactly one Project, captures research, analysis, requirements, and architectural discussion, starts exactly one Planning Agent Run when created, and may produce zero, one, or many Plan Outputs for its Project. In v1, that Planning Agent Run remains the Plan's open Interactive Agent Run as long as the Plan exists.
 _Avoid_: Grill
 
 **Plan Config**:
@@ -189,7 +189,7 @@ A transient, never-stored resolution of the Delivery Config and selected executi
 _Avoid_: Runtime Delivery Work Context, scheduler context, execution context
 
 **Agent**:
-The discriminated value recorded on an Agent Run that identifies what performed the work. In v1, the only Agent is Model Agent. Agent is not a stored core model.
+The discriminated value recorded on an Agent Run that identifies what kind of agent performed the work. In v1, the only Agent is Model Agent. Agent is not a stored core model and does not itself store the selected Model for each model call.
 _Avoid_: actor, stored Agent, worker, executor
 
 **Agent Type**:
@@ -213,12 +213,24 @@ An observational validation operation that checks whether a stored Model is read
 _Avoid_: Model status, Model health state, access lifecycle event
 
 **Model Agent**:
-An Agent Type where Gorchestra's Core-owned agent loop uses a configured Model to perform goal-directed work consistently across consumers.
+An Agent Type where Gorchestra's Core-owned agent loop uses selected Models to perform goal-directed work consistently across consumers. Model selection is Agent Run transcript state rather than part of the Agent value itself.
 _Avoid_: LLM Loop Agent, Pi Agent, Codex Agent, external harness, consumer agent adapter
 
 **Agent Run**:
 One concrete application-managed session where an agent carries out goal-directed work for Gorchestra. An Agent Run is the session boundary; do not introduce a separate Agent Run Session concept or checkpoint record in v1. Runtime resumability and debugging facts belong in Agent Run Events. An Agent Run records its agent as a discriminated value and records its purpose with the domain target it works on, such as a Planning purpose for a Plan or a Slice execution purpose with Delivery, Slice, and an execution mode union. Initial Slice execution has no correction root; correction Slice execution records the Failure Chain root it is correcting. Agent Runs may gather information, use tools, edit code, run tests, produce outputs, or request human decisions. Core owns Agent Run behavior; an Agent Run does not own authoritative Delivery or Slice Work State.
 _Avoid_: Mission, Turn, AgentAttempt, Agent Run Session, Agent Run Checkpoint, actor
+
+**Agent Run Event**:
+An ordered event in an Agent Run transcript. Agent Run Events record input messages, turn context boundaries, model and tool call boundaries with final or aborted content, interrupt requests, proposed outputs, and compaction summaries so an Agent Run can be reconstructed without a separate session model. Live model or tool update deltas may stream to subscribers without becoming durable Agent Run Events. Aborted model and tool call content may contribute explicitly marked partial context to later model calls.
+_Avoid_: Session Entry, transcript row, checkpoint
+
+**Interactive Agent Run**:
+An Agent Run that remains open for human steering and may receive new human messages over time. Planning and Revision Planning Agent Runs are Interactive Agent Runs in v1. A Planning Agent Run's completed lifecycle field remains unset while its Plan exists; a Revision Planning Agent Run is completed when its Revision Gate is closed or consumed. Interactive Agent Runs do not have a separate close lifecycle in v1; whether new input is allowed is governed by their target domain object. Human-reviewable proposal events belong only to Interactive Agent Runs.
+_Avoid_: Human-in-the-loop Agent Run, chat session
+
+**Autonomous Agent Run**:
+An Agent Run that executes without ongoing human steering and sets its completed lifecycle field when its model/tool loop finishes. Slice execution and Revision execution Agent Runs are Autonomous Agent Runs in v1; Core evaluates their sandbox or artifact output after completion.
+_Avoid_: Background job, one-shot task
 
 **Agent Run Sandbox**:
 The isolated environment an Agent Run uses for its work, such as a worktree, temporary files, tools, and runtime environment. Core owns Agent Run orchestration semantics, while consumers provide deployment-specific sandbox primitives such as allocation, execution isolation, resource limits, and cleanup. An Agent Run Sandbox is isolated to one Agent Run; cross-run state must be promoted by Gorchestra evaluation.
@@ -313,7 +325,7 @@ A Review Surface for a Delivery Artifact. For Source Control Projects, this is a
 _Avoid_: Delivery PR, review target
 
 **Revision Gate**:
-Human-controlled artifact-scoped authorization that allows Gorchestra to plan revision work in response to fetched Feedback for a Slice Artifact or Delivery Artifact. Opening a Revision Gate starts a revision planning session that may produce Revision Outputs until one is accepted or the gate is closed. A Revision Gate remains open until it is explicitly closed without a Revision or consumed by an accepted Revision. Revision Gate does not create or reopen Slices.
+Human-controlled artifact-scoped authorization that allows Gorchestra to plan revision work in response to fetched Feedback for a Slice Artifact or Delivery Artifact. Opening a Revision Gate starts a revision planning session that may produce Revision Outputs until one is accepted or the gate is closed. A Revision Gate remains open until it is explicitly closed without a Revision or consumed by an accepted Revision; that terminal transition completes its revision-planning Agent Run and prevents further revision-planning input. Revision Gate does not create or reopen Slices.
 _Avoid_: revisionAllowed, needs-revision, changes-requested, per-comment approval
 
 **Revision Output**:

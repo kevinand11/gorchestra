@@ -1,0 +1,3 @@
+# Stream-friendly Agent Run transcript
+
+Core stores Agent Run transcripts as ordered Agent Run Events with durable start/end/boundary facts, model/tool outcomes, proposal review facts, interrupt requests, and compaction summaries, while live model/tool update deltas stream to subscribers without becoming durable events. Agent Run is the session root; v1 does not add a separate Session or Checkpoint model. We chose this shape over storing only final Pi-style session messages or persisting every streaming delta because Gorchestra needs deterministic replay, steering boundaries, proposal acceptance history, and stream-friendly UI behavior without turning Portfolio storage into a raw telemetry sink.

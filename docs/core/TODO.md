@@ -2,6 +2,10 @@
 
 Durable follow-up items that are known but intentionally deferred.
 
+## Agent Run runtime follow-ups
+
+- Implement Agent Run Events as the stream-friendly durable Agent Run transcript: ordered per-AgentRun events for model selection, input, turn boundaries, model/tool outcomes, interrupts, proposals, proposal reviews, and compaction summaries, with live-only model/tool update deltas for subscribers.
+
 ## Delivery work ownership and runtime follow-ups
 
 - Move same-Delivery worker exclusion into Core with a Core-owned Delivery work lease. The near-term scheduler/consumer runtime must ensure only one worker processes a Delivery at a time, but this should not remain a consumer discipline requirement.
