@@ -1,3 +1,4 @@
+import { actionRecord, externalOperationEvidence } from './result'
 import type { Action } from '../../../domain/action'
 import type { DeliveryArtifact } from '../../../domain/artifact'
 import type { DeliveryWorkState } from '../../../domain/delivery'
@@ -5,12 +6,11 @@ import type { InvariantViolationError } from '../../../errors'
 import { sourceControlDeliveryBranchName } from '../../../providers/source-control/branches'
 import type { SourceControlArtifactCreation, SourceControlCreateArtifactBranchInput } from '../../../providers/source-control/types'
 import type { CoreRuntime } from '../../../runtime'
-import { withTransaction } from '../../../storage/helpers'
+import { createRecord, withTransaction } from '../../../storage/helpers'
+import { nextId, runtimeRecord } from '../../../utils/runtime-values'
 import type { Result as CoreResult } from '../../../utils/types'
-import { createRecord, nextId, runtimeRecord } from '../../utils/storage'
 import { resolvedSchedulerHandlerContext, schedulerHandlerContextFromClaim, type ProviderBackedSchedulerPreflightClaim } from '../preflight'
 import type { ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
-import { actionRecord, externalOperationEvidence } from './result'
 
 export type DeliveryArtifactCreationInput = SourceControlCreateArtifactBranchInput & {
 	deliveryId: string

@@ -17,8 +17,8 @@ import type { InvalidInputError } from '../../errors'
 import type { CoreRuntime } from '../../runtime'
 import { withTransaction } from '../../storage/helpers'
 import type { Result as CoreResult } from '../../utils/types'
-import type { CommandContext } from '../types'
-import { buildCommandHandler } from '../utils/handler'
+import type { WorkContext } from '../types'
+import { buildWorkHandler } from '../utils/handler'
 import { handleDeliveryNeedsArtifactCreation } from './handlers/delivery-needs-artifact-creation'
 import { handleDeliverySlicesIncomplete } from './handlers/delivery-slices-incomplete'
 
@@ -36,10 +36,10 @@ export type Input = PipeOutput<typeof runDeliveryWorkInputPipe>
  * recorded as failure Actions. Scheduling loops should skip non-schedulable
  * Deliveries and refetch Delivery/Slice state before each pass.
  */
-export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: WorkContext) => Promise<CoreResult<Result, Error>>
 
-export function createRunDeliveryWorkCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('runDeliveryWork', runDeliveryWorkInputPipe, (input) => handleRunDeliveryWork(runtime, input))
+export function createRunDeliveryWorkOperation(runtime: CoreRuntime): Operation {
+	return buildWorkHandler('runDeliveryWork', runDeliveryWorkInputPipe, (input) => handleRunDeliveryWork(runtime, input))
 }
 
 async function handleRunDeliveryWork(runtime: CoreRuntime, input: Input): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
@@ -115,7 +115,6 @@ function handleReviewSurfaceCreation(
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const {
-		context,
 		createTestCoreRuntime,
 		createTestCoreServices,
 		failingProviderBackedPreflightProviders,
@@ -130,24 +129,26 @@ if (import.meta.vitest) {
 		validationEvidence,
 	} = await import('../../utils/test-helpers')
 
-	describe('runDeliveryWork command', () => {
+	const workContext: WorkContext = { correlationId: 'correlation-1' }
+
+	describe('runDeliveryWork work operation', () => {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
-			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options))
+			const operation = createRunDeliveryWorkOperation(createTestCoreRuntime(options))
 
-			const result = await command({} as never, context)
+			const result = await operation({} as never, workContext)
 
-			expect(result).toMatchObject({ ok: false, error: { type: 'invalid-input', boundary: 'command', operation: 'runDeliveryWork' } })
+			expect(result).toMatchObject({ ok: false, error: { type: 'invalid-input', boundary: 'work', operation: 'runDeliveryWork' } })
 			expect(options.transactionCalls()).toBe(0)
 		})
 
 		it('records all failed provider-backed Delivery preflight checks before scheduler work', async () => {
 			const options = providerPreflightFixture()
-			const command = createRunDeliveryWorkCommand(
+			const operation = createRunDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: failingProviderBackedPreflightProviders() }),
 			)
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
 			expect(options.tx.actions.records.get('action-1')).toEqual({
@@ -180,11 +181,11 @@ if (import.meta.vitest) {
 				updated: null,
 				archivePeriods: [],
 			})
-			const command = createRunDeliveryWorkCommand(
+			const operation = createRunDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: neverCalledProviderBackedPreflightProviders() }),
 			)
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expectWorkedPreflightResult(options, result, [
 				validationEvidence('repository-preflight', false, 'GitHub repository access Secret is missing.'),
@@ -205,9 +206,9 @@ if (import.meta.vitest) {
 						pipeError: null as never,
 					},
 				})
-			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options, { providers }))
+			const operation = createRunDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expect(result).toEqual({
 				ok: false,
@@ -219,11 +220,11 @@ if (import.meta.vitest) {
 		it('does not call providers for non-scheduler-actionable Deliveries', async () => {
 			const options = createTestCoreServices()
 			seedDelivery(options.tx, 'delivery-1')
-			const command = createRunDeliveryWorkCommand(
+			const operation = createRunDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: neverCalledProviderBackedPreflightProviders() }),
 			)
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 0, failures: [] } })
 		})
@@ -231,11 +232,11 @@ if (import.meta.vitest) {
 		it('records failed preflight evidence when Delivery Work Config is unresolved', async () => {
 			const options = providerPreflightFixture()
 			options.tx.portfolioConfig.record!.value.work = null
-			const command = createRunDeliveryWorkCommand(
+			const operation = createRunDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: neverCalledProviderBackedPreflightProviders() }),
 			)
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expectWorkedPreflightResult(options, result, [
 				validationEvidence('delivery-preflight', false, 'Delivery Work Config is not resolved.'),
@@ -251,9 +252,9 @@ if (import.meta.vitest) {
 				expect(input.artifactBranch).toBe('gorchestra/deliveries/d-ZGVsaXZlcnktMQ')
 				return Promise.resolve({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } })
 			}
-			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options, { providers }))
+			const operation = createRunDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
 			expect(options.tx.deliveryArtifacts.records.get('delivery-artifact-1')?.config).toEqual({
@@ -278,9 +279,9 @@ if (import.meta.vitest) {
 						summary: 'GitHub artifact source branch was not found.',
 					},
 				})
-			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options, { providers }))
+			const operation = createRunDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expect(result).toEqual({
 				ok: true,
@@ -317,9 +318,9 @@ if (import.meta.vitest) {
 				expect(input.artifactBranch).toBe('gorchestra/deliveries/d-ZGVsaXZlcnktMQ/slices/s-c2xpY2UtMQ')
 				return Promise.resolve({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } })
 			}
-			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options, { providers }))
+			const operation = createRunDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 2, failures: [] } })
 			expect(options.tx.sliceArtifacts.records.get('slice-artifact-1')?.config).toEqual({
@@ -339,11 +340,11 @@ if (import.meta.vitest) {
 			seedSlice(options.tx, 'slice-1', 'delivery-1')
 			seedSliceArtifact(options, 'slice-1')
 			seedCompletedSliceExecution(options, 'slice-1')
-			const command = createRunDeliveryWorkCommand(
+			const operation = createRunDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: passingProviderBackedPreflightProviders() }),
 			)
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 2, failures: [] } })
 			expect(options.tx.actions.records.get('action-1')?.result).toEqual({
@@ -359,11 +360,11 @@ if (import.meta.vitest) {
 			seedSlice(options.tx, 'slice-1', 'delivery-1')
 			seedSliceArtifact(options, 'slice-1')
 			seedPromotedSlice(options, 'slice-1')
-			const command = createRunDeliveryWorkCommand(
+			const operation = createRunDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: passingProviderBackedPreflightProviders() }),
 			)
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
 			expect(options.tx.actions.records.get('action-1')?.result).toEqual({
@@ -379,11 +380,11 @@ if (import.meta.vitest) {
 			seedSlice(options.tx, 'slice-1', 'delivery-1')
 			seedSliceArtifact(options, 'slice-1')
 			seedPromotedSlice(options, 'slice-1')
-			const command = createRunDeliveryWorkCommand(
+			const operation = createRunDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: failingProviderBackedPreflightProviders() }),
 			)
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expectWorkedPreflightResult(options, result, [
 				validationEvidence('repository-preflight', false, 'GitHub repository was not found.'),
@@ -394,11 +395,11 @@ if (import.meta.vitest) {
 		it('records no-op Delivery Artifact validation after provider-backed preflight passes', async () => {
 			const options = providerPreflightFixture()
 			seedCompletedDelivery(options)
-			const command = createRunDeliveryWorkCommand(
+			const operation = createRunDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: passingProviderBackedPreflightProviders() }),
 			)
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
 			expect(options.tx.actions.records.get('action-1')?.result).toEqual({
@@ -410,11 +411,11 @@ if (import.meta.vitest) {
 		it('records failed provider-backed preflight instead of no-op artifact validation', async () => {
 			const options = providerPreflightFixture()
 			seedCompletedDelivery(options)
-			const command = createRunDeliveryWorkCommand(
+			const operation = createRunDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: failingProviderBackedPreflightProviders() }),
 			)
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expectWorkedPreflightResult(options, result, [
 				validationEvidence('repository-preflight', false, 'GitHub repository was not found.'),
@@ -437,9 +438,9 @@ if (import.meta.vitest) {
 					value: { type: 'review-surface', mode: 'created', pullRequestNumber: 12, summary: 'created' },
 				})
 			}
-			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options, { providers }))
+			const operation = createRunDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
 			expect(options.tx.reviewSurfaces.records.get('review-surface-1')?.scope).toEqual({
@@ -460,9 +461,9 @@ if (import.meta.vitest) {
 			const providers = passingProviderBackedPreflightProviders()
 			providers.sourceControl.createReviewSurface = () =>
 				Promise.resolve({ ok: true, value: { type: 'integrated', summary: 'Already integrated.' } })
-			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options, { providers }))
+			const operation = createRunDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
 			expect(options.tx.actions.records.get('action-1')?.result).toEqual({
@@ -494,9 +495,9 @@ if (import.meta.vitest) {
 					value: { type: 'review-surface', mode: 'created', pullRequestNumber: 13, summary: 'created' },
 				})
 			}
-			const command = createRunDeliveryWorkCommand(createTestCoreRuntime(options, { providers }))
+			const operation = createRunDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
 			expect(options.tx.reviewSurfaces.records.get('review-surface-1')?.scope).toEqual({

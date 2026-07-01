@@ -26,7 +26,6 @@ import { createRejectPlanOutputCommand } from './reject-plan-output'
 import { createRejectRevisionOutputCommand } from './reject-revision-output'
 import { createReplaceSecretCommand } from './replace-secret'
 import { createRetryDeliveryPreflightCommand } from './retry-delivery-preflight'
-import { createRunDeliveryWorkCommand } from './run-delivery-work'
 import { createSelectAgentRunModelCommand } from './select-agent-run-model'
 import { createSendAgentRunMessageCommand } from './send-agent-run-message'
 import { createSetPortfolioConfigCommand } from './set-portfolio-config'
@@ -69,7 +68,6 @@ export type * as RejectPlanOutput from './reject-plan-output'
 export type * as RejectRevisionOutput from './reject-revision-output'
 export type * as ReplaceSecret from './replace-secret'
 export type * as RetryDeliveryPreflight from './retry-delivery-preflight'
-export type * as RunDeliveryWork from './run-delivery-work'
 export type * as SelectAgentRunModel from './select-agent-run-model'
 export type * as SendAgentRunMessage from './send-agent-run-message'
 export type * as SetPortfolioConfig from './set-portfolio-config'
@@ -107,7 +105,6 @@ export function createCoreCommands(runtime: CoreRuntime) {
 		rejectPlanOutput: createRejectPlanOutputCommand(runtime),
 		configureDelivery: createConfigureDeliveryCommand(runtime),
 		queueDelivery: createQueueDeliveryCommand(runtime),
-		runDeliveryWork: createRunDeliveryWorkCommand(runtime),
 		retryDeliveryPreflight: createRetryDeliveryPreflightCommand(runtime),
 		openRevisionGate: createOpenRevisionGateCommand(runtime),
 		acceptRevisionOutput: createAcceptRevisionOutputCommand(runtime),
@@ -162,7 +159,6 @@ if (import.meta.vitest) {
 				'rejectPlanOutput',
 				'configureDelivery',
 				'queueDelivery',
-				'runDeliveryWork',
 				'retryDeliveryPreflight',
 				'openRevisionGate',
 				'acceptRevisionOutput',

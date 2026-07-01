@@ -26,8 +26,8 @@
 					<div class="border border-dimmer bg-card p-3">
 						<strong class="block font-semibold">Planning Agent Run created.</strong>
 						<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-							This Plan has a Planning Agent Run record. Raw transcript events can be inspected manually while richer
-							Planning UI remains deferred.
+							This Plan has a Planning Agent Run record. Raw transcript events can be inspected manually while richer Planning
+							UI remains deferred.
 						</p>
 					</div>
 				</section>
@@ -52,11 +52,16 @@
 						<p v-else-if="!hasLoadedAgentRunEvents" class="m-0 mt-3 text-sz-helper text-dim">
 							Refresh to load raw Agent Run events.
 						</p>
-						<p v-else-if="agentRunEvents.length === 0" class="m-0 mt-3 text-sz-helper text-dim">No Agent Run events returned.</p>
+						<p v-else-if="agentRunEvents.length === 0" class="m-0 mt-3 text-sz-helper text-dim">
+							No Agent Run events returned.
+						</p>
 						<ol v-else class="mt-3 grid gap-2 p-0 pl-5 text-sz-helper">
 							<li v-for="event in agentRunEvents" :key="event.id" class="break-words border-b border-dimmer pb-2">
 								<span class="font-mono text-sz-micro text-dim">#{{ event.sequence }} · {{ event.body.type }}</span>
-								<pre class="mt-1 max-h-48 overflow-auto whitespace-pre-wrap bg-canvas p-2 text-sz-micro text-card-contrast">{{ eventSummary(event) }}</pre>
+								<pre
+									class="mt-1 max-h-48 overflow-auto whitespace-pre-wrap bg-canvas p-2 text-sz-micro text-card-contrast"
+									>{{ eventSummary(event) }}</pre
+								>
 							</li>
 						</ol>
 					</div>

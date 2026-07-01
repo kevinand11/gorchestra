@@ -7,10 +7,10 @@ import type { InvariantViolationError } from '../../../errors'
 import { sourceControlSliceBranchName } from '../../../providers/source-control/branches'
 import type { SourceControlArtifactCreation, SourceControlCreateArtifactBranchInput } from '../../../providers/source-control/types'
 import type { CoreRuntime } from '../../../runtime'
-import { withTransaction } from '../../../storage/helpers'
+import { createRecord, withTransaction } from '../../../storage/helpers'
 import { getSliceState } from '../../../utils/delivery-context'
+import { nextId, runtimeRecord } from '../../../utils/runtime-values'
 import type { Result as CoreResult } from '../../../utils/types'
-import { createRecord, nextId, runtimeRecord } from '../../utils/storage'
 import type { ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
 
 interface SliceStateCandidate {

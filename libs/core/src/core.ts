@@ -149,7 +149,7 @@ if (import.meta.vitest) {
 			expect(typeof result.value.snapshots.export).toBe('function')
 			expect(typeof result.value.snapshots.restore).toBe('function')
 			expect(typeof result.value.work.runModelAgentRun).toBe('function')
-			expect(typeof result.value.commands.runDeliveryWork).toBe('function')
+			expect(typeof result.value.work.runDeliveryWork).toBe('function')
 		})
 
 		it('rejects invalid core input with a narrow invalid-input error', () => {
