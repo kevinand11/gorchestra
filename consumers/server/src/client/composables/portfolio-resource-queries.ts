@@ -9,6 +9,9 @@ type ProjectDetails = Awaited<ReturnType<ServerApi['getProject']>>
 type ListedPlan = Awaited<ReturnType<ServerApi['listPlans']>>[number]
 type PlanDetails = Awaited<ReturnType<ServerApi['getPlan']>>
 type AgentRunEvent = Awaited<ReturnType<ServerApi['getAgentRunEvents']>>[number]
+type PortfolioConfig = Awaited<ReturnType<ServerApi['getPortfolioConfig']>>
+type ListedModelProvider = Awaited<ReturnType<ServerApi['listModelProviders']>>[number]
+type ModelProviderDetails = Awaited<ReturnType<ServerApi['getModelProvider']>>
 type ListedDelivery = Awaited<ReturnType<ServerApi['listDeliveries']>>[number]
 type DeliveryDetails = Awaited<ReturnType<ServerApi['getDelivery']>>
 type RepositoryDetails = Awaited<ReturnType<ServerApi['getRepository']>>
@@ -46,6 +49,30 @@ export function usePortfolioAgentRunEventsQuery(serverApi: ServerApi, agentRunId
 		queryKey: queryKeys.portfolio.agentRunEvents(portfolioId.value, cacheKey.value),
 		initialData: [] as AgentRunEvent[],
 		immediate: false,
+	})
+}
+
+export function usePortfolioConfigQuery(serverApi: ServerApi) {
+	const { portfolioId, queryKeys } = usePortfolioQueryContext()
+	return useFetchAction(() => serverApi.getPortfolioConfig(), {
+		queryKey: queryKeys.portfolio.portfolioConfig(portfolioId.value),
+		initialData: null as PortfolioConfig,
+	})
+}
+
+export function usePortfolioModelProvidersQuery(serverApi: ServerApi) {
+	const { portfolioId, queryKeys } = usePortfolioQueryContext()
+	return useFetchAction(() => serverApi.listModelProviders(), {
+		queryKey: queryKeys.portfolio.modelProviders(portfolioId.value),
+		initialData: [] as ListedModelProvider[],
+	})
+}
+
+export function usePortfolioModelProviderQuery(serverApi: ServerApi, modelProviderId: Ref<string>) {
+	const { portfolioId, queryKeys } = usePortfolioQueryContext()
+	return useFetchAction(() => serverApi.getModelProvider(modelProviderId.value), {
+		queryKey: queryKeys.portfolio.modelProvider(portfolioId.value, modelProviderId.value),
+		initialData: null as ModelProviderDetails | null,
 	})
 }
 

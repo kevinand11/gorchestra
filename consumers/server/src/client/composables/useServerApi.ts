@@ -19,6 +19,35 @@ export type CreateMemoryRevisionInput = {
 	body: string
 }
 
+export type ModelProviderProtocol = 'anthropic-messages' | 'openai-responses' | 'openai-completions' | 'google-generative-ai'
+export type ModelProviderAuth = { type: 'apiKey'; secretId: string }
+export type ModelProviderHeader = { name: string; valueSecretId: string }
+
+export type PortfolioConfigInput = {
+	model: {
+		defaultModelId: string
+		planningModelId: string | null
+		revisionPlanningModelId: string | null
+		executionModelId: string | null
+		revisionExecutionModelId: string | null
+	}
+	work: { maxProcessableSliceSlots: number; maxCorrectionRetriesPerFailure: number; modelTimeoutMs: number } | null
+}
+
+export type PlanConfigInput = { model: { planningModelId: string | null } | null }
+
+export type CreateModelProviderInput = {
+	name: string
+	protocol: ModelProviderProtocol
+	baseUrl: string
+	auth: ModelProviderAuth | null
+	headers: ModelProviderHeader[]
+}
+
+export type UpdateModelProviderInput = Omit<CreateModelProviderInput, 'protocol'>
+export type CreateModelInput = { name: string; providerModelId: string }
+export type UpdateModelInput = { name: string }
+
 type ServerApiOptionsResolver = () => ServerApiOptions | null
 type PreconditionRequiredHandler = () => void | Promise<void>
 type AuthenticationLostHandler = () => void | Promise<void>
@@ -104,7 +133,7 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async listPlans(projectId: string) {
 			return routes.request('get', '/api/portfolio/projects/:projectId/plans', { params: { projectId } })
 		},
-		async createPlan(projectId: string, input: { title: string; initialMessage: string }) {
+		async createPlan(projectId: string, input: { title: string; initialMessage: string; config: PlanConfigInput }) {
 			return routes.request('post', '/api/portfolio/projects/:projectId/plans', { params: { projectId }, body: input })
 		},
 		async getPlan(projectId: string, planId: string) {
@@ -114,6 +143,57 @@ export function createServerApi(options: ServerApiOptions = {}) {
 			return routes.request('get', '/api/portfolio/agent-runs/:agentRunId/events', {
 				params: { agentRunId },
 				query: { afterSequence: input.afterSequence, limit: input.limit },
+			})
+		},
+		async getPortfolioConfig() {
+			return routes.request('get', '/api/portfolio/config')
+		},
+		async setPortfolioConfig(input: { config: PortfolioConfigInput }) {
+			return routes.request('put', '/api/portfolio/config', { body: input })
+		},
+		async listModelProviders() {
+			return routes.request('get', '/api/portfolio/model-providers')
+		},
+		async createModelProvider(input: CreateModelProviderInput) {
+			return routes.request('post', '/api/portfolio/model-providers', { body: input })
+		},
+		async getModelProvider(modelProviderId: string) {
+			return routes.request('get', '/api/portfolio/model-providers/:modelProviderId', { params: { modelProviderId } })
+		},
+		async updateModelProvider(modelProviderId: string, input: UpdateModelProviderInput) {
+			return routes.request('put', '/api/portfolio/model-providers/:modelProviderId', { params: { modelProviderId }, body: input })
+		},
+		async archiveModelProvider(modelProviderId: string) {
+			return routes.request('post', '/api/portfolio/model-providers/:modelProviderId/archive', { params: { modelProviderId } })
+		},
+		async unarchiveModelProvider(modelProviderId: string) {
+			return routes.request('post', '/api/portfolio/model-providers/:modelProviderId/unarchive', { params: { modelProviderId } })
+		},
+		async createModel(modelProviderId: string, input: CreateModelInput) {
+			return routes.request('post', '/api/portfolio/model-providers/:modelProviderId/models', {
+				params: { modelProviderId },
+				body: input,
+			})
+		},
+		async updateModel(modelProviderId: string, modelId: string, input: UpdateModelInput) {
+			return routes.request('put', '/api/portfolio/model-providers/:modelProviderId/models/:modelId', {
+				params: { modelProviderId, modelId },
+				body: input,
+			})
+		},
+		async archiveModel(modelProviderId: string, modelId: string) {
+			return routes.request('post', '/api/portfolio/model-providers/:modelProviderId/models/:modelId/archive', {
+				params: { modelProviderId, modelId },
+			})
+		},
+		async unarchiveModel(modelProviderId: string, modelId: string) {
+			return routes.request('post', '/api/portfolio/model-providers/:modelProviderId/models/:modelId/unarchive', {
+				params: { modelProviderId, modelId },
+			})
+		},
+		async preflightModel(modelProviderId: string, modelId: string) {
+			return routes.request('post', '/api/portfolio/model-providers/:modelProviderId/models/:modelId/preflight', {
+				params: { modelProviderId, modelId },
 			})
 		},
 		async listDeliveries(projectId: string) {

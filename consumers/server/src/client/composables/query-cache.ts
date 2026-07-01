@@ -72,6 +72,15 @@ const queryKeys = {
 		agentRunEvents(portfolioId: string, agentRunId: string): QueryKey {
 			return ['portfolio', portfolioId, 'agent-runs', agentRunId, 'events']
 		},
+		portfolioConfig(portfolioId: string): QueryKey {
+			return ['portfolio', portfolioId, 'config']
+		},
+		modelProviders(portfolioId: string): QueryKey {
+			return ['portfolio', portfolioId, 'model-providers']
+		},
+		modelProvider(portfolioId: string, modelProviderId: string): QueryKey {
+			return ['portfolio', portfolioId, 'model-providers', modelProviderId]
+		},
 		deliveries(portfolioId: string, projectId: string): QueryKey {
 			return ['portfolio', portfolioId, 'projects', projectId, 'deliveries']
 		},
@@ -388,6 +397,14 @@ if (import.meta.vitest) {
 			expect(queryKeys.workspacePortfolios()).toEqual(['workspace-portfolios'])
 			expect(queryKeys.portfolio.root('portfolio-1')).toEqual(['portfolio', 'portfolio-1'])
 			expect(queryKeys.portfolio.projects('portfolio-1')).toEqual(['portfolio', 'portfolio-1', 'projects'])
+			expect(queryKeys.portfolio.portfolioConfig('portfolio-1')).toEqual(['portfolio', 'portfolio-1', 'config'])
+			expect(queryKeys.portfolio.modelProviders('portfolio-1')).toEqual(['portfolio', 'portfolio-1', 'model-providers'])
+			expect(queryKeys.portfolio.modelProvider('portfolio-1', 'model-provider-1')).toEqual([
+				'portfolio',
+				'portfolio-1',
+				'model-providers',
+				'model-provider-1',
+			])
 			expect(queryKeys.portfolio.project('portfolio-1', 'project-1')).toEqual(['portfolio', 'portfolio-1', 'projects', 'project-1'])
 			expect(queryKeys.portfolio.repository('portfolio-1', 'project-1', 'repository-1')).toEqual([
 				'portfolio',

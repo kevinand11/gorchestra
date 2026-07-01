@@ -12,6 +12,7 @@ export const createProjectRequestSchema = v.object({ title: Domain.Commons.nonEm
 export const createPlanRequestSchema = v.object({
 	title: Domain.Commons.nonEmptyTrimmedStringPipe,
 	initialMessage: Domain.Commons.nonEmptyTrimmedStringPipe,
+	config: Domain.Config.planConfigPipe,
 })
 export const setPortfolioConfigRequestSchema = v.object({ config: Domain.Config.portfolioConfigPipe })
 export const createModelProviderRequestSchema = v.object({
