@@ -36,7 +36,7 @@ if (import.meta.vitest) {
 				GORCHESTRA_DATA_DIR: '/tmp/gorchestra-server',
 				GORCHESTRA_SESSION_JWT_SIGNING_KEY: 'session-secret',
 				GORCHESTRA_SELECTION_COOKIE_SIGNING_KEY: 'selection-secret',
-				GORCHESTRA_SECRET_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64url'),
+				GORCHESTRA_SECRET_ENCRYPTION_KEY: Buffer.alloc(32, 1),
 			})
 		})
 

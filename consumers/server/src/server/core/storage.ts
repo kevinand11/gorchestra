@@ -81,7 +81,9 @@ export async function initializeCorePortfolioStorage(
 ): Promise<InitializeCorePortfolioStorageResult> {
 	const coreStorage = await openCorePortfolioStorage(input)
 	try {
-		const opened = openCore(createCoreServices(coreStorage.storage, { secretEncryptionKey: input.secretEncryptionKey }))
+		const opened = openCore(
+			createCoreServices(coreStorage.storage, { secretEncryptionKey: input.secretEncryptionKey, dispatcher: noopCoreDispatcher() }),
+		)
 		if (!opened.ok) throw new Error(`Core failed to open: ${opened.error.type}`)
 
 		const preflight = await opened.value.preflight()
@@ -123,6 +125,13 @@ export function getCorePortfolioStorageDirectory(dataDir: string, coreStorageNam
 
 function createCorePortfolioStorageRepo<A extends CorePortfolioStorageAdapter>(backend: CorePortfolioStorageBackend<A>): RepoSurface<A> {
 	return Repo.from(backend.adapter).resolve(backend.resolve).build()
+}
+
+function noopCoreDispatcher(): Parameters<typeof createCoreServices>[1]['dispatcher'] {
+	return {
+		preflight: () => Promise.resolve({ ok: true }),
+		requestDispatch: () => Promise.resolve(),
+	}
 }
 
 function parseCoreStorageNamespace(coreStorageNamespace: string): string {

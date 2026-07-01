@@ -45,7 +45,7 @@ export async function withSelectedPortfolioCore<T>(
 		coreStorageNamespace: resolved.selectionAccess.portfolio.coreStorageNamespace,
 	})
 	try {
-		const core = openSelectedPortfolioCore(coreStorage.storage, context)
+		const core = openSelectedPortfolioCore(coreStorage.storage, context, resolved.selectionAccess.portfolio.coreStorageNamespace)
 		return await run(selectedPortfolioCoreContext(resolved, core))
 	} finally {
 		await coreStorage.close()
@@ -93,8 +93,20 @@ async function requireSelectionAccess(
 	return selectionAccess
 }
 
-function openSelectedPortfolioCore(storage: Parameters<typeof createCoreServices>[0], context: ServerApiContext): GorchestraCore {
-	const openedCore = openCore(createCoreServices(storage, { secretEncryptionKey: context.secretEncryptionKey }))
+function openSelectedPortfolioCore(
+	storage: Parameters<typeof createCoreServices>[0],
+	context: ServerApiContext,
+	coreStorageNamespace: string,
+): GorchestraCore {
+	const openedCore = openCore(
+		createCoreServices(storage, {
+			secretEncryptionKey: context.secretEncryptionKey,
+			dispatcher: {
+				preflight: () => context.dispatcher.preflight(),
+				requestDispatch: (request) => context.dispatcher.requestDispatch({ coreStorageNamespace, request }),
+			},
+		}),
+	)
 	if (!openedCore.ok) throwCoreOperationError(openedCore.error)
 	return openedCore.value
 }

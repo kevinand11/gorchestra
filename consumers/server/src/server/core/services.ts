@@ -4,7 +4,7 @@ import { revealSecretPlaintext, type SecretEncryptionKey } from '../modules/secr
 
 export type CreateCoreServicesOptions = {
 	secretEncryptionKey: SecretEncryptionKey
-	dispatcher?: CoreServices['dispatcher']
+	dispatcher: CoreServices['dispatcher']
 }
 
 export function createCoreServices(storage: CoreStorage, options: CreateCoreServicesOptions): CoreServices {
@@ -16,13 +16,8 @@ export function createCoreServices(storage: CoreStorage, options: CreateCoreServ
 			resolveSecretValues: ({ secrets }) => Promise.resolve(resolveSecretValues(secrets, options.secretEncryptionKey)),
 		},
 		sandbox: { preflight: () => Promise.resolve({ ok: true }) },
-		dispatcher: options.dispatcher ?? noopDispatcher,
+		dispatcher: options.dispatcher,
 	}
-}
-
-const noopDispatcher: CoreServices['dispatcher'] = {
-	preflight: () => Promise.resolve({ ok: true }),
-	requestDispatch: () => Promise.resolve(),
 }
 
 function resolveSecretValues(
@@ -45,7 +40,11 @@ if (import.meta.vitest) {
 			const { parseSecretEncryptionKey, protectSecretPlaintext } = await import('../modules/secret-protection')
 			const secretEncryptionKey = parseSecretEncryptionKey(Buffer.alloc(32, 1).toString('base64url'))
 			const valueRef = protectSecretPlaintext('token-value', secretEncryptionKey)
-			const services = createCoreServices({} as CoreStorage, { secretEncryptionKey })
+			const dispatcher: CoreServices['dispatcher'] = {
+				preflight: () => Promise.resolve({ ok: true }),
+				requestDispatch: () => Promise.resolve(),
+			}
+			const services = createCoreServices({} as CoreStorage, { secretEncryptionKey, dispatcher })
 
 			expect(await services.secrets.preflight()).toEqual({ ok: true })
 			expect(await services.secrets.resolveSecrets({ scope: { type: 'project', projectId: 'project-1' } })).toEqual([])
