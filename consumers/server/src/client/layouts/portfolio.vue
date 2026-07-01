@@ -28,32 +28,38 @@
 
 		<template #left>
 			<slot name="left">
-				<div class="border-b border-dimmer px-3 py-2 font-semibold">Selected Portfolio</div>
-				<div class="flex items-center justify-between gap-2 border-b border-dimmer px-3 py-2">
-					<div class="min-w-0">
-						<strong class="block truncate font-semibold">{{ portfolio.displayName }}</strong>
-						<p class="m-0 truncate text-sz-helper text-dim">{{ workspace.displayName }}</p>
+				<div class="flex h-full min-h-[calc(100vh-67px)] flex-col">
+					<div class="border-b border-dimmer px-3 py-2 font-semibold">Selected Portfolio</div>
+					<div class="flex items-center justify-between gap-2 border-b border-dimmer px-3 py-2">
+						<div class="min-w-0">
+							<strong class="block truncate font-semibold">{{ portfolio.displayName }}</strong>
+							<p class="m-0 truncate text-sz-helper text-dim">{{ workspace.displayName }}</p>
+						</div>
+						<NuxtLink
+							to="/select"
+							class="shrink-0 border border-dimmer bg-secondary px-2 py-1 text-sz-micro font-semibold text-secondary-contrast hover:border-primary">
+							Change
+						</NuxtLink>
 					</div>
-					<NuxtLink
-						to="/select"
-						class="shrink-0 border border-dimmer bg-secondary px-2 py-1 text-sz-micro font-semibold text-secondary-contrast hover:border-primary">
-						Change
-					</NuxtLink>
+					<nav class="grid gap-0" aria-label="Selected Portfolio navigation">
+						<NuxtLink
+							v-for="item in primaryNavItems"
+							:key="item.to"
+							:to="item.to"
+							class="flex min-h-8 items-center justify-between gap-2 px-3 py-2 text-sz-helper font-semibold"
+							:class="navItemClass(item.to)">
+							<span>{{ item.label }}</span>
+						</NuxtLink>
+					</nav>
+					<nav class="mt-auto border-t border-dimmer" aria-label="Selected Portfolio configuration navigation">
+						<NuxtLink
+							to="/portfolio-config"
+							class="flex min-h-8 items-center justify-between gap-2 px-3 py-2 text-sz-helper font-semibold"
+							:class="navItemClass('/portfolio-config')">
+							<span>Portfolio Config</span>
+						</NuxtLink>
+					</nav>
 				</div>
-				<nav class="grid gap-1 p-2" aria-label="Selected Portfolio navigation">
-					<NuxtLink
-						v-for="{ label, to } in [
-							{ label: 'Projects', to: '/projects' },
-							{ label: 'Brain', to: '/brain' },
-							{ label: 'Secrets', to: '/secrets' },
-						]"
-						:key="to"
-						:to="to"
-						class="flex min-h-8 items-center justify-between gap-2 px-2 py-1.5 text-sz-helper font-semibold"
-						:class="route.path.startsWith(to) ? 'bg-secondary text-body' : 'text-dim hover:bg-secondary hover:text-body'">
-						<span>{{ label }}</span>
-					</NuxtLink>
-				</nav>
 			</slot>
 		</template>
 
@@ -82,5 +88,16 @@ const route = useRoute()
 const { workspace, portfolio } = useSelectedPortfolio()
 const authState = useAuthState()
 
+const primaryNavItems = [
+	{ label: 'Projects', to: '/projects' },
+	{ label: 'Brain', to: '/brain' },
+	{ label: 'Secrets', to: '/secrets' },
+	{ label: 'Models', to: '/models/providers' },
+]
+
 const { isLoading: isLoggingOut, error: logoutError, execute: logout } = useApiAction(authState.logout)
+
+function navItemClass(path: string): string {
+	return route.path.startsWith(path) ? 'bg-secondary text-body' : 'text-dim hover:bg-secondary hover:text-body'
+}
 </script>
