@@ -13,6 +13,7 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
+import type { CoreDispatchRequest } from '../services'
 import { appendAgentRunEvent } from '../utils/agent-run-events'
 import { requireInteractiveAgentRunTargetOpen } from '../utils/agent-run-targets'
 import type { Result as CoreResult } from '../utils/types'
@@ -46,11 +47,20 @@ export function createSendAgentRunMessageCommand(runtime: CoreRuntime): Operatio
 				const agentRun = await requireInteractiveAgentRunTargetOpen(storage, input.agentRunId)
 				if (!agentRun.ok) return agentRun
 
-				return appendAgentRunEvent(runtime, storage, input.agentRunId, {
+				const event = await appendAgentRunEvent(runtime, storage, input.agentRunId, {
 					type: 'input-message',
 					source: { type: 'operator', authorized: stamp },
 					content: input.content,
 				})
+				if (!event.ok) return event
+
+				await runtime.services.dispatcher.requestDispatch({
+					type: 'agent-run',
+					agentRunId: input.agentRunId,
+					reason: { type: 'input-appended', inputEventId: event.value.id },
+				})
+
+				return event
 			},
 		),
 	)
@@ -87,6 +97,49 @@ if (import.meta.vitest) {
 
 			expect(result).toEqual({ ok: true, value: expectedInputEvent('agent-run-event-1', 1) })
 			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')).toEqual(expectedInputEvent('agent-run-event-1', 1))
+		})
+
+		it('requests Agent Run Dispatch after appending an operator input message', async () => {
+			const dispatches: CoreDispatchRequest[] = []
+			const options = planningAgentRunFixture({
+				dispatcher: {
+					preflight: () => Promise.resolve({ ok: true }),
+					requestDispatch: (request) => {
+						dispatches.push(request)
+						return Promise.resolve()
+					},
+				},
+			})
+			const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
+
+			const result = await command(
+				{ agentRunId: 'agent-run-1', content: [{ type: 'text', text: 'Please refine the plan.' }] },
+				context,
+			)
+
+			expect(result).toMatchObject({ ok: true })
+			expect(dispatches).toEqual([
+				{ type: 'agent-run', agentRunId: 'agent-run-1', reason: { type: 'input-appended', inputEventId: 'agent-run-event-1' } },
+			])
+		})
+
+		it('rolls back the input message when dispatch enqueueing throws', async () => {
+			const thrown = new Error('queue full')
+			const options = planningAgentRunFixture({
+				dispatcher: {
+					preflight: () => Promise.resolve({ ok: true }),
+					requestDispatch: () => Promise.reject(thrown),
+				},
+			})
+			const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
+
+			const result = await command({ agentRunId: 'agent-run-1', content: [{ type: 'text', text: 'Next turn.' }] }, context)
+
+			expect(result).toMatchObject({ ok: false, error: { type: 'storage-operation-failed', operation: { type: 'transaction' } } })
+			if (!result.ok && result.error.type === 'storage-operation-failed' && result.error.operation.type === 'transaction') {
+				expect(result.error.operation.cause).toBe(thrown)
+			}
+			expect(options.tx.agentRunEvents.records.size).toBe(0)
 		})
 
 		it('appends during an active turn for the next safe boundary', async () => {

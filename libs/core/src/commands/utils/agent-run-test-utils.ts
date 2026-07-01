@@ -1,23 +1,24 @@
 import type { AgentRun, AgentRunEvent } from '../../domain/agent-run'
 import type { RevisionGate } from '../../domain/revision'
+import type { CoreServices } from '../../services'
 import { createTestCoreServices, stamp } from '../../utils/test-helpers'
 
-export function planningAgentRunFixture() {
-	const options = createTestCoreServices()
+export function planningAgentRunFixture(overrides: Partial<Pick<CoreServices, 'dispatcher'>> = {}) {
+	const options = createTestCoreServices(overrides)
 	options.tx.plans.records.set('plan-1', { id: 'plan-1', projectId: 'project-1', title: 'Plan', config: null, created: stamp })
 	options.tx.agentRuns.records.set('agent-run-1', planningAgentRun())
 	return options
 }
 
-export function revisionPlanningAgentRunFixture(closed: boolean) {
-	const options = createTestCoreServices()
+export function revisionPlanningAgentRunFixture(closed: boolean, overrides: Partial<Pick<CoreServices, 'dispatcher'>> = {}) {
+	const options = createTestCoreServices(overrides)
 	options.tx.agentRuns.records.set('agent-run-1', revisionPlanningAgentRun())
 	options.tx.revisionGates.records.set('revision-gate-1', revisionGate(closed))
 	return options
 }
 
-export function autonomousAgentRunFixture(completed: boolean) {
-	const options = createTestCoreServices()
+export function autonomousAgentRunFixture(completed: boolean, overrides: Partial<Pick<CoreServices, 'dispatcher'>> = {}) {
+	const options = createTestCoreServices(overrides)
 	options.tx.agentRuns.records.set('agent-run-1', {
 		...planningAgentRun(),
 		purpose: { type: 'execution', deliveryId: 'delivery-1', sliceId: 'slice-1', mode: { type: 'initial' } },

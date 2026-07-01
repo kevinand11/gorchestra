@@ -380,21 +380,26 @@ function attachStorageSurface(tx: TestStorageTransaction, storage: CoreStorage):
 }
 
 function tableView<TRecord extends { id: Id }>(adapter: InMemoryAdapter, table: string): TestTable<TRecord> {
-	return { records: store(adapter, table) as Map<Id, TRecord>, fail: { get: false, put: false, list: false } }
+	return {
+		get records() {
+			return store(adapter, table) as Map<Id, TRecord>
+		},
+		fail: { get: false, put: false, list: false },
+	}
 }
 
 function portfolioConfigView(adapter: InMemoryAdapter): TestPortfolioConfig {
-	const table = store(adapter, portfolioConfigSchema.name) as Map<Id, PortfolioConfigRecord & { id: Id }>
+	const records = () => store(adapter, portfolioConfigSchema.name) as Map<Id, PortfolioConfigRecord & { id: Id }>
 	return {
 		get record() {
-			const record = table.get(portfolioConfigStorageId)
+			const record = records().get(portfolioConfigStorageId)
 			return record === undefined ? null : { configured: record.configured, value: record.value }
 		},
 		set record(record: PortfolioConfigRecord | null) {
 			if (record === null) {
-				table.delete(portfolioConfigStorageId)
+				records().delete(portfolioConfigStorageId)
 			} else {
-				table.set(portfolioConfigStorageId, { id: portfolioConfigStorageId, ...record })
+				records().set(portfolioConfigStorageId, { id: portfolioConfigStorageId, ...record })
 			}
 		},
 		fail: { get: false, put: false },

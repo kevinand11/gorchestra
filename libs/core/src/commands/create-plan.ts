@@ -9,7 +9,7 @@ import type { Plan, PlanWithPlanningAgentRun } from '../domain/plan'
 import type { Project } from '../domain/project'
 import type { AgentRunModelUnresolvedError, InvalidInputError } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import type { CoreStorage } from '../services'
+import type { CoreDispatchRequest, CoreStorage } from '../services'
 import { appendAgentRunEvent, createModelAgentRunWithInitialModel } from '../utils/agent-run-events'
 import type { CoreRuntimeValues } from '../utils/runtime-values'
 import type { Result as CoreResult } from '../utils/types'
@@ -69,7 +69,7 @@ async function handleCreatePlan(
 	context: CommandContext,
 ): Promise<CoreResult<PlanWithPlanningAgentRun, Error>> {
 	const values = planCreationRuntimeValues(runtime, context)
-	return values.ok ? withTransaction(runtime.services, (storage) => writePlan(storage, input, values.value)) : values
+	return values.ok ? withTransaction(runtime.services, (storage) => writePlan(runtime, storage, input, values.value)) : values
 }
 
 function planCreationRuntimeValues(
@@ -108,12 +108,13 @@ function planCreationRuntimeValuesAfterAgentRunId(
 }
 
 async function writePlan(
+	runtime: CoreRuntime,
 	storage: CoreStorage,
 	input: Input,
 	values: PlanCreationRuntimeValues,
 ): Promise<CoreResult<PlanWithPlanningAgentRun, Exclude<Error, InvalidInputError>>> {
 	const facts = await planCreationFacts(storage, input, values)
-	return facts.ok ? writePlanCreationFacts(storage, facts.value) : facts
+	return facts.ok ? writePlanCreationFacts(runtime, storage, facts.value) : facts
 }
 
 async function planCreationFacts(
@@ -167,14 +168,16 @@ function planCreationFactsValue(
 }
 
 async function writePlanCreationFacts(
+	runtime: CoreRuntime,
 	storage: CoreStorage,
 	facts: PlanCreationFacts,
 ): Promise<CoreResult<PlanWithPlanningAgentRun, Exclude<Error, InvalidInputError>>> {
 	const storedPlan = await createRecordValue('plan', storage, facts.plan)
-	return storedPlan.ok ? writePlanningAgentRun(storage, storedPlan.value, facts) : storedPlan
+	return storedPlan.ok ? writePlanningAgentRun(runtime, storage, storedPlan.value, facts) : storedPlan
 }
 
 async function writePlanningAgentRun(
+	runtime: CoreRuntime,
 	storage: CoreStorage,
 	plan: Plan,
 	facts: PlanCreationFacts,
@@ -185,10 +188,11 @@ async function writePlanningAgentRun(
 		started: facts.started,
 		modelId: facts.modelId,
 	})
-	return storedAgentRun.ok ? writeInitialPlanningInput(storage, plan, storedAgentRun.value, facts) : storedAgentRun
+	return storedAgentRun.ok ? writeInitialPlanningInput(runtime, storage, plan, storedAgentRun.value, facts) : storedAgentRun
 }
 
 async function writeInitialPlanningInput(
+	runtime: CoreRuntime,
 	storage: CoreStorage,
 	plan: Plan,
 	agentRun: PlanWithPlanningAgentRun['agentRun'],
@@ -199,7 +203,15 @@ async function writeInitialPlanningInput(
 		source: { type: 'operator', authorized: facts.stamp },
 		content: [{ type: 'text', text: facts.initialMessage }],
 	})
-	return input.ok ? { ok: true, value: { ...plan, agentRun } } : input
+	if (!input.ok) return input
+
+	await runtime.services.dispatcher.requestDispatch({
+		type: 'agent-run',
+		agentRunId: agentRun.id,
+		reason: { type: 'input-appended', inputEventId: input.value.id },
+	})
+
+	return { ok: true, value: { ...plan, agentRun } }
 }
 
 async function resolvePlanningModelId(
@@ -300,6 +312,55 @@ if (import.meta.vitest) {
 				source: { type: 'operator', authorized: localStamp() },
 				content: [{ type: 'text', text: 'Please plan repository onboarding.' }],
 			})
+		})
+
+		it('requests Agent Run Dispatch after appending the initial input message', async () => {
+			const dispatches: CoreDispatchRequest[] = []
+			const options = createTestCoreServices({
+				dispatcher: {
+					preflight: () => Promise.resolve({ ok: true }),
+					requestDispatch: (request) => {
+						dispatches.push(request)
+						return Promise.resolve()
+					},
+				},
+			})
+			seedProject(options.tx, 'project-1')
+			seedSelectableModel(options.tx, 'model-1')
+			options.tx.portfolioConfig.record = portfolioConfig('model-1')
+			const command = createCreatePlanCommand(createTestCoreRuntime(options))
+
+			const result = await command({ projectId: 'project-1', title: 'Plan', initialMessage: 'Plan this.', config: null }, context)
+
+			expect(result).toMatchObject({ ok: true })
+			expect(dispatches).toEqual([
+				{ type: 'agent-run', agentRunId: 'agent-run-1', reason: { type: 'input-appended', inputEventId: 'agent-run-event-2' } },
+			])
+			expect(options.tx.agentRunEvents.records.get('agent-run-event-2')?.body.type).toBe('input-message')
+		})
+
+		it('rolls back Plan creation when dispatch enqueueing throws', async () => {
+			const thrown = new Error('dispatch unavailable')
+			const options = createTestCoreServices({
+				dispatcher: {
+					preflight: () => Promise.resolve({ ok: true }),
+					requestDispatch: () => Promise.reject(thrown),
+				},
+			})
+			seedProject(options.tx, 'project-1')
+			seedSelectableModel(options.tx, 'model-1')
+			options.tx.portfolioConfig.record = portfolioConfig('model-1')
+			const command = createCreatePlanCommand(createTestCoreRuntime(options))
+
+			const result = await command({ projectId: 'project-1', title: 'Plan', initialMessage: 'Plan this.', config: null }, context)
+
+			expect(result).toMatchObject({ ok: false, error: { type: 'storage-operation-failed', operation: { type: 'transaction' } } })
+			if (!result.ok && result.error.type === 'storage-operation-failed' && result.error.operation.type === 'transaction') {
+				expect(result.error.operation.cause).toBe(thrown)
+			}
+			expect(options.tx.plans.records.size).toBe(0)
+			expect(options.tx.agentRuns.records.size).toBe(0)
+			expect(options.tx.agentRunEvents.records.size).toBe(0)
 		})
 
 		it('resolves the Planning Model from Plan, Project, Portfolio Planning, then Portfolio default config', async () => {
