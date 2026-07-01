@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
+import type { CommandContext } from './types'
+import { nonEmptyTrimmedStringPipe } from '../domain/commons'
 import { secretValueRefPipe, type Secret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, InvariantViolationError, StorageOperationFailedError } from '../errors'
 import type { CoreRuntime } from '../runtime'
@@ -15,7 +16,7 @@ export type Result = Secret
 
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | InvariantViolationError | StorageOperationFailedError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreateSecretCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('createSecret', createSecretInputPipe, (input, context) => {

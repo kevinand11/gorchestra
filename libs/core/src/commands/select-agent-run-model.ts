@@ -1,7 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import type { CommandContext } from './types'
 import type { AgentRunEvent } from '../domain/agent-run'
-import { idPipe, type AuditStamp, type OperationContext } from '../domain/commons'
+import { idPipe, type AuditStamp } from '../domain/commons'
 import type {
 	AgentRunNotActiveError,
 	AgentRunNotInteractiveError,
@@ -36,7 +37,7 @@ export type Error =
 	| AgentRunNotInteractiveError
 	| AgentRunNotActiveError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createSelectAgentRunModelCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('selectAgentRunModel', selectAgentRunModelInputPipe, (input, context) =>

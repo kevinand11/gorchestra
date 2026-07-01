@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
+import type { CommandContext } from './types'
+import { idPipe, type AuditStamp, type Id } from '../domain/commons'
 import { memoryBodyPipe, memoryPipe, memoryTitlePipe, type CurrentMemoryRevision, type Memory, type MemoryRevision } from '../domain/memory'
 import type {
 	InvalidCoreServiceOutputError,
@@ -41,7 +42,7 @@ export type Error =
 	| StorageOperationFailedError
 	| RevisionConflictError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 type CreateMemoryRevisionValues = {
 	revisionId: Id
@@ -52,7 +53,7 @@ export function createCreateMemoryRevisionCommand(runtime: CoreRuntime): Operati
 	return buildCommandHandler('createMemoryRevision', inputPipe, (input, context) => handleCreateMemoryRevision(runtime, input, context))
 }
 
-function handleCreateMemoryRevision(runtime: CoreRuntime, input: Input, context: OperationContext): Promise<CoreResult<Result, Error>> {
+function handleCreateMemoryRevision(runtime: CoreRuntime, input: Input, context: CommandContext): Promise<CoreResult<Result, Error>> {
 	return withTransaction(runtime.services, (storage) => createRevisionInStorage(storage, runtime, input, context))
 }
 
@@ -60,7 +61,7 @@ async function createRevisionInStorage(
 	storage: CoreStorage,
 	runtime: CoreRuntime,
 	input: Input,
-	context: OperationContext,
+	context: CommandContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const memory = await getRequired('memory', storage, input.memoryId)
 	return memory.ok ? createRevisionForMemory(storage, runtime, memory.value, input, context) : memory
@@ -71,7 +72,7 @@ function createRevisionForMemory(
 	runtime: CoreRuntime,
 	memory: Memory,
 	input: Input,
-	context: OperationContext,
+	context: CommandContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const conflict = validateExpectedRevision(memory, input)
 	if (!conflict.ok) return Promise.resolve(conflict)
@@ -85,7 +86,7 @@ function createChangedRevision(
 	runtime: CoreRuntime,
 	memory: Memory,
 	input: Input,
-	context: OperationContext,
+	context: CommandContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const values = createMemoryRevisionValues(runtime, context)
 	return values.ok ? writeMemoryRevision(storage, memory, input, values.value) : Promise.resolve(values)
@@ -111,7 +112,7 @@ function unchanged(memory: Memory, input: Input): boolean {
 
 function createMemoryRevisionValues(
 	runtime: CoreRuntime,
-	context: OperationContext,
+	context: CommandContext,
 ): CoreResult<CreateMemoryRevisionValues, InvalidCoreServiceOutputError> {
 	const revisionId = nextId(runtime.values, 'memory-revision')
 	if (!revisionId.ok) return revisionId

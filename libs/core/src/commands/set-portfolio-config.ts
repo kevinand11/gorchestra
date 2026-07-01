@@ -1,6 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { OperationContext } from '../domain/commons'
+import type { CommandContext } from './types'
 import { portfolioConfigPipe, type PortfolioConfigRecord } from '../domain/config'
 import type { InvalidInputError } from '../errors'
 import type { CoreRuntime } from '../runtime'
@@ -22,7 +22,7 @@ export type Result = PortfolioConfigRecord
 
 export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createSetPortfolioConfigCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('setPortfolioConfig', setPortfolioConfigInputPipe, (input, context) =>

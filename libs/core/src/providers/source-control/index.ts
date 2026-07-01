@@ -391,6 +391,10 @@ if (import.meta.vitest) {
 				resolveSecretValues,
 			},
 			sandbox: { preflight: () => Promise.resolve({ ok: true }) },
+			dispatcher: {
+				preflight: () => Promise.resolve({ ok: true }),
+				requestDispatch: () => Promise.resolve(),
+			},
 		}
 	}
 

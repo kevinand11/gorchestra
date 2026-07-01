@@ -1,7 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import type { CommandContext } from './types'
 import type { Action } from '../domain/action'
-import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
+import { idPipe, type AuditStamp, type Id } from '../domain/commons'
 import type { Delivery, DeliveryIntegration, DeliveryWorkState } from '../domain/delivery'
 import type { InvalidInputError } from '../errors'
 import type { CoreRuntime } from '../runtime'
@@ -20,7 +21,7 @@ export type Result = Delivery
 export type Error = DeliveryActionCommandError
 
 /** Requires Delivery Work State ready-to-ship; sets Delivery.closed without post-merge validation in v1; duplicate calls fail with delivery-work-state-mismatch. */
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createShipDeliveryCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('shipDelivery', shipDeliveryInputPipe, (input, context) => handleShipDelivery(runtime, input, context))
@@ -29,7 +30,7 @@ export function createShipDeliveryCommand(runtime: CoreRuntime): Operation {
 function handleShipDelivery(
 	runtime: CoreRuntime,
 	input: Input,
-	context: OperationContext,
+	context: CommandContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	return withAuditStampTransaction(runtime, context, (storage, stamp) => writeShipDelivery(storage, input, stamp))
 }

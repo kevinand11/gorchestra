@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { idPipe, type OperationContext } from '../domain/commons'
+import type { CommandContext } from './types'
+import { idPipe } from '../domain/commons'
 import { repositoryConfigPipe, type Repository } from '../domain/repository'
 import type {
 	DuplicateRepositoryTargetError,
@@ -37,7 +38,7 @@ export type Error =
 	| StorageOperationFailedError
 	| InvalidCoreServiceOutputError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createUpdateRepositoryConfigCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('updateRepositoryConfig', updateRepositoryConfigInputPipe, (input) =>

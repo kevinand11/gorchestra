@@ -30,8 +30,8 @@ export async function withTransaction<TValue, TError>(
 ): Promise<Result<TValue, TError | StorageOperationFailedError>> {
 	try {
 		return await options.storage.session(() => run(options.storage))
-	} catch {
-		return { ok: false, error: storageFailure({ type: 'transaction' }) }
+	} catch (error) {
+		return { ok: false, error: storageFailure({ type: 'transaction', cause: error }) }
 	}
 }
 

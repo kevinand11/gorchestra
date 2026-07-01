@@ -16,7 +16,7 @@ export type Id = PipeOutput<typeof idPipe>
 export const isoDateTimePipe = v.time().pipe(v.asISOString()) as Pipe<string, string>
 export type IsoDateTime = PipeOutput<typeof isoDateTimePipe>
 
-const localActorRefPipe = v.object({ type: rawStringPipe, id: rawStringPipe })
+export const localActorRefPipe = v.object({ type: rawStringPipe, id: rawStringPipe })
 export type LocalActorRef = PipeOutput<typeof localActorRefPipe>
 
 const localAuditStampPipe = v.object({
@@ -41,6 +41,3 @@ export type ArchivePeriod = PipeOutput<typeof archivePeriodPipe>
 
 export const runtimeRecordPipe = v.object({ at: isoDateTimePipe })
 export type RuntimeRecord = PipeOutput<typeof runtimeRecordPipe>
-
-export const operationContextPipe = v.object({ actor: localActorRefPipe, correlationId: v.nullable(rawStringPipe) })
-export type OperationContext = PipeOutput<typeof operationContextPipe>

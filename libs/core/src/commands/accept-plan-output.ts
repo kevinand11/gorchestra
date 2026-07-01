@@ -1,7 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import type { CommandContext } from './types'
 import type { AgentRun, AgentRunEvent } from '../domain/agent-run'
-import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
+import { idPipe, type AuditStamp, type Id } from '../domain/commons'
 import type { Delivery } from '../domain/delivery'
 import type { GraphNodeRef, Link } from '../domain/graph'
 import type { Memory, MemoryRevision } from '../domain/memory'
@@ -49,7 +50,7 @@ export type Error =
 	| AgentRunPurposeMismatchError
 	| InvalidPlanOutputError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 type PlanningAgentRun = AgentRun & { purpose: Extract<AgentRun['purpose'], { type: 'planning' }> }
 type InvalidPlanOutputFields = InvalidPlanOutputError extends infer TError
@@ -67,7 +68,7 @@ export function createAcceptPlanOutputCommand(runtime: CoreRuntime): Operation {
 async function handleAcceptPlanOutput(
 	runtime: CoreRuntime,
 	input: Input,
-	context: OperationContext,
+	context: CommandContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const stamp = auditStamp(runtime.values, context)
 	return stamp.ok ? withTransaction(runtime.services, (storage) => acceptPlanOutput(runtime, storage, input, stamp.value)) : stamp

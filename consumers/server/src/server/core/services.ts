@@ -4,6 +4,7 @@ import { revealSecretPlaintext, type SecretEncryptionKey } from '../modules/secr
 
 export type CreateCoreServicesOptions = {
 	secretEncryptionKey: SecretEncryptionKey
+	dispatcher?: CoreServices['dispatcher']
 }
 
 export function createCoreServices(storage: CoreStorage, options: CreateCoreServicesOptions): CoreServices {
@@ -15,7 +16,13 @@ export function createCoreServices(storage: CoreStorage, options: CreateCoreServ
 			resolveSecretValues: ({ secrets }) => Promise.resolve(resolveSecretValues(secrets, options.secretEncryptionKey)),
 		},
 		sandbox: { preflight: () => Promise.resolve({ ok: true }) },
+		dispatcher: options.dispatcher ?? noopDispatcher,
 	}
+}
+
+const noopDispatcher: CoreServices['dispatcher'] = {
+	preflight: () => Promise.resolve({ ok: true }),
+	requestDispatch: () => Promise.resolve(),
 }
 
 function resolveSecretValues(

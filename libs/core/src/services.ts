@@ -19,6 +19,7 @@ export interface CorePreflightChecks {
 	storage: CorePreflightCheck
 	secrets: CorePreflightCheck
 	sandbox: CorePreflightCheck
+	dispatcher: CorePreflightCheck
 }
 
 export type CorePreflightCheck = { ok: true } | { ok: false; reason: 'not-ready' | 'probe-failed'; message: string | null }
@@ -57,6 +58,12 @@ export interface ResolvedSecret {
 export const resolvedSecretValuesPipe = v.record(idPipe, v.string())
 export type ResolvedSecretValues = Record<Id, string>
 
+export type CoreDispatchRequest = {
+	type: 'agent-run'
+	agentRunId: Id
+	reason: { type: 'input-appended'; inputEventId: Id }
+}
+
 export type CoreEvent = never
 
 type PreflightFn = () => Promise<CoreServicePreflightOutput>
@@ -77,6 +84,12 @@ export const coreSandboxServicePipe = v.object({
 })
 export type CoreSandboxService = PipeOutput<typeof coreSandboxServicePipe>
 
+export const coreDispatcherServicePipe = v.object({
+	preflight: typedFunctionDependencyPipe<PreflightFn>(),
+	requestDispatch: typedFunctionDependencyPipe<(input: CoreDispatchRequest) => Promise<void>>(),
+})
+export type CoreDispatcherService = PipeOutput<typeof coreDispatcherServicePipe>
+
 const coreEventSinkPipe = v.object({
 	publish: typedFunctionDependencyPipe<(event: CoreEvent) => void>(),
 })
@@ -94,6 +107,7 @@ export const coreServicesPipe = v.object({
 	storage: storagePipe,
 	secrets: coreSecretsServicePipe,
 	sandbox: coreSandboxServicePipe,
+	dispatcher: coreDispatcherServicePipe,
 	logger: v.optional(coreLoggerPipe),
 	eventSink: v.optional(coreEventSinkPipe),
 })

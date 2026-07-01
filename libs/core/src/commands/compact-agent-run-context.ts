@@ -1,7 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import type { CommandContext } from './types'
 import type { AgentRunEvent } from '../domain/agent-run'
-import { freeFormStringPipe, idPipe, nonNegativeIntegerPipe, type OperationContext } from '../domain/commons'
+import { freeFormStringPipe, idPipe, nonNegativeIntegerPipe } from '../domain/commons'
 import type {
 	AgentRunNotActiveError,
 	AgentRunNotInteractiveError,
@@ -37,7 +38,7 @@ export type Error =
 	| AgentRunNotInteractiveError
 	| AgentRunNotActiveError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createCompactAgentRunContextCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('compactAgentRunContext', compactAgentRunContextInputPipe, (input, context) =>

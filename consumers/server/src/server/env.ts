@@ -7,10 +7,7 @@ const serverEnvPipe = v.object({
 	GORCHESTRA_DATA_DIR: v.string().pipe(v.min<string>(1)),
 	GORCHESTRA_SESSION_JWT_SIGNING_KEY: v.string().pipe(v.min<string>(1)),
 	GORCHESTRA_SELECTION_COOKIE_SIGNING_KEY: v.string().pipe(v.min<string>(1)),
-	GORCHESTRA_SECRET_ENCRYPTION_KEY: v.string().pipe((val) => {
-		parseSecretEncryptionKey(val)
-		return val
-	}),
+	GORCHESTRA_SECRET_ENCRYPTION_KEY: v.string().pipe((val) => parseSecretEncryptionKey(val)),
 })
 
 export type ServerEnv = PipeOutput<typeof serverEnvPipe>

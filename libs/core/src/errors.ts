@@ -7,10 +7,10 @@ import type { ExternalOperationEvidence, ValidationEvidence } from './domain/evi
 import type { GraphNodeRef, LinkType } from './domain/graph'
 import type { SecretBindingScope } from './domain/secret'
 
-export type CorePreflightCheckName = 'storage' | 'secrets' | 'sandbox'
+export type CorePreflightCheckName = 'storage' | 'secrets' | 'sandbox' | 'dispatcher'
 export type CoreServiceOutputName = CorePreflightCheckName | 'runtime'
 
-export type CoreInputBoundary = 'core' | 'command' | 'query' | 'snapshot'
+export type CoreInputBoundary = 'core' | 'command' | 'query' | 'snapshot' | 'work'
 
 export interface InvalidInputError {
 	type: 'invalid-input'
@@ -87,7 +87,7 @@ export interface NotArchivedError {
 }
 
 export type CoreStorageOperation =
-	| { type: 'transaction' }
+	| { type: 'transaction'; cause: unknown }
 	| { type: 'get'; resource: CoreResource; id: Id | null }
 	| { type: 'list'; resource: CoreIdResource }
 	| { type: 'create'; resource: CoreResource; id: Id }

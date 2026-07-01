@@ -1,6 +1,6 @@
 import type { ServerCache } from '../cache'
 import type { ServerEnv } from '../env'
-import { parseSecretEncryptionKey, type SecretEncryptionKey } from '../modules/secret-protection'
+import type { SecretEncryptionKey } from '../modules/secret-protection'
 import type { ServerStorage } from '../storage/repo'
 
 export type ServerApiClock = () => Date
@@ -29,7 +29,7 @@ export function createServerApiContext(input: CreateServerApiContextInput): Serv
 		dataDir: input.env.GORCHESTRA_DATA_DIR,
 		sessionSigningKey: input.env.GORCHESTRA_SESSION_JWT_SIGNING_KEY,
 		selectionSigningKey: input.env.GORCHESTRA_SELECTION_COOKIE_SIGNING_KEY,
-		secretEncryptionKey: parseSecretEncryptionKey(input.env.GORCHESTRA_SECRET_ENCRYPTION_KEY),
+		secretEncryptionKey: input.env.GORCHESTRA_SECRET_ENCRYPTION_KEY,
 		now: input.now ?? (() => new Date()),
 	}
 }

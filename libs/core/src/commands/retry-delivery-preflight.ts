@@ -1,7 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import type { CommandContext } from './types'
 import type { Action } from '../domain/action'
-import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
+import { idPipe, type AuditStamp, type Id } from '../domain/commons'
 import type { DeliveryWorkConfig } from '../domain/config'
 import type { Delivery } from '../domain/delivery'
 import type { ValidationEvidence } from '../domain/evidence'
@@ -48,9 +49,9 @@ export type Error =
 /**
  * Explicitly retries Delivery preflight for a Delivery whose Delivery Work State
  * is preflight-failed. Records a validate-preflight Action authorized by the
- * OperationContext; a passed retry supersedes the previous failure by ordering.
+ * CommandContext; a passed retry supersedes the previous failure by ordering.
  */
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createRetryDeliveryPreflightCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('retryDeliveryPreflight', retryDeliveryPreflightInputPipe, (input, context) =>
@@ -61,7 +62,7 @@ export function createRetryDeliveryPreflightCommand(runtime: CoreRuntime): Opera
 async function handleRetryDeliveryPreflight(
 	runtime: CoreRuntime,
 	input: Input,
-	context: OperationContext,
+	context: CommandContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const authorizedAction = prepareAuthorizedAction(runtime, context)
 	if (!authorizedAction.ok) return authorizedAction

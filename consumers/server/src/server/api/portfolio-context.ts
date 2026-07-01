@@ -6,6 +6,7 @@ import { throwCoreOperationError, throwNotAuthorized, throwSelectionRequired, th
 import { authenticateApiSession, getSessionToken, type ApiSessionAuthentication } from './session'
 import { createCoreServices } from '../core/services'
 import { openCorePortfolioStorage } from '../core/storage'
+import { parseSecretEncryptionKey } from '../modules/secret-protection'
 import { resolveSelectionAccess, type SelectionAccessResult } from '../modules/selection-access'
 import { selectionCookieName, type SelectedPortfolio } from '../modules/selection-cookie'
 import type { ServerSession } from '../modules/sessions'
@@ -241,7 +242,7 @@ if (import.meta.vitest) {
 				GORCHESTRA_DATA_DIR: dataDir,
 				GORCHESTRA_SESSION_JWT_SIGNING_KEY: sessionSigningKey,
 				GORCHESTRA_SELECTION_COOKIE_SIGNING_KEY: selectionSigningKey,
-				GORCHESTRA_SECRET_ENCRYPTION_KEY: secretEncryptionKey,
+				GORCHESTRA_SECRET_ENCRYPTION_KEY: parseSecretEncryptionKey(secretEncryptionKey),
 			},
 			now: () => now,
 		})

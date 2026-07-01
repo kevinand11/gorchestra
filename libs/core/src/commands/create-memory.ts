@@ -10,10 +10,11 @@ import type {
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
+import type { CommandContext } from './types'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
 import { auditStamp, createRecordValue, getRequired, nextId, withTransaction } from './utils/storage'
-import type { AuditStamp, Id, OperationContext } from '../domain/commons'
+import type { AuditStamp, Id } from '../domain/commons'
 
 export const inputPipe = v.object({ parentId: v.nullable(v.string()), title: memoryTitlePipe, body: memoryBodyPipe })
 export type Input = PipeOutput<typeof inputPipe>
@@ -27,7 +28,7 @@ export type Error =
 	| ResourceNotFoundError
 	| StorageOperationFailedError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 type CreateMemoryValues = {
 	memoryId: Id
@@ -39,7 +40,7 @@ export function createCreateMemoryCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('createMemory', inputPipe, (input, context) => handleCreateMemory(runtime, input, context))
 }
 
-function handleCreateMemory(runtime: CoreRuntime, input: Input, context: OperationContext): Promise<CoreResult<Result, Error>> {
+function handleCreateMemory(runtime: CoreRuntime, input: Input, context: CommandContext): Promise<CoreResult<Result, Error>> {
 	return withTransaction(runtime.services, async (storage) => {
 		const parent = await validateParent(storage, input.parentId)
 		if (!parent.ok) return parent
@@ -58,10 +59,7 @@ async function validateParent(
 	return parent.ok ? { ok: true, value: undefined } : parent
 }
 
-function createMemoryValues(
-	runtime: CoreRuntime,
-	context: OperationContext,
-): CoreResult<CreateMemoryValues, InvalidCoreServiceOutputError> {
+function createMemoryValues(runtime: CoreRuntime, context: CommandContext): CoreResult<CreateMemoryValues, InvalidCoreServiceOutputError> {
 	const memoryId = nextId(runtime.values, 'memory')
 	if (!memoryId.ok) return memoryId
 

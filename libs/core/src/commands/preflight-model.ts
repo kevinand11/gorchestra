@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { idPipe, type OperationContext } from '../domain/commons'
+import type { CommandContext } from './types'
+import { idPipe } from '../domain/commons'
 import type { ValidationEvidence } from '../domain/evidence'
 import type { Model } from '../domain/model'
 import type { ModelProvider, ModelProviderHeader } from '../domain/model-provider'
@@ -26,7 +27,7 @@ export type Result = ValidationEvidence
 
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 type ModelPreflightReadiness =
 	| { type: 'passed'; model: Model; modelProvider: ModelProvider; secrets: ResolvableSecretValue[] }

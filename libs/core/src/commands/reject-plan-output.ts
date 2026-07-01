@@ -1,7 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import type { CommandContext } from './types'
 import type { AgentRunEvent } from '../domain/agent-run'
-import { freeFormStringPipe, idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
+import { freeFormStringPipe, idPipe, type AuditStamp, type Id } from '../domain/commons'
 import type {
 	AgentRunPurposeMismatchError,
 	InvalidCoreServiceOutputError,
@@ -35,7 +36,7 @@ export type Error =
 	| ProposalTypeMismatchError
 	| AgentRunPurposeMismatchError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createRejectPlanOutputCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('rejectPlanOutput', rejectPlanOutputInputPipe, (input, context) =>
@@ -46,7 +47,7 @@ export function createRejectPlanOutputCommand(runtime: CoreRuntime): Operation {
 async function handleRejectPlanOutput(
 	runtime: CoreRuntime,
 	input: Input,
-	context: OperationContext,
+	context: CommandContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const stamp = auditStamp(runtime.values, context)
 	return stamp.ok ? withTransaction(runtime.services, (storage) => rejectPlanOutput(runtime, storage, input, stamp.value)) : stamp

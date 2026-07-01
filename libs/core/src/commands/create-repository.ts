@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
+import type { CommandContext } from './types'
+import { idPipe, type AuditStamp, type Id } from '../domain/commons'
 import { repositoryConfigPipe, type Repository } from '../domain/repository'
 import type {
 	DuplicateRepositoryTargetError,
@@ -38,7 +39,7 @@ export type Error =
 	| StorageOperationFailedError
 	| InvalidCoreServiceOutputError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreateRepositoryCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('createRepository', createRepositoryInputPipe, (input, context) =>
@@ -46,11 +47,7 @@ export function createCreateRepositoryCommand(runtime: CoreRuntime): Operation {
 	)
 }
 
-async function handleCreateRepository(
-	runtime: CoreRuntime,
-	input: Input,
-	context: OperationContext,
-): Promise<CoreResult<Repository, Error>> {
+async function handleCreateRepository(runtime: CoreRuntime, input: Input, context: CommandContext): Promise<CoreResult<Repository, Error>> {
 	const stampResult = auditStamp(runtime.values, context)
 	if (!stampResult.ok) return stampResult
 

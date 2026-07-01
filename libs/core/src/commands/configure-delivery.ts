@@ -1,7 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import type { CommandContext } from './types'
 import type { Action } from '../domain/action'
-import { idPipe, type AuditStamp, type OperationContext } from '../domain/commons'
+import { idPipe, type AuditStamp } from '../domain/commons'
 import { deliveryConfigPipe, type DeliveryConfigRecord } from '../domain/config'
 import type { Delivery, DeliveryWorkState } from '../domain/delivery'
 import type { DeliveryWorkStateMismatchError, InvalidInputError, InvariantViolationError } from '../errors'
@@ -34,7 +35,7 @@ export type Error =
 	| InvariantViolationError
 
 /** Requires Delivery Work State not closed. Does not clear preflight-failed. */
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createConfigureDeliveryCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('configureDelivery', configureDeliveryInputPipe, (input, context) =>
@@ -45,7 +46,7 @@ export function createConfigureDeliveryCommand(runtime: CoreRuntime): Operation 
 async function handleConfigureDelivery(
 	runtime: CoreRuntime,
 	input: Input,
-	context: OperationContext,
+	context: CommandContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const stampResult = auditStamp(runtime.values, context)
 	if (!stampResult.ok) return stampResult

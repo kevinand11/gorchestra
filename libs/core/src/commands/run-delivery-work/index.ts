@@ -1,16 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { Action } from '../../domain/action'
-import { idPipe, type OperationContext } from '../../domain/commons'
-import type { ValidationEvidence } from '../../domain/evidence'
-import type { InvalidInputError } from '../../errors'
-import type { CoreRuntime } from '../../runtime'
-import { withTransaction } from '../../storage/helpers'
-import type { Result as CoreResult } from '../../utils/types'
-import { buildCommandHandler } from '../utils/handler'
-import { handleDeliveryNeedsArtifactCreation } from './handlers/delivery-needs-artifact-creation'
 import { handleDeliveryNeedsReviewSurface } from './handlers/delivery-needs-review-surface'
-import { handleDeliverySlicesIncomplete } from './handlers/delivery-slices-incomplete'
 import {
 	applySchedulerPreflightChecks,
 	readSchedulerPreflight,
@@ -20,6 +10,17 @@ import {
 	type ProviderBackedSchedulerPreflightClaim,
 } from './preflight'
 import type { Error, Result } from './types'
+import type { Action } from '../../domain/action'
+import { idPipe } from '../../domain/commons'
+import type { ValidationEvidence } from '../../domain/evidence'
+import type { InvalidInputError } from '../../errors'
+import type { CoreRuntime } from '../../runtime'
+import { withTransaction } from '../../storage/helpers'
+import type { Result as CoreResult } from '../../utils/types'
+import type { CommandContext } from '../types'
+import { buildCommandHandler } from '../utils/handler'
+import { handleDeliveryNeedsArtifactCreation } from './handlers/delivery-needs-artifact-creation'
+import { handleDeliverySlicesIncomplete } from './handlers/delivery-slices-incomplete'
 
 export type { Error, Result, RunDeliveryWorkFailure, RunDeliveryWorkFailureOperation, RunDeliveryWorkNoObservedChangeTarget } from './types'
 
@@ -35,7 +36,7 @@ export type Input = PipeOutput<typeof runDeliveryWorkInputPipe>
  * recorded as failure Actions. Scheduling loops should skip non-schedulable
  * Deliveries and refetch Delivery/Slice state before each pass.
  */
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createRunDeliveryWorkCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('runDeliveryWork', runDeliveryWorkInputPipe, (input) => handleRunDeliveryWork(runtime, input))

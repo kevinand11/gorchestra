@@ -1,7 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import type { CommandContext } from './types'
 import type { AgentRun } from '../domain/agent-run'
-import { idPipe, type AuditStamp, type OperationContext } from '../domain/commons'
+import { idPipe, type AuditStamp } from '../domain/commons'
 import type { RevisionGate } from '../domain/revision'
 import type {
 	InvalidCoreServiceOutputError,
@@ -34,7 +35,7 @@ export type Error =
 	| InvariantViolationError
 	| RevisionGateClosedError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createCloseRevisionGateCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('closeRevisionGate', closeRevisionGateInputPipe, (input, context) =>

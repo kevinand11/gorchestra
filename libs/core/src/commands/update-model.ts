@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { idPipe, nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
+import type { CommandContext } from './types'
+import { idPipe, nonEmptyTrimmedStringPipe } from '../domain/commons'
 import type { Model } from '../domain/model'
 import type {
 	InvalidCoreServiceOutputError,
@@ -26,7 +27,7 @@ export type Error =
 	| StorageOperationFailedError
 	| ResourceNotFoundError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createUpdateModelCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('updateModel', updateModelInputPipe, (input, context) =>

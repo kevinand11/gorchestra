@@ -180,8 +180,8 @@ async function readModelProviderSecretReadiness(
 ): Promise<Result<ModelProviderSecretReadiness, ModelProviderSecretReadinessError>> {
 	try {
 		return await services.storage.session(() => readModelProviderSecretReadinessFromStorage(services.storage, modelProvider))
-	} catch {
-		return storageFailure({ type: 'transaction' })
+	} catch (error) {
+		return storageFailure({ type: 'transaction', cause: error })
 	}
 }
 
@@ -694,6 +694,7 @@ if (import.meta.vitest) {
 			storage: unusedStorageService(),
 			secrets: secretService(resolveSecretValues),
 			sandbox: { preflight: () => Promise.resolve({ ok: true }) },
+			dispatcher: noopDispatcher(),
 		}
 	}
 
@@ -705,6 +706,7 @@ if (import.meta.vitest) {
 			storage: secretStorageService(secrets),
 			secrets: secretService(resolveSecretValues),
 			sandbox: { preflight: () => Promise.resolve({ ok: true }) },
+			dispatcher: noopDispatcher(),
 		}
 	}
 
@@ -740,6 +742,13 @@ if (import.meta.vitest) {
 			preflight: () => Promise.resolve({ ok: true }),
 			resolveSecrets: () => Promise.resolve([]),
 			resolveSecretValues,
+		}
+	}
+
+	function noopDispatcher(): CoreServices['dispatcher'] {
+		return {
+			preflight: () => Promise.resolve({ ok: true }),
+			requestDispatch: () => Promise.resolve(),
 		}
 	}
 }

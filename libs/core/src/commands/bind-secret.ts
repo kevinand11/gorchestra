@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
+import type { CommandContext } from './types'
+import { idPipe, type AuditStamp, type Id } from '../domain/commons'
 import { envNamePipe, secretBindingScopePipe, type SecretBinding } from '../domain/secret'
 import type {
 	ArchivedSecretReferenceError,
@@ -42,13 +43,13 @@ export type Error =
 	| DuplicateSecretBindingError
 	| ArchivedSecretReferenceError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createBindSecretCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('bindSecret', bindSecretInputPipe, (input, context) => handleBindSecret(runtime, input, context))
 }
 
-async function handleBindSecret(runtime: CoreRuntime, input: Input, context: OperationContext): Promise<CoreResult<SecretBinding, Error>> {
+async function handleBindSecret(runtime: CoreRuntime, input: Input, context: CommandContext): Promise<CoreResult<SecretBinding, Error>> {
 	const stamp = auditStamp(runtime.values, context)
 	if (!stamp.ok) return stamp
 

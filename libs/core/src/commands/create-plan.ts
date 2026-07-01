@@ -1,7 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import type { CommandContext } from './types'
 import type { AgentRun } from '../domain/agent-run'
-import { idPipe, nonEmptyTrimmedStringPipe, type AuditStamp, type Id, type OperationContext, type RuntimeRecord } from '../domain/commons'
+import { idPipe, nonEmptyTrimmedStringPipe, type AuditStamp, type Id, type RuntimeRecord } from '../domain/commons'
 import type { PortfolioConfigRecord } from '../domain/config'
 import { planConfigPipe } from '../domain/config'
 import type { Plan, PlanWithPlanningAgentRun } from '../domain/plan'
@@ -38,7 +39,7 @@ export type Result = PlanWithPlanningAgentRun
 
 export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError | AgentRunModelUnresolvedError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreatePlanCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('createPlan', createPlanInputPipe, (input, context) => handleCreatePlan(runtime, input, context))
@@ -65,7 +66,7 @@ type PlanCreationFacts = {
 async function handleCreatePlan(
 	runtime: CoreRuntime,
 	input: Input,
-	context: OperationContext,
+	context: CommandContext,
 ): Promise<CoreResult<PlanWithPlanningAgentRun, Error>> {
 	const values = planCreationRuntimeValues(runtime, context)
 	return values.ok ? withTransaction(runtime.services, (storage) => writePlan(storage, input, values.value)) : values
@@ -73,7 +74,7 @@ async function handleCreatePlan(
 
 function planCreationRuntimeValues(
 	runtime: CoreRuntime,
-	context: OperationContext,
+	context: CommandContext,
 ): CoreResult<PlanCreationRuntimeValues, ConfigCommandStorageError> {
 	const stamp = auditStamp(runtime.values, context)
 	return stamp.ok ? planCreationRuntimeValuesAfterStamp(runtime, stamp.value) : stamp

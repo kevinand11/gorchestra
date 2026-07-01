@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { idPipe, type OperationContext } from '../domain/commons'
+import type { CommandContext } from './types'
+import { idPipe } from '../domain/commons'
 import { type ModelProvider } from '../domain/model-provider'
 import type {
 	InvalidCoreServiceOutputError,
@@ -28,7 +29,7 @@ export type Error =
 	| ResourceNotFoundError
 	| NotArchivedError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createUnarchiveModelProviderCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('unarchiveModelProvider', unarchiveModelProviderInputPipe, (input, context) =>

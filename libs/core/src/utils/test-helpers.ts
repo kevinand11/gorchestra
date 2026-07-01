@@ -1,10 +1,11 @@
 import { Repo } from 'equipped/orm'
 import { InMemoryAdapter } from 'equipped/orm/adapters/in-memory'
 
+import type { CommandContext } from '../commands/types'
 import type { Action } from '../domain/action'
 import type { AgentRun, AgentRunEvent } from '../domain/agent-run'
 import type { DeliveryArtifact, SliceArtifact } from '../domain/artifact'
-import type { AuditStamp, Id, OperationContext } from '../domain/commons'
+import type { AuditStamp, Id } from '../domain/commons'
 import type { PortfolioConfigRecord } from '../domain/config'
 import type { Delivery } from '../domain/delivery'
 import type { ExternalOperation, ExternalOperationEvidence, ValidationEvidence, ValidationOperation } from '../domain/evidence'
@@ -49,7 +50,7 @@ import {
 } from '../storage/schemas'
 
 export const stamp: AuditStamp = { origin: 'imported', at: '2026-06-01T00:00:00.000Z' }
-export const context: OperationContext = {
+export const context: CommandContext = {
 	actor: { type: 'local-user', id: 'actor-1' },
 	correlationId: 'correlation-1',
 }
@@ -155,7 +156,7 @@ export function neverCalledProviderBackedPreflightProviders(): CoreRuntime['prov
 	}
 }
 
-export function createTestCoreServices(): CoreServices & {
+export function createTestCoreServices(overrides: Partial<Pick<CoreServices, 'dispatcher'>> = {}): CoreServices & {
 	tx: TestStorageTransaction
 	values: CoreRuntimeValues
 	transactionCalls: () => number
@@ -171,10 +172,16 @@ export function createTestCoreServices(): CoreServices & {
 			resolveSecretValues: () => Promise.resolve({}),
 		},
 		sandbox: { preflight: () => Promise.resolve({ ok: true }) },
+		dispatcher: overrides.dispatcher ?? noopDispatcher,
 		values,
 		tx: storage.tx,
 		transactionCalls: () => storage.transactionCalls,
 	}
+}
+
+const noopDispatcher: CoreServices['dispatcher'] = {
+	preflight: () => Promise.resolve({ ok: true }),
+	requestDispatch: () => Promise.resolve(),
 }
 
 export function createTestCoreStorage(): CoreStorage {

@@ -25,12 +25,24 @@ A lifecycle record containing the Audit Stamp that archived a record and, when l
 _Avoid_: archived flag, deleted flag
 
 **Core Input**:
-A value a Consumer passes through a public core API boundary, including command inputs, query arguments, Snapshot operation inputs, Operation Context values, and Open Core options.
+A value a Consumer passes through a public core API boundary, including command inputs, query arguments, Snapshot operation inputs, Command Context values, Work Context values, and Open Core options.
 _Avoid_: payload, request body, port result
 
 **Core Orchestration API**:
 The public Core command/query surface for operations that read or mutate Core-owned Portfolio state. Consumers use Core queries for standalone reads of Core-owned Portfolio state, and mutations that affect Core invariants or lifecycle facts go through Core commands.
 _Avoid_: UI API, admin API, storage API
+
+**Command Context**:
+A Core command boundary value supplied by a Consumer for consumer-authorized Core commands. A Command Context contains the Local Actor Ref and optional opaque correlation id Core uses when it records Audit Stamps for user-authorized operations.
+_Avoid_: Operation Context, request context
+
+**Work Context**:
+A Core Work Operation boundary value supplied by a Consumer runtime when invoking runtime-owned Core Work Operations. Work Context is not user authorization and does not create Audit Stamps for runtime-generated facts.
+_Avoid_: Runtime Context, Runtime Command Context, Operation Context, user context
+
+**Core Work Operation**:
+A runtime-invoked Core write operation that advances already-recorded Core work without representing a consumer-authorized user command. Core Work Operations are invoked by Consumer runtime components such as dispatchers or delivery processors.
+_Avoid_: Command, query, scheduler job
 
 **Core Service**:
 A consumer-provided deployment boundary used by Core for deployment mechanics such as storage, Secret-at-rest protection and plaintext resolution, sandbox isolation, logging, or event publishing. Core Services do not own Portfolio orchestration, Source Control Provider, Model Provider Protocol, Agent Run behavior, portable Snapshot encryption, lifecycle time semantics, or Core identifier generation.
@@ -223,6 +235,10 @@ _Avoid_: Mission, Turn, AgentAttempt, Agent Run Session, Agent Run Checkpoint, a
 **Agent Run Event**:
 An ordered event in an Agent Run transcript. Agent Run Events record input messages, turn context boundaries, model and tool call boundaries with final or aborted content, interrupt requests, proposed outputs, and compaction summaries so an Agent Run can be reconstructed without a separate session model. Live model or tool update deltas may stream to subscribers without becoming durable Agent Run Events. Aborted model and tool call content may contribute explicitly marked partial context to later model calls.
 _Avoid_: Session Entry, transcript row, checkpoint
+
+**Agent Run Dispatch Request**:
+A Core-originated request for a Consumer to arrange runtime execution for a runnable Agent Run. An Agent Run Dispatch Request records that execution should be arranged; it is not proof that execution has started or completed.
+_Avoid_: Scheduler job, background job, runtime event
 
 **Interactive Agent Run**:
 An Agent Run that remains open for human steering and may receive new human messages over time. Planning and Revision Planning Agent Runs are Interactive Agent Runs in v1. A Planning Agent Run's completed lifecycle field remains unset while its Plan exists; a Revision Planning Agent Run is completed when its Revision Gate is closed or consumed. Interactive Agent Runs do not have a separate close lifecycle in v1; whether new input is allowed is governed by their target domain object. Human-reviewable proposal events belong only to Interactive Agent Runs.

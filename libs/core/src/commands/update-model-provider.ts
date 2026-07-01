@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { idPipe, nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
+import type { CommandContext } from './types'
+import { idPipe, nonEmptyTrimmedStringPipe } from '../domain/commons'
 import { modelProviderAuthPipe, modelProviderBaseUrlPipe, modelProviderHeadersPipe, type ModelProvider } from '../domain/model-provider'
 import type {
 	ArchivedSecretReferenceError,
@@ -34,7 +35,7 @@ export type Error =
 	| ResourceNotFoundError
 	| ArchivedSecretReferenceError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createUpdateModelProviderCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('updateModelProvider', updateModelProviderInputPipe, (input, context) => {

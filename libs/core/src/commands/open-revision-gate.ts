@@ -1,7 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import type { CommandContext } from './types'
 import type { AgentRun } from '../domain/agent-run'
-import { idPipe, type AuditStamp, type Id, type OperationContext, type RuntimeRecord } from '../domain/commons'
+import { idPipe, type AuditStamp, type Id, type RuntimeRecord } from '../domain/commons'
 import type { PortfolioConfigRecord } from '../domain/config'
 import type { Delivery } from '../domain/delivery'
 import type { Project } from '../domain/project'
@@ -44,7 +45,7 @@ export type Error =
 	| AgentRunModelUnresolvedError
 	| ReviewSurfaceAlreadyMergedError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createOpenRevisionGateCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('openRevisionGate', openRevisionGateInputPipe, (input, context) =>
@@ -68,14 +69,14 @@ type OpenRevisionGateFacts = {
 	runtimeValues: CoreRuntimeValues
 }
 
-async function handleOpenRevisionGate(runtime: CoreRuntime, input: Input, context: OperationContext): Promise<CoreResult<Result, Error>> {
+async function handleOpenRevisionGate(runtime: CoreRuntime, input: Input, context: CommandContext): Promise<CoreResult<Result, Error>> {
 	const values = openRevisionGateRuntimeValues(runtime, context)
 	return values.ok ? withTransaction(runtime.services, (storage) => openRevisionGate(storage, input, values.value)) : values
 }
 
 function openRevisionGateRuntimeValues(
 	runtime: CoreRuntime,
-	context: OperationContext,
+	context: CommandContext,
 ): CoreResult<OpenRevisionGateRuntimeValues, ConfigCommandStorageError> {
 	const stamp = auditStamp(runtime.values, context)
 	return stamp.ok ? openRevisionGateRuntimeValuesAfterStamp(runtime, stamp.value) : stamp

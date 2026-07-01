@@ -1,5 +1,5 @@
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './errors'
-import type { ArchivePeriod, AuditStamp, Id, OperationContext } from '../../domain/commons'
+import type { ArchivePeriod, AuditStamp, Id } from '../../domain/commons'
 import type {
 	DeliveryConfig,
 	DeliveryConfigRecord,
@@ -51,6 +51,7 @@ import {
 import type { CoreIdStorageRecord, CoreStorageRecord } from '../../storage/schemas'
 import { auditStamp, nextId, runtimeRecord } from '../../utils/runtime-values'
 import type { Result } from '../../utils/types'
+import type { CommandContext } from '../types'
 
 export {
 	auditStamp,
@@ -72,7 +73,7 @@ export type { StorageBoundaryError }
 
 export type CommandBoundary<TInput> = {
 	input: TInput
-	context: OperationContext
+	context: CommandContext
 }
 
 export async function createRecordValue<Resource extends CoreIdResource>(
@@ -96,7 +97,7 @@ export async function updateRecordValue<Resource extends CoreIdResource>(
 
 export function withAuditStampTransaction<TValue, TError>(
 	runtime: CoreRuntime,
-	context: OperationContext,
+	context: CommandContext,
 	run: (storage: CoreStorage, stamp: AuditStamp) => Promise<Result<TValue, TError>>,
 ): Promise<Result<TValue, TError | InvalidCoreServiceOutputError | StorageOperationFailedError>> {
 	const stamp = auditStamp(runtime.values, context)
@@ -107,7 +108,7 @@ export function withAuditStampTransaction<TValue, TError>(
 
 export function updateStoredRecordWithAudit<Resource extends CoreIdResource>(
 	runtime: CoreRuntime,
-	context: OperationContext,
+	context: CommandContext,
 	resource: Resource,
 	id: Id,
 	update: (record: CoreIdStorageRecord<Resource>, stamp: AuditStamp) => CoreIdStorageRecord<Resource>,
@@ -128,7 +129,7 @@ export function updateStoredRecordWithAudit<Resource extends CoreIdResource>(
 
 export function prepareAuthorizedAction(
 	runtime: CoreRuntime,
-	context: OperationContext,
+	context: CommandContext,
 ): Result<{ stamp: AuditStamp; actionId: Id }, InvalidCoreServiceOutputError> {
 	const stampResult = auditStamp(runtime.values, context)
 	if (!stampResult.ok) return stampResult
@@ -320,7 +321,7 @@ export function isArchived(archivePeriods: ArchivePeriod[]): boolean {
 
 export function archiveStoredRecordWithAudit<Resource extends ArchivableCoreResource>(
 	runtime: CoreRuntime,
-	context: OperationContext,
+	context: CommandContext,
 	resource: Resource,
 	id: Id,
 ): Promise<
@@ -358,7 +359,7 @@ export function archiveStoredRecordWithAudit<Resource extends ArchivableCoreReso
 
 export function unarchiveStoredRecordWithAudit<Resource extends ArchivableCoreResource>(
 	runtime: CoreRuntime,
-	context: OperationContext,
+	context: CommandContext,
 	resource: Resource,
 	id: Id,
 ): Promise<

@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { nonEmptyTrimmedStringPipe, type OperationContext } from '../domain/commons'
+import type { CommandContext } from './types'
+import { nonEmptyTrimmedStringPipe } from '../domain/commons'
 import { projectConfigPipe } from '../domain/config'
 import { projectSourcePipe, type Project } from '../domain/project'
 import type { InvalidInputError } from '../errors'
@@ -29,7 +30,7 @@ export type Result = Project
 
 export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
 
-export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
+export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreateProjectCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('createProject', createProjectInputPipe, (input, context) => {
