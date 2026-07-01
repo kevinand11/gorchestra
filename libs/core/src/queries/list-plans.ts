@@ -172,7 +172,7 @@ if (import.meta.vitest) {
 	function planningRun(id: string, planId: string) {
 		return {
 			id,
-			agent: { type: 'model' as const, modelId: 'model-1' },
+			agent: { type: 'model' as const },
 			purpose: { type: 'planning' as const, planId },
 			started: { at: stamp.at },
 			completed: null,

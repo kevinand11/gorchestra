@@ -164,6 +164,6 @@ if (import.meta.vitest) {
 	}
 
 	function modelAgent() {
-		return { type: 'model' as const, modelId: 'model-1' }
+		return { type: 'model' as const }
 	}
 }

@@ -478,7 +478,7 @@ if (import.meta.vitest) {
 	) {
 		tx.agentRuns.records.set(agentRunId, {
 			id: agentRunId,
-			agent: { type: 'model', modelId: 'model-1' },
+			agent: { type: 'model' },
 			purpose: {
 				type: 'execution',
 				deliveryId: 'delivery-1',

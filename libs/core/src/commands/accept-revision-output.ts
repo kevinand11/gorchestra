@@ -17,6 +17,7 @@ import type {
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
+import { completeSingleAgentRunByPurpose } from '../utils/agent-runs'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
 import { auditStamp, createRecordValue, getRequired, listRecords, nextId, updateRecordValue, withTransaction } from './utils/storage'
@@ -239,7 +240,14 @@ async function writeAcceptedRevision(
 	const revisionGate = await updateRecordValue('revision-gate', storage, gate.id, {
 		closed: { type: 'consumed-by-revision', consumed: stamp, revisionId: created.value.id },
 	})
-	return revisionGate.ok ? { ok: true, value: { revision: created.value, revisionGate: revisionGate.value } } : revisionGate
+	if (!revisionGate.ok) return revisionGate
+
+	const agentRun = await completeSingleAgentRunByPurpose(
+		storage,
+		{ type: 'revision-planning', revisionGateId: gate.id },
+		{ at: stamp.at },
+	)
+	return agentRun.ok ? { ok: true, value: { revision: created.value, revisionGate: revisionGate.value } } : agentRun
 }
 
 function revisionScopeKey(scope: RevisionScope): string {
@@ -322,6 +330,7 @@ if (import.meta.vitest) {
 			expect(result).toEqual({ ok: true, value: { revision: expectedRevision, revisionGate: expectedGate } })
 			expect(options.tx.revisions.records.get('revision-1')).toEqual(expectedRevision)
 			expect(options.tx.revisionGates.records.get('revision-gate-1')).toEqual(expectedGate)
+			expect(options.tx.agentRuns.records.get('agent-run-1')?.completed).toEqual({ at: localStamp().at })
 			expect(options.tx.actions.records.size).toBe(0)
 		})
 
@@ -453,6 +462,7 @@ if (import.meta.vitest) {
 			opened: stamp,
 			closed: null,
 		})
+		seedRevisionPlanningAgentRun(options.tx)
 
 		return options
 	}
@@ -475,8 +485,19 @@ if (import.meta.vitest) {
 			opened: stamp,
 			closed: null,
 		})
+		seedRevisionPlanningAgentRun(options.tx)
 
 		return options
+	}
+
+	function seedRevisionPlanningAgentRun(tx: ReturnType<typeof createTestCoreServices>['tx']) {
+		tx.agentRuns.records.set('agent-run-1', {
+			id: 'agent-run-1',
+			agent: { type: 'model' },
+			purpose: { type: 'revision-planning', revisionGateId: 'revision-gate-1' },
+			started: { at: '2026-06-10T12:00:00.000Z' },
+			completed: null,
+		})
 	}
 
 	function seedDeliveryArtifact(tx: ReturnType<typeof createTestCoreServices>['tx']) {

@@ -5,7 +5,7 @@ import { modelProviderProtocolPipe } from './model-provider'
 import { planOutputProposalPipe, revisionOutputProposalPipe } from './proposals'
 
 export const agentPipe = v.discriminate((value) => value.type, {
-	model: v.object({ type: v.eq('model'), modelId: idPipe }),
+	model: v.object({ type: v.eq('model') }),
 })
 export type Agent = PipeOutput<typeof agentPipe>
 export type ModelAgent = Extract<Agent, { type: 'model' }>

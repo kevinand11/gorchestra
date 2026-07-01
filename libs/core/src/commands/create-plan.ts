@@ -1,14 +1,16 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { AgentRun } from '../domain/agent-run'
-import { idPipe, nonEmptyTrimmedStringPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
+import { idPipe, nonEmptyTrimmedStringPipe, type AuditStamp, type Id, type OperationContext, type RuntimeRecord } from '../domain/commons'
 import type { PortfolioConfigRecord } from '../domain/config'
 import { planConfigPipe } from '../domain/config'
-import type { Plan, PlanWithPlanningAgentRun, PlanningAgentRun } from '../domain/plan'
+import type { Plan, PlanWithPlanningAgentRun } from '../domain/plan'
 import type { Project } from '../domain/project'
 import type { AgentRunModelUnresolvedError, InvalidInputError } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
+import { createModelAgentRunWithInitialModel } from '../utils/agent-run-events'
+import type { CoreRuntimeValues } from '../utils/runtime-values'
 import type { Result as CoreResult } from '../utils/types'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { buildCommandHandler } from './utils/handler'
@@ -45,12 +47,16 @@ type PlanCreationRuntimeValues = {
 	stamp: AuditStamp
 	planId: Id
 	agentRunId: Id
-	started: AgentRun['started']
+	started: RuntimeRecord
+	runtimeValues: CoreRuntimeValues
 }
 
 type PlanCreationFacts = {
 	plan: Plan
-	agentRun: PlanningAgentRun
+	agentRunId: Id
+	started: RuntimeRecord
+	modelId: Id
+	runtimeValues: CoreRuntimeValues
 }
 
 async function handleCreatePlan(
@@ -94,7 +100,7 @@ function planCreationRuntimeValuesAfterAgentRunId(
 	agentRunId: Id,
 ): CoreResult<PlanCreationRuntimeValues, ConfigCommandStorageError> {
 	const started = runtimeRecord(runtime.values)
-	return started.ok ? { ok: true, value: { stamp, planId, agentRunId, started: started.value } } : started
+	return started.ok ? { ok: true, value: { stamp, planId, agentRunId, started: started.value, runtimeValues: runtime.values } } : started
 }
 
 async function writePlan(
@@ -145,35 +151,35 @@ function planCreationFactsValue(
 	config: ReturnType<typeof normalizePlanConfigRecord>,
 	modelId: Id,
 ): PlanCreationFacts {
-	const plan: Plan = { id: values.planId, projectId: project.id, title: input.title, config, created: values.stamp }
-	return { plan, agentRun: planningAgentRun(values, modelId) }
-}
-
-function planningAgentRun(values: PlanCreationRuntimeValues, modelId: Id): PlanningAgentRun {
 	return {
-		id: values.agentRunId,
-		agent: { type: 'model', modelId },
-		purpose: { type: 'planning', planId: values.planId },
+		plan: { id: values.planId, projectId: project.id, title: input.title, config, created: values.stamp },
+		agentRunId: values.agentRunId,
 		started: values.started,
-		completed: null,
+		modelId,
+		runtimeValues: values.runtimeValues,
 	}
 }
 
 async function writePlanCreationFacts(
 	storage: CoreStorage,
 	facts: PlanCreationFacts,
-): Promise<CoreResult<PlanWithPlanningAgentRun, ConfigCommandStorageError>> {
+): Promise<CoreResult<PlanWithPlanningAgentRun, Exclude<Error, InvalidInputError>>> {
 	const storedPlan = await createRecordValue('plan', storage, facts.plan)
-	return storedPlan.ok ? writePlanningAgentRun(storage, storedPlan.value, facts.agentRun) : storedPlan
+	return storedPlan.ok ? writePlanningAgentRun(storage, storedPlan.value, facts) : storedPlan
 }
 
 async function writePlanningAgentRun(
 	storage: CoreStorage,
 	plan: Plan,
-	agentRun: PlanningAgentRun,
-): Promise<CoreResult<PlanWithPlanningAgentRun, ConfigCommandStorageError>> {
-	const storedAgentRun = await createRecordValue('agent-run', storage, agentRun)
-	return storedAgentRun.ok ? { ok: true, value: { ...plan, agentRun } } : storedAgentRun
+	facts: PlanCreationFacts,
+): Promise<CoreResult<PlanWithPlanningAgentRun, Exclude<Error, InvalidInputError>>> {
+	const storedAgentRun = await createModelAgentRunWithInitialModel({ values: facts.runtimeValues }, storage, {
+		agentRunId: facts.agentRunId,
+		purpose: { type: 'planning', planId: plan.id },
+		started: facts.started,
+		modelId: facts.modelId,
+	})
+	return storedAgentRun.ok ? { ok: true, value: { ...plan, agentRun: storedAgentRun.value } } : storedAgentRun
 }
 
 async function resolvePlanningModelId(
@@ -231,7 +237,7 @@ if (import.meta.vitest) {
 		await import('../utils/test-helpers')
 
 	describe('createPlan command', () => {
-		it('creates a Plan and Planning Agent Run for existing Projects without Repository setup', async () => {
+		it('creates a Plan and Planning Agent Run with initial model selection for existing Projects without Repository setup', async () => {
 			const options = createTestCoreServices()
 			seedProject(options.tx, 'project-1')
 			seedSelectableModel(options.tx, 'model-1')
@@ -246,6 +252,13 @@ if (import.meta.vitest) {
 			expect(result).toEqual({ ok: true, value: { ...expectedPlan(), agentRun: expectedPlanningAgentRun() } })
 			expect(options.tx.plans.records.get('plan-1')).toEqual(expectedPlan())
 			expect(options.tx.agentRuns.records.get('agent-run-1')).toEqual(expectedPlanningAgentRun())
+			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toEqual({
+				type: 'agent-run-model-selected',
+				modelId: 'model-1',
+				modelProviderId: 'model-1-provider',
+				protocol: 'anthropic-messages',
+				authorized: null,
+			})
 		})
 
 		it('resolves the Planning Model from Plan, Project, Portfolio Planning, then Portfolio default config', async () => {
@@ -275,7 +288,8 @@ if (import.meta.vitest) {
 				context,
 			)
 
-			expect(result).toMatchObject({ ok: true, value: { agentRun: { agent: { modelId: 'model-plan' } } } })
+			expect(result).toMatchObject({ ok: true, value: { agentRun: { agent: { type: 'model' } } } })
+			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toMatchObject({ modelId: 'model-plan' })
 		})
 
 		it('rejects Plans when no Planning Model can be resolved', async () => {
@@ -307,7 +321,7 @@ if (import.meta.vitest) {
 	function expectedPlanningAgentRun(): AgentRun {
 		return {
 			id: 'agent-run-1',
-			agent: { type: 'model', modelId: 'model-1' },
+			agent: { type: 'model' },
 			purpose: { type: 'planning', planId: 'plan-1' },
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,

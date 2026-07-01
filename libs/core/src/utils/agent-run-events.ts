@@ -1,16 +1,95 @@
-import type { AgentRunEvent, AgentRunEventBody } from '../domain/agent-run'
+import type { AgentRun, AgentRunEvent, AgentRunEventBody, AgentRunPurpose } from '../domain/agent-run'
 import type { Id, RuntimeRecord } from '../domain/commons'
+import type { Model } from '../domain/model'
+import type { ModelProvider } from '../domain/model-provider'
 import type { InvalidCoreServiceOutputError, InvariantViolationError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreStorage } from '../services'
 import { nextId, runtimeRecord, type CoreRuntimeValues } from './runtime-values'
 import type { Result } from './types'
 import { createRecord, getRequired, listRecords } from '../storage/helpers'
 
+type ModelAgentRunWithPurpose<TPurpose extends AgentRunPurpose> = Omit<AgentRun, 'agent' | 'purpose'> & {
+	agent: { type: 'model' }
+	purpose: TPurpose
+}
+
 export type AppendAgentRunEventError =
 	| InvalidCoreServiceOutputError
 	| StorageOperationFailedError
 	| ResourceNotFoundError
 	| InvariantViolationError
+
+export type CreateModelAgentRunError = AppendAgentRunEventError
+
+export async function createModelAgentRunWithInitialModel<TPurpose extends AgentRunPurpose>(
+	values: { values: CoreRuntimeValues },
+	storage: CoreStorage,
+	input: {
+		agentRunId: Id
+		purpose: TPurpose
+		started: RuntimeRecord
+		modelId: Id
+	},
+): Promise<Result<ModelAgentRunWithPurpose<TPurpose>, CreateModelAgentRunError>> {
+	const modelSelection = await getModelSelection(storage, input.modelId)
+	return modelSelection.ok ? createModelAgentRunWithSelection(values, storage, input, modelSelection.value) : modelSelection
+}
+
+interface ModelSelection {
+	model: Model
+	provider: ModelProvider
+}
+
+async function getModelSelection(storage: CoreStorage, modelId: Id): Promise<Result<ModelSelection, CreateModelAgentRunError>> {
+	const model = await getRequired('model', storage, modelId)
+	return model.ok ? getModelSelectionProvider(storage, model.value) : model
+}
+
+async function getModelSelectionProvider(storage: CoreStorage, model: Model): Promise<Result<ModelSelection, CreateModelAgentRunError>> {
+	const provider = await getRequired('model-provider', storage, model.providerId)
+	return provider.ok ? { ok: true, value: { model, provider: provider.value } } : provider
+}
+
+async function createModelAgentRunWithSelection<TPurpose extends AgentRunPurpose>(
+	values: { values: CoreRuntimeValues },
+	storage: CoreStorage,
+	input: { agentRunId: Id; purpose: TPurpose; started: RuntimeRecord },
+	selection: ModelSelection,
+): Promise<Result<ModelAgentRunWithPurpose<TPurpose>, CreateModelAgentRunError>> {
+	const agentRun = modelAgentRun(input)
+	const stored = await createRecord('agent-run', storage, agentRun)
+	return stored.ok ? appendInitialModelSelection(values, storage, agentRun, selection) : stored
+}
+
+async function appendInitialModelSelection<TPurpose extends AgentRunPurpose>(
+	values: { values: CoreRuntimeValues },
+	storage: CoreStorage,
+	agentRun: ModelAgentRunWithPurpose<TPurpose>,
+	selection: ModelSelection,
+): Promise<Result<ModelAgentRunWithPurpose<TPurpose>, CreateModelAgentRunError>> {
+	const event = await appendAgentRunEvent(values, storage, agentRun.id, {
+		type: 'agent-run-model-selected',
+		modelId: selection.model.id,
+		modelProviderId: selection.provider.id,
+		protocol: selection.provider.protocol,
+		authorized: null,
+	})
+	return event.ok ? { ok: true, value: agentRun } : event
+}
+
+function modelAgentRun<TPurpose extends AgentRunPurpose>(input: {
+	agentRunId: Id
+	purpose: TPurpose
+	started: RuntimeRecord
+}): ModelAgentRunWithPurpose<TPurpose> {
+	return {
+		id: input.agentRunId,
+		agent: { type: 'model' },
+		purpose: input.purpose,
+		started: input.started,
+		completed: null,
+	}
+}
 
 export async function appendAgentRunEvent(
 	values: { values: CoreRuntimeValues },
@@ -79,12 +158,63 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { createTestCoreServices } = await import('./test-helpers')
 
+	describe('createModelAgentRunWithInitialModel', () => {
+		it('creates a Model Agent Run with an initial model selection event', async () => {
+			const options = createTestCoreServices()
+			options.tx.modelProviders.records.set('model-provider-1', {
+				id: 'model-provider-1',
+				name: 'Provider',
+				protocol: 'anthropic-messages',
+				baseUrl: 'https://api.example.com',
+				auth: null,
+				headers: [],
+				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
+				updated: null,
+				archivePeriods: [],
+			})
+			options.tx.models.records.set('model-1', {
+				id: 'model-1',
+				providerId: 'model-provider-1',
+				name: 'Model',
+				providerModelId: 'provider-model',
+				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
+				updated: null,
+				archivePeriods: [],
+			})
+
+			const result = await createModelAgentRunWithInitialModel(options, options.storage, {
+				agentRunId: 'agent-run-1',
+				purpose: { type: 'planning', planId: 'plan-1' },
+				started: { at: '2026-06-10T12:00:00.000Z' },
+				modelId: 'model-1',
+			})
+
+			expect(result).toEqual({
+				ok: true,
+				value: {
+					id: 'agent-run-1',
+					agent: { type: 'model' },
+					purpose: { type: 'planning', planId: 'plan-1' },
+					started: { at: '2026-06-10T12:00:00.000Z' },
+					completed: null,
+				},
+			})
+			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toEqual({
+				type: 'agent-run-model-selected',
+				modelId: 'model-1',
+				modelProviderId: 'model-provider-1',
+				protocol: 'anthropic-messages',
+				authorized: null,
+			})
+		})
+	})
+
 	describe('appendAgentRunEvent', () => {
 		it('appends Agent Run Events with monotonic per-AgentRun sequence', async () => {
 			const options = createTestCoreServices()
 			options.tx.agentRuns.records.set('agent-run-1', {
 				id: 'agent-run-1',
-				agent: { type: 'model', modelId: 'model-1' },
+				agent: { type: 'model' },
 				purpose: { type: 'planning', planId: 'plan-1' },
 				started: { at: '2026-06-10T12:00:00.000Z' },
 				completed: null,

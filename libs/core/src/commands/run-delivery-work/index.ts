@@ -622,7 +622,7 @@ if (import.meta.vitest) {
 	function seedCompletedSliceExecution(options: ReturnType<typeof providerPreflightFixture>, sliceId: string) {
 		options.tx.agentRuns.records.set('agent-run-completed', {
 			id: 'agent-run-completed',
-			agent: { type: 'model', modelId: 'model-1' },
+			agent: { type: 'model' },
 			purpose: { type: 'execution', deliveryId: 'delivery-1', sliceId, mode: { type: 'initial' } },
 			started: { at: '2026-06-10T11:30:00.000Z' },
 			completed: { at: '2026-06-10T11:40:00.000Z' },

@@ -426,7 +426,7 @@ if (import.meta.vitest) {
 	function seedCompletedSliceExecution(tx: ReturnType<typeof executableDeliveryFixture>['tx'], sliceId: string) {
 		tx.agentRuns.records.set(`${sliceId}-agent-run`, {
 			id: `${sliceId}-agent-run`,
-			agent: { type: 'model', modelId: 'model-1' },
+			agent: { type: 'model' },
 			purpose: { type: 'execution', deliveryId: 'delivery-1', sliceId, mode: { type: 'initial' } },
 			started: { at: '2026-06-10T11:30:00.000Z' },
 			completed: { at: '2026-06-10T11:40:00.000Z' },

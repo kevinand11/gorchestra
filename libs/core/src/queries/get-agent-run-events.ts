@@ -109,7 +109,7 @@ if (import.meta.vitest) {
 	function seedAgentRun(options: ReturnType<typeof createTestCoreServices>) {
 		options.tx.agentRuns.records.set('agent-run-1', {
 			id: 'agent-run-1',
-			agent: { type: 'model', modelId: 'model-1' },
+			agent: { type: 'model' },
 			purpose: { type: 'planning', planId: 'plan-1' },
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
