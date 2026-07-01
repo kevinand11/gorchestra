@@ -1,5 +1,6 @@
 export type { Core } from './create-core-queries'
 
+export * as GetAgentRunEvents from './get-agent-run-events'
 export * as GetDelivery from './get-delivery'
 export * as GetMemory from './get-memory'
 export * as GetPlan from './get-plan'

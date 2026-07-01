@@ -142,8 +142,15 @@ type ListRecordsWhere<Resource extends CoreIdResource> = (
 	fields: SchemaFields<CoreIdResourceSchema<Resource>>,
 ) => FilterGroup
 
+export interface ListRecordsOrderBy<Resource extends CoreIdResource> {
+	field: keyof CoreIdStorageRecord<Resource> & string
+	direction?: 'asc' | 'desc'
+}
+
 export interface ListRecordsOptions<Resource extends CoreIdResource> {
 	where?: ListRecordsWhere<Resource>
+	orderBy?: ListRecordsOrderBy<Resource>[]
+	limit?: number
 }
 
 export async function listRecords<Resource extends CoreIdResource>(
@@ -153,17 +160,38 @@ export async function listRecords<Resource extends CoreIdResource>(
 ): Promise<Result<Array<CoreIdStorageRecord<Resource>>, StorageBoundaryError>> {
 	try {
 		const schema = coreIdResourceSchemas[resource]
-		const records = await (options.where === undefined
-			? storage.on(schema).all().find()
-			: storage
-					.on(schema)
-					.all()
-					.where((filter) => options.where?.(filter, schema.fields as SchemaFields<CoreIdResourceSchema<Resource>>) ?? filter)
-					.find())
+		const records = await listRecordsQuery(storage, schema, options).find()
 		return { ok: true, value: records as unknown as Array<CoreIdStorageRecord<Resource>> }
 	} catch (error) {
 		return readStorageError(resource, { type: 'list', resource }, error)
 	}
+}
+
+function listRecordsQuery<Resource extends CoreIdResource>(
+	storage: CoreStorage,
+	schema: CoreIdResourceSchema<Resource>,
+	options: ListRecordsOptions<Resource>,
+) {
+	const query =
+		options.where === undefined
+			? storage.on(schema).all()
+			: storage
+					.on(schema)
+					.all()
+					.where((filter) => options.where?.(filter, schema.fields as SchemaFields<CoreIdResourceSchema<Resource>>) ?? filter)
+
+	return applyListRecordsLimit(applyListRecordsOrdering(query, options.orderBy ?? []), options.limit)
+}
+
+function applyListRecordsOrdering<
+	Resource extends CoreIdResource,
+	TQuery extends { orderBy(field: string, direction?: 'asc' | 'desc'): TQuery },
+>(query: TQuery, orderBy: readonly ListRecordsOrderBy<Resource>[]): TQuery {
+	return orderBy.reduce((ordered, order) => ordered.orderBy(order.field, order.direction), query)
+}
+
+function applyListRecordsLimit<TQuery extends { limit(limit: number): TQuery }>(query: TQuery, limit: number | undefined): TQuery {
+	return limit === undefined ? query : query.limit(limit)
 }
 
 export async function createRecord<Resource extends CoreResource>(
@@ -272,5 +300,37 @@ if (import.meta.vitest) {
 
 			expect(result).toEqual({ ok: true, value: [matching] })
 		})
+
+		it('applies ordering and limits to storage adapter reads', async () => {
+			const options = createTestCoreServices()
+			const first = agentRunEvent('agent-run-event-1', 1)
+			const second = agentRunEvent('agent-run-event-2', 2)
+			const third = agentRunEvent('agent-run-event-3', 3)
+			options.tx.agentRunEvents.records.set(third.id, third)
+			options.tx.agentRunEvents.records.set(first.id, first)
+			options.tx.agentRunEvents.records.set(second.id, second)
+
+			const result = await listRecords('agent-run-event', options.storage, {
+				where: (filter, fields) => filter.eq(fields.agentRunId, 'agent-run-1'),
+				orderBy: [{ field: 'sequence', direction: 'asc' }],
+				limit: 2,
+			})
+
+			expect(result).toEqual({ ok: true, value: [first, second] })
+		})
 	})
+
+	function agentRunEvent(id: string, sequence: number) {
+		return {
+			id,
+			agentRunId: 'agent-run-1',
+			sequence,
+			occurred: { at: '2026-06-10T12:00:00.000Z' },
+			body: {
+				type: 'input-message' as const,
+				source: { type: 'runtime' as const },
+				content: [{ type: 'text' as const, text: `event ${sequence}` }],
+			},
+		}
+	}
 }

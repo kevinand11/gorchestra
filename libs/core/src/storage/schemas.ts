@@ -4,7 +4,7 @@ import { Schema, type AnySchema } from 'equipped/orm'
 import { v } from 'valleyed'
 
 import { actionResultPipe, type Action } from '../domain/action'
-import { agentPipe, agentRunPurposePipe, type AgentRun } from '../domain/agent-run'
+import { agentPipe, agentRunEventBodyPipe, agentRunPurposePipe, type AgentRun, type AgentRunEvent } from '../domain/agent-run'
 import { deliveryArtifactConfigPipe, sliceArtifactConfigPipe, type DeliveryArtifact, type SliceArtifact } from '../domain/artifact'
 import {
 	archivePeriodPipe,
@@ -171,6 +171,14 @@ export const agentRunSchema = Schema.from('agent_runs')
 	.field('completed', v.nullable(runtimeRecordPipe))
 	.build()
 
+export const agentRunEventSchema = Schema.from('agent_run_events')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('agentRunId', idPipe)
+	.field('sequence', nonNegativeIntegerPipe)
+	.field('occurred', runtimeRecordPipe)
+	.field('body', agentRunEventBodyPipe)
+	.build()
+
 export const reviewSurfaceSchema = Schema.from('review_surfaces')
 	.pk('id', idPipe, explicitCoreIdRequired)
 	.field('scope', reviewSurfaceScopePipe)
@@ -231,6 +239,7 @@ export const coreStorageSchemas = [
 	sliceArtifactSchema,
 	actionSchema,
 	agentRunSchema,
+	agentRunEventSchema,
 	reviewSurfaceSchema,
 	revisionGateSchema,
 	revisionSchema,
@@ -253,6 +262,7 @@ export const coreIdResourceSchemas = {
 	'slice-artifact': sliceArtifactSchema,
 	action: actionSchema,
 	'agent-run': agentRunSchema,
+	'agent-run-event': agentRunEventSchema,
 	'review-surface': reviewSurfaceSchema,
 	'revision-gate': revisionGateSchema,
 	revision: revisionSchema,
@@ -280,6 +290,7 @@ export interface CoreIdStorageRecordMap {
 	'slice-artifact': SliceArtifact
 	action: Action
 	'agent-run': AgentRun
+	'agent-run-event': AgentRunEvent
 	'review-surface': ReviewSurface
 	'revision-gate': RevisionGate
 	revision: Revision

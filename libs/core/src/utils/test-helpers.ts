@@ -2,7 +2,7 @@ import { Repo } from 'equipped/orm'
 import { InMemoryAdapter } from 'equipped/orm/adapters/in-memory'
 
 import type { Action } from '../domain/action'
-import type { AgentRun } from '../domain/agent-run'
+import type { AgentRun, AgentRunEvent } from '../domain/agent-run'
 import type { DeliveryArtifact, SliceArtifact } from '../domain/artifact'
 import type { AuditStamp, Id, OperationContext } from '../domain/commons'
 import type { PortfolioConfigRecord } from '../domain/config'
@@ -25,6 +25,7 @@ import type { CoreRuntimeValues } from './runtime-values'
 import type { CoreServices, CoreStorage } from '../services'
 import {
 	actionSchema,
+	agentRunEventSchema,
 	agentRunSchema,
 	deliveryArtifactSchema,
 	deliverySchema,
@@ -305,6 +306,7 @@ export interface TestStorageTransaction extends CoreStorage {
 	sliceArtifacts: TestTable<SliceArtifact>
 	actions: TestTable<Action>
 	agentRuns: TestTable<AgentRun>
+	agentRunEvents: TestTable<AgentRunEvent>
 	reviewSurfaces: TestTable<ReviewSurface>
 	revisionGates: TestTable<RevisionGate>
 	revisions: TestTable<Revision>
@@ -339,6 +341,7 @@ function testStorageTransaction(adapter: InMemoryAdapter): TestStorageTransactio
 		sliceArtifacts: tableView<SliceArtifact>(adapter, sliceArtifactSchema.name),
 		actions: tableView<Action>(adapter, actionSchema.name),
 		agentRuns: tableView<AgentRun>(adapter, agentRunSchema.name),
+		agentRunEvents: tableView<AgentRunEvent>(adapter, agentRunEventSchema.name),
 		reviewSurfaces: tableView<ReviewSurface>(adapter, reviewSurfaceSchema.name),
 		revisionGates: tableView<RevisionGate>(adapter, revisionGateSchema.name),
 		revisions: tableView<Revision>(adapter, revisionSchema.name),
@@ -441,6 +444,7 @@ function failureTables(tx: TestStorageTransaction): Map<string, { get?: boolean;
 		[sliceArtifactSchema.name, tx.sliceArtifacts.fail],
 		[actionSchema.name, tx.actions.fail],
 		[agentRunSchema.name, tx.agentRuns.fail],
+		[agentRunEventSchema.name, tx.agentRunEvents.fail],
 		[reviewSurfaceSchema.name, tx.reviewSurfaces.fail],
 		[revisionGateSchema.name, tx.revisionGates.fail],
 		[revisionSchema.name, tx.revisions.fail],

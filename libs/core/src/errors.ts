@@ -52,6 +52,7 @@ export type CoreIdResource =
 	| 'slice-artifact'
 	| 'action'
 	| 'agent-run'
+	| 'agent-run-event'
 	| 'review-surface'
 	| 'revision-gate'
 	| 'revision'
