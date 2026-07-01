@@ -13,6 +13,25 @@ export const createPlanRequestSchema = v.object({
 	title: Domain.Commons.nonEmptyTrimmedStringPipe,
 	initialMessage: Domain.Commons.nonEmptyTrimmedStringPipe,
 })
+export const setPortfolioConfigRequestSchema = v.object({ config: Domain.Config.portfolioConfigPipe })
+export const createModelProviderRequestSchema = v.object({
+	name: Domain.Commons.nonEmptyTrimmedStringPipe,
+	protocol: Domain.ModelProvider.modelProviderProtocolPipe,
+	baseUrl: Domain.ModelProvider.modelProviderBaseUrlPipe,
+	auth: v.nullable(Domain.ModelProvider.modelProviderAuthPipe),
+	headers: Domain.ModelProvider.modelProviderHeadersPipe,
+})
+export const updateModelProviderRequestSchema = v.object({
+	name: Domain.Commons.nonEmptyTrimmedStringPipe,
+	baseUrl: Domain.ModelProvider.modelProviderBaseUrlPipe,
+	auth: v.nullable(Domain.ModelProvider.modelProviderAuthPipe),
+	headers: Domain.ModelProvider.modelProviderHeadersPipe,
+})
+export const createModelRequestSchema = v.object({
+	name: Domain.Commons.nonEmptyTrimmedStringPipe,
+	providerModelId: Domain.Commons.nonEmptyTrimmedStringPipe,
+})
+export const updateModelRequestSchema = v.object({ name: Domain.Commons.nonEmptyTrimmedStringPipe })
 export const createMemoryRequestSchema = v.object({
 	parentId: v.nullable(Domain.Commons.idPipe),
 	title: Domain.Memory.memoryTitlePipe,
@@ -32,6 +51,11 @@ export const createRepositoryRequestSchema = v.object({ config: Domain.Repositor
 export type PortfolioRequestCookies = Record<string, string | undefined>
 export type CreateProjectRequest = PipeOutput<typeof createProjectRequestSchema>
 export type CreatePlanRequest = PipeOutput<typeof createPlanRequestSchema>
+export type SetPortfolioConfigRequest = PipeOutput<typeof setPortfolioConfigRequestSchema>
+export type CreateModelProviderRequest = PipeOutput<typeof createModelProviderRequestSchema>
+export type UpdateModelProviderRequest = PipeOutput<typeof updateModelProviderRequestSchema>
+export type CreateModelRequest = PipeOutput<typeof createModelRequestSchema>
+export type UpdateModelRequest = PipeOutput<typeof updateModelRequestSchema>
 export type CreateMemoryRequest = PipeOutput<typeof createMemoryRequestSchema>
 export type CreateMemoryRevisionRequest = PipeOutput<typeof createMemoryRevisionRequestSchema>
 export type CreateSecretRequest = PipeOutput<typeof createSecretRequestSchema>
