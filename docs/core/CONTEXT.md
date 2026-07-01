@@ -108,6 +108,10 @@ _Avoid_: Project Config, source config, target type
 The kind of Project Source a Project uses, such as source control. Core owns Project Source Type behavior; provider operations perform that behavior on Core's behalf without deciding workflow semantics.
 _Avoid_: Project kind, target type
 
+**Portfolio Config**:
+Portfolio-wide orchestration settings that provide defaults for Planning and Delivery work across Projects unless overridden by narrower configuration. A Portfolio may have no Portfolio Config until configured; Portfolio Config belongs to the Core Portfolio, not to a Server Consumer Workspace.
+_Avoid_: Workspace Settings, global settings, account settings
+
 **Project Config**:
 Project-level orchestration settings that apply to Plans and Deliveries in a Project unless overridden at a narrower scope. Project Config does not change the Project Source.
 _Avoid_: scheduler settings
@@ -133,7 +137,7 @@ A Project-level reusable planning and discovery artifact. A Plan belongs to exac
 _Avoid_: Grill
 
 **Plan Config**:
-Immutable Plan-level orchestration settings for Planning, set only when the Plan is created. Plan Config does not control accepted Delivery execution.
+Immutable Plan-level orchestration settings for Planning, set only when the Plan is created. Plan Config may leave Plan-level model settings unset so Planning inherits Project or Portfolio model configuration, and it does not control accepted Delivery execution.
 _Avoid_: Delivery Config, Project Config
 
 **Planning**:
