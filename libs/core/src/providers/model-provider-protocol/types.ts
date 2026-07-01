@@ -2,7 +2,7 @@ import type { AgentRunModelMessageOutcome } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
 import type { Model } from '../../domain/model'
 import type { ModelProvider, ModelProviderProtocol } from '../../domain/model-provider'
-import type { InvalidCoreServiceOutputError } from '../../errors'
+import type { InvalidCoreServiceOutputError, StorageOperationFailedError } from '../../errors'
 import type { AgentRunModelDelta } from '../../runtime/agent-runs/live-events'
 import type { AgentRunProviderMessage, AgentRunProviderTool } from '../../runtime/agent-runs/types'
 import type { ResolvableSecretValue } from '../../services'
@@ -47,7 +47,7 @@ export interface ModelAgentTurnOutput {
 	outcome: AgentRunModelMessageOutcome
 }
 
-export type ModelAgentTurnError = InvalidCoreServiceOutputError
+export type ModelAgentTurnError = InvalidCoreServiceOutputError | StorageOperationFailedError
 
 export interface ModelProviderProtocolProviders {
 	preflightModel(
