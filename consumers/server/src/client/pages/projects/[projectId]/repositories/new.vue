@@ -17,48 +17,34 @@
 					</NuxtLink>
 				</div>
 
-				<form v-else class="grid gap-3" @submit.prevent="createRepository()">
+				<UiForm v-else @submit.prevent="createRepository()">
 					<div class="grid gap-3 md:grid-cols-2">
-						<label class="grid gap-1.5 font-semibold" for="github-owner">
-							GitHub owner
+						<UiFormGroup label="GitHub owner" for-id="github-owner" :error="repositoryCreationForm.errors.owner">
 							<UiInput
 								id="github-owner"
 								v-model="repositoryCreationForm.owner"
 								required
 								placeholder="octocat"
 								:invalid="!!repositoryCreationForm.errors.owner" />
-						</label>
-						<label class="grid gap-1.5 font-semibold" for="github-repository">
-							Repository name
+						</UiFormGroup>
+						<UiFormGroup label="Repository name" for-id="github-repository" :error="repositoryCreationForm.errors.name">
 							<UiInput
 								id="github-repository"
 								v-model="repositoryCreationForm.name"
 								required
 								placeholder="Hello-World"
 								:invalid="!!repositoryCreationForm.errors.name" />
-						</label>
-					</div>
-					<div class="grid gap-1.5">
-						<UiText v-if="repositoryCreationForm.errors.owner" tone="error" size="helper">
-							{{ repositoryCreationForm.errors.owner }}
-						</UiText>
-						<UiText v-if="repositoryCreationForm.errors.name" tone="error" size="helper">
-							{{ repositoryCreationForm.errors.name }}
-						</UiText>
+						</UiFormGroup>
 					</div>
 
-					<div class="grid gap-1.5 font-semibold">
-						<label for="github-secret">GitHub access Secret</label>
+					<UiFormGroup label="GitHub access Secret" for-id="github-secret" :error="repositoryCreationForm.errors.secretId">
 						<UiSelect
 							id="github-secret"
 							v-model="repositoryCreationForm.secretId"
 							:options="activeSecretOptions"
 							placeholder="Select an active Secret"
 							:invalid="!!repositoryCreationForm.errors.secretId" />
-					</div>
-					<UiText v-if="repositoryCreationForm.errors.secretId" tone="error" size="helper">
-						{{ repositoryCreationForm.errors.secretId }}
-					</UiText>
+					</UiFormGroup>
 					<UiText tone="muted" size="helper"
 						>Secret values stay protected; the Repository stores only a reference to the selected Secret.</UiText
 					>
@@ -69,7 +55,7 @@
 						</UiButton>
 					</div>
 					<UiText v-if="createRepositoryError" tone="error">{{ createRepositoryError }}</UiText>
-				</form>
+				</UiForm>
 			</div>
 		</section>
 
@@ -99,6 +85,8 @@
 import { computed } from 'vue'
 
 import UiButton from '../../../../components/ui/UiButton.vue'
+import UiForm from '../../../../components/ui/UiForm.vue'
+import UiFormGroup from '../../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../../components/ui/UiInput.vue'
 import UiSelect from '../../../../components/ui/UiSelect.vue'
 import UiText from '../../../../components/ui/UiText.vue'

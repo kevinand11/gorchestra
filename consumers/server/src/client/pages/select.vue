@@ -22,36 +22,34 @@
 			<div v-else-if="workspacePortfolios.length === 0" class="px-3 py-3">
 				<h2 class="m-0 text-sz-subsection font-semibold">Provision your first Workspace</h2>
 				<p class="m-0 mt-1 text-sz-helper text-dim">No accessible Workspace and Portfolio is available yet.</p>
-				<form class="mt-4 grid max-w-[520px] gap-3" @submit.prevent="provisionWorkspace()">
-					<label class="grid gap-1.5 font-semibold" for="workspace-name">
-						Workspace display name
+				<UiForm class="mt-4 max-w-[520px]" @submit.prevent="provisionWorkspace()">
+					<UiFormGroup
+						label="Workspace display name"
+						for-id="workspace-name"
+						:error="provisionWorkspaceForm.errors.workspaceDisplayName">
 						<UiInput
 							id="workspace-name"
 							v-model="provisionWorkspaceForm.workspaceDisplayName"
 							required
 							placeholder="Delivery Ops"
 							:invalid="!!provisionWorkspaceForm.errors.workspaceDisplayName" />
-					</label>
-					<UiText v-if="provisionWorkspaceForm.errors.workspaceDisplayName" tone="error" size="helper">
-						{{ provisionWorkspaceForm.errors.workspaceDisplayName }}
-					</UiText>
-					<label class="grid gap-1.5 font-semibold" for="portfolio-name">
-						Portfolio display name
+					</UiFormGroup>
+					<UiFormGroup
+						label="Portfolio display name"
+						for-id="portfolio-name"
+						:error="provisionWorkspaceForm.errors.portfolioDisplayName">
 						<UiInput
 							id="portfolio-name"
 							v-model="provisionWorkspaceForm.portfolioDisplayName"
 							required
 							placeholder="Main Portfolio"
 							:invalid="!!provisionWorkspaceForm.errors.portfolioDisplayName" />
-					</label>
-					<UiText v-if="provisionWorkspaceForm.errors.portfolioDisplayName" tone="error" size="helper">
-						{{ provisionWorkspaceForm.errors.portfolioDisplayName }}
-					</UiText>
+					</UiFormGroup>
 					<UiButton type="submit" :loading="isProvisioningWorkspace" :disabled="!provisionWorkspaceForm.valid">
 						Create Workspace and select Default Portfolio
 					</UiButton>
 					<UiText v-if="provisionWorkspaceError" tone="error">{{ provisionWorkspaceError }}</UiText>
-				</form>
+				</UiForm>
 			</div>
 
 			<div v-else>
@@ -125,6 +123,8 @@
 import { ref } from 'vue'
 
 import UiButton from '../components/ui/UiButton.vue'
+import UiForm from '../components/ui/UiForm.vue'
+import UiFormGroup from '../components/ui/UiFormGroup.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import UiText from '../components/ui/UiText.vue'
 import { useApiAction, useFetchAction } from '../composables/action-state'

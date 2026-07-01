@@ -16,19 +16,21 @@
 					<UiHeading as="h2" size="subsection">{{ toast.title }}</UiHeading>
 					<UiText v-if="toast.body" tone="muted" size="helper">{{ toast.body }}</UiText>
 				</div>
-				<button
+				<UiButton
 					type="button"
-					class="rounded-pill px-2 text-dim transition hover:text-current"
+					variant="ghost"
+					size="icon"
 					:aria-label="`Dismiss notification: ${toast.title}`"
 					@click="dismiss(toast.id)">
 					×
-				</button>
+				</UiButton>
 			</div>
 		</article>
 	</TransitionGroup>
 </template>
 
 <script setup lang="ts">
+import UiButton from './ui/UiButton.vue'
 import UiHeading from './ui/UiHeading.vue'
 import UiText from './ui/UiText.vue'
 import { useToasts, type ToastKind } from '../composables/toasts'

@@ -6,21 +6,16 @@
 		</header>
 
 		<section class="px-3 py-3">
-			<form class="grid max-w-[520px] gap-3" @submit.prevent="createSecret()">
-				<label class="grid gap-1.5 font-semibold" for="secret-name">
-					Secret name
+			<UiForm class="max-w-[520px]" @submit.prevent="createSecret()">
+				<UiFormGroup label="Secret name" for-id="secret-name" :error="secretCreationForm.errors.name">
 					<UiInput
 						id="secret-name"
 						v-model="secretCreationForm.name"
 						required
 						placeholder="GitHub PAT"
 						:invalid="!!secretCreationForm.errors.name" />
-				</label>
-				<UiText v-if="secretCreationForm.errors.name" tone="error" size="helper">
-					{{ secretCreationForm.errors.name }}
-				</UiText>
-				<label class="grid gap-1.5 font-semibold" for="secret-value">
-					Secret value
+				</UiFormGroup>
+				<UiFormGroup label="Secret value" for-id="secret-value" :error="secretCreationForm.errors.value">
 					<UiInput
 						id="secret-value"
 						v-model="secretCreationForm.value"
@@ -29,16 +24,13 @@
 						autocomplete="off"
 						placeholder="Paste the Secret value"
 						:invalid="!!secretCreationForm.errors.value" />
-				</label>
-				<UiText v-if="secretCreationForm.errors.value" tone="error" size="helper">
-					{{ secretCreationForm.errors.value }}
-				</UiText>
+				</UiFormGroup>
 				<UiText tone="muted" size="helper">Secret values cannot be viewed again after creation.</UiText>
 				<div class="flex flex-wrap items-center gap-2">
 					<UiButton type="submit" :loading="isCreatingSecret" :disabled="!secretCreationForm.valid">Create Secret</UiButton>
 				</div>
 				<UiText v-if="createSecretError" tone="error">{{ createSecretError }}</UiText>
-			</form>
+			</UiForm>
 		</section>
 
 		<template #right>
@@ -62,6 +54,8 @@
 
 <script setup lang="ts">
 import UiButton from '../../components/ui/UiButton.vue'
+import UiForm from '../../components/ui/UiForm.vue'
+import UiFormGroup from '../../components/ui/UiFormGroup.vue'
 import UiInput from '../../components/ui/UiInput.vue'
 import UiText from '../../components/ui/UiText.vue'
 import { useApiAction } from '../../composables/action-state'

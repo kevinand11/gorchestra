@@ -6,24 +6,20 @@
 		</header>
 
 		<section class="px-3 py-3">
-			<form class="grid max-w-[520px] gap-3" @submit.prevent="createProject()">
-				<label class="grid gap-1.5 font-semibold" for="project-title">
-					Project title
+			<UiForm class="max-w-[520px]" @submit.prevent="createProject()">
+				<UiFormGroup label="Project title" for-id="project-title" :error="projectCreationForm.errors.title">
 					<UiInput
 						id="project-title"
 						v-model="projectCreationForm.title"
 						required
 						placeholder="Delivery Ops"
 						:invalid="!!projectCreationForm.errors.title" />
-				</label>
-				<UiText v-if="projectCreationForm.errors.title" tone="error" size="helper">
-					{{ projectCreationForm.errors.title }}
-				</UiText>
+				</UiFormGroup>
 				<div class="flex flex-wrap items-center gap-2">
 					<UiButton type="submit" :loading="isCreatingProject" :disabled="!projectCreationForm.valid">Create Project</UiButton>
 				</div>
 				<UiText v-if="createProjectError" tone="error">{{ createProjectError }}</UiText>
-			</form>
+			</UiForm>
 		</section>
 
 		<template #right>
@@ -51,6 +47,8 @@
 
 <script setup lang="ts">
 import UiButton from '../../components/ui/UiButton.vue'
+import UiForm from '../../components/ui/UiForm.vue'
+import UiFormGroup from '../../components/ui/UiFormGroup.vue'
 import UiInput from '../../components/ui/UiInput.vue'
 import UiText from '../../components/ui/UiText.vue'
 import { useApiAction } from '../../composables/action-state'

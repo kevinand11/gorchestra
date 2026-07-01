@@ -6,12 +6,14 @@
 		</section>
 
 		<section class="px-3 py-3">
-			<form class="grid max-w-[460px] gap-3" @submit.prevent="challengeRequested ? verifyEmailOtp() : requestEmailOtp()">
-				<div class="grid gap-1.5">
-					<div class="flex items-center justify-between gap-3">
-						<label class="font-semibold" for="email">Email address</label>
+			<UiForm class="max-w-[460px]" @submit.prevent="challengeRequested ? verifyEmailOtp() : requestEmailOtp()">
+				<UiFormGroup for-id="email" :error="emailOtpChallengeForm.errors.email">
+					<template #label>
+						<UiLabel for="email">Email address</UiLabel>
+					</template>
+					<template #label-end>
 						<span v-if="challengeRequested" class="font-mono text-sz-micro text-dim">code sent</span>
-					</div>
+					</template>
 					<div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
 						<UiInput
 							id="email"
@@ -24,17 +26,15 @@
 							:invalid="!!emailOtpChallengeForm.errors.email" />
 						<UiButton v-if="challengeRequested" type="button" variant="secondary" @click="changeEmail()">Change email</UiButton>
 					</div>
-					<UiText v-if="emailOtpChallengeForm.errors.email" tone="error" size="helper">
-						{{ emailOtpChallengeForm.errors.email }}
-					</UiText>
-					<UiText v-if="challengeRequested" tone="muted" size="helper">
-						To edit this email address, choose Change email first. That resets the code step.
-					</UiText>
-				</div>
+					<template #helper>
+						<UiText v-if="challengeRequested" tone="muted" size="helper">
+							To edit this email address, choose Change email first. That resets the code step.
+						</UiText>
+					</template>
+				</UiFormGroup>
 
 				<div v-if="challengeRequested" class="grid gap-3 border border-dimmer bg-card p-3">
-					<div class="grid gap-1.5">
-						<label class="font-semibold" for="code">Six-digit code</label>
+					<UiFormGroup label="Six-digit code" for-id="code" :error="emailOtpVerificationForm.errors.code">
 						<UiInput
 							id="code"
 							v-model="emailOtpVerificationForm.code"
@@ -43,10 +43,7 @@
 							required
 							placeholder="123456"
 							:invalid="!!emailOtpVerificationForm.errors.code" />
-						<UiText v-if="emailOtpVerificationForm.errors.code" tone="error" size="helper">
-							{{ emailOtpVerificationForm.errors.code }}
-						</UiText>
-					</div>
+					</UiFormGroup>
 					<UiButton type="submit" :loading="isVerifyingEmailOtp" :disabled="!emailOtpVerificationForm.valid">
 						Verify and continue
 					</UiButton>
@@ -59,7 +56,7 @@
 					</UiButton>
 					<UiText v-if="requestEmailOtpError" tone="error">{{ requestEmailOtpError }}</UiText>
 				</div>
-			</form>
+			</UiForm>
 		</section>
 
 		<template #right>
@@ -122,7 +119,10 @@
 import { ref, watch } from 'vue'
 
 import UiButton from '../components/ui/UiButton.vue'
+import UiForm from '../components/ui/UiForm.vue'
+import UiFormGroup from '../components/ui/UiFormGroup.vue'
 import UiInput from '../components/ui/UiInput.vue'
+import UiLabel from '../components/ui/UiLabel.vue'
 import UiText from '../components/ui/UiText.vue'
 import { useApiAction } from '../composables/action-state'
 import { isAuthenticatedSession, useAuthState } from '../composables/auth-state'

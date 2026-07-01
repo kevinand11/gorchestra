@@ -9,7 +9,10 @@ const selectionCookieSchema = optionalCookiePipe(selectionCookieName)
 
 export const portfolioRequestCookieSchema = v.merge(sessionCookieSchema, selectionCookieSchema)
 export const createProjectRequestSchema = v.object({ title: Domain.Commons.nonEmptyTrimmedStringPipe })
-export const createPlanRequestSchema = v.object({ title: Domain.Commons.nonEmptyTrimmedStringPipe })
+export const createPlanRequestSchema = v.object({
+	title: Domain.Commons.nonEmptyTrimmedStringPipe,
+	initialMessage: Domain.Commons.nonEmptyTrimmedStringPipe,
+})
 export const createMemoryRequestSchema = v.object({
 	parentId: v.nullable(Domain.Commons.idPipe),
 	title: Domain.Memory.memoryTitlePipe,

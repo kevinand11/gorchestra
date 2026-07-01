@@ -104,7 +104,7 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async listPlans(projectId: string) {
 			return routes.request('get', '/api/portfolio/projects/:projectId/plans', { params: { projectId } })
 		},
-		async createPlan(projectId: string, input: { title: string }) {
+		async createPlan(projectId: string, input: { title: string; initialMessage: string }) {
 			return routes.request('post', '/api/portfolio/projects/:projectId/plans', { params: { projectId }, body: input })
 		},
 		async getPlan(projectId: string, planId: string) {
