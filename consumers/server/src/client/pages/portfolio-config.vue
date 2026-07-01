@@ -158,6 +158,7 @@ import UiFormGroup from '../components/ui/UiFormGroup.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import UiSelect from '../components/ui/UiSelect.vue'
 import { useApiAction } from '../composables/action-state'
+import { activeModelOptionGroupsFromProviders } from '../composables/model-provider-options'
 import { usePortfolioConfigQuery, usePortfolioModelProvidersQuery } from '../composables/portfolio-resource-queries'
 import { useQueryCache } from '../composables/query-cache'
 import { useSelectedPortfolio } from '../composables/selected-portfolio'
@@ -186,17 +187,7 @@ const {
 	hasExecuted: hasLoadedProviders,
 } = usePortfolioModelProvidersQuery(serverApi)
 
-const activeModelOptionGroups = computed(() =>
-	providers.value
-		.filter((provider) => !provider.archived)
-		.map((provider) => ({
-			label: `${provider.name} · ${provider.protocol}`,
-			options: provider.models
-				.filter((model) => !model.archived)
-				.map((model) => ({ value: model.id, label: `${model.name} (${model.providerModelId})` })),
-		}))
-		.filter((group) => group.options.length > 0),
-)
+const activeModelOptionGroups = computed(() => activeModelOptionGroupsFromProviders(providers.value))
 const optionalModelOptions = computed(() => [{ value: '', label: 'Use default' }, ...activeModelOptionGroups.value])
 const hasActiveModels = computed(() => activeModelOptionGroups.value.length > 0)
 const canSaveConfig = computed(
