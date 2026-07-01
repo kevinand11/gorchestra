@@ -15,6 +15,7 @@ export interface AgentRunProviderTool {
 	name: string
 	description: string
 	executionMode: 'parallel-safe' | 'exclusive'
+	parameters: unknown
 }
 
 export interface ModelAgentTurnInput {

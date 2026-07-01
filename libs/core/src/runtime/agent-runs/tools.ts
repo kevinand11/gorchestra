@@ -23,7 +23,7 @@ export function toolsForAgentRunPurpose(purpose: AgentRunPurpose): CoreAgentRunT
 }
 
 export function providerTool(tool: CoreAgentRunTool): AgentRunProviderTool {
-	return { name: tool.name, description: tool.description, executionMode: tool.executionMode }
+	return { name: tool.name, description: tool.description, executionMode: tool.executionMode, parameters: v.schema(tool.inputPipe) }
 }
 
 function proposePlanOutputTool(): CoreAgentRunTool {
@@ -57,4 +57,16 @@ export function toolOutput(text: string): AgentRunToolOutput {
 export function validateToolInput(tool: CoreAgentRunTool, input: unknown): { ok: true; value: unknown } | { ok: false } {
 	const result = v.validate(tool.inputPipe, input)
 	return result.valid ? { ok: true, value: result.value } : { ok: false }
+}
+
+if (import.meta.vitest) {
+	const { describe, expect, it } = import.meta.vitest
+
+	describe('Core Agent Run tools', () => {
+		it('exposes provider tool parameters from Valleyed pipes', () => {
+			const [tool] = toolsForAgentRunPurpose({ type: 'planning', planId: 'plan-1' })
+
+			expect(providerTool(tool!).parameters).toMatchObject({ type: 'object' })
+		})
+	})
 }
