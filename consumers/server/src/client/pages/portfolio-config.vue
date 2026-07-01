@@ -126,15 +126,21 @@
 		</UiForm>
 
 		<template #right>
-			<aside class="grid gap-4 p-3">
-				<UiCallout>
-					Portfolio Config belongs to the Core Portfolio and applies across Projects unless Project, Plan, or Delivery config
-					overrides it.
-				</UiCallout>
-				<UiCallout tone="notice">
-					Model Preflight is recommended before selecting a Model here, but Portfolio Config can reference any active Model.
-				</UiCallout>
-				<div class="border-t border-dimmer pt-3">
+			<aside>
+				<section class="border-b border-dimmer px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">Scope</h2>
+					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+						Portfolio Config belongs to the Core Portfolio and applies across Projects unless Project, Plan, or Delivery config
+						overrides it.
+					</p>
+				</section>
+				<section class="border-b border-dimmer px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">Preflight</h2>
+					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+						Model Preflight is recommended before selecting a Model here, but Portfolio Config can reference any active Model.
+					</p>
+				</section>
+				<section class="px-3 py-3">
 					<h2 class="m-0 text-sz-helper font-semibold">Missing setup?</h2>
 					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">Configure Model Providers and Models before saving defaults.</p>
 					<NuxtLink
@@ -142,7 +148,7 @@
 						to="/models/providers">
 						Open Models
 					</NuxtLink>
-				</div>
+				</section>
 			</aside>
 		</template>
 	</NuxtLayout>

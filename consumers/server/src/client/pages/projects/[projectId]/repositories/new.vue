@@ -3,7 +3,7 @@
 		<section class="px-3 py-3">
 			<div v-if="isLoadingSetup && !hasLoadedSetup" class="text-dim">Loading Repository setup…</div>
 			<div v-else-if="setupError" class="text-error">{{ setupError }}</div>
-			<div v-else class="grid max-w-[760px] gap-4">
+			<div v-else class="grid gap-4">
 				<p v-if="isRefreshingSetup" class="m-0 text-sz-helper text-dim">Refreshing Repository setup…</p>
 				<div v-if="activeSecrets.length === 0" class="border border-dashed border-dimmer p-5">
 					<h2 class="m-0 text-sz-subsection font-semibold">Create an active Secret first.</h2>

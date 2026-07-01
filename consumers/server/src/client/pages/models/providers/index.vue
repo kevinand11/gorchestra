@@ -20,7 +20,8 @@
 			</div>
 			<div v-else-if="providersError" class="border-b border-dimmer px-3 py-4 text-error">{{ providersError }}</div>
 			<div v-else-if="providers.length === 0" class="border-b border-dimmer px-3 py-5">
-				<UiCallout>There are no Model Providers yet. Create one, then add Models under it.</UiCallout>
+				<h2 class="m-0 text-sz-subsection font-semibold">No Model Providers yet.</h2>
+				<p class="m-0 mt-1 text-sz-helper text-dim">Create one, then add Models under it from the provider detail page.</p>
 			</div>
 			<nav v-else class="border-t border-dimmer" aria-label="Model Providers">
 				<NuxtLink
@@ -44,11 +45,38 @@
 				Refreshing Model Providers…
 			</p>
 		</section>
+
+		<template #right>
+			<aside>
+				<section class="border-b border-dimmer px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">Setup order</h2>
+					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+						Create a Model Provider first, then add Models from that provider's detail page.
+					</p>
+				</section>
+				<section class="border-b border-dimmer px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">Lifecycle actions</h2>
+					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+						Archive, unarchive, and Preflight actions live on provider detail pages, not on this index.
+					</p>
+				</section>
+				<section class="px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">Portfolio Config</h2>
+					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+						After adding active Models, select defaults in Portfolio Config.
+					</p>
+					<NuxtLink
+						class="mt-2 inline-flex text-sz-helper font-semibold text-primary hover:brightness-110"
+						to="/portfolio-config">
+						Open Portfolio Config
+					</NuxtLink>
+				</section>
+			</aside>
+		</template>
 	</NuxtLayout>
 </template>
 
 <script setup lang="ts">
-import UiCallout from '../../../components/ui/UiCallout.vue'
 import { usePortfolioModelProvidersQuery } from '../../../composables/portfolio-resource-queries'
 import { useServerApi } from '../../../composables/useServerApi'
 

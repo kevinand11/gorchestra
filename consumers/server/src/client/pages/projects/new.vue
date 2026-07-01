@@ -6,7 +6,7 @@
 		</header>
 
 		<section class="px-3 py-3">
-			<UiForm class="max-w-[520px]" @submit.prevent="createProject()">
+			<UiForm @submit.prevent="createProject()">
 				<UiFormGroup label="Project title" for-id="project-title" :error="projectCreationForm.errors.title">
 					<UiInput
 						id="project-title"

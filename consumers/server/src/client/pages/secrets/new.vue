@@ -6,7 +6,7 @@
 		</header>
 
 		<section class="px-3 py-3">
-			<UiForm class="max-w-[520px]" @submit.prevent="createSecret()">
+			<UiForm @submit.prevent="createSecret()">
 				<UiFormGroup label="Secret name" for-id="secret-name" :error="secretCreationForm.errors.name">
 					<UiInput
 						id="secret-name"

@@ -28,7 +28,7 @@
 
 		<template #left>
 			<slot name="left">
-				<div class="flex h-full min-h-[calc(100vh-67px)] flex-col">
+				<div class="flex h-full flex-col">
 					<div class="border-b border-dimmer px-3 py-2 font-semibold">Selected Portfolio</div>
 					<div class="flex items-center justify-between gap-2 border-b border-dimmer px-3 py-2">
 						<div class="min-w-0">
