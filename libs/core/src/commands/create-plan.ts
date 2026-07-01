@@ -31,7 +31,7 @@ const createPlanInputPipe = v.object({
 	projectId: idPipe,
 	title: nonEmptyTrimmedStringPipe,
 	initialMessage: nonEmptyTrimmedStringPipe,
-	config: v.nullable(planConfigPipe),
+	config: planConfigPipe,
 })
 export type Input = PipeOutput<typeof createPlanInputPipe>
 
@@ -274,7 +274,18 @@ if (import.meta.vitest) {
 			options.tx.projects.fail.get = true
 			const command = createCreatePlanCommand(createTestCoreRuntime(options))
 
-			const result = await command({ projectId: 'project-1', title: 'Plan', initialMessage: ' ', config: null }, context)
+			const result = await command({ projectId: 'project-1', title: 'Plan', initialMessage: ' ', config: { model: null } }, context)
+
+			expect(result).toMatchObject({ ok: false, error: { type: 'invalid-input', boundary: 'command', operation: 'createPlan' } })
+			expect(options.transactionCalls()).toBe(0)
+		})
+
+		it('requires Plan Config input before reading storage', async () => {
+			const options = createTestCoreServices()
+			options.tx.projects.fail.get = true
+			const command = createCreatePlanCommand(createTestCoreRuntime(options))
+
+			const result = await command({ projectId: 'project-1', title: 'Plan', initialMessage: 'Plan this.' } as never, context)
 
 			expect(result).toMatchObject({ ok: false, error: { type: 'invalid-input', boundary: 'command', operation: 'createPlan' } })
 			expect(options.transactionCalls()).toBe(0)
@@ -330,7 +341,10 @@ if (import.meta.vitest) {
 			options.tx.portfolioConfig.record = portfolioConfig('model-1')
 			const command = createCreatePlanCommand(createTestCoreRuntime(options))
 
-			const result = await command({ projectId: 'project-1', title: 'Plan', initialMessage: 'Plan this.', config: null }, context)
+			const result = await command(
+				{ projectId: 'project-1', title: 'Plan', initialMessage: 'Plan this.', config: { model: null } },
+				context,
+			)
 
 			expect(result).toMatchObject({ ok: true })
 			expect(dispatches).toEqual([
@@ -352,7 +366,10 @@ if (import.meta.vitest) {
 			options.tx.portfolioConfig.record = portfolioConfig('model-1')
 			const command = createCreatePlanCommand(createTestCoreRuntime(options))
 
-			const result = await command({ projectId: 'project-1', title: 'Plan', initialMessage: 'Plan this.', config: null }, context)
+			const result = await command(
+				{ projectId: 'project-1', title: 'Plan', initialMessage: 'Plan this.', config: { model: null } },
+				context,
+			)
 
 			expect(result).toMatchObject({ ok: false, error: { type: 'storage-operation-failed', operation: { type: 'transaction' } } })
 			if (!result.ok && result.error.type === 'storage-operation-failed' && result.error.operation.type === 'transaction') {
@@ -404,7 +421,10 @@ if (import.meta.vitest) {
 			seedProject(options.tx, 'project-1')
 			const command = createCreatePlanCommand(createTestCoreRuntime(options))
 
-			const result = await command({ projectId: 'project-1', title: 'Plan', initialMessage: 'Plan this.', config: null }, context)
+			const result = await command(
+				{ projectId: 'project-1', title: 'Plan', initialMessage: 'Plan this.', config: { model: null } },
+				context,
+			)
 
 			expect(result).toEqual({
 				ok: false,
