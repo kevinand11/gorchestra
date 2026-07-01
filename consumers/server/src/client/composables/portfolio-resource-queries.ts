@@ -8,6 +8,7 @@ import type { ServerApi } from './useServerApi'
 type ProjectDetails = Awaited<ReturnType<ServerApi['getProject']>>
 type ListedPlan = Awaited<ReturnType<ServerApi['listPlans']>>[number]
 type PlanDetails = Awaited<ReturnType<ServerApi['getPlan']>>
+type AgentRunEvent = Awaited<ReturnType<ServerApi['getAgentRunEvents']>>[number]
 type ListedDelivery = Awaited<ReturnType<ServerApi['listDeliveries']>>[number]
 type DeliveryDetails = Awaited<ReturnType<ServerApi['getDelivery']>>
 type RepositoryDetails = Awaited<ReturnType<ServerApi['getRepository']>>
@@ -36,6 +37,15 @@ export function usePortfolioPlanQuery(serverApi: ServerApi, projectId: Ref<strin
 	return useFetchAction(() => serverApi.getPlan(projectId.value, planId.value), {
 		queryKey: queryKeys.portfolio.plan(portfolioId.value, projectId.value, planId.value),
 		initialData: null as PlanDetails | null,
+	})
+}
+
+export function usePortfolioAgentRunEventsQuery(serverApi: ServerApi, agentRunId: Ref<string | null>, cacheKey: Ref<string>) {
+	const { portfolioId, queryKeys } = usePortfolioQueryContext()
+	return useFetchAction(() => serverApi.getAgentRunEvents(requireAgentRunId(agentRunId.value)), {
+		queryKey: queryKeys.portfolio.agentRunEvents(portfolioId.value, cacheKey.value),
+		initialData: [] as AgentRunEvent[],
+		immediate: false,
 	})
 }
 
@@ -92,4 +102,9 @@ function usePortfolioQueryContext() {
 	const { queryKeys } = useQueryCache()
 	const portfolioId = computed(() => portfolio.value.id)
 	return { portfolioId, queryKeys }
+}
+
+function requireAgentRunId(agentRunId: string | null): string {
+	if (agentRunId === null) throw new Error('Agent Run is not loaded yet')
+	return agentRunId
 }

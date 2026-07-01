@@ -69,6 +69,9 @@ const queryKeys = {
 		plan(portfolioId: string, projectId: string, planId: string): QueryKey {
 			return ['portfolio', portfolioId, 'projects', projectId, 'plans', planId]
 		},
+		agentRunEvents(portfolioId: string, agentRunId: string): QueryKey {
+			return ['portfolio', portfolioId, 'agent-runs', agentRunId, 'events']
+		},
 		deliveries(portfolioId: string, projectId: string): QueryKey {
 			return ['portfolio', portfolioId, 'projects', projectId, 'deliveries']
 		},

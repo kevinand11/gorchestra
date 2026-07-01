@@ -110,6 +110,12 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async getPlan(projectId: string, planId: string) {
 			return routes.request('get', '/api/portfolio/projects/:projectId/plans/:planId', { params: { projectId, planId } })
 		},
+		async getAgentRunEvents(agentRunId: string, input: { afterSequence?: number; limit?: number } = {}) {
+			return routes.request('get', '/api/portfolio/agent-runs/:agentRunId/events', {
+				params: { agentRunId },
+				query: { afterSequence: input.afterSequence, limit: input.limit },
+			})
+		},
 		async listDeliveries(projectId: string) {
 			return routes.request('get', '/api/portfolio/projects/:projectId/deliveries', { params: { projectId } })
 		},
