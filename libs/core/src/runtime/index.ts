@@ -1,11 +1,11 @@
-import type { AgentRun } from './domain/agent-run'
-import type { Id } from './domain/commons'
-import { createCoreProviders, type CoreProviders } from './providers'
-import type { AgentRunLiveEvent } from './runtime/agent-runs/live-events'
-import { runModelAgentRun } from './runtime/agent-runs/model-loop'
-import type { CoreServices } from './services'
-import { defaultCoreRuntimeValues, type CoreRuntimeValues } from './utils/runtime-values'
-import type { Result } from './utils/types'
+import type { AgentRun } from '../domain/agent-run'
+import type { Id } from '../domain/commons'
+import { createCoreProviders, type CoreProviders } from '../providers'
+import type { CoreServices } from '../services'
+import { defaultCoreRuntimeValues, type CoreRuntimeValues } from '../utils/runtime-values'
+import type { Result } from '../utils/types'
+import type { AgentRunLiveEvent } from './agent-runs/live-events'
+import { runModelAgentRun } from './agent-runs/model-loop'
 
 export interface CoreAgentRunRuntimeEvents {
 	onAgentRunEvent?(event: AgentRunLiveEvent): void | Promise<void>
@@ -72,7 +72,7 @@ function createNoopAgentRunRuntime(): CoreAgentRunRuntime {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreServices } = await import('./utils/test-helpers')
+	const { createTestCoreServices } = await import('../utils/test-helpers')
 
 	describe('Core runtime', () => {
 		it('wires validated Core Services with internal Core Providers', () => {
