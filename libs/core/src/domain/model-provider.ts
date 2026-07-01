@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { archivePeriodPipe, auditStampPipe, idPipe, nonEmptyTrimmedStringPipe } from './commons'
+import { listedModelPipe } from './model'
 
 export const modelProviderProtocolPipe = v.in(['anthropic-messages', 'openai-responses', 'openai-completions', 'google-generative-ai'])
 export type ModelProviderProtocol = PipeOutput<typeof modelProviderProtocolPipe>
@@ -63,3 +64,17 @@ export const modelProviderPipe = v.object({
 	archivePeriods: v.array(archivePeriodPipe),
 })
 export type ModelProvider = PipeOutput<typeof modelProviderPipe>
+
+export const listedModelProviderPipe = v.object({
+	id: idPipe,
+	name: nonEmptyTrimmedStringPipe,
+	protocol: modelProviderProtocolPipe,
+	baseUrl: nonEmptyTrimmedStringPipe,
+	auth: v.nullable(modelProviderAuthPipe),
+	headers: v.array(modelProviderHeaderPipe),
+	created: auditStampPipe,
+	updated: v.nullable(auditStampPipe),
+	archived: v.boolean(),
+	models: v.array(listedModelPipe),
+})
+export type ListedModelProvider = PipeOutput<typeof listedModelProviderPipe>
