@@ -77,7 +77,10 @@ export function createTestCoreRuntime(
 	return {
 		services,
 		providers: overrides.providers ?? createCoreProviders(services),
-		agentRuns: overrides.agentRuns ?? { runExecutionAgentRun: () => Promise.resolve() },
+		agentRuns: overrides.agentRuns ?? {
+			runExecutionAgentRun: () => Promise.resolve(),
+			runModelAgentRun: () => Promise.resolve({ ok: true, value: undefined }),
+		},
 		values: overrides.values ?? services.values,
 	}
 }
@@ -94,6 +97,11 @@ export function passingProviderBackedPreflightProviders(): CoreRuntime['provider
 		modelProviderProtocols: {
 			preflightModel: () =>
 				Promise.resolve({ ok: true, value: { type: 'passed', summary: 'Anthropic Messages model preflight passed.' } }),
+			runModelAgentTurn: () =>
+				Promise.resolve({
+					ok: true,
+					value: { outcome: { type: 'stop', message: { content: [], usage: null, providerResponseRef: null } } },
+				}),
 		},
 	}
 }
@@ -124,6 +132,11 @@ export function failingProviderBackedPreflightProviders(): CoreRuntime['provider
 						summary: 'Anthropic Messages model was not found.',
 					},
 				}),
+			runModelAgentTurn: () =>
+				Promise.resolve({
+					ok: true,
+					value: { outcome: { type: 'error', message: null, summary: 'Model provider failed.' } },
+				}),
 		},
 	}
 }
@@ -135,7 +148,10 @@ export function neverCalledProviderBackedPreflightProviders(): CoreRuntime['prov
 			createArtifactBranch: () => Promise.reject(new Error('Source control should not be called.')),
 			createReviewSurface: () => Promise.reject(new Error('Source control should not be called.')),
 		},
-		modelProviderProtocols: { preflightModel: () => Promise.reject(new Error('Model provider should not be called.')) },
+		modelProviderProtocols: {
+			preflightModel: () => Promise.reject(new Error('Model provider should not be called.')),
+			runModelAgentTurn: () => Promise.reject(new Error('Model provider should not be called.')),
+		},
 	}
 }
 

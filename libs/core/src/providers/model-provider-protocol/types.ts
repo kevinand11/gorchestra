@@ -1,7 +1,10 @@
+import type { AgentRunModelMessageOutcome } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
 import type { Model } from '../../domain/model'
 import type { ModelProvider, ModelProviderProtocol } from '../../domain/model-provider'
 import type { InvalidCoreServiceOutputError } from '../../errors'
+import type { AgentRunModelDelta } from '../../runtime/agent-runs/live-events'
+import type { AgentRunProviderMessage, AgentRunProviderTool } from '../../runtime/agent-runs/types'
 import type { ResolvableSecretValue } from '../../services'
 import type { Result } from '../../utils/types'
 
@@ -31,10 +34,26 @@ export type ModelProviderProtocolPreflight =
 
 export type ModelProviderProtocolPreflightError = InvalidCoreServiceOutputError
 
+export interface ModelAgentTurnInput {
+	model: Model
+	modelProvider: ModelProvider
+	messages: AgentRunProviderMessage[]
+	tools: AgentRunProviderTool[]
+	signal: AbortSignal
+	onDelta(delta: AgentRunModelDelta): void
+}
+
+export interface ModelAgentTurnOutput {
+	outcome: AgentRunModelMessageOutcome
+}
+
+export type ModelAgentTurnError = InvalidCoreServiceOutputError
+
 export interface ModelProviderProtocolProviders {
 	preflightModel(
 		input: ModelProviderProtocolPreflightModelInput,
 	): Promise<Result<ModelProviderProtocolPreflight, ModelProviderProtocolPreflightError>>
+	runModelAgentTurn(input: ModelAgentTurnInput): Promise<Result<ModelAgentTurnOutput, ModelAgentTurnError>>
 }
 
 export interface ModelProviderProtocolAccess {
@@ -44,6 +63,11 @@ export interface ModelProviderProtocolAccess {
 
 export interface ModelProviderProtocolProviderPreflightModelInput<Protocol extends ModelProviderProtocol> {
 	model: Model
+	modelProvider: ModelProvider & { protocol: Protocol }
+	access: ModelProviderProtocolAccess
+}
+
+export interface ModelProviderProtocolProviderModelAgentTurnInput<Protocol extends ModelProviderProtocol> extends ModelAgentTurnInput {
 	modelProvider: ModelProvider & { protocol: Protocol }
 	access: ModelProviderProtocolAccess
 }
@@ -64,4 +88,5 @@ export type ModelProviderProtocolProviderPreflight =
 
 export interface ModelProviderProtocolProvider<Protocol extends ModelProviderProtocol> {
 	preflightModel(input: ModelProviderProtocolProviderPreflightModelInput<Protocol>): Promise<ModelProviderProtocolProviderPreflight>
+	runModelAgentTurn?(input: ModelProviderProtocolProviderModelAgentTurnInput<Protocol>): Promise<ModelAgentTurnOutput>
 }

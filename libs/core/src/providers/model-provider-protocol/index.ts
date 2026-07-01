@@ -12,6 +12,8 @@ import {
 } from './openai-completions'
 import { createOpenAIResponsesModelProviderProtocolProvider, type OpenAIResponsesModelProviderProtocolProvider } from './openai-responses'
 import type {
+	ModelAgentTurnInput,
+	ModelAgentTurnOutput,
 	ModelProviderProtocolAccess,
 	ModelProviderProtocolPreflight,
 	ModelProviderProtocolPreflightError,
@@ -43,6 +45,9 @@ export function createModelProviderProtocolProviders(
 		preflightModel(input) {
 			return preflightModelWithConcreteProviders(services, concrete, input)
 		},
+		runModelAgentTurn(input) {
+			return runModelAgentTurnWithConcreteProviders(services, concrete, input)
+		},
 	}
 }
 
@@ -69,6 +74,43 @@ async function preflightModelWithConcreteProviders(
 
 	const preflight = await concretePreflight(concrete, input, access.value)
 	return { ok: true, value: modelProviderProtocolPreflight(input.modelProvider.protocol, preflight) }
+}
+
+async function runModelAgentTurnWithConcreteProviders(
+	services: CoreServices,
+	concrete: Required<ModelProviderProtocolProviderImplementations>,
+	input: ModelAgentTurnInput,
+): Promise<Result<ModelAgentTurnOutput, ModelProviderProtocolPreflightError>> {
+	const access = await resolveModelProviderProtocolAccess(services, input.modelProvider, [])
+	if (!access.ok) return access
+	if (!isProtocolAccess(access.value))
+		return { ok: true, value: { outcome: { type: 'error', message: null, summary: access.value.summary } } }
+
+	const concreteProvider = concreteProviderForProtocol(concrete, input.modelProvider.protocol)
+	return concreteProvider.runModelAgentTurn === undefined
+		? {
+				ok: true,
+				value: {
+					outcome: { type: 'error', message: null, summary: `${input.modelProvider.protocol} agent turns are not implemented.` },
+				},
+			}
+		: {
+				ok: true,
+				value: await concreteProvider.runModelAgentTurn({
+					...input,
+					modelProvider: input.modelProvider as never,
+					access: access.value,
+				}),
+			}
+}
+
+function concreteProviderForProtocol(concrete: Required<ModelProviderProtocolProviderImplementations>, protocol: ModelProviderProtocol) {
+	return {
+		'anthropic-messages': concrete.anthropicMessages,
+		'openai-responses': concrete.openAIResponses,
+		'openai-completions': concrete.openAICompletions,
+		'google-generative-ai': concrete.googleGenerativeAI,
+	}[protocol]
 }
 
 function concretePreflight(
@@ -241,6 +283,8 @@ export type { GoogleGenerativeAIModelProviderProtocolProvider } from './google-g
 export type { OpenAICompletionsModelProviderProtocolProvider } from './openai-completions'
 export type { OpenAIResponsesModelProviderProtocolProvider } from './openai-responses'
 export type {
+	ModelAgentTurnInput,
+	ModelAgentTurnOutput,
 	ModelProviderProtocolAccess,
 	ModelProviderProtocolPreflight,
 	ModelProviderProtocolPreflightError,

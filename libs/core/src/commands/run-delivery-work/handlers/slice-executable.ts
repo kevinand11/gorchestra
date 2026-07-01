@@ -1,7 +1,7 @@
 import type { AgentRun, ExecutionMode } from '../../../domain/agent-run'
 import type { Id, RuntimeRecord } from '../../../domain/commons'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
-import { createModelAgentRunWithInitialModel } from '../../../utils/agent-run-events'
+import { appendAgentRunEvent, createModelAgentRunWithInitialModel } from '../../../utils/agent-run-events'
 import type { Result as CoreResult } from '../../../utils/types'
 import { nextId, runtimeRecord } from '../../utils/storage'
 import type { DeliveryHandlerContext, DeliveryWorkResolution, RunDeliveryWorkHandlerResult } from '../types'
@@ -31,6 +31,13 @@ async function writeSliceExecutionAgentRun(
 ): Promise<RunDeliveryWorkHandlerResult> {
 	const agentRunPut = await createModelAgentRunWithInitialModel({ values: context.values }, context.storage, agentRun)
 	if (!agentRunPut.ok) return agentRunPut
+
+	const input = await appendAgentRunEvent({ values: context.values }, context.storage, agentRunPut.value.id, {
+		type: 'input-message',
+		source: { type: 'runtime' },
+		content: [{ type: 'text', text: `Execute Slice ${agentRun.purpose.sliceId}.` }],
+	})
+	if (!input.ok) return input
 
 	return { ok: true, value: { processedCount: 1, failures: [] } }
 }
@@ -99,6 +106,11 @@ if (import.meta.vitest) {
 				modelProviderId: 'model-1-provider',
 				protocol: 'anthropic-messages',
 				authorized: null,
+			})
+			expect(context.tx.agentRunEvents.records.get('agent-run-event-2')?.body).toEqual({
+				type: 'input-message',
+				source: { type: 'runtime' },
+				content: [{ type: 'text', text: 'Execute Slice slice-1.' }],
 			})
 		})
 

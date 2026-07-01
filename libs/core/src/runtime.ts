@@ -1,10 +1,19 @@
 import type { AgentRun } from './domain/agent-run'
+import type { Id } from './domain/commons'
 import { createCoreProviders, type CoreProviders } from './providers'
+import type { AgentRunLiveEvent } from './runtime/agent-runs/live-events'
+import { runModelAgentRun } from './runtime/agent-runs/model-loop'
 import type { CoreServices } from './services'
 import { defaultCoreRuntimeValues, type CoreRuntimeValues } from './utils/runtime-values'
+import type { Result } from './utils/types'
+
+export interface CoreAgentRunRuntimeEvents {
+	onAgentRunEvent?(event: AgentRunLiveEvent): void | Promise<void>
+}
 
 export interface CoreAgentRunRuntime {
 	runExecutionAgentRun(input: { agentRun: AgentRun }): Promise<void>
+	runModelAgentRun(input: { agentRunId: Id }): Promise<Result<void, unknown>>
 }
 
 export interface CoreRuntimeOverrides {
@@ -21,16 +30,44 @@ export interface CoreRuntime {
 }
 
 export function createCoreRuntime(services: CoreServices, overrides: CoreRuntimeOverrides = {}): CoreRuntime {
+	const runtime = coreRuntimeShell(services, overrides)
+	runtime.agentRuns = agentRunRuntimeFor(runtime, overrides)
+	return runtime
+}
+
+function coreRuntimeShell(services: CoreServices, overrides: CoreRuntimeOverrides): CoreRuntime {
 	return {
 		services,
-		providers: overrides.providers ?? createCoreProviders(services),
-		agentRuns: overrides.agentRuns ?? createDefaultAgentRunRuntime(),
-		values: overrides.values ?? defaultCoreRuntimeValues(),
+		providers: coreProvidersFor(services, overrides),
+		agentRuns: createNoopAgentRunRuntime(),
+		values: coreRuntimeValuesFor(overrides),
 	}
 }
 
-function createDefaultAgentRunRuntime(): CoreAgentRunRuntime {
-	return { runExecutionAgentRun: () => Promise.resolve() }
+function coreProvidersFor(services: CoreServices, overrides: CoreRuntimeOverrides): CoreProviders {
+	return overrides.providers ?? createCoreProviders(services)
+}
+
+function coreRuntimeValuesFor(overrides: CoreRuntimeOverrides): CoreRuntimeValues {
+	return overrides.values ?? defaultCoreRuntimeValues()
+}
+
+function agentRunRuntimeFor(runtime: CoreRuntime, overrides: CoreRuntimeOverrides): CoreAgentRunRuntime {
+	return overrides.agentRuns ?? createDefaultAgentRunRuntime(runtime)
+}
+
+function createDefaultAgentRunRuntime(runtime: CoreRuntime): CoreAgentRunRuntime {
+	return {
+		runExecutionAgentRun: () => Promise.resolve(),
+		runModelAgentRun: ({ agentRunId }) => runModelAgentRun(runtime, agentRunId),
+	}
+}
+
+function createNoopAgentRunRuntime(): CoreAgentRunRuntime {
+	return {
+		runExecutionAgentRun: () => Promise.resolve(),
+		runModelAgentRun: () => Promise.resolve({ ok: true, value: undefined }),
+	}
 }
 
 if (import.meta.vitest) {
@@ -48,8 +85,9 @@ if (import.meta.vitest) {
 				'createArtifactBranch',
 				'createReviewSurface',
 			])
-			expect(Object.keys(runtime.providers.modelProviderProtocols)).toEqual(['preflightModel'])
+			expect(Object.keys(runtime.providers.modelProviderProtocols)).toEqual(['preflightModel', 'runModelAgentTurn'])
 			expect(typeof runtime.agentRuns.runExecutionAgentRun).toBe('function')
+			expect(typeof runtime.agentRuns.runModelAgentRun).toBe('function')
 			expect(typeof runtime.values.nextId).toBe('function')
 			expect(typeof runtime.values.now).toBe('function')
 		})
