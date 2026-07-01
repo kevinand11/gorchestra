@@ -1,4 +1,5 @@
 import { createAbandonDeliveryCommand } from './abandon-delivery'
+import { createAcceptPlanOutputCommand } from './accept-plan-output'
 import { createAcceptRevisionOutputCommand } from './accept-revision-output'
 import { createArchiveModelCommand } from './archive-model'
 import { createArchiveModelProviderCommand } from './archive-model-provider'
@@ -22,6 +23,7 @@ import { createPreflightModelCommand } from './preflight-model'
 import { createPreflightRepositoryCommand } from './preflight-repository'
 import { createQueueDeliveryCommand } from './queue-delivery'
 import { createRejectPlanOutputCommand } from './reject-plan-output'
+import { createRejectRevisionOutputCommand } from './reject-revision-output'
 import { createReplaceSecretCommand } from './replace-secret'
 import { createRetryDeliveryPreflightCommand } from './retry-delivery-preflight'
 import { createRunDeliveryWorkCommand } from './run-delivery-work'
@@ -40,6 +42,7 @@ import { createUpdateRepositoryConfigCommand } from './update-repository-config'
 import type { CoreRuntime } from '../runtime'
 
 export type * as AbandonDelivery from './abandon-delivery'
+export type * as AcceptPlanOutput from './accept-plan-output'
 export type * as AcceptRevisionOutput from './accept-revision-output'
 export type * as ArchiveModel from './archive-model'
 export type * as ArchiveModelProvider from './archive-model-provider'
@@ -63,6 +66,7 @@ export type * as PreflightModel from './preflight-model'
 export type * as PreflightRepository from './preflight-repository'
 export type * as QueueDelivery from './queue-delivery'
 export type * as RejectPlanOutput from './reject-plan-output'
+export type * as RejectRevisionOutput from './reject-revision-output'
 export type * as ReplaceSecret from './replace-secret'
 export type * as RetryDeliveryPreflight from './retry-delivery-preflight'
 export type * as RunDeliveryWork from './run-delivery-work'
@@ -99,6 +103,7 @@ export function createCoreCommands(runtime: CoreRuntime) {
 		interruptAgentRun: createInterruptAgentRunCommand(runtime),
 		selectAgentRunModel: createSelectAgentRunModelCommand(runtime),
 		compactAgentRunContext: createCompactAgentRunContextCommand(runtime),
+		acceptPlanOutput: createAcceptPlanOutputCommand(runtime),
 		rejectPlanOutput: createRejectPlanOutputCommand(runtime),
 		configureDelivery: createConfigureDeliveryCommand(runtime),
 		queueDelivery: createQueueDeliveryCommand(runtime),
@@ -106,6 +111,7 @@ export function createCoreCommands(runtime: CoreRuntime) {
 		retryDeliveryPreflight: createRetryDeliveryPreflightCommand(runtime),
 		openRevisionGate: createOpenRevisionGateCommand(runtime),
 		acceptRevisionOutput: createAcceptRevisionOutputCommand(runtime),
+		rejectRevisionOutput: createRejectRevisionOutputCommand(runtime),
 		closeRevisionGate: createCloseRevisionGateCommand(runtime),
 		shipDelivery: createShipDeliveryCommand(runtime),
 		abandonDelivery: createAbandonDeliveryCommand(runtime),
@@ -152,6 +158,7 @@ if (import.meta.vitest) {
 				'interruptAgentRun',
 				'selectAgentRunModel',
 				'compactAgentRunContext',
+				'acceptPlanOutput',
 				'rejectPlanOutput',
 				'configureDelivery',
 				'queueDelivery',
@@ -159,6 +166,7 @@ if (import.meta.vitest) {
 				'retryDeliveryPreflight',
 				'openRevisionGate',
 				'acceptRevisionOutput',
+				'rejectRevisionOutput',
 				'closeRevisionGate',
 				'shipDelivery',
 				'abandonDelivery',

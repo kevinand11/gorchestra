@@ -1,15 +1,18 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import type { AgentRunEvent } from '../domain/agent-run'
 import { idPipe, type AuditStamp, type Id, type OperationContext } from '../domain/commons'
 import type { Delivery } from '../domain/delivery'
 import type { ReviewSurface, ReviewSurfaceScope } from '../domain/review-surface'
-import type { Revision, RevisionGate, RevisionScope } from '../domain/revision'
-import { revisionOutputProposalPipe } from '../domain/revision'
+import type { Revision, RevisionGate, RevisionOutputProposal, RevisionScope } from '../domain/revision'
 import type {
+	AgentRunPurposeMismatchError,
 	DeliveryClosedError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
+	ProposalAlreadyReviewedError,
+	ProposalTypeMismatchError,
 	ResourceNotFoundError,
 	ReviewSurfaceAlreadyMergedError,
 	RevisionGateClosedError,
@@ -17,17 +20,20 @@ import type {
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
+import { appendAgentRunEvent } from '../utils/agent-run-events'
 import { completeSingleAgentRunByPurpose } from '../utils/agent-runs'
+import { getPendingProposalForAgentRunPurpose } from '../utils/proposals'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
 import { auditStamp, createRecordValue, getRequired, listRecords, nextId, updateRecordValue, withTransaction } from './utils/storage'
 
-const acceptRevisionOutputInputPipe = v.object({ revisionGateId: idPipe, output: revisionOutputProposalPipe })
+const acceptRevisionOutputInputPipe = v.object({ proposalEventId: idPipe })
 export type Input = PipeOutput<typeof acceptRevisionOutputInputPipe>
 
 export interface Result {
 	revision: Revision
 	revisionGate: RevisionGate
+	acceptedEvent: AgentRunEvent
 }
 
 export type Error =
@@ -39,6 +45,9 @@ export type Error =
 	| RevisionGateClosedError
 	| DeliveryClosedError
 	| ReviewSurfaceAlreadyMergedError
+	| ProposalAlreadyReviewedError
+	| ProposalTypeMismatchError
+	| AgentRunPurposeMismatchError
 
 export type Operation = (input: Input, context: OperationContext) => Promise<CoreResult<Result, Error>>
 
@@ -57,39 +66,55 @@ async function handleAcceptRevisionOutput(
 	if (!stamp.ok) return stamp
 
 	const revisionId = nextId(runtime.values, 'revision')
-	if (!revisionId.ok) return revisionId
+	return revisionId.ok
+		? withTransaction(runtime.services, (storage) => acceptRevisionOutput(runtime, storage, input, stamp.value, revisionId.value))
+		: revisionId
+}
 
-	return withTransaction(runtime.services, (storage) => acceptRevisionOutput(storage, input, stamp.value, revisionId.value))
+interface RevisionProposalContext {
+	proposal: AgentRunEvent & { body: Extract<AgentRunEvent['body'], { type: 'proposed-revision-output' }> }
+	gate: RevisionGate
+	output: RevisionOutputProposal
 }
 
 async function acceptRevisionOutput(
+	runtime: CoreRuntime,
 	storage: CoreStorage,
 	input: Input,
 	stamp: AuditStamp,
 	revisionId: Id,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const gate = await getRequired('revision-gate', storage, input.revisionGateId)
-	if (!gate.ok) return gate
+	const context = await revisionProposalContext(storage, input.proposalEventId)
+	return context.ok ? acceptForGate(runtime, storage, context.value, stamp, revisionId) : context
+}
 
-	return acceptForGate(storage, input, stamp, revisionId, gate.value)
+async function revisionProposalContext(
+	storage: CoreStorage,
+	proposalEventId: Id,
+): Promise<CoreResult<RevisionProposalContext, Exclude<Error, InvalidInputError>>> {
+	const proposal = await getPendingProposalForAgentRunPurpose(storage, proposalEventId, 'proposed-revision-output', 'revision-planning')
+	if (!proposal.ok) return proposal
+
+	const gate = await getRequired('revision-gate', storage, proposal.value.agentRun.purpose.revisionGateId)
+	return gate.ok
+		? { ok: true, value: { proposal: proposal.value.proposal, gate: gate.value, output: proposal.value.proposal.body.output } }
+		: gate
 }
 
 async function acceptForGate(
+	runtime: CoreRuntime,
 	storage: CoreStorage,
-	input: Input,
+	context: RevisionProposalContext,
 	stamp: AuditStamp,
 	revisionId: Id,
-	gate: RevisionGate,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	if (gate.closed !== null) return revisionGateClosed(gate.id)
+	if (context.gate.closed !== null) return revisionGateClosed(context.gate.id)
 
-	const existingRevision = await validateNoRevisionForGate(storage, gate.id)
+	const existingRevision = await validateNoRevisionForGate(storage, context.gate.id)
 	if (!existingRevision.ok) return existingRevision
 
-	const scopeValidation = await validateGateScope(storage, gate)
-	if (!scopeValidation.ok) return scopeValidation
-
-	return writeAcceptedRevision(storage, input, stamp, revisionId, gate)
+	const scopeValidation = await validateGateScope(storage, context.gate)
+	return scopeValidation.ok ? writeAcceptedRevision(runtime, storage, context, stamp, revisionId) : scopeValidation
 }
 
 async function validateNoRevisionForGate(
@@ -111,9 +136,7 @@ async function validateGateScope(storage: CoreStorage, gate: RevisionGate): Prom
 	if (!reviewSurface.ok) return reviewSurface
 
 	const reviewSurfaceValidation = validateReviewSurfaceForGate(gate, reviewSurface.value)
-	if (!reviewSurfaceValidation.ok) return reviewSurfaceValidation
-
-	return validateRevisionScopeRecords(storage, gate.scope)
+	return reviewSurfaceValidation.ok ? validateRevisionScopeRecords(storage, gate.scope) : reviewSurfaceValidation
 }
 
 function validateReviewSurfaceForGate(
@@ -121,9 +144,7 @@ function validateReviewSurfaceForGate(
 	reviewSurface: ReviewSurface,
 ): CoreResult<void, InvariantViolationError | ReviewSurfaceAlreadyMergedError> {
 	const scopeValidation = validateReviewSurfaceScope(gate, reviewSurface)
-	if (!scopeValidation.ok) return scopeValidation
-
-	return validateReviewSurfaceNotMerged(reviewSurface)
+	return scopeValidation.ok ? validateReviewSurfaceNotMerged(reviewSurface) : scopeValidation
 }
 
 function validateReviewSurfaceScope(gate: RevisionGate, reviewSurface: ReviewSurface): CoreResult<void, InvariantViolationError> {
@@ -148,9 +169,7 @@ async function validateDeliveryRevisionScope(
 	scope: Extract<RevisionScope, { type: 'delivery-artifact' }>,
 ): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
 	const delivery = await getRequired('delivery', storage, scope.deliveryId)
-	if (!delivery.ok) return delivery
-
-	return validateDeliveryRevisionArtifact(storage, scope, delivery.value)
+	return delivery.ok ? validateDeliveryRevisionArtifact(storage, scope, delivery.value) : delivery
 }
 
 async function validateDeliveryRevisionArtifact(
@@ -162,9 +181,7 @@ async function validateDeliveryRevisionArtifact(
 	if (!artifact.ok) return artifact
 
 	const ownership = validateDeliveryArtifactOwnership(artifact.value, delivery.id)
-	if (!ownership.ok) return ownership
-
-	return validateDeliveryOpen(delivery)
+	return ownership.ok ? validateDeliveryOpen(delivery) : ownership
 }
 
 function validateDeliveryArtifactOwnership(
@@ -179,9 +196,7 @@ async function validateSliceRevisionScope(
 	scope: Extract<RevisionScope, { type: 'slice-artifact' }>,
 ): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
 	const slice = await getRequired('slice', storage, scope.sliceId)
-	if (!slice.ok) return slice
-
-	return validateSliceRevisionArtifact(storage, scope, slice.value.id, slice.value.deliveryId)
+	return slice.ok ? validateSliceRevisionArtifact(storage, scope, slice.value.id, slice.value.deliveryId) : slice
 }
 
 async function validateSliceRevisionArtifact(
@@ -194,9 +209,7 @@ async function validateSliceRevisionArtifact(
 	if (!artifact.ok) return artifact
 
 	const ownership = validateSliceArtifactOwnership(artifact.value, sliceId)
-	if (!ownership.ok) return ownership
-
-	return validateSliceParentDeliveryOpen(storage, deliveryId)
+	return ownership.ok ? validateSliceParentDeliveryOpen(storage, deliveryId) : ownership
 }
 
 function validateSliceArtifactOwnership(artifact: { id: Id; sliceId: Id }, sliceId: Id): CoreResult<void, InvariantViolationError> {
@@ -208,9 +221,7 @@ async function validateSliceParentDeliveryOpen(
 	deliveryId: Id,
 ): Promise<CoreResult<void, ResourceNotFoundError | StorageOperationFailedError | InvalidCoreServiceOutputError | DeliveryClosedError>> {
 	const delivery = await getRequired('delivery', storage, deliveryId)
-	if (!delivery.ok) return delivery
-
-	return validateDeliveryOpen(delivery.value)
+	return delivery.ok ? validateDeliveryOpen(delivery.value) : delivery
 }
 
 function validateDeliveryOpen(delivery: Delivery): CoreResult<void, DeliveryClosedError> {
@@ -220,34 +231,78 @@ function validateDeliveryOpen(delivery: Delivery): CoreResult<void, DeliveryClos
 }
 
 async function writeAcceptedRevision(
+	runtime: CoreRuntime,
 	storage: CoreStorage,
-	input: Input,
+	context: RevisionProposalContext,
 	stamp: AuditStamp,
 	revisionId: Id,
-	gate: RevisionGate,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const revision: Revision = {
+	const created = await createAcceptedRevisionRecord(storage, context, stamp, revisionId)
+	return created.ok ? consumeRevisionGateForRevision(runtime, storage, context, stamp, created.value) : created
+}
+
+async function createAcceptedRevisionRecord(
+	storage: CoreStorage,
+	context: RevisionProposalContext,
+	stamp: AuditStamp,
+	revisionId: Id,
+): Promise<CoreResult<Revision, Exclude<Error, InvalidInputError>>> {
+	return createRecordValue('revision', storage, {
 		id: revisionId,
-		revisionGateId: gate.id,
-		scope: gate.scope,
-		instruction: input.output.instruction,
-		disposition: input.output.disposition,
+		revisionGateId: context.gate.id,
+		scope: context.gate.scope,
+		instruction: context.output.instruction,
+		disposition: context.output.disposition,
 		accepted: stamp,
-	}
-	const created = await createRecordValue('revision', storage, revision)
-	if (!created.ok) return created
-
-	const revisionGate = await updateRecordValue('revision-gate', storage, gate.id, {
-		closed: { type: 'consumed-by-revision', consumed: stamp, revisionId: created.value.id },
 	})
-	if (!revisionGate.ok) return revisionGate
+}
 
+async function consumeRevisionGateForRevision(
+	runtime: CoreRuntime,
+	storage: CoreStorage,
+	context: RevisionProposalContext,
+	stamp: AuditStamp,
+	revision: Revision,
+): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+	const revisionGate = await updateRecordValue('revision-gate', storage, context.gate.id, {
+		closed: { type: 'consumed-by-revision', consumed: stamp, revisionId: revision.id },
+	})
+	return revisionGate.ok
+		? completeRevisionPlanningForAcceptedRevision(runtime, storage, context, stamp, revision, revisionGate.value)
+		: revisionGate
+}
+
+async function completeRevisionPlanningForAcceptedRevision(
+	runtime: CoreRuntime,
+	storage: CoreStorage,
+	context: RevisionProposalContext,
+	stamp: AuditStamp,
+	revision: Revision,
+	revisionGate: RevisionGate,
+): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const agentRun = await completeSingleAgentRunByPurpose(
 		storage,
-		{ type: 'revision-planning', revisionGateId: gate.id },
+		{ type: 'revision-planning', revisionGateId: context.gate.id },
 		{ at: stamp.at },
 	)
-	return agentRun.ok ? { ok: true, value: { revision: created.value, revisionGate: revisionGate.value } } : agentRun
+	return agentRun.ok ? appendRevisionProposalAcceptance(runtime, storage, context, stamp, revision, revisionGate) : agentRun
+}
+
+async function appendRevisionProposalAcceptance(
+	runtime: CoreRuntime,
+	storage: CoreStorage,
+	context: RevisionProposalContext,
+	stamp: AuditStamp,
+	revision: Revision,
+	revisionGate: RevisionGate,
+): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+	const acceptedEvent = await appendAgentRunEvent(runtime, storage, context.proposal.agentRunId, {
+		type: 'proposal-accepted',
+		proposalEventId: context.proposal.id,
+		authorized: stamp,
+		materialized: { type: 'revision-output', revisionId: revision.id },
+	})
+	return acceptedEvent.ok ? { ok: true, value: { revision, revisionGate, acceptedEvent: acceptedEvent.value } } : acceptedEvent
 }
 
 function revisionScopeKey(scope: RevisionScope): string {
@@ -309,11 +364,11 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('creates a Delivery-scoped Revision and consumes the Revision Gate', async () => {
+		it('creates a Delivery-scoped Revision and consumes the Revision Gate from a proposal event', async () => {
 			const options = deliveryRevisionFixture()
 			const command = createAcceptRevisionOutputCommand(createTestCoreRuntime(options))
 
-			const result = await command({ revisionGateId: 'revision-gate-1', output: revisionOutput() }, context)
+			const result = await command({ proposalEventId: 'proposal-event' }, context)
 
 			const expectedRevision = {
 				id: 'revision-1',
@@ -323,134 +378,68 @@ if (import.meta.vitest) {
 				disposition: { body: 'Address requested changes.' },
 				accepted: localStamp(),
 			}
-			const expectedGate = {
-				...options.tx.revisionGates.records.get('revision-gate-1')!,
-				closed: { type: 'consumed-by-revision' as const, consumed: localStamp(), revisionId: 'revision-1' },
-			}
-			expect(result).toEqual({ ok: true, value: { revision: expectedRevision, revisionGate: expectedGate } })
+			expect(result).toMatchObject({
+				ok: true,
+				value: {
+					revision: expectedRevision,
+					revisionGate: { closed: { type: 'consumed-by-revision', revisionId: 'revision-1' } },
+					acceptedEvent: { body: { type: 'proposal-accepted', proposalEventId: 'proposal-event' } },
+				},
+			})
 			expect(options.tx.revisions.records.get('revision-1')).toEqual(expectedRevision)
-			expect(options.tx.revisionGates.records.get('revision-gate-1')).toEqual(expectedGate)
 			expect(options.tx.agentRuns.records.get('agent-run-1')?.completed).toEqual({ at: localStamp().at })
-			expect(options.tx.actions.records.size).toBe(0)
 		})
 
 		it('creates a Slice-scoped Revision through the Slice parent Delivery', async () => {
 			const options = sliceRevisionFixture()
 			const command = createAcceptRevisionOutputCommand(createTestCoreRuntime(options))
 
-			const result = await command({ revisionGateId: 'revision-gate-1', output: revisionOutput() }, context)
+			const result = await command({ proposalEventId: 'proposal-event' }, context)
 
-			expect(result).toMatchObject({
-				ok: true,
-				value: {
-					revision: {
-						id: 'revision-1',
-						revisionGateId: 'revision-gate-1',
-						scope: { type: 'slice-artifact', sliceId: 'slice-1', sliceArtifactId: 'slice-artifact-1' },
-					},
-					revisionGate: { closed: { type: 'consumed-by-revision', consumed: localStamp(), revisionId: 'revision-1' } },
-				},
-			})
+			expect(result).toMatchObject({ ok: true, value: { revision: { scope: { type: 'slice-artifact', sliceId: 'slice-1' } } } })
 		})
 
-		it('rejects non-open Revision Gates', async () => {
-			const options = deliveryRevisionFixture()
-			options.tx.revisionGates.records.get('revision-gate-1')!.closed = {
-				type: 'closed-without-revision',
-				closed: localStamp(),
-			}
-			const command = createAcceptRevisionOutputCommand(createTestCoreRuntime(options))
-
-			const result = await command({ revisionGateId: 'revision-gate-1', output: revisionOutput() }, context)
-
-			expect(result).toEqual({ ok: false, error: { type: 'revision-gate-closed', revisionGateId: 'revision-gate-1' } })
-		})
-
-		it('rejects open Revision Gates that already have a Revision', async () => {
-			const options = deliveryRevisionFixture()
-			options.tx.revisions.records.set('revision-existing', {
-				id: 'revision-existing',
-				revisionGateId: 'revision-gate-1',
-				scope: { type: 'delivery-artifact', deliveryId: 'delivery-1', deliveryArtifactId: 'delivery-artifact-1' },
-				instruction: { body: 'Existing.' },
-				disposition: { body: 'Existing.' },
-				accepted: stamp,
+		it('rejects reviewed, wrong-type, and closed-gate proposals', async () => {
+			const reviewed = deliveryRevisionFixture()
+			reviewed.tx.agentRunEvents.records.set('review-event', {
+				id: 'review-event',
+				agentRunId: 'agent-run-1',
+				sequence: 2,
+				occurred: { at: stamp.at },
+				body: { type: 'proposal-rejected', proposalEventId: 'proposal-event', authorized: stamp, reason: null },
 			})
-			const command = createAcceptRevisionOutputCommand(createTestCoreRuntime(options))
-
-			const result = await command({ revisionGateId: 'revision-gate-1', output: revisionOutput() }, context)
-
-			expect(result).toEqual({
+			await expect(
+				createAcceptRevisionOutputCommand(createTestCoreRuntime(reviewed))({ proposalEventId: 'proposal-event' }, context),
+			).resolves.toEqual({
 				ok: false,
-				error: { type: 'invariant-violation', message: 'Revision Gate revision-gate-1 already has a Revision.' },
+				error: { type: 'proposal-already-reviewed', proposalEventId: 'proposal-event' },
 			})
-		})
 
-		it('rejects Revision Gates whose Review Surface scope differs from the gate scope', async () => {
-			const options = deliveryRevisionFixture()
-			options.tx.reviewSurfaces.records.get('review-surface-1')!.scope = {
-				type: 'delivery',
-				deliveryId: 'delivery-1',
-				deliveryArtifactId: 'other-artifact',
-			}
-			const command = createAcceptRevisionOutputCommand(createTestCoreRuntime(options))
-
-			const result = await command({ revisionGateId: 'revision-gate-1', output: revisionOutput() }, context)
-
-			expect(result).toEqual({
+			const wrongType = deliveryRevisionFixture('proposed-plan-output')
+			await expect(
+				createAcceptRevisionOutputCommand(createTestCoreRuntime(wrongType))({ proposalEventId: 'proposal-event' }, context),
+			).resolves.toEqual({
 				ok: false,
 				error: {
-					type: 'invariant-violation',
-					message: 'Revision Gate revision-gate-1 scope does not match Review Surface review-surface-1.',
+					type: 'proposal-type-mismatch',
+					proposalEventId: 'proposal-event',
+					expected: 'proposed-revision-output',
+					actual: 'proposed-plan-output',
 				},
 			})
-		})
 
-		it('rejects Revision Gates whose Review Surface is merged', async () => {
-			const options = deliveryRevisionFixture()
-			options.tx.reviewSurfaces.records.get('review-surface-1')!.closed = {
-				type: 'merged',
-				merged: { at: '2026-06-10T12:00:00.000Z' },
-				config: {
-					type: 'source-control',
-					repositoryId: 'repository-1',
-					sourceBranch: 'delivery-branch',
-					targetBranch: 'main',
-				},
-			}
-			const command = createAcceptRevisionOutputCommand(createTestCoreRuntime(options))
-
-			const result = await command({ revisionGateId: 'revision-gate-1', output: revisionOutput() }, context)
-
-			expect(result).toEqual({ ok: false, error: { type: 'review-surface-already-merged', reviewSurfaceId: 'review-surface-1' } })
-		})
-
-		it('rejects Revision Gates for closed Deliveries', async () => {
-			const options = deliveryRevisionFixture()
-			options.tx.deliveries.records.get('delivery-1')!.closed = {
-				type: 'abandoned',
-				abandoned: localStamp(),
-				reason: 'No longer needed.',
-			}
-			const command = createAcceptRevisionOutputCommand(createTestCoreRuntime(options))
-
-			const result = await command({ revisionGateId: 'revision-gate-1', output: revisionOutput() }, context)
-
-			expect(result).toEqual({
+			const closed = deliveryRevisionFixture()
+			closed.tx.revisionGates.records.get('revision-gate-1')!.closed = { type: 'closed-without-revision', closed: localStamp() }
+			await expect(
+				createAcceptRevisionOutputCommand(createTestCoreRuntime(closed))({ proposalEventId: 'proposal-event' }, context),
+			).resolves.toEqual({
 				ok: false,
-				error: { type: 'delivery-closed', deliveryId: 'delivery-1', outcome: 'abandoned' },
+				error: { type: 'revision-gate-closed', revisionGateId: 'revision-gate-1' },
 			})
 		})
 	})
 
-	function revisionOutput() {
-		return {
-			instruction: { body: 'Revise artifact.' },
-			disposition: { body: 'Address requested changes.' },
-		}
-	}
-
-	function deliveryRevisionFixture() {
+	function deliveryRevisionFixture(type: 'proposed-revision-output' | 'proposed-plan-output' = 'proposed-revision-output') {
 		const options = createTestCoreServices()
 		seedDelivery(options.tx, 'delivery-1')
 		seedDeliveryArtifact(options.tx)
@@ -463,7 +452,7 @@ if (import.meta.vitest) {
 			closed: null,
 		})
 		seedRevisionPlanningAgentRun(options.tx)
-
+		options.tx.agentRunEvents.records.set('proposal-event', proposalEvent(type))
 		return options
 	}
 
@@ -486,8 +475,25 @@ if (import.meta.vitest) {
 			closed: null,
 		})
 		seedRevisionPlanningAgentRun(options.tx)
-
+		options.tx.agentRunEvents.records.set('proposal-event', proposalEvent('proposed-revision-output'))
 		return options
+	}
+
+	function proposalEvent(type: 'proposed-revision-output' | 'proposed-plan-output'): AgentRunEvent {
+		return {
+			id: 'proposal-event',
+			agentRunId: 'agent-run-1',
+			sequence: 1,
+			occurred: { at: stamp.at },
+			body:
+				type === 'proposed-revision-output'
+					? { type, toolCallScheduledEventId: 'tool-call-1', output: revisionOutput() }
+					: { type, toolCallScheduledEventId: 'tool-call-1', output: { proposedDeliveries: [], proposedMemories: [] } },
+		}
+	}
+
+	function revisionOutput(): RevisionOutputProposal {
+		return { instruction: { body: 'Revise artifact.' }, disposition: { body: 'Address requested changes.' } }
 	}
 
 	function seedRevisionPlanningAgentRun(tx: ReturnType<typeof createTestCoreServices>['tx']) {

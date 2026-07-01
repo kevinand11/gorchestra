@@ -237,6 +237,25 @@ export interface AgentRunNotActiveError {
 	agentRunId: Id
 }
 
+export interface ProposalAlreadyReviewedError {
+	type: 'proposal-already-reviewed'
+	proposalEventId: Id
+}
+
+export interface ProposalTypeMismatchError {
+	type: 'proposal-type-mismatch'
+	proposalEventId: Id
+	expected: 'proposed-plan-output' | 'proposed-revision-output'
+	actual: string
+}
+
+export interface AgentRunPurposeMismatchError {
+	type: 'agent-run-purpose-mismatch'
+	agentRunId: Id
+	expected: AgentRunPurpose['type'][]
+	actual: AgentRunPurpose
+}
+
 export interface ExternalOperationFailedError {
 	type: 'external-operation-failed'
 	evidence: ExternalOperationEvidence
@@ -277,6 +296,9 @@ export type CoreError =
 	| AgentRunModelUnresolvedError
 	| AgentRunNotInteractiveError
 	| AgentRunNotActiveError
+	| ProposalAlreadyReviewedError
+	| ProposalTypeMismatchError
+	| AgentRunPurposeMismatchError
 	| ExternalOperationFailedError
 
 export type CommandStubError = InvalidInputError | NotImplementedError
