@@ -1,10 +1,10 @@
 import { computed, watch, type Ref } from 'vue'
 
-import type { ModelThinkingLevel, ServerApi } from './core/server-api'
-import { activeModelOptionGroupsFromProviders, modelOptionIds, thinkingLevelOptionsForModel } from './model-provider-options'
-import type { UiSelectOptionInput } from '../components/ui/select-options'
-import type { ModelUseFormDraft } from '../forms/model-use'
-import { useModelProvidersList } from './portfolio/models/providers'
+import { useModelProvidersList } from './providers'
+import type { UiSelectOptionInput } from '../../../components/ui/select-options'
+import type { ModelUseFormDraft } from '../../../forms/model-use'
+import { activeModelOptionGroupsFromProviders, modelOptionIds, thinkingLevelOptionsForModel } from '../../../utils/model-provider-options'
+import type { ModelThinkingLevel, ServerApi } from '../../core/server-api'
 
 type ListedModelProvider = Awaited<ReturnType<ServerApi['listModelProviders']>>[number]
 

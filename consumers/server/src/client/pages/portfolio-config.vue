@@ -196,7 +196,7 @@ import UiFormGroup from '../components/ui/UiFormGroup.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import UiSelect from '../components/ui/UiSelect.vue'
 import { usePortfolioConfig } from '../composables/portfolio/config'
-import { useSelectModel } from '../composables/use-select-model'
+import { useSelectModel } from '../composables/portfolio/models/select-model'
 
 definePageMeta({ middleware: ['has-selection'] })
 

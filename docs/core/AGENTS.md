@@ -8,7 +8,6 @@ The `docs/core/` tree documents Core domain language, durable Core decisions, an
 
 - `CONTEXT.md` owns current Core domain language and the map of Core ADRs.
 - `provider-setup.md` owns operational setup guidance for Core-owned providers and preflight verification.
-- `TODO.md` owns concise durable Core follow-up items that are known but intentionally deferred.
 - `adr/` owns durable Core decisions.
 - Core package source under `../../libs/core/` owns the current Core package type/runtime contract.
 

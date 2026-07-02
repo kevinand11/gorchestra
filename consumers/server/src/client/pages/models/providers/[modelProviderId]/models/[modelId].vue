@@ -274,7 +274,7 @@ import UiFormGroup from '../../../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../../../components/ui/UiInput.vue'
 import UiText from '../../../../../components/ui/UiText.vue'
 import type { ServerApi } from '../../../../../composables/core/server-api'
-import { thinkingLevelLabel, thinkingLevelOptions } from '../../../../../composables/model-provider-options'
+import { thinkingLevelLabel, thinkingLevelOptions } from '../../../../../utils/model-provider-options'
 import {
 	useModelDetail,
 	useModelLifecycle,
