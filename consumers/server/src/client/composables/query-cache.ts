@@ -81,6 +81,12 @@ const queryKeys = {
 		modelProvider(portfolioId: string, modelProviderId: string): QueryKey {
 			return ['portfolio', portfolioId, 'model-providers', modelProviderId]
 		},
+		model(portfolioId: string, modelProviderId: string, modelId: string): QueryKey {
+			return ['portfolio', portfolioId, 'model-providers', modelProviderId, 'models', modelId]
+		},
+		modelReferences(portfolioId: string, modelProviderId: string, modelId: string): QueryKey {
+			return ['portfolio', portfolioId, 'model-providers', modelProviderId, 'models', modelId, 'references']
+		},
 		deliveries(portfolioId: string, projectId: string): QueryKey {
 			return ['portfolio', portfolioId, 'projects', projectId, 'deliveries']
 		},

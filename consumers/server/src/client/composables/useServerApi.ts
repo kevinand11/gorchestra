@@ -196,6 +196,16 @@ export function createServerApi(options: ServerApiOptions = {}) {
 				body: input,
 			})
 		},
+		async getModel(modelProviderId: string, modelId: string) {
+			return routes.request('get', '/api/portfolio/model-providers/:modelProviderId/models/:modelId', {
+				params: { modelProviderId, modelId },
+			})
+		},
+		async listModelReferences(modelProviderId: string, modelId: string) {
+			return routes.request('get', '/api/portfolio/model-providers/:modelProviderId/models/:modelId/references', {
+				params: { modelProviderId, modelId },
+			})
+		},
 		async updateModel(modelProviderId: string, modelId: string, input: UpdateModelInput) {
 			return routes.request('put', '/api/portfolio/model-providers/:modelProviderId/models/:modelId', {
 				params: { modelProviderId, modelId },

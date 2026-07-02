@@ -38,6 +38,20 @@ export function createModelProvidersApiRouter(context: ServerApiContext) {
 				response: Queries.GetModelProvider.resultPipe,
 			},
 		})(async (req) => getSelectedModelProvider(context, req.cookies, req.params.modelProviderId))
+		.get('/model-providers/:modelProviderId/models/:modelId', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ modelProviderId: idPipe, modelId: idPipe }),
+				response: Queries.GetModel.resultPipe,
+			},
+		})(async (req) => getSelectedModel(context, req.cookies, req.params.modelProviderId, req.params.modelId))
+		.get('/model-providers/:modelProviderId/models/:modelId/references', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ modelProviderId: idPipe, modelId: idPipe }),
+				response: Queries.ListModelReferences.resultPipe,
+			},
+		})(async (req) => listSelectedModelReferences(context, req.cookies, req.params.modelProviderId, req.params.modelId))
 		.put('/model-providers/:modelProviderId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
@@ -117,6 +131,33 @@ function getSelectedModelProvider(
 	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
 		const provider = await core.queries.getModelProvider({ modelProviderId })
 		return provider.ok ? provider.value : throwCoreOperationError(provider.error)
+	})
+}
+
+function getSelectedModel(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	modelProviderId: string,
+	modelId: string,
+): Promise<Queries.GetModel.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
+		const model = await core.queries.getModel({ modelId })
+		if (!model.ok) return throwCoreOperationError(model.error)
+		if (model.value.provider.id !== modelProviderId) throwCoreOperationError({ type: 'not-found', resource: 'model' })
+		return model.value
+	})
+}
+
+function listSelectedModelReferences(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	modelProviderId: string,
+	modelId: string,
+): Promise<Queries.ListModelReferences.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
+		await ensureModelBelongsToProvider(core, modelProviderId, modelId)
+		const references = await core.queries.listModelReferences({ modelId })
+		return references.ok ? references.value : throwCoreOperationError(references.error)
 	})
 }
 
@@ -235,12 +276,10 @@ async function ensureModelBelongsToProvider(
 	modelProviderId: string,
 	modelId: string,
 ): Promise<void> {
-	const provider = await core.queries.getModelProvider({ modelProviderId })
-	if (!provider.ok) return throwCoreOperationError(provider.error)
+	const model = await core.queries.getModel({ modelId })
+	if (!model.ok) return throwCoreOperationError(model.error)
 
-	if (!provider.value.models.some((model) => model.id === modelId)) {
-		throwCoreOperationError({ type: 'not-found', resource: 'model' })
-	}
+	if (model.value.provider.id !== modelProviderId) throwCoreOperationError({ type: 'not-found', resource: 'model' })
 }
 
 function commandContext(workspaceMemberId: string) {

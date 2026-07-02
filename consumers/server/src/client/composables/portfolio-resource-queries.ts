@@ -12,6 +12,8 @@ type AgentRunEvent = Awaited<ReturnType<ServerApi['getAgentRunEvents']>>[number]
 type PortfolioConfig = Awaited<ReturnType<ServerApi['getPortfolioConfig']>>
 type ListedModelProvider = Awaited<ReturnType<ServerApi['listModelProviders']>>[number]
 type ModelProviderDetails = Awaited<ReturnType<ServerApi['getModelProvider']>>
+type ModelDetails = Awaited<ReturnType<ServerApi['getModel']>>
+type ModelReference = Awaited<ReturnType<ServerApi['listModelReferences']>>[number]
 type ListedDelivery = Awaited<ReturnType<ServerApi['listDeliveries']>>[number]
 type DeliveryDetails = Awaited<ReturnType<ServerApi['getDelivery']>>
 type RepositoryDetails = Awaited<ReturnType<ServerApi['getRepository']>>
@@ -73,6 +75,22 @@ export function usePortfolioModelProviderQuery(serverApi: ServerApi, modelProvid
 	return useFetchAction(() => serverApi.getModelProvider(modelProviderId.value), {
 		queryKey: queryKeys.portfolio.modelProvider(portfolioId.value, modelProviderId.value),
 		initialData: null as ModelProviderDetails | null,
+	})
+}
+
+export function usePortfolioModelQuery(serverApi: ServerApi, modelProviderId: Ref<string>, modelId: Ref<string>) {
+	const { portfolioId, queryKeys } = usePortfolioQueryContext()
+	return useFetchAction(() => serverApi.getModel(modelProviderId.value, modelId.value), {
+		queryKey: queryKeys.portfolio.model(portfolioId.value, modelProviderId.value, modelId.value),
+		initialData: null as ModelDetails | null,
+	})
+}
+
+export function usePortfolioModelReferencesQuery(serverApi: ServerApi, modelProviderId: Ref<string>, modelId: Ref<string>) {
+	const { portfolioId, queryKeys } = usePortfolioQueryContext()
+	return useFetchAction(() => serverApi.listModelReferences(modelProviderId.value, modelId.value), {
+		queryKey: queryKeys.portfolio.modelReferences(portfolioId.value, modelProviderId.value, modelId.value),
+		initialData: [] as ModelReference[],
 	})
 }
 
