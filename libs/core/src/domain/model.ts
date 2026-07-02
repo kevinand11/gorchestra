@@ -99,6 +99,56 @@ export const listedModelPipe = v.object({
 })
 export type ListedModel = PipeOutput<typeof listedModelPipe>
 
+export const modelReferencePurposePipe = v.in(['default', 'planning', 'revision-planning', 'execution', 'revision-execution'])
+export type ModelReferencePurpose = PipeOutput<typeof modelReferencePurposePipe>
+
+export const scopedModelReferencePurposePipe = v.in(['planning', 'revision-planning', 'execution', 'revision-execution'])
+export const deliveryModelReferencePurposePipe = v.in(['execution', 'revision-execution'])
+
+export const portfolioConfigModelReferencePipe = v.object({
+	type: v.eq('portfolio-config'),
+	active: v.boolean(),
+	purpose: modelReferencePurposePipe,
+})
+export type PortfolioConfigModelReference = PipeOutput<typeof portfolioConfigModelReferencePipe>
+
+export const projectConfigModelReferencePipe = v.object({
+	type: v.eq('project-config'),
+	active: v.boolean(),
+	projectId: idPipe,
+	projectTitle: nonEmptyTrimmedStringPipe,
+	purpose: scopedModelReferencePurposePipe,
+})
+export type ProjectConfigModelReference = PipeOutput<typeof projectConfigModelReferencePipe>
+
+export const planConfigModelReferencePipe = v.object({
+	type: v.eq('plan-config'),
+	active: v.boolean(),
+	projectId: idPipe,
+	planId: idPipe,
+	planTitle: nonEmptyTrimmedStringPipe,
+	purpose: v.eq('planning'),
+})
+export type PlanConfigModelReference = PipeOutput<typeof planConfigModelReferencePipe>
+
+export const deliveryConfigModelReferencePipe = v.object({
+	type: v.eq('delivery-config'),
+	active: v.boolean(),
+	projectId: idPipe,
+	deliveryId: idPipe,
+	deliveryTitle: nonEmptyTrimmedStringPipe,
+	purpose: deliveryModelReferencePurposePipe,
+})
+export type DeliveryConfigModelReference = PipeOutput<typeof deliveryConfigModelReferencePipe>
+
+export const modelReferencePipe = v.discriminate((value) => value.type, {
+	'portfolio-config': portfolioConfigModelReferencePipe,
+	'project-config': projectConfigModelReferencePipe,
+	'plan-config': planConfigModelReferencePipe,
+	'delivery-config': deliveryConfigModelReferencePipe,
+})
+export type ModelReference = PipeOutput<typeof modelReferencePipe>
+
 export function availableThinkingLevels(capabilities: Pick<ModelCapabilities, 'reasoning'>): ModelThinkingLevel[] {
 	if (capabilities.reasoning === null) return ['off']
 	return modelThinkingLevels.filter((level) => capabilities.reasoning?.[level] !== null)

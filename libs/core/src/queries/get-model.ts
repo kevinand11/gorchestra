@@ -1,0 +1,133 @@
+import { v, type PipeOutput } from 'valleyed'
+
+import { idPipe } from '../domain/commons'
+import { defaultModelCapabilities } from '../domain/model'
+import { modelDetailsPipe } from '../domain/model-provider'
+import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
+import type { CoreServices } from '../services'
+import { listedModel, modelProviderSummary } from './model-provider-read-model'
+import { getRequired, withTransaction } from '../storage/helpers'
+import type { Result as CoreResult } from '../utils/types'
+import { buildQueryHandler } from './utils/handler'
+
+export const inputPipe = v.object({ modelId: idPipe })
+export type Input = PipeOutput<typeof inputPipe>
+
+export const resultPipe = modelDetailsPipe
+export type Result = PipeOutput<typeof resultPipe>
+export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
+export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
+
+export function createGetModelQuery(options: CoreServices): Operation {
+	return buildQueryHandler('getModel', inputPipe, (input) =>
+		withTransaction(options, async (storage) => {
+			const model = await getRequired('model', storage, input.modelId)
+			if (!model.ok) return model
+
+			const provider = await getRequired('model-provider', storage, model.value.providerId)
+			return provider.ok
+				? { ok: true, value: { ...listedModel(model.value), provider: modelProviderSummary(provider.value) } }
+				: provider
+		}),
+	)
+}
+
+if (import.meta.vitest) {
+	const { describe, expect, it } = import.meta.vitest
+	const { createTestCoreServices, seedModelProvider, seedSelectableModel, stamp } = await import('../utils/test-helpers')
+
+	describe('getModel query', () => {
+		it('validates input before reading storage', async () => {
+			const options = createTestCoreServices()
+			options.tx.models.fail.get = true
+			const query = createGetModelQuery(options)
+
+			const result = await query({ modelId: '' })
+
+			expect(result).toMatchObject({
+				ok: false,
+				error: { type: 'invalid-input', boundary: 'query', operation: 'getModel' },
+			})
+			expect(options.transactionCalls()).toBe(0)
+		})
+
+		it('returns not-found when the target Model does not exist', async () => {
+			const result = await createGetModelQuery(createTestCoreServices())({ modelId: 'model-1' })
+
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'model', id: 'model-1' } })
+		})
+
+		it('returns not-found when the Model Provider does not exist', async () => {
+			const options = createTestCoreServices()
+			seedSelectableModel(options.tx, 'model-1')
+			options.tx.modelProviders.records.delete('model-1-provider')
+			const query = createGetModelQuery(options)
+
+			const result = await query({ modelId: 'model-1' })
+
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'model-provider', id: 'model-1-provider' } })
+		})
+
+		it('returns Model details with Provider summary and derived archive state', async () => {
+			const options = createTestCoreServices()
+			seedModelProvider(options.tx, 'provider-1', true)
+			options.tx.modelProviders.records.set('provider-1', {
+				...options.tx.modelProviders.records.get('provider-1')!,
+				name: 'Provider One',
+				protocol: { type: 'openai-responses' },
+			})
+			options.tx.models.records.set('model-1', {
+				id: 'model-1',
+				providerId: 'provider-1',
+				name: 'Model One',
+				providerModelId: 'provider-model-1',
+				capabilities: defaultModelCapabilities,
+				pricing: null,
+				created: stamp,
+				updated: null,
+				archivePeriods: [{ archived: stamp, unarchived: null }],
+			})
+			const query = createGetModelQuery(options)
+
+			const result = await query({ modelId: 'model-1' })
+
+			expect(result).toEqual({
+				ok: true,
+				value: {
+					id: 'model-1',
+					providerId: 'provider-1',
+					name: 'Model One',
+					providerModelId: 'provider-model-1',
+					capabilities: defaultModelCapabilities,
+					pricing: null,
+					availableThinkingLevels: ['off'],
+					created: stamp,
+					updated: null,
+					archived: true,
+					provider: {
+						id: 'provider-1',
+						name: 'Provider One',
+						protocol: { type: 'openai-responses' },
+						baseUrl: 'https://api.example.com',
+						archived: true,
+					},
+				},
+			})
+		})
+
+		it('returns storage errors when Model reads fail', async () => {
+			const options = createTestCoreServices()
+			options.storage.on = () => {
+				throw new Error('get failed')
+			}
+			const query = createGetModelQuery(options)
+
+			const result = await query({ modelId: 'model-1' })
+
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'storage-operation-failed', operation: { type: 'get', resource: 'model', id: 'model-1' } },
+			})
+		})
+	})
+}

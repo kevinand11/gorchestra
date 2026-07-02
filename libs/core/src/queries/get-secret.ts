@@ -95,11 +95,10 @@ if (import.meta.vitest) {
 					references: [
 						{
 							type: 'secret-binding',
+							active: true,
 							secretBindingId: 'binding-1',
 							scope: { type: 'portfolio' },
 							envName: 'GITHUB_TOKEN',
-							archived: false,
-							created: { origin: 'imported', at: '2026-06-12T00:00:00.000Z' },
 						},
 					],
 				},

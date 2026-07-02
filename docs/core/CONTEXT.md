@@ -69,8 +69,8 @@ A consumer-specific protected token that lets the owning Consumer resolve Secret
 _Avoid_: Plaintext secret, decrypted secret value
 
 **Secret Reference**:
-A Core-owned Portfolio usage of a Secret for a specific purpose. Secret References describe where a Secret is used; they do not expose plaintext and do not expose a Secret to Agent Runs unless the usage is a Secret Binding.
-_Avoid_: Secret Link, credential usage
+A direct Core-owned Portfolio usage of a Secret by a stored data model that may use that Secret for future provider access or Agent Run environment exposure. Secret References report whether the referring data model is active, do not expose plaintext, and do not expose a Secret to Agent Runs unless the usage is a Secret Binding.
+_Avoid_: Secret Link, credential usage, historical secret mention
 
 **Environment Variable**:
 A Secret exposed to Agent Runs as a named runtime environment variable through a Secret Binding.
@@ -115,6 +115,10 @@ _Avoid_: Workspace Settings, global settings, account settings
 **Model Use Config**:
 A scoped configuration value that selects a Model and Model Thinking Level together for one Agent Run purpose. Model Use Config is inherited atomically; a narrower scope either overrides both the Model and Model Thinking Level or inherits both from a broader scope.
 _Avoid_: model id config, thinking override, partial model selection
+
+**Model Reference**:
+A direct Core-owned Portfolio usage of a Model by a stored data model that may use that Model for future Planning or Delivery work. Model References report whether the referring data model is active and do not expand inherited, effective, or historical transcript usage.
+_Avoid_: Model Binding, model usage link, selected model pointer, inherited model usage, Agent Run transcript selection
 
 **Project Config**:
 Project-level orchestration settings that apply to Plans and Deliveries in a Project unless overridden at a narrower scope. Project Config does not change the Project Source.

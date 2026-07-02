@@ -85,6 +85,18 @@ export const listedModelProviderPipe = v.object({
 })
 export type ListedModelProvider = PipeOutput<typeof listedModelProviderPipe>
 
+export const modelProviderSummaryPipe = v.object({
+	id: idPipe,
+	name: nonEmptyTrimmedStringPipe,
+	protocol: modelProviderProtocolPipe,
+	baseUrl: nonEmptyTrimmedStringPipe,
+	archived: v.boolean(),
+})
+export type ModelProviderSummary = PipeOutput<typeof modelProviderSummaryPipe>
+
+export const modelDetailsPipe = v.merge(listedModelPipe, v.object({ provider: modelProviderSummaryPipe }))
+export type ModelDetails = PipeOutput<typeof modelDetailsPipe>
+
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 

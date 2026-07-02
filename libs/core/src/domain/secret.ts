@@ -37,43 +37,40 @@ export type SecretBinding = PipeOutput<typeof secretBindingPipe>
 
 export const repositoryAccessSecretReferencePipe = v.object({
 	type: v.eq('repository-access'),
+	active: v.boolean(),
 	repositoryId: idPipe,
 	projectId: idPipe,
 	provider: v.eq('github'),
 	owner: nonEmptyTrimmedStringPipe,
 	name: nonEmptyTrimmedStringPipe,
-	created: auditStampPipe,
 })
 export type RepositoryAccessSecretReference = PipeOutput<typeof repositoryAccessSecretReferencePipe>
 
 export const secretBindingSecretReferencePipe = v.object({
 	type: v.eq('secret-binding'),
+	active: v.boolean(),
 	secretBindingId: idPipe,
 	scope: secretBindingScopePipe,
 	envName: envNamePipe,
-	archived: v.boolean(),
-	created: auditStampPipe,
 })
 export type SecretBindingSecretReference = PipeOutput<typeof secretBindingSecretReferencePipe>
 
 export const modelProviderAuthSecretReferencePipe = v.object({
 	type: v.eq('model-provider-auth'),
+	active: v.boolean(),
 	modelProviderId: idPipe,
 	name: nonEmptyTrimmedStringPipe,
 	protocol: modelProviderProtocolPipe,
-	archived: v.boolean(),
-	created: auditStampPipe,
 })
 export type ModelProviderAuthSecretReference = PipeOutput<typeof modelProviderAuthSecretReferencePipe>
 
 export const modelProviderHeaderSecretReferencePipe = v.object({
 	type: v.eq('model-provider-header'),
+	active: v.boolean(),
 	modelProviderId: idPipe,
 	name: nonEmptyTrimmedStringPipe,
 	protocol: modelProviderProtocolPipe,
 	headerName: nonEmptyTrimmedStringPipe,
-	archived: v.boolean(),
-	created: auditStampPipe,
 })
 export type ModelProviderHeaderSecretReference = PipeOutput<typeof modelProviderHeaderSecretReferencePipe>
 

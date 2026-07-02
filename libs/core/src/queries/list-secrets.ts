@@ -117,12 +117,12 @@ if (import.meta.vitest) {
 						references: [
 							{
 								type: 'repository-access',
+								active: true,
 								repositoryId: 'repository-1',
 								projectId: 'project-1',
 								provider: 'github',
 								owner: 'Octo',
 								name: 'Repo',
-								created: { origin: 'imported', at: '2026-06-12T00:00:00.000Z' },
 							},
 						],
 					},

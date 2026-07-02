@@ -97,12 +97,12 @@ function repositorySecretReference(repository: Repository, secretIds: Set<Id>): 
 							secretId: repository.config.secretId,
 							reference: {
 								type: 'repository-access',
+								active: true,
 								repositoryId: repository.id,
 								projectId: repository.projectId,
 								provider: 'github',
 								owner: repository.config.owner,
 								name: repository.config.name,
-								created: repository.created,
 							},
 						},
 					]
@@ -137,11 +137,10 @@ function secretBindingSecretReference(binding: SecretBinding, secretIds: Set<Id>
 					secretId: binding.secretId,
 					reference: {
 						type: 'secret-binding',
+						active: !isArchived(binding.archivePeriods),
 						secretBindingId: binding.id,
 						scope: binding.scope,
 						envName: binding.envName,
-						archived: isArchived(binding.archivePeriods),
-						created: binding.created,
 					},
 				},
 			]
@@ -174,11 +173,10 @@ function modelProviderAuthSecretReference(modelProvider: ModelProvider, secretId
 					secretId: auth.secretId,
 					reference: {
 						type: 'model-provider-auth',
+						active: !archived,
 						modelProviderId: modelProvider.id,
 						name: modelProvider.name,
 						protocol: modelProvider.protocol,
-						archived,
-						created: modelProvider.created,
 					},
 				},
 			]
@@ -197,12 +195,11 @@ function modelProviderHeaderSecretReference(
 					secretId: header.valueSecretId,
 					reference: {
 						type: 'model-provider-header',
+						active: !archived,
 						modelProviderId: modelProvider.id,
 						name: modelProvider.name,
 						protocol: modelProvider.protocol,
 						headerName: header.name,
-						archived,
-						created: modelProvider.created,
 					},
 				},
 			]
@@ -216,9 +213,8 @@ function sortSecretReferences(references: SecretReference[]): SecretReference[] 
 function compareSecretReferences(left: SecretReference, right: SecretReference): number {
 	return firstNonZero([
 		referenceTypeOrder[left.type] - referenceTypeOrder[right.type],
-		referenceArchiveRank(left) - referenceArchiveRank(right),
+		referenceActiveRank(left) - referenceActiveRank(right),
 		referenceLabel(left).localeCompare(referenceLabel(right)),
-		left.created.at.localeCompare(right.created.at),
 		referenceId(left).localeCompare(referenceId(right)),
 	])
 }
@@ -234,8 +230,8 @@ const referenceTypeOrder: Record<SecretReference['type'], number> = {
 	'secret-binding': 3,
 }
 
-function referenceArchiveRank(reference: SecretReference): number {
-	return 'archived' in reference && reference.archived ? 1 : 0
+function referenceActiveRank(reference: Pick<SecretReference, 'active'>): number {
+	return reference.active ? 0 : 1
 }
 
 type SecretReferenceReader<T> = {
@@ -305,37 +301,78 @@ if (import.meta.vitest) {
 				value: [
 					{
 						type: 'repository-access',
+						active: true,
 						repositoryId: 'repository-1',
 						projectId: 'project-1',
 						provider: 'github',
 						owner: 'Octo',
 						name: 'Repo',
-						created: stamp,
 					},
 					{
 						type: 'model-provider-auth',
+						active: false,
 						modelProviderId: 'model-provider-1',
 						name: 'Anthropic',
 						protocol: { type: 'anthropic-messages' },
-						archived: true,
-						created: stamp,
 					},
 					{
 						type: 'model-provider-header',
+						active: false,
 						modelProviderId: 'model-provider-1',
 						name: 'Anthropic',
 						protocol: { type: 'anthropic-messages' },
 						headerName: 'X-Team',
-						archived: true,
-						created: stamp,
 					},
 					{
 						type: 'secret-binding',
+						active: false,
 						secretBindingId: 'binding-1',
 						scope: { type: 'project', projectId: 'missing-project' },
 						envName: 'GITHUB_TOKEN',
-						archived: true,
-						created: stamp,
+					},
+				],
+			})
+		})
+
+		it('orders active references before inactive references within a reference type', async () => {
+			const options = createTestCoreServices()
+			seedSecret(options.tx, 'secret-1')
+			options.tx.secretBindings.records.set('binding-active-z', {
+				id: 'binding-active-z',
+				secretId: 'secret-1',
+				scope: { type: 'portfolio' },
+				envName: 'Z_ACTIVE',
+				created: stamp,
+				archivePeriods: [],
+			})
+			options.tx.secretBindings.records.set('binding-inactive-a', {
+				id: 'binding-inactive-a',
+				secretId: 'secret-1',
+				scope: { type: 'portfolio' },
+				envName: 'A_INACTIVE',
+				created: stamp,
+				archivePeriods: [{ archived: stamp, unarchived: null }],
+			})
+			const query = createListSecretReferencesQuery(options)
+
+			const result = await query({ secretId: 'secret-1' })
+
+			expect(result).toEqual({
+				ok: true,
+				value: [
+					{
+						type: 'secret-binding',
+						active: true,
+						secretBindingId: 'binding-active-z',
+						scope: { type: 'portfolio' },
+						envName: 'Z_ACTIVE',
+					},
+					{
+						type: 'secret-binding',
+						active: false,
+						secretBindingId: 'binding-inactive-a',
+						scope: { type: 'portfolio' },
+						envName: 'A_INACTIVE',
 					},
 				],
 			})

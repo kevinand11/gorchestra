@@ -1,6 +1,6 @@
 import { isArchived } from '../commands/utils/storage'
 import { availableThinkingLevels, defaultModelCapabilities, type ListedModel, type Model } from '../domain/model'
-import type { ListedModelProvider, ModelProvider } from '../domain/model-provider'
+import type { ListedModelProvider, ModelProvider, ModelProviderSummary } from '../domain/model-provider'
 
 export function listedModelProviders(modelProviders: ModelProvider[], models: Model[]): ListedModelProvider[] {
 	const modelsByProviderId = groupModelsByProviderId(sortByCreatedAtThenId(models).map(listedModel))
@@ -11,9 +11,19 @@ export function listedModelProviders(modelProviders: ModelProvider[], models: Mo
 	})
 }
 
-function listedModel(model: Model): ListedModel {
+export function listedModel(model: Model): ListedModel {
 	const { archivePeriods, ...modelFields } = model
 	return { ...modelFields, archived: isArchived(archivePeriods), availableThinkingLevels: availableThinkingLevels(model.capabilities) }
+}
+
+export function modelProviderSummary(provider: ModelProvider): ModelProviderSummary {
+	return {
+		id: provider.id,
+		name: provider.name,
+		protocol: provider.protocol,
+		baseUrl: provider.baseUrl,
+		archived: isArchived(provider.archivePeriods),
+	}
 }
 
 function groupModelsByProviderId(models: ListedModel[]): Map<string, ListedModel[]> {

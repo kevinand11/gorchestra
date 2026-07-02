@@ -2,6 +2,7 @@ import type { CoreRuntime } from '../runtime'
 import { createGetAgentRunEventsQuery } from './get-agent-run-events'
 import { createGetDeliveryQuery } from './get-delivery'
 import { createGetMemoryQuery } from './get-memory'
+import { createGetModelQuery } from './get-model'
 import { createGetModelProviderQuery } from './get-model-provider'
 import { createGetPlanQuery } from './get-plan'
 import { createGetPortfolioConfigQuery } from './get-portfolio-config'
@@ -11,6 +12,7 @@ import { createGetSecretQuery } from './get-secret'
 import { createListDeliveriesQuery } from './list-deliveries'
 import { createListMemoryChildrenQuery } from './list-memory-children'
 import { createListModelProvidersQuery } from './list-model-providers'
+import { createListModelReferencesQuery } from './list-model-references'
 import { createListPlansQuery } from './list-plans'
 import { createListProjectsQuery } from './list-projects'
 import { createListRepositoriesQuery } from './list-repositories'
@@ -25,7 +27,9 @@ export function createCoreQueries(runtime: CoreRuntime) {
 		getProject: createGetProjectQuery(services),
 		getPortfolioConfig: createGetPortfolioConfigQuery(services),
 		listModelProviders: createListModelProvidersQuery(services),
+		getModel: createGetModelQuery(services),
 		getModelProvider: createGetModelProviderQuery(services),
+		listModelReferences: createListModelReferencesQuery(services),
 		getAgentRunEvents: createGetAgentRunEventsQuery(services),
 		listPlans: createListPlansQuery(services),
 		getPlan: createGetPlanQuery(services),
@@ -55,6 +59,7 @@ if (import.meta.vitest) {
 				'getAgentRunEvents',
 				'getDelivery',
 				'getMemory',
+				'getModel',
 				'getModelProvider',
 				'getPlan',
 				'getPortfolioConfig',
@@ -64,6 +69,7 @@ if (import.meta.vitest) {
 				'listDeliveries',
 				'listMemoryChildren',
 				'listModelProviders',
+				'listModelReferences',
 				'listPlans',
 				'listProjects',
 				'listRepositories',
