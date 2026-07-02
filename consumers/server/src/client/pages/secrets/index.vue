@@ -44,6 +44,29 @@
 			</div>
 			<p v-if="isRefreshingSecrets" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">Refreshing Secrets…</p>
 		</section>
+
+		<template #right>
+			<aside>
+				<section class="border-b border-dimmer px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">Value handling</h2>
+					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+						Secret values are protected at creation time and cannot be viewed again from the browser.
+					</p>
+				</section>
+				<section class="border-b border-dimmer px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">Where Secrets are used</h2>
+					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+						Active Secrets can back Repository access, Model Provider API keys, and Model Provider custom headers.
+					</p>
+				</section>
+				<section class="px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">References</h2>
+					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+						Open a Secret detail page to inspect direct references and archival metadata. Archived Secrets appear muted here.
+					</p>
+				</section>
+			</aside>
+		</template>
 	</NuxtLayout>
 </template>
 

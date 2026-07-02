@@ -43,6 +43,34 @@
 			</div>
 			<p v-if="isRefreshingProjects" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">Refreshing Projects…</p>
 		</section>
+
+		<template #right>
+			<aside>
+				<section class="border-b border-dimmer px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">Setup order</h2>
+					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+						Create a Project first, then attach Repositories from that Project's Repositories surface.
+					</p>
+				</section>
+				<section class="border-b border-dimmer px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">Project work</h2>
+					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+						Plans and Deliveries live under a Project so planning context, repositories, and delivery history stay together.
+					</p>
+				</section>
+				<section class="px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">Configuration</h2>
+					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+						Project-specific configuration is handled inside each Project. Portfolio-wide defaults live in Portfolio Config.
+					</p>
+					<NuxtLink
+						class="mt-2 inline-flex text-sz-helper font-semibold text-primary hover:brightness-110"
+						to="/portfolio-config">
+						Open Portfolio Config
+					</NuxtLink>
+				</section>
+			</aside>
+		</template>
 	</NuxtLayout>
 </template>
 
