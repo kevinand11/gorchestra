@@ -17,6 +17,7 @@ export const createPlanRequestSchema = v.object({
 	initialMessage: Domain.Commons.nonEmptyTrimmedStringPipe,
 	config: planConfigRequestSchema,
 })
+export const sendAgentRunMessageRequestSchema = v.object({ content: v.array(Domain.AgentRun.agentRunTextContentPipe) })
 export const setPortfolioConfigRequestSchema = v.object({ config: Domain.Config.portfolioConfigPipe })
 export const setProjectConfigRequestSchema = v.object({ config: Domain.Config.projectConfigPipe })
 export const createModelProviderRequestSchema = v.object({
@@ -60,6 +61,7 @@ export const createRepositoryRequestSchema = v.object({ config: Domain.Repositor
 export type PortfolioRequestCookies = Record<string, string | undefined>
 export type CreateProjectRequest = PipeOutput<typeof createProjectRequestSchema>
 export type CreatePlanRequest = PipeOutput<typeof createPlanRequestSchema>
+export type SendAgentRunMessageRequest = PipeOutput<typeof sendAgentRunMessageRequestSchema>
 export type SetPortfolioConfigRequest = PipeOutput<typeof setPortfolioConfigRequestSchema>
 export type SetProjectConfigRequest = PipeOutput<typeof setProjectConfigRequestSchema>
 export type CreateModelProviderRequest = PipeOutput<typeof createModelProviderRequestSchema>

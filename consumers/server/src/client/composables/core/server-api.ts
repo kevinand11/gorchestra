@@ -68,6 +68,7 @@ export type ProjectConfigInput = {
 }
 
 export type PlanConfigInput = { model: { planning: ModelUseConfig | null } | null }
+export type SendAgentRunMessageInput = { content: Array<{ type: 'text'; text: string }> }
 
 export type CreateModelProviderInput = {
 	name: string
@@ -180,6 +181,9 @@ export function createServerApi(options: ServerApiOptions = {}) {
 				params: { agentRunId },
 				query: { afterSequence: input.afterSequence, limit: input.limit },
 			})
+		},
+		async sendAgentRunMessage(agentRunId: string, input: SendAgentRunMessageInput) {
+			return routes.request('post', '/api/portfolio/agent-runs/:agentRunId/messages', { params: { agentRunId }, body: input })
 		},
 		async getPortfolioConfig() {
 			return routes.request('get', '/api/portfolio/config')
