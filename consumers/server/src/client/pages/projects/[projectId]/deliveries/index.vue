@@ -39,9 +39,7 @@
 					</span>
 				</NuxtLink>
 			</div>
-			<p v-if="isLoadingDeliveries && hasLoadedDeliveries" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
-				Refreshing Deliveries…
-			</p>
+			<p v-if="isRefreshingDeliveries" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">Refreshing Deliveries…</p>
 		</section>
 	</NuxtLayout>
 </template>
@@ -49,23 +47,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { usePortfolioDeliveriesQuery } from '../../../../composables/portfolio-resource-queries'
-import { useServerApi, type ServerApi } from '../../../../composables/useServerApi'
+import { useDeliveriesList, type ListedDelivery } from '../../../../composables/portfolio/project/deliveries'
 import { deliveryStateForDisplay, type DeliveryState } from './display'
 
 definePageMeta({ middleware: ['has-selection'] })
 
-type ListedDelivery = Awaited<ReturnType<ServerApi['listDeliveries']>>[number]
-
 const route = useRoute()
-const serverApi = useServerApi()
 const projectId = computed(() => route.params.projectId as string)
-const {
-	data: deliveries,
-	isLoading: isLoadingDeliveries,
-	error: deliveriesError,
-	hasExecuted: hasLoadedDeliveries,
-} = usePortfolioDeliveriesQuery(serverApi, projectId)
+const { deliveries, isLoadingDeliveries, deliveriesError, hasLoadedDeliveries, isRefreshingDeliveries } = useDeliveriesList(projectId)
 
 function repositoryLabel(delivery: ListedDelivery): string {
 	return `${delivery.target.repository.config.owner}/${delivery.target.repository.config.name}`

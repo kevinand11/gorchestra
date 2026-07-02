@@ -63,7 +63,7 @@
 					No active inherited Planning Model is configured. Select a Plan-level Planning Model below.
 				</UiCallout>
 
-				<div class="mt-4 grid gap-3 md:grid-cols-2">
+				<div class="mt-4 grid gap-3 md:grid-cols-2 items-start">
 					<UiFormGroup label="Planning Model" for-id="planning-model">
 						<UiSelect
 							id="planning-model"
@@ -78,6 +78,7 @@
 					<UiFormGroup label="Planning Thinking" for-id="planning-thinking">
 						<UiSelect
 							id="planning-thinking"
+							placeholder="Use inherited/default"
 							v-model="planCreationForm.planningModelUse.thinkingLevel"
 							:options="planningModelSelect.thinkingLevelOptions.value"
 							:disabled="planningModelSelect.thinkingLevelDisabled.value" />
@@ -123,15 +124,11 @@ import UiFormGroup from '../../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../../components/ui/UiInput.vue'
 import UiSelect from '../../../../components/ui/UiSelect.vue'
 import UiTextarea from '../../../../components/ui/UiTextarea.vue'
-import { useApiAction } from '../../../../composables/action-state'
 import { modelOptionLabel, thinkingLevelLabel } from '../../../../composables/model-provider-options'
 import { usePortfolioConfigQuery, usePortfolioProjectQuery } from '../../../../composables/portfolio-resource-queries'
-import { useQueryCache } from '../../../../composables/query-cache'
-import { useSelectedPortfolio } from '../../../../composables/selected-portfolio'
+import { usePlansCreate } from '../../../../composables/portfolio/project/plans'
 import { useServerApi, type ModelUseConfig, type ServerApi } from '../../../../composables/useServerApi'
 import { useSelectModel } from '../../../../composables/use-select-model'
-import { useToasts } from '../../../../composables/toasts'
-import { PlanCreationFormDraft } from '../../../../forms/plan'
 
 definePageMeta({ middleware: ['has-selection'] })
 
@@ -143,12 +140,12 @@ type PortfolioConfig = Awaited<ReturnType<ServerApi['getPortfolioConfig']>>
 
 const route = useRoute()
 const projectId = computed(() => route.params.projectId as string)
-const { portfolio } = useSelectedPortfolio()
 const serverApi = useServerApi()
-const toasts = useToasts()
-const queryCache = useQueryCache()
-const { queryKeys } = queryCache
-const planCreationForm = new PlanCreationFormDraft()
+const { planCreationForm, isCreatingPlan, createPlanError, createPlan } = usePlansCreate(projectId, {
+	onSuccess: async (plan) => {
+		await navigateTo(`/projects/${projectId.value}/plans/${plan.id}`)
+	},
+})
 
 const { data: project } = usePortfolioProjectQuery(serverApi, projectId)
 const { data: portfolioConfig } = usePortfolioConfigQuery(serverApi)
@@ -171,18 +168,6 @@ const hasRequiredPlanningModel = computed(() => !requiresPlanModelOverride.value
 const canCreatePlan = computed(() =>
 	[planCreationForm.valid, hasActiveModels.value, hasRequiredPlanningModel.value, !isCreatingPlan.value].every(Boolean),
 )
-
-const {
-	isLoading: isCreatingPlan,
-	error: createPlanError,
-	execute: createPlan,
-} = useApiAction(async () => {
-	const plan = await serverApi.createPlan(projectId.value, planCreationForm.toModel())
-	queryCache.set(queryKeys.portfolio.plan(portfolio.value.id, projectId.value, plan.id), plan)
-	queryCache.invalidate(queryKeys.portfolio.plans(portfolio.value.id, projectId.value), { exact: true })
-	toasts.success({ title: 'Plan created.', body: plan.title })
-	await navigateTo(`/projects/${projectId.value}/plans/${plan.id}`)
-})
 
 function planningModelUseFromConfig(projectDetails: ProjectDetails | null, config: PortfolioConfig): ModelUseConfig | null {
 	return firstPresent([projectPlanningModelUse(projectDetails), portfolioPlanningModelUse(config), portfolioDefaultModelUse(config)])

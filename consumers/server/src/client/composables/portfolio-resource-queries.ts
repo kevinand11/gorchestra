@@ -6,16 +6,11 @@ import { useSelectedPortfolio } from './selected-portfolio'
 import type { ServerApi } from './useServerApi'
 
 type ProjectDetails = Awaited<ReturnType<ServerApi['getProject']>>
-type ListedPlan = Awaited<ReturnType<ServerApi['listPlans']>>[number]
-type PlanDetails = Awaited<ReturnType<ServerApi['getPlan']>>
-type AgentRunEvent = Awaited<ReturnType<ServerApi['getAgentRunEvents']>>[number]
 type PortfolioConfig = Awaited<ReturnType<ServerApi['getPortfolioConfig']>>
 type ListedModelProvider = Awaited<ReturnType<ServerApi['listModelProviders']>>[number]
 type ModelProviderDetails = Awaited<ReturnType<ServerApi['getModelProvider']>>
 type ModelDetails = Awaited<ReturnType<ServerApi['getModel']>>
 type ModelReference = Awaited<ReturnType<ServerApi['listModelReferences']>>[number]
-type ListedDelivery = Awaited<ReturnType<ServerApi['listDeliveries']>>[number]
-type DeliveryDetails = Awaited<ReturnType<ServerApi['getDelivery']>>
 type RepositoryDetails = Awaited<ReturnType<ServerApi['getRepository']>>
 type ListedSecret = Awaited<ReturnType<ServerApi['listSecrets']>>[number]
 type ListedMemory = Awaited<ReturnType<ServerApi['listMemoryChildren']>>[number]
@@ -26,31 +21,6 @@ export function usePortfolioProjectQuery(serverApi: ServerApi, projectId: Ref<st
 	return useFetchAction(() => serverApi.getProject(projectId.value), {
 		queryKey: queryKeys.portfolio.project(portfolioId.value, projectId.value),
 		initialData: null as ProjectDetails | null,
-	})
-}
-
-export function usePortfolioPlansQuery(serverApi: ServerApi, projectId: Ref<string>) {
-	const { portfolioId, queryKeys } = usePortfolioQueryContext()
-	return useFetchAction(() => serverApi.listPlans(projectId.value), {
-		queryKey: queryKeys.portfolio.plans(portfolioId.value, projectId.value),
-		initialData: [] as ListedPlan[],
-	})
-}
-
-export function usePortfolioPlanQuery(serverApi: ServerApi, projectId: Ref<string>, planId: Ref<string>) {
-	const { portfolioId, queryKeys } = usePortfolioQueryContext()
-	return useFetchAction(() => serverApi.getPlan(projectId.value, planId.value), {
-		queryKey: queryKeys.portfolio.plan(portfolioId.value, projectId.value, planId.value),
-		initialData: null as PlanDetails | null,
-	})
-}
-
-export function usePortfolioAgentRunEventsQuery(serverApi: ServerApi, agentRunId: Ref<string | null>, cacheKey: Ref<string>) {
-	const { portfolioId, queryKeys } = usePortfolioQueryContext()
-	return useFetchAction(() => serverApi.getAgentRunEvents(requireAgentRunId(agentRunId.value)), {
-		queryKey: queryKeys.portfolio.agentRunEvents(portfolioId.value, cacheKey.value),
-		initialData: [] as AgentRunEvent[],
-		immediate: false,
 	})
 }
 
@@ -94,22 +64,6 @@ export function usePortfolioModelReferencesQuery(serverApi: ServerApi, modelProv
 	})
 }
 
-export function usePortfolioDeliveriesQuery(serverApi: ServerApi, projectId: Ref<string>) {
-	const { portfolioId, queryKeys } = usePortfolioQueryContext()
-	return useFetchAction(() => serverApi.listDeliveries(projectId.value), {
-		queryKey: queryKeys.portfolio.deliveries(portfolioId.value, projectId.value),
-		initialData: [] as ListedDelivery[],
-	})
-}
-
-export function usePortfolioDeliveryQuery(serverApi: ServerApi, projectId: Ref<string>, deliveryId: Ref<string>) {
-	const { portfolioId, queryKeys } = usePortfolioQueryContext()
-	return useFetchAction(() => serverApi.getDelivery(projectId.value, deliveryId.value), {
-		queryKey: queryKeys.portfolio.delivery(portfolioId.value, projectId.value, deliveryId.value),
-		initialData: null as DeliveryDetails | null,
-	})
-}
-
 export function usePortfolioRepositoryQuery(serverApi: ServerApi, projectId: Ref<string>, repositoryId: Ref<string>) {
 	const { portfolioId, queryKeys } = usePortfolioQueryContext()
 	return useFetchAction(() => serverApi.getRepository(projectId.value, repositoryId.value), {
@@ -147,9 +101,4 @@ function usePortfolioQueryContext() {
 	const { queryKeys } = useQueryCache()
 	const portfolioId = computed(() => portfolio.value.id)
 	return { portfolioId, queryKeys }
-}
-
-function requireAgentRunId(agentRunId: string | null): string {
-	if (agentRunId === null) throw new Error('Agent Run is not loaded yet')
-	return agentRunId
 }

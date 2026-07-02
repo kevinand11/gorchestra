@@ -2,9 +2,7 @@
 	<NuxtLayout name="project" :project-id="projectId">
 		<section>
 			<div v-if="isLoadingDelivery && !hasLoadedDelivery" class="border-b border-dimmer px-3 py-4 text-dim">Loading Delivery…</div>
-			<p v-if="isLoadingDelivery && hasLoadedDelivery" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
-				Refreshing Delivery…
-			</p>
+			<p v-if="isRefreshingDelivery" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">Refreshing Delivery…</p>
 			<div v-else-if="deliveryError" class="border-b border-dimmer px-3 py-4 text-error">{{ deliveryError }}</div>
 			<div v-else-if="delivery" class="grid gap-0">
 				<section class="border-b border-dimmer px-3 py-3">
@@ -74,23 +72,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { usePortfolioDeliveryQuery } from '../../../../composables/portfolio-resource-queries'
-import { useServerApi } from '../../../../composables/useServerApi'
+import { useDeliveryDetail } from '../../../../composables/portfolio/project/deliveries'
 import { formatDate } from '../../../../utils/time'
 import { deliveryStateForDisplay, type DeliveryState } from './display'
 
 definePageMeta({ middleware: ['has-selection'] })
 
 const route = useRoute()
-const serverApi = useServerApi()
 const projectId = computed(() => route.params.projectId as string)
 const deliveryId = computed(() => route.params.deliveryId as string)
-const {
-	data: delivery,
-	isLoading: isLoadingDelivery,
-	error: deliveryError,
-	hasExecuted: hasLoadedDelivery,
-} = usePortfolioDeliveryQuery(serverApi, projectId, deliveryId)
+const { delivery, isLoadingDelivery, deliveryError, hasLoadedDelivery, isRefreshingDelivery } = useDeliveryDetail(projectId, deliveryId)
 
 const repositoryLabel = computed(() => {
 	if (delivery.value === null) return ''

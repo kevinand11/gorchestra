@@ -39,9 +39,7 @@
 					</span>
 				</NuxtLink>
 			</div>
-			<p v-if="isLoadingPlans && hasLoadedPlans" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
-				Refreshing Plans…
-			</p>
+			<p v-if="isRefreshingPlans" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">Refreshing Plans…</p>
 		</section>
 	</NuxtLayout>
 </template>
@@ -49,19 +47,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { usePortfolioPlansQuery } from '../../../../composables/portfolio-resource-queries'
-import { useServerApi } from '../../../../composables/useServerApi'
+import { usePlansList } from '../../../../composables/portfolio/project/plans'
 import { formatDate } from '../../../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
 
 const route = useRoute()
-const serverApi = useServerApi()
 const projectId = computed(() => route.params.projectId as string)
-const {
-	data: plans,
-	isLoading: isLoadingPlans,
-	error: plansError,
-	hasExecuted: hasLoadedPlans,
-} = usePortfolioPlansQuery(serverApi, projectId)
+const { plans, isLoadingPlans, plansError, hasLoadedPlans, isRefreshingPlans } = usePlansList(projectId)
 </script>

@@ -2,9 +2,7 @@
 	<NuxtLayout name="project" :project-id="projectId">
 		<section>
 			<div v-if="isLoadingPlan && !hasLoadedPlan" class="border-b border-dimmer px-3 py-4 text-dim">Loading Plan…</div>
-			<p v-if="isLoadingPlan && hasLoadedPlan" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
-				Refreshing Plan…
-			</p>
+			<p v-if="isRefreshingPlan" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">Refreshing Plan…</p>
 			<div v-else-if="planError" class="border-b border-dimmer px-3 py-4 text-error">{{ planError }}</div>
 			<div v-else-if="plan" class="grid gap-0">
 				<section class="border-b border-dimmer px-3 py-3">
@@ -94,31 +92,22 @@ import { computed } from 'vue'
 
 import UiButton from '../../../../components/ui/UiButton.vue'
 import UiText from '../../../../components/ui/UiText.vue'
-import { usePortfolioAgentRunEventsQuery, usePortfolioPlanQuery } from '../../../../composables/portfolio-resource-queries'
-import { useServerApi } from '../../../../composables/useServerApi'
+import { useAgentRunEvents } from '../../../../composables/portfolio/agent-runs'
+import { usePlanDetail } from '../../../../composables/portfolio/project/plans'
 import { formatDate } from '../../../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
 
 const route = useRoute()
-const serverApi = useServerApi()
 const projectId = computed(() => route.params.projectId as string)
 const planId = computed(() => route.params.planId as string)
-const {
-	data: plan,
-	isLoading: isLoadingPlan,
-	error: planError,
-	hasExecuted: hasLoadedPlan,
-} = usePortfolioPlanQuery(serverApi, projectId, planId)
+const { plan, isLoadingPlan, planError, hasLoadedPlan, isRefreshingPlan } = usePlanDetail(projectId, planId)
 
 const planningAgentRunId = computed(() => plan.value?.agentRun.id ?? null)
-const {
-	data: agentRunEvents,
-	isLoading: isLoadingAgentRunEvents,
-	error: agentRunEventsError,
-	hasExecuted: hasLoadedAgentRunEvents,
-	execute: refreshAgentRunEvents,
-} = usePortfolioAgentRunEventsQuery(serverApi, planningAgentRunId, planId)
+const { agentRunEvents, isLoadingAgentRunEvents, agentRunEventsError, hasLoadedAgentRunEvents, refreshAgentRunEvents } = useAgentRunEvents(
+	planningAgentRunId,
+	planId,
+)
 
 const planningModelLabel = computed(() => plan.value?.agentRun.agent.modelId ?? 'Unknown')
 const planningRunLabel = computed(() => {

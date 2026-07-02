@@ -7,9 +7,6 @@ export type DeliveryState = 'accepted' | 'queued' | 'shipped' | 'abandoned'
 
 export function deliveryStateForDisplay(delivery: DeliveryStateInput | null): DeliveryState {
 	if (delivery === null) return 'accepted'
-	return delivery.closed?.type ?? queueState(delivery.queued)
-}
-
-function queueState(queued: object | null): 'accepted' | 'queued' {
-	return queued === null ? 'accepted' : 'queued'
+	if (delivery.closed) return delivery.closed.type
+	return delivery.queued === null ? 'accepted' : 'queued'
 }
