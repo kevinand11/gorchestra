@@ -51,30 +51,15 @@ import UiForm from '../../components/ui/UiForm.vue'
 import UiFormGroup from '../../components/ui/UiFormGroup.vue'
 import UiInput from '../../components/ui/UiInput.vue'
 import UiText from '../../components/ui/UiText.vue'
-import { useApiAction } from '../../composables/action-state'
-import { useQueryCache } from '../../composables/query-cache'
+import { useProjectsCreate } from '../../composables/portfolio/projects'
 import { useSelectedPortfolio } from '../../composables/selected-portfolio'
-import { useServerApi } from '../../composables/useServerApi'
-import { ProjectCreationFormDraft } from '../../forms/project'
-import { useToasts } from '../../composables/toasts'
 
 definePageMeta({ middleware: ['has-selection'] })
 
 const { portfolio } = useSelectedPortfolio()
-const serverApi = useServerApi()
-const toasts = useToasts()
-const queryCache = useQueryCache()
-const { queryKeys } = queryCache
-const projectCreationForm = new ProjectCreationFormDraft()
-
-const {
-	isLoading: isCreatingProject,
-	error: createProjectError,
-	execute: createProject,
-} = useApiAction(async () => {
-	const project = await serverApi.createProject(projectCreationForm.toModel())
-	queryCache.invalidate(queryKeys.portfolio.projects(portfolio.value.id), { exact: true })
-	toasts.success({ title: 'Project created.', body: project.title })
-	await navigateTo(`/projects/${project.id}`)
+const { projectCreationForm, isCreatingProject, createProjectError, createProject } = useProjectsCreate({
+	onSuccess: async (project) => {
+		await navigateTo(`/projects/${project.id}`)
+	},
 })
 </script>

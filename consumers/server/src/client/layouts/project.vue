@@ -42,8 +42,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { usePortfolioProjectQuery } from '../composables/portfolio-resource-queries'
-import { useServerApi } from '../composables/useServerApi'
+import { useProjectDetail } from '../composables/portfolio/projects'
 import { formatDate } from '../utils/time'
 import PortfolioLayout from './portfolio.vue'
 
@@ -52,16 +51,7 @@ const props = defineProps<{
 }>()
 
 const route = useRoute()
-const serverApi = useServerApi()
-const {
-	data: project,
-	isLoading: isLoadingProject,
-	error: projectError,
-	hasExecuted: hasLoadedProject,
-} = usePortfolioProjectQuery(
-	serverApi,
-	computed(() => props.projectId),
-)
+const { project, isLoadingProject, projectError, hasLoadedProject } = useProjectDetail(computed(() => props.projectId))
 
 const isLoadingInitialProject = computed(() => isLoadingProject.value && !hasLoadedProject.value)
 const projectTitle = computed(() => {

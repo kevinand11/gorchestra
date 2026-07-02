@@ -125,8 +125,9 @@ import UiInput from '../../../../components/ui/UiInput.vue'
 import UiSelect from '../../../../components/ui/UiSelect.vue'
 import UiTextarea from '../../../../components/ui/UiTextarea.vue'
 import { modelOptionLabel, thinkingLevelLabel } from '../../../../composables/model-provider-options'
-import { usePortfolioConfigQuery, usePortfolioProjectQuery } from '../../../../composables/portfolio-resource-queries'
+import { usePortfolioConfigQuery } from '../../../../composables/portfolio-resource-queries'
 import { usePlansCreate } from '../../../../composables/portfolio/project/plans'
+import { useProjectDetail } from '../../../../composables/portfolio/projects'
 import { useServerApi, type ModelUseConfig, type ServerApi } from '../../../../composables/useServerApi'
 import { useSelectModel } from '../../../../composables/use-select-model'
 
@@ -147,7 +148,7 @@ const { planCreationForm, isCreatingPlan, createPlanError, createPlan } = usePla
 	},
 })
 
-const { data: project } = usePortfolioProjectQuery(serverApi, projectId)
+const { project } = useProjectDetail(projectId)
 const { data: portfolioConfig } = usePortfolioConfigQuery(serverApi)
 const planningModelSelect = useSelectModel(planCreationForm.planningModelUse, { optionalLabel: 'Use inherited/default' })
 
