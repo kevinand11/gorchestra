@@ -125,10 +125,10 @@ import UiInput from '../../../../components/ui/UiInput.vue'
 import UiSelect from '../../../../components/ui/UiSelect.vue'
 import UiTextarea from '../../../../components/ui/UiTextarea.vue'
 import { modelOptionLabel, thinkingLevelLabel } from '../../../../composables/model-provider-options'
-import { usePortfolioConfigQuery } from '../../../../composables/portfolio-resource-queries'
+import { usePortfolioConfig } from '../../../../composables/portfolio/config'
 import { usePlansCreate } from '../../../../composables/portfolio/project/plans'
 import { useProjectDetail } from '../../../../composables/portfolio/projects'
-import { useServerApi, type ModelUseConfig, type ServerApi } from '../../../../composables/useServerApi'
+import type { ModelUseConfig, ServerApi } from '../../../../composables/useServerApi'
 import { useSelectModel } from '../../../../composables/use-select-model'
 
 definePageMeta({ middleware: ['has-selection'] })
@@ -141,7 +141,6 @@ type PortfolioConfig = Awaited<ReturnType<ServerApi['getPortfolioConfig']>>
 
 const route = useRoute()
 const projectId = computed(() => route.params.projectId as string)
-const serverApi = useServerApi()
 const { planCreationForm, isCreatingPlan, createPlanError, createPlan } = usePlansCreate(projectId, {
 	onSuccess: async (plan) => {
 		await navigateTo(`/projects/${projectId.value}/plans/${plan.id}`)
@@ -149,7 +148,7 @@ const { planCreationForm, isCreatingPlan, createPlanError, createPlan } = usePla
 })
 
 const { project } = useProjectDetail(projectId)
-const { data: portfolioConfig } = usePortfolioConfigQuery(serverApi)
+const { portfolioConfig } = usePortfolioConfig()
 const planningModelSelect = useSelectModel(planCreationForm.planningModelUse, { optionalLabel: 'Use inherited/default' })
 
 const activeModelOptionGroups = planningModelSelect.activeModelOptionGroups

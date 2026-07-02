@@ -187,7 +187,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed } from 'vue'
 
 import UiButton from '../components/ui/UiButton.vue'
 import UiCallout from '../components/ui/UiCallout.vue'
@@ -195,29 +195,12 @@ import UiForm from '../components/ui/UiForm.vue'
 import UiFormGroup from '../components/ui/UiFormGroup.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import UiSelect from '../components/ui/UiSelect.vue'
-import { useApiAction } from '../composables/action-state'
-import { usePortfolioConfigQuery } from '../composables/portfolio-resource-queries'
-import { useQueryCache } from '../composables/query-cache'
-import { useSelectedPortfolio } from '../composables/selected-portfolio'
-import { useServerApi } from '../composables/useServerApi'
+import { usePortfolioConfig } from '../composables/portfolio/config'
 import { useSelectModel } from '../composables/use-select-model'
-import { PortfolioConfigFormDraft } from '../forms/portfolio-config'
-import { useToasts } from '../composables/toasts'
 
 definePageMeta({ middleware: ['has-selection'] })
 
-const serverApi = useServerApi()
-const toasts = useToasts()
-const { portfolio } = useSelectedPortfolio()
-const { queryKeys, set, invalidate } = useQueryCache()
-const configForm = new PortfolioConfigFormDraft()
-
-const {
-	data: portfolioConfig,
-	isLoading: isLoadingConfig,
-	error: configError,
-	hasExecuted: hasLoadedConfig,
-} = usePortfolioConfigQuery(serverApi)
+const { configForm, isLoadingConfig, configError, hasLoadedConfig, isSavingConfig, saveConfigError, saveConfig } = usePortfolioConfig()
 const defaultModelSelect = useSelectModel(configForm.defaultModelUse)
 const planningModelSelect = useSelectModel(configForm.planningModelUse, { providers: defaultModelSelect.providers })
 const revisionPlanningModelSelect = useSelectModel(configForm.revisionPlanningModelUse, { providers: defaultModelSelect.providers })
@@ -231,23 +214,4 @@ const isLoadingProviders = defaultModelSelect.isLoadingProviders
 const providersError = defaultModelSelect.providersError
 const hasLoadedProviders = defaultModelSelect.hasLoadedProviders
 const canSaveConfig = computed(() => configForm.valid && !isSavingConfig.value)
-
-watch(
-	portfolioConfig,
-	(record) => {
-		if (record !== null) configForm.loadEntity({ config: record.value })
-	},
-	{ immediate: true },
-)
-
-const {
-	isLoading: isSavingConfig,
-	error: saveConfigError,
-	execute: saveConfig,
-} = useApiAction(async () => {
-	const saved = await serverApi.setPortfolioConfig(configForm.toModel())
-	set(queryKeys.portfolio.portfolioConfig(portfolio.value.id), saved)
-	invalidate(queryKeys.portfolio.portfolioConfig(portfolio.value.id), { exact: true })
-	toasts.success({ title: 'Portfolio Config saved.' })
-})
 </script>

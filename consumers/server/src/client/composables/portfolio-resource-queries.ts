@@ -5,7 +5,6 @@ import { useQueryCache } from './query-cache'
 import { useSelectedPortfolio } from './selected-portfolio'
 import type { ServerApi } from './useServerApi'
 
-type PortfolioConfig = Awaited<ReturnType<ServerApi['getPortfolioConfig']>>
 type ListedModelProvider = Awaited<ReturnType<ServerApi['listModelProviders']>>[number]
 type ModelProviderDetails = Awaited<ReturnType<ServerApi['getModelProvider']>>
 type ModelDetails = Awaited<ReturnType<ServerApi['getModel']>>
@@ -14,14 +13,6 @@ type RepositoryDetails = Awaited<ReturnType<ServerApi['getRepository']>>
 type ListedSecret = Awaited<ReturnType<ServerApi['listSecrets']>>[number]
 type ListedMemory = Awaited<ReturnType<ServerApi['listMemoryChildren']>>[number]
 type MemoryDetails = Awaited<ReturnType<ServerApi['getMemory']>>
-
-export function usePortfolioConfigQuery(serverApi: ServerApi) {
-	const { portfolioId, queryKeys } = usePortfolioQueryContext()
-	return useFetchAction(() => serverApi.getPortfolioConfig(), {
-		queryKey: queryKeys.portfolio.portfolioConfig(portfolioId.value),
-		initialData: null as PortfolioConfig,
-	})
-}
 
 export function usePortfolioModelProvidersQuery(serverApi: ServerApi) {
 	const { portfolioId, queryKeys } = usePortfolioQueryContext()
