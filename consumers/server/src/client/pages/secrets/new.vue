@@ -58,29 +58,15 @@ import UiForm from '../../components/ui/UiForm.vue'
 import UiFormGroup from '../../components/ui/UiFormGroup.vue'
 import UiInput from '../../components/ui/UiInput.vue'
 import UiText from '../../components/ui/UiText.vue'
-import { useApiAction } from '../../composables/action-state'
-import { useQueryCache } from '../../composables/query-cache'
+import { useSecretsCreate } from '../../composables/portfolio/secrets'
 import { useSelectedPortfolio } from '../../composables/selected-portfolio'
-import { useServerApi } from '../../composables/useServerApi'
-import { SecretCreationFormDraft } from '../../forms/secret'
-import { useToasts } from '../../composables/toasts'
 
 definePageMeta({ middleware: ['has-selection'] })
 
 const { portfolio } = useSelectedPortfolio()
-const serverApi = useServerApi()
-const toasts = useToasts()
-const { queryKeys, invalidate } = useQueryCache()
-const secretCreationForm = new SecretCreationFormDraft()
-
-const {
-	isLoading: isCreatingSecret,
-	error: createSecretError,
-	execute: createSecret,
-} = useApiAction(async () => {
-	const secret = await serverApi.createSecret(secretCreationForm.toModel())
-	invalidate(queryKeys.portfolio.secrets(portfolio.value.id), { exact: true })
-	toasts.success({ title: 'Secret created.', body: secret.name })
-	await navigateTo(`/secrets/${secret.id}`)
+const { secretCreationForm, isCreatingSecret, createSecretError, createSecret } = useSecretsCreate({
+	onSuccess: async (secret) => {
+		await navigateTo(`/secrets/${secret.id}`)
+	},
 })
 </script>

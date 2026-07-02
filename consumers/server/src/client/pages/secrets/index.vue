@@ -65,23 +65,17 @@
 					</span>
 				</NuxtLink>
 			</div>
-			<p v-if="isLoadingSecrets && hasLoadedSecrets" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
-				Refreshing Secrets…
-			</p>
+			<p v-if="isRefreshingSecrets" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">Refreshing Secrets…</p>
 		</section>
 	</NuxtLayout>
 </template>
 
 <script setup lang="ts">
-import { useFetchAction } from '../../composables/action-state'
-import { useQueryCache } from '../../composables/query-cache'
-import { useSelectedPortfolio } from '../../composables/selected-portfolio'
-import { useServerApi, type ServerApi } from '../../composables/useServerApi'
+import { useSecretsList } from '../../composables/portfolio/secrets'
 import { formatDate } from '../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
 
-type ListedSecret = Awaited<ReturnType<ServerApi['listSecrets']>>[number]
 type SecretTab = 'all' | 'active' | 'archived'
 
 const secretTabs: Array<{ value: SecretTab; label: string; shortLabel: string }> = [
@@ -91,19 +85,7 @@ const secretTabs: Array<{ value: SecretTab; label: string; shortLabel: string }>
 ]
 
 const route = useRoute()
-const { portfolio } = useSelectedPortfolio()
-const portfolioId = computed(() => portfolio.value.id)
-const serverApi = useServerApi()
-const { queryKeys } = useQueryCache()
-const {
-	data: secrets,
-	isLoading: isLoadingSecrets,
-	error: secretsError,
-	hasExecuted: hasLoadedSecrets,
-} = useFetchAction(() => serverApi.listSecrets(), {
-	queryKey: queryKeys.portfolio.secrets(portfolioId.value),
-	initialData: [] as ListedSecret[],
-})
+const { secrets, isLoadingSecrets, secretsError, hasLoadedSecrets, isRefreshingSecrets } = useSecretsList()
 
 const currentSecretTab = computed(() => parseSecretTab(route.query.tab))
 const currentSecretTabLabel = computed(() => secretTabs.find((tab) => tab.value === currentSecretTab.value)?.label ?? 'All Secrets')

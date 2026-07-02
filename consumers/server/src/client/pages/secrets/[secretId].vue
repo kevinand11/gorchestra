@@ -7,9 +7,7 @@
 
 		<section>
 			<div v-if="isLoadingSecret && !hasLoadedSecret" class="border-b border-dimmer px-3 py-4 text-dim">Loading Secret…</div>
-			<p v-if="isLoadingSecret && hasLoadedSecret" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
-				Refreshing Secret…
-			</p>
+			<p v-if="isRefreshingSecret" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">Refreshing Secret…</p>
 			<div v-else-if="secretError" class="border-b border-dimmer px-3 py-4 text-error">{{ secretError }}</div>
 			<div v-else-if="secret" class="grid gap-0">
 				<div class="border-b border-dimmer px-3 py-3">
@@ -77,10 +75,8 @@
 </template>
 
 <script setup lang="ts">
-import { useFetchAction } from '../../composables/action-state'
-import { useQueryCache } from '../../composables/query-cache'
-import { useSelectedPortfolio } from '../../composables/selected-portfolio'
-import { useServerApi, type ServerApi } from '../../composables/useServerApi'
+import { useSecretDetail } from '../../composables/portfolio/secrets'
+import type { ServerApi } from '../../composables/useServerApi'
 import { formatDate } from '../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
@@ -91,20 +87,7 @@ type LinkedSecretReference = Exclude<SecretReference, { type: 'secret-binding' }
 
 const route = useRoute()
 const secretId = computed(() => route.params.secretId as string)
-const { portfolio } = useSelectedPortfolio()
-const portfolioId = computed(() => portfolio.value.id)
-const serverApi = useServerApi()
-const { queryKeys } = useQueryCache()
-
-const {
-	data: secret,
-	isLoading: isLoadingSecret,
-	error: secretError,
-	hasExecuted: hasLoadedSecret,
-} = useFetchAction(() => serverApi.getSecret(secretId.value), {
-	queryKey: queryKeys.portfolio.secret(portfolioId.value, secretId.value),
-	initialData: null as SecretDetails | null,
-})
+const { secret, isLoadingSecret, secretError, hasLoadedSecret, isRefreshingSecret } = useSecretDetail(secretId)
 
 type SecretReferenceReader<T> = {
 	[ReferenceType in SecretReference['type']]: (reference: Extract<SecretReference, { type: ReferenceType }>) => T
