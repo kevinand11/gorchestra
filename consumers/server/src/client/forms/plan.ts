@@ -66,7 +66,7 @@ if (import.meta.vitest) {
 
 			factory.title = 'Plan'
 			factory.initialMessage = 'Plan this.'
-			factory.planningModelUse.modelId = 'model-1'
+			factory.planningModelUse.modelId.value = 'model-1'
 
 			expect(factory.toModel()).toEqual({
 				title: 'Plan',

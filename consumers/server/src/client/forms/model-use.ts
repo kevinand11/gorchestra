@@ -1,4 +1,4 @@
-import { FormDraft } from '@gorchestra/form-draft'
+import { FormDraft, FormDraftSelect, formDraftPipe } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
 import type { ModelThinkingLevel, ModelUseConfig } from '../composables/core/server-api'
@@ -6,54 +6,56 @@ import type { ModelThinkingLevel, ModelUseConfig } from '../composables/core/ser
 export type ModelUseFormModel = ModelUseConfig | null
 
 type ModelUseFormFields = {
-	modelId: string | null
-	thinkingLevel: ModelThinkingLevel
+	modelId: FormDraftSelect<string | null>
+	thinkingLevel: FormDraftSelect<ModelThinkingLevel>
 }
 
 type ModelUseFormDraftOptions = {
 	required?: boolean
 }
 
-const modelIdPipe = v.string().pipe(v.min<string>(1, 'Select a Model'))
-const thinkingLevelPipe = v.in(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'])
+const thinkingLevelValues: ModelThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh']
+const modelRequiredMessage = 'Select a Model'
+const thinkingLevelMessage = 'Select a Thinking Level'
 
 export class ModelUseFormDraft extends FormDraft<ModelUseFormModel, ModelUseFormModel, ModelUseFormFields> {
-	private supportedThinkingLevels: ModelThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh']
-	private required = false
+	readonly requiresModel: boolean
 
 	protected readonly rules = {
-		modelId: v.lazy(() => (this.required ? modelIdPipe : v.nullable(modelIdPipe))),
-		thinkingLevel: v.lazy(() =>
-			thinkingLevelPipe.pipe(
-				v.custom<ModelThinkingLevel>((level) => this.supportsThinkingLevel(level), 'Select a supported Thinking Level'),
-			),
-		),
+		modelId: formDraftPipe<FormDraftSelect<string | null>>(),
+		thinkingLevel: formDraftPipe<FormDraftSelect<ModelThinkingLevel>>(),
 	}
 
 	constructor(options: ModelUseFormDraftOptions = {}) {
-		super({ modelId: null, thinkingLevel: 'off' })
-		this.required = options.required === true
+		const requiresModel = options.required === true
+		super({
+			modelId: new FormDraftSelect<string | null>({
+				initialValue: null,
+				pipe: (base) => base.pipe(v.custom((value) => modelIdIsValid(value, requiresModel), modelRequiredMessage)),
+			}),
+			thinkingLevel: new FormDraftSelect<ModelThinkingLevel>({
+				initialValue: 'off',
+				pipe: (base) => base.pipe(v.custom((value) => thinkingLevelValues.includes(value), thinkingLevelMessage)),
+			}),
+		})
+		this.requiresModel = requiresModel
 	}
 
-	setSupportedThinkingLevels(levels: ModelThinkingLevel[]): void {
-		this.supportedThinkingLevels = levels
-		this.set('thinkingLevel', this.thinkingLevel)
-	}
-
-	protected model = (): ModelUseFormModel => (this.modelId === null ? null : { modelId: this.modelId, thinkingLevel: this.thinkingLevel })
+	protected model = (): ModelUseFormModel =>
+		this.modelId.value === null ? null : { modelId: this.modelId.value, thinkingLevel: this.thinkingLevel.value }
 
 	protected load = (entity: ModelUseFormModel): void => {
 		const fields = modelUseFields(entity)
-		this.modelId = fields.modelId
-		this.thinkingLevel = fields.thinkingLevel
-	}
-
-	private supportsThinkingLevel(level: ModelThinkingLevel): boolean {
-		return this.modelId === null || this.supportedThinkingLevels.includes(level)
+		this.modelId.loadEntity(fields.modelId)
+		this.thinkingLevel.loadEntity(fields.thinkingLevel)
 	}
 }
 
-function modelUseFields(modelUse: ModelUseConfig | null): ModelUseFormFields {
+function modelIdIsValid(value: string | null, required: boolean): boolean {
+	return value === null ? !required : value.length > 0
+}
+
+function modelUseFields(modelUse: ModelUseConfig | null): { modelId: string | null; thinkingLevel: ModelThinkingLevel } {
 	return modelUse === null ? { modelId: null, thinkingLevel: 'off' } : modelUse
 }
 
@@ -70,27 +72,38 @@ if (import.meta.vitest) {
 		it('requires a Model when constructed as required', () => {
 			const draft = new ModelUseFormDraft({ required: true }).loadEntity({ modelId: 'model-1', thinkingLevel: 'off' })
 
-			draft.modelId = null
+			draft.modelId.value = null
 
 			expect(draft.valid).toBe(false)
+			expect(draft.errors.modelId).toBe(modelRequiredMessage)
+		})
+
+		it('rejects unavailable Models after selectable options load', () => {
+			const draft = new ModelUseFormDraft()
+
+			draft.modelId.value = 'model-stale'
+			draft.modelId.setOptions([null, 'model-1'])
+
+			expect(draft.valid).toBe(false)
+			expect(draft.errors.modelId).toBe('Selected option is unavailable')
 		})
 
 		it('rejects unsupported Thinking Levels when supported levels are set', () => {
 			const draft = new ModelUseFormDraft()
 
-			draft.modelId = 'model-1'
-			draft.setSupportedThinkingLevels(['off', 'low'])
-			draft.thinkingLevel = 'high'
+			draft.modelId.value = 'model-1'
+			draft.thinkingLevel.setOptions(['off', 'low'])
+			draft.thinkingLevel.value = 'high'
 
 			expect(draft.valid).toBe(false)
-			expect(draft.errors.thinkingLevel).toBe('Select a supported Thinking Level')
+			expect(draft.errors.thinkingLevel).toBe('Selected option is unavailable')
 		})
 
 		it('models atomic Model Use Config', () => {
 			const draft = new ModelUseFormDraft()
 
-			draft.modelId = 'model-1'
-			draft.thinkingLevel = 'high'
+			draft.modelId.value = 'model-1'
+			draft.thinkingLevel.value = 'high'
 
 			expect(draft.toModel()).toEqual({ modelId: 'model-1', thinkingLevel: 'high' })
 		})
@@ -99,12 +112,12 @@ if (import.meta.vitest) {
 			const draft = new ModelUseFormDraft()
 
 			draft.loadEntity({ modelId: 'model-1', thinkingLevel: 'low' })
-			expect(draft.modelId).toBe('model-1')
-			expect(draft.thinkingLevel).toBe('low')
+			expect(draft.modelId.value).toBe('model-1')
+			expect(draft.thinkingLevel.value).toBe('low')
 
 			draft.loadEntity(null)
-			expect(draft.modelId).toBeNull()
-			expect(draft.thinkingLevel).toBe('off')
+			expect(draft.modelId.value).toBeNull()
+			expect(draft.thinkingLevel.value).toBe('off')
 		})
 	})
 }

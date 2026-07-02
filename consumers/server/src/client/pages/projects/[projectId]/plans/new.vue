@@ -64,22 +64,26 @@
 				</UiCallout>
 
 				<div class="mt-4 grid gap-3 md:grid-cols-2 items-start">
-					<UiFormGroup label="Planning Model" for-id="planning-model">
+					<UiFormGroup label="Planning Model" for-id="planning-model" :error="planCreationForm.planningModelUse.errors.modelId">
 						<UiSelect
 							id="planning-model"
-							v-model="planCreationForm.planningModelUse.modelId"
+							v-model="planCreationForm.planningModelUse.modelId.value"
 							:options="planningModelOptions"
 							placeholder="Use inherited/default"
 							search-placeholder="Search Models…"
 							empty-label="No active Models available"
 							:always-open="true"
+							:invalid="!!planCreationForm.planningModelUse.errors.modelId"
 							:disabled="!hasActiveModels" />
 					</UiFormGroup>
-					<UiFormGroup label="Planning Thinking" for-id="planning-thinking">
+					<UiFormGroup
+						label="Planning Thinking"
+						for-id="planning-thinking"
+						:error="planCreationForm.planningModelUse.errors.thinkingLevel">
 						<UiSelect
 							id="planning-thinking"
+							v-model="planCreationForm.planningModelUse.thinkingLevel.value"
 							placeholder="Use inherited/default"
-							v-model="planCreationForm.planningModelUse.thinkingLevel"
 							:options="planningModelSelect.thinkingLevelOptions.value"
 							:disabled="planningModelSelect.thinkingLevelDisabled.value" />
 					</UiFormGroup>
@@ -163,7 +167,7 @@ const inheritedPlanningModelIsActive = computed(
 )
 const inheritedPlanningModelLabel = computed(() => activeInheritedModelLabel())
 const requiresPlanModelOverride = computed(() => !inheritedPlanningModelIsActive.value)
-const hasPlanModelOverride = computed(() => planCreationForm.planningModelUse.modelId !== null)
+const hasPlanModelOverride = computed(() => planCreationForm.planningModelUse.modelId.value !== null)
 const hasRequiredPlanningModel = computed(() => !requiresPlanModelOverride.value || hasPlanModelOverride.value)
 const canCreatePlan = computed(() =>
 	[planCreationForm.valid, hasActiveModels.value, hasRequiredPlanningModel.value, !isCreatingPlan.value].every(Boolean),

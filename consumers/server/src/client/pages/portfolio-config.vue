@@ -41,76 +41,101 @@
 						<UiFormGroup label="Default Model" for-id="default-model" :error="configForm.defaultModelUse.errors.modelId">
 							<UiSelect
 								id="default-model"
-								v-model="configForm.defaultModelUse.modelId"
-								:options="activeModelOptionGroups"
+								v-model="configForm.defaultModelUse.modelId.value"
+								:options="defaultModelOptions"
 								placeholder="Select default Model"
 								:invalid="!!configForm.defaultModelUse.errors.modelId"
 								:disabled="!hasActiveModels" />
 						</UiFormGroup>
-						<UiFormGroup label="Default Thinking" for-id="default-thinking">
+						<UiFormGroup
+							label="Default Thinking"
+							for-id="default-thinking"
+							:error="configForm.defaultModelUse.errors.thinkingLevel">
 							<UiSelect
 								id="default-thinking"
-								v-model="configForm.defaultModelUse.thinkingLevel"
+								v-model="configForm.defaultModelUse.thinkingLevel.value"
 								:options="defaultModelSelect.thinkingLevelOptions.value"
 								:disabled="defaultModelSelect.thinkingLevelOptions.value.length === 0" />
 						</UiFormGroup>
-						<UiFormGroup label="Planning Model" for-id="planning-model">
+						<UiFormGroup label="Planning Model" for-id="planning-model" :error="configForm.planningModelUse.errors.modelId">
 							<UiSelect
 								id="planning-model"
-								v-model="configForm.planningModelUse.modelId"
-								:options="optionalModelOptions"
+								v-model="configForm.planningModelUse.modelId.value"
+								:options="planningModelSelect.optionalModelOptions.value"
 								placeholder="Use default"
+								:invalid="!!configForm.planningModelUse.errors.modelId"
 								:disabled="!hasActiveModels" />
 						</UiFormGroup>
-						<UiFormGroup label="Planning Thinking" for-id="planning-thinking">
+						<UiFormGroup
+							label="Planning Thinking"
+							for-id="planning-thinking"
+							:error="configForm.planningModelUse.errors.thinkingLevel">
 							<UiSelect
 								id="planning-thinking"
-								v-model="configForm.planningModelUse.thinkingLevel"
+								v-model="configForm.planningModelUse.thinkingLevel.value"
 								:options="planningModelSelect.thinkingLevelOptions.value"
 								:disabled="planningModelSelect.thinkingLevelDisabled.value" />
 						</UiFormGroup>
-						<UiFormGroup label="Revision Planning Model" for-id="revision-planning-model">
+						<UiFormGroup
+							label="Revision Planning Model"
+							for-id="revision-planning-model"
+							:error="configForm.revisionPlanningModelUse.errors.modelId">
 							<UiSelect
 								id="revision-planning-model"
-								v-model="configForm.revisionPlanningModelUse.modelId"
-								:options="optionalModelOptions"
+								v-model="configForm.revisionPlanningModelUse.modelId.value"
+								:options="revisionPlanningModelSelect.optionalModelOptions.value"
 								placeholder="Use default"
+								:invalid="!!configForm.revisionPlanningModelUse.errors.modelId"
 								:disabled="!hasActiveModels" />
 						</UiFormGroup>
-						<UiFormGroup label="Revision Planning Thinking" for-id="revision-planning-thinking">
+						<UiFormGroup
+							label="Revision Planning Thinking"
+							for-id="revision-planning-thinking"
+							:error="configForm.revisionPlanningModelUse.errors.thinkingLevel">
 							<UiSelect
 								id="revision-planning-thinking"
-								v-model="configForm.revisionPlanningModelUse.thinkingLevel"
+								v-model="configForm.revisionPlanningModelUse.thinkingLevel.value"
 								:options="revisionPlanningModelSelect.thinkingLevelOptions.value"
 								:disabled="revisionPlanningModelSelect.thinkingLevelDisabled.value" />
 						</UiFormGroup>
-						<UiFormGroup label="Execution Model" for-id="execution-model">
+						<UiFormGroup label="Execution Model" for-id="execution-model" :error="configForm.executionModelUse.errors.modelId">
 							<UiSelect
 								id="execution-model"
-								v-model="configForm.executionModelUse.modelId"
-								:options="optionalModelOptions"
+								v-model="configForm.executionModelUse.modelId.value"
+								:options="executionModelSelect.optionalModelOptions.value"
 								placeholder="Use default"
+								:invalid="!!configForm.executionModelUse.errors.modelId"
 								:disabled="!hasActiveModels" />
 						</UiFormGroup>
-						<UiFormGroup label="Execution Thinking" for-id="execution-thinking">
+						<UiFormGroup
+							label="Execution Thinking"
+							for-id="execution-thinking"
+							:error="configForm.executionModelUse.errors.thinkingLevel">
 							<UiSelect
 								id="execution-thinking"
-								v-model="configForm.executionModelUse.thinkingLevel"
+								v-model="configForm.executionModelUse.thinkingLevel.value"
 								:options="executionModelSelect.thinkingLevelOptions.value"
 								:disabled="executionModelSelect.thinkingLevelDisabled.value" />
 						</UiFormGroup>
-						<UiFormGroup label="Revision Execution Model" for-id="revision-execution-model">
+						<UiFormGroup
+							label="Revision Execution Model"
+							for-id="revision-execution-model"
+							:error="configForm.revisionExecutionModelUse.errors.modelId">
 							<UiSelect
 								id="revision-execution-model"
-								v-model="configForm.revisionExecutionModelUse.modelId"
-								:options="optionalModelOptions"
+								v-model="configForm.revisionExecutionModelUse.modelId.value"
+								:options="revisionExecutionModelSelect.optionalModelOptions.value"
 								placeholder="Use default"
+								:invalid="!!configForm.revisionExecutionModelUse.errors.modelId"
 								:disabled="!hasActiveModels" />
 						</UiFormGroup>
-						<UiFormGroup label="Revision Execution Thinking" for-id="revision-execution-thinking">
+						<UiFormGroup
+							label="Revision Execution Thinking"
+							for-id="revision-execution-thinking"
+							:error="configForm.revisionExecutionModelUse.errors.thinkingLevel">
 							<UiSelect
 								id="revision-execution-thinking"
-								v-model="configForm.revisionExecutionModelUse.thinkingLevel"
+								v-model="configForm.revisionExecutionModelUse.thinkingLevel.value"
 								:options="revisionExecutionModelSelect.thinkingLevelOptions.value"
 								:disabled="revisionExecutionModelSelect.thinkingLevelDisabled.value" />
 						</UiFormGroup>
@@ -202,13 +227,12 @@ definePageMeta({ middleware: ['has-selection'] })
 
 const { configForm, isLoadingConfig, configError, hasLoadedConfig, isSavingConfig, saveConfigError, saveConfig } = usePortfolioConfig()
 const defaultModelSelect = useSelectModel(configForm.defaultModelUse)
-const planningModelSelect = useSelectModel(configForm.planningModelUse, { providers: defaultModelSelect.providers })
-const revisionPlanningModelSelect = useSelectModel(configForm.revisionPlanningModelUse, { providers: defaultModelSelect.providers })
-const executionModelSelect = useSelectModel(configForm.executionModelUse, { providers: defaultModelSelect.providers })
-const revisionExecutionModelSelect = useSelectModel(configForm.revisionExecutionModelUse, { providers: defaultModelSelect.providers })
+const planningModelSelect = useSelectModel(configForm.planningModelUse, { providerState: defaultModelSelect })
+const revisionPlanningModelSelect = useSelectModel(configForm.revisionPlanningModelUse, { providerState: defaultModelSelect })
+const executionModelSelect = useSelectModel(configForm.executionModelUse, { providerState: defaultModelSelect })
+const revisionExecutionModelSelect = useSelectModel(configForm.revisionExecutionModelUse, { providerState: defaultModelSelect })
 
-const activeModelOptionGroups = defaultModelSelect.activeModelOptionGroups
-const optionalModelOptions = defaultModelSelect.optionalModelOptions
+const defaultModelOptions = defaultModelSelect.modelOptions
 const hasActiveModels = defaultModelSelect.hasActiveModels
 const isLoadingProviders = defaultModelSelect.isLoadingProviders
 const providersError = defaultModelSelect.providersError
