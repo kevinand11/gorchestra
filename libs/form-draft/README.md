@@ -273,3 +273,60 @@ const options = [
 	{ value: 'model-1', label: 'GPT 4.1' },
 ]
 ```
+
+## Select drafts with async options
+
+Use `FormDraftSelect` for single-select controls whose selectable values load asynchronously or whose current value must be checked against an allowed list.
+
+```ts
+import { FormDraftSelect } from '@gorchestra/form-draft'
+import { v } from 'valleyed'
+
+const modelSelect = new FormDraftSelect<string | null>({
+	initialValue: null,
+	pipe: (base) => base.pipe(v.custom((value) => value !== null, 'Select a Model')),
+})
+
+modelSelect.clearOptions() // options unknown; membership validation is skipped
+modelSelect.setOptions(['model-1', 'model-2']) // options known; selected value must be present
+modelSelect.value = 'model-1'
+```
+
+Use `FormDraftMultiSelect` for array-valued multi-select controls.
+
+```ts
+import { FormDraftMultiSelect } from '@gorchestra/form-draft'
+import { v } from 'valleyed'
+
+const selectedTags = new FormDraftMultiSelect<string>({
+	initialValue: [],
+	pipe: (base) => base.pipe(v.custom((values) => values.length > 0, 'Select at least one option')),
+})
+
+selectedTags.setOptions(['bug', 'feature', 'docs'])
+selectedTags.value = ['feature']
+```
+
+`setOptions(values)` means options are loaded and known. `clearOptions()` means options are unknown, so option-membership validation is skipped until options load. Option-membership validation uses `differ.equal`, so object-valued options are compared structurally rather than by object identity.
+
+When a select is embedded in another `FormDraft`, parent validity, dirty state, reset behavior, and first child error propagation work like other nested drafts:
+
+```ts
+import { FormDraft, FormDraftSelect, formDraftPipe } from '@gorchestra/form-draft'
+
+type ModelUse = { modelId: string | null }
+
+class ModelUseDraft extends FormDraft<ModelUse, string | null, { modelId: FormDraftSelect<string | null> }> {
+	protected readonly rules = { modelId: formDraftPipe<FormDraftSelect<string | null>>() }
+
+	constructor() {
+		super({ modelId: new FormDraftSelect<string | null>({ initialValue: null }) })
+	}
+
+	protected model = () => this.modelId.toModel()
+
+	protected load = (entity: ModelUse): void => {
+		this.modelId.loadEntity(entity.modelId)
+	}
+}
+```

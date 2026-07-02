@@ -6,7 +6,7 @@ The `libs/form-draft/` package owns reusable Vue-backed form draft primitives: r
 
 ## Ownership
 
-- `src/index.ts` owns the public package API and source tests.
+- `src/index.ts` owns the public package barrel exports; focused source modules under `src/` own implementations, and `src/*.test.ts` owns package source tests.
 - `package.json`, `tsconfig.json`, and `vitest.config.ts` own package-local tooling.
 
 ## Local Contracts
