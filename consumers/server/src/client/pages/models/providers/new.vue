@@ -6,7 +6,7 @@
 		</header>
 
 		<section class="border-b border-dimmer">
-			<UiForm class="!gap-0" @submit.prevent="createProvider()">
+			<UiForm class="gap-0!" @submit.prevent="createProvider()">
 				<section class="border-b border-dimmer px-3 py-3">
 					<div class="grid gap-3 md:grid-cols-2">
 						<UiFormGroup label="Provider name" for-id="provider-name" :error="providerForm.errors.name">
@@ -54,14 +54,14 @@
 								Header values are Secret-backed and never entered as plaintext here.
 							</p>
 						</div>
-						<UiButton type="button" variant="secondary" @click="addHeader()">Add header</UiButton>
+						<UiButton type="button" variant="secondary" @click="providerForm.headers.add()">Add header</UiButton>
 					</div>
 					<div v-if="providerForm.headers.length === 0" class="border-t border-dimmer px-3 py-3 text-sz-helper text-dim">
 						No custom headers configured.
 					</div>
 					<div v-else class="border-t border-dimmer">
 						<div
-							v-for="(header, index) in headerDrafts"
+							v-for="(header, index) in providerForm.headers"
 							:key="index"
 							class="grid gap-3 border-b border-dimmer px-3 py-3 md:grid-cols-[1fr_1fr_auto]">
 							<UiFormGroup label="Header name" :for-id="`provider-header-name-${index}`" :error="header.errors.name">
@@ -83,7 +83,7 @@
 									:invalid="!!header.errors.valueSecretId" />
 							</UiFormGroup>
 							<div class="self-end">
-								<UiButton type="button" variant="ghost" @click="removeHeader(index)">Remove</UiButton>
+								<UiButton type="button" variant="ghost" @click="providerForm.headers.delete(index)">Remove</UiButton>
 							</div>
 						</div>
 					</div>
@@ -139,13 +139,9 @@ import UiFormGroup from '../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../components/ui/UiInput.vue'
 import UiSelect from '../../../components/ui/UiSelect.vue'
 import UiText from '../../../components/ui/UiText.vue'
-import { useApiAction } from '../../../composables/action-state'
-import { usePortfolioSecretsQuery } from '../../../composables/portfolio-resource-queries'
-import { useQueryCache } from '../../../composables/query-cache'
-import { useSelectedPortfolio } from '../../../composables/selected-portfolio'
-import { useServerApi, type ModelProviderProtocolType } from '../../../composables/useServerApi'
-import { ModelProviderFormDraft } from '../../../forms/model-provider'
-import { useToasts } from '../../../composables/toasts'
+import { useModelProviderCreate } from '../../../composables/portfolio/models/providers'
+import { useActiveSecretSelectOptions } from '../../../composables/portfolio/secrets'
+import type { ModelProviderProtocolType } from '../../../composables/useServerApi'
 
 definePageMeta({ middleware: ['has-selection'] })
 
@@ -156,36 +152,13 @@ const protocolOptions: Array<{ value: ModelProviderProtocolType; label: string }
 	{ value: 'google-generative-ai', label: 'Google Generative AI' },
 ]
 
-const serverApi = useServerApi()
-const toasts = useToasts()
-const { portfolio } = useSelectedPortfolio()
-const { queryKeys, invalidate } = useQueryCache()
-const providerForm = new ModelProviderFormDraft()
-const { data: secrets } = usePortfolioSecretsQuery(serverApi)
+const { providerForm, isCreatingProvider, createProviderError, createProvider } = useModelProviderCreate({
+	onSuccess: async (provider) => {
+		await navigateTo(`/models/providers/${provider.id}`)
+	},
+})
+const { activeSecretOptions: secretOptions } = useActiveSecretSelectOptions()
 
 const authSecretOptions = computed(() => [{ value: null, label: 'No auth Secret' }, ...secretOptions.value])
 const headerSecretOptions = computed(() => secretOptions.value)
-const headerDrafts = computed(() => [...providerForm.headers])
-const secretOptions = computed(() =>
-	secrets.value.filter((secret) => !secret.archived).map((secret) => ({ value: secret.id, label: secret.name })),
-)
-
-const {
-	isLoading: isCreatingProvider,
-	error: createProviderError,
-	execute: createProvider,
-} = useApiAction(async () => {
-	const provider = await serverApi.createModelProvider(providerForm.toModel())
-	invalidate(queryKeys.portfolio.modelProviders(portfolio.value.id), { exact: true })
-	toasts.success({ title: 'Model Provider created.', body: provider.name })
-	await navigateTo(`/models/providers/${provider.id}`)
-})
-
-function addHeader(): void {
-	providerForm.headers.add()
-}
-
-function removeHeader(index: number): void {
-	providerForm.headers.delete(index)
-}
 </script>

@@ -1,14 +1,21 @@
 import { computed, watch, type Ref } from 'vue'
 
 import { activeModelOptionGroupsFromProviders, modelOptionIds, thinkingLevelOptionsForModel } from './model-provider-options'
-import { usePortfolioModelProvidersQuery } from './portfolio-resource-queries'
-import { useServerApi, type ModelThinkingLevel, type ServerApi } from './useServerApi'
+import { useModelProvidersList } from './portfolio/models/providers'
+import type { ModelThinkingLevel, ServerApi } from './useServerApi'
 import type { UiSelectOptionInput } from '../components/ui/select-options'
 import type { ModelUseFormDraft } from '../forms/model-use'
 
 type ListedModelProvider = Awaited<ReturnType<ServerApi['listModelProviders']>>[number]
 
 type ModelProviderRef = Readonly<Ref<readonly ListedModelProvider[]>>
+
+type ModelProviderState = {
+	providers: ModelProviderRef
+	isLoadingProviders: Readonly<Ref<boolean>>
+	providersError: Readonly<Ref<string>>
+	hasLoadedProviders: Readonly<Ref<boolean>>
+}
 
 type UseSelectModelOptions = {
 	providers?: ModelProviderRef
@@ -47,25 +54,24 @@ export function useSelectModel(modelUseDraft: ModelUseFormDraft, options: UseSel
 	}
 }
 
-function useModelProviderState(providers: ModelProviderRef | undefined) {
-	if (providers !== undefined) {
+function useModelProviderState(suppliedProviders: ModelProviderRef | undefined): ModelProviderState {
+	if (suppliedProviders !== undefined) {
 		return {
-			providers,
+			providers: suppliedProviders,
 			isLoadingProviders: computed(() => false),
 			providersError: computed(() => ''),
 			hasLoadedProviders: computed(() => true),
 		}
 	}
 
-	const serverApi = useServerApi()
-	const {
-		data,
-		isLoading: isLoadingProviders,
-		error: providersError,
-		hasExecuted: hasLoadedProviders,
-	} = usePortfolioModelProvidersQuery(serverApi)
+	const modelProvidersList = useModelProvidersList()
 
-	return { providers: data, isLoadingProviders, providersError, hasLoadedProviders }
+	return {
+		providers: modelProvidersList.providers,
+		isLoadingProviders: modelProvidersList.isLoadingProviders,
+		providersError: modelProvidersList.providersError,
+		hasLoadedProviders: modelProvidersList.hasLoadedProviders,
+	}
 }
 
 function syncThinkingLevel(modelUseDraft: ModelUseFormDraft, options: readonly { value: ModelThinkingLevel }[]): void {

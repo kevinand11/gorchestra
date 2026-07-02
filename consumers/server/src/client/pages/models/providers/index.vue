@@ -38,7 +38,7 @@
 					</span>
 				</NuxtLink>
 			</nav>
-			<p v-if="isLoadingProviders && hasLoadedProviders" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
+			<p v-if="isRefreshingProviders" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
 				Refreshing Model Providers…
 			</p>
 		</section>
@@ -74,16 +74,9 @@
 </template>
 
 <script setup lang="ts">
-import { usePortfolioModelProvidersQuery } from '../../../composables/portfolio-resource-queries'
-import { useServerApi } from '../../../composables/useServerApi'
+import { useModelProvidersList } from '../../../composables/portfolio/models/providers'
 
 definePageMeta({ middleware: ['has-selection'] })
 
-const serverApi = useServerApi()
-const {
-	data: providers,
-	isLoading: isLoadingProviders,
-	error: providersError,
-	hasExecuted: hasLoadedProviders,
-} = usePortfolioModelProvidersQuery(serverApi)
+const { providers, isLoadingProviders, providersError, hasLoadedProviders, isRefreshingProviders } = useModelProvidersList()
 </script>

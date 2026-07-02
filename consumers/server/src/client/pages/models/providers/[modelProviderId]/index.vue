@@ -10,7 +10,7 @@
 			<div v-if="isLoadingProvider && !hasLoadedProvider" class="border-b border-dimmer px-3 py-4 text-dim">
 				Loading Model Provider…
 			</div>
-			<p v-if="isLoadingProvider && hasLoadedProvider" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
+			<p v-if="isRefreshingProvider" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
 				Refreshing Model Provider…
 			</p>
 			<div v-else-if="providerError" class="border-b border-dimmer px-3 py-4 text-error">{{ providerError }}</div>
@@ -181,7 +181,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 
 import UiButton from '../../../../components/ui/UiButton.vue'
 import UiCallout from '../../../../components/ui/UiCallout.vue'
@@ -190,14 +190,13 @@ import UiFormGroup from '../../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../../components/ui/UiInput.vue'
 import UiSelect from '../../../../components/ui/UiSelect.vue'
 import UiText from '../../../../components/ui/UiText.vue'
-import { useApiAction } from '../../../../composables/action-state'
-import { usePortfolioModelProviderQuery, usePortfolioSecretsQuery } from '../../../../composables/portfolio-resource-queries'
-import { useQueryCache } from '../../../../composables/query-cache'
-import { useSelectedPortfolio } from '../../../../composables/selected-portfolio'
-import { useServerApi } from '../../../../composables/useServerApi'
-import { ModelCreationFormDraft } from '../../../../forms/model'
-import { ModelProviderFormDraft } from '../../../../forms/model-provider'
-import { useToasts } from '../../../../composables/toasts'
+import {
+	useModelCreate,
+	useModelProviderDetail,
+	useModelProviderLifecycle,
+	useModelProviderUpdate,
+} from '../../../../composables/portfolio/models/providers'
+import { useActiveSecretSelectOptions } from '../../../../composables/portfolio/secrets'
 import { formatDate } from '../../../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
@@ -205,83 +204,23 @@ definePageMeta({ middleware: ['has-selection'] })
 const route = useRoute()
 const router = useRouter()
 const modelProviderId = computed(() => route.params.modelProviderId as string)
-const serverApi = useServerApi()
-const toasts = useToasts()
-const { portfolio } = useSelectedPortfolio()
-const { queryKeys, invalidate } = useQueryCache()
-const providerForm = new ModelProviderFormDraft()
-const modelCreationForm = new ModelCreationFormDraft()
 const isProviderArchiveConfirmationVisible = ref(false)
 
-const {
-	data: provider,
-	isLoading: isLoadingProvider,
-	error: providerError,
-	hasExecuted: hasLoadedProvider,
-} = usePortfolioModelProviderQuery(serverApi, modelProviderId)
-const { data: secrets } = usePortfolioSecretsQuery(serverApi)
-
-const secretOptions = computed(() =>
-	secrets.value.filter((secret) => !secret.archived).map((secret) => ({ value: secret.id, label: secret.name })),
-)
-const authSecretOptions = computed(() => [{ value: null, label: 'No auth Secret' }, ...secretOptions.value])
-
-watch(
-	provider,
-	(loadedProvider) => {
-		if (loadedProvider === null) return
-		providerForm.loadEntity({
-			name: loadedProvider.name,
-			protocol: loadedProvider.protocol,
-			baseUrl: loadedProvider.baseUrl,
-			auth: loadedProvider.auth,
-			headers: loadedProvider.headers,
-		})
+const { provider, isLoadingProvider, providerError, hasLoadedProvider, isRefreshingProvider } = useModelProviderDetail(modelProviderId)
+const { providerForm, isSavingProvider, saveProviderError, saveProvider } = useModelProviderUpdate(modelProviderId, provider)
+const { activeSecretOptions: secretOptions } = useActiveSecretSelectOptions()
+const { isChangingProviderLifecycle, providerLifecycleError, runProviderLifecycle } = useModelProviderLifecycle(modelProviderId, {
+	onSuccess: () => {
+		isProviderArchiveConfirmationVisible.value = false
 	},
-	{ immediate: true },
-)
-
-const {
-	isLoading: isSavingProvider,
-	error: saveProviderError,
-	execute: saveProvider,
-} = useApiAction(async () => {
-	const { protocol: _protocol, ...input } = providerForm.toModel()
-	const updated = await serverApi.updateModelProvider(modelProviderId.value, input)
-	invalidateProviderQueries()
-	toasts.success({ title: 'Model Provider saved.', body: updated.name })
+})
+const { modelCreationForm, isCreatingModel, createModelError, createModel } = useModelCreate(modelProviderId, {
+	onSuccess: async (model) => {
+		await router.push(`/models/providers/${modelProviderId.value}/models/${model.id}`)
+	},
 })
 
-const {
-	isLoading: isChangingProviderLifecycle,
-	error: providerLifecycleError,
-	execute: runProviderLifecycle,
-} = useApiAction(async (action: 'archive' | 'unarchive') => {
-	const updated =
-		action === 'archive'
-			? await serverApi.archiveModelProvider(modelProviderId.value)
-			: await serverApi.unarchiveModelProvider(modelProviderId.value)
-	isProviderArchiveConfirmationVisible.value = false
-	invalidateProviderQueries()
-	toasts.success({ title: action === 'archive' ? 'Model Provider archived.' : 'Model Provider unarchived.', body: updated.name })
-})
-
-const {
-	isLoading: isCreatingModel,
-	error: createModelError,
-	execute: createModel,
-} = useApiAction(async () => {
-	const model = await serverApi.createModel(modelProviderId.value, modelCreationForm.toModel())
-	modelCreationForm.reset()
-	invalidateProviderQueries()
-	toasts.success({ title: 'Model added.', body: model.name })
-	await router.push(`/models/providers/${modelProviderId.value}/models/${model.id}`)
-})
-
-function invalidateProviderQueries(): void {
-	invalidate(queryKeys.portfolio.modelProviders(portfolio.value.id), { exact: true })
-	invalidate(queryKeys.portfolio.modelProvider(portfolio.value.id, modelProviderId.value), { exact: true })
-}
+const authSecretOptions = computed(() => [{ value: null, label: 'No auth Secret' }, ...secretOptions.value])
 
 function requestProviderArchive(): void {
 	isProviderArchiveConfirmationVisible.value = true

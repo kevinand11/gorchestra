@@ -10,9 +10,7 @@
 
 		<section>
 			<div v-if="isLoadingModel && !hasLoadedModel" class="border-b border-dimmer px-3 py-4 text-dim">Loading Model…</div>
-			<p v-if="isLoadingModel && hasLoadedModel" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
-				Refreshing Model…
-			</p>
+			<p v-if="isRefreshingModel" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">Refreshing Model…</p>
 			<div v-else-if="modelError" class="border-b border-dimmer px-3 py-4 text-error">{{ modelError }}</div>
 			<div v-else-if="model" class="grid gap-0">
 				<section class="border-b border-dimmer px-3 py-3">
@@ -257,9 +255,7 @@
 							<span class="mt-1 block truncate text-sz-micro text-dim">{{ modelReferenceSubtitle(reference) }}</span>
 						</NuxtLink>
 					</div>
-					<p
-						v-if="isLoadingReferences && hasLoadedReferences"
-						class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
+					<p v-if="isRefreshingReferences" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
 						Refreshing references…
 					</p>
 				</section>
@@ -269,7 +265,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 
 import UiButton from '../../../../../components/ui/UiButton.vue'
 import UiCallout from '../../../../../components/ui/UiCallout.vue'
@@ -277,96 +273,40 @@ import UiForm from '../../../../../components/ui/UiForm.vue'
 import UiFormGroup from '../../../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../../../components/ui/UiInput.vue'
 import UiText from '../../../../../components/ui/UiText.vue'
-import { useApiAction } from '../../../../../composables/action-state'
 import { thinkingLevelLabel, thinkingLevelOptions } from '../../../../../composables/model-provider-options'
-import { usePortfolioModelQuery, usePortfolioModelReferencesQuery } from '../../../../../composables/portfolio-resource-queries'
-import { useQueryCache } from '../../../../../composables/query-cache'
-import { useSelectedPortfolio } from '../../../../../composables/selected-portfolio'
-import { useServerApi, type ServerApi } from '../../../../../composables/useServerApi'
-import { useToasts } from '../../../../../composables/toasts'
-import { ModelUpdateFormDraft } from '../../../../../forms/model'
+import {
+	useModelDetail,
+	useModelLifecycle,
+	useModelPreflight,
+	useModelReferences,
+	useModelUpdate,
+} from '../../../../../composables/portfolio/models/providers'
+import type { ServerApi } from '../../../../../composables/useServerApi'
 import { formatDate } from '../../../../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
 
-type PreflightEvidence = Awaited<ReturnType<ServerApi['preflightModel']>>
 type ModelReference = Awaited<ReturnType<ServerApi['listModelReferences']>>[number]
 type ModelReferencePurpose = ModelReference['purpose']
 
 const route = useRoute()
 const modelProviderId = computed(() => route.params.modelProviderId as string)
 const modelId = computed(() => route.params.modelId as string)
-const serverApi = useServerApi()
-const toasts = useToasts()
-const { portfolio } = useSelectedPortfolio()
-const { queryKeys, invalidate } = useQueryCache()
-const modelUpdateForm = new ModelUpdateFormDraft()
-const preflightEvidence = ref<PreflightEvidence | null>(null)
 const isModelArchiveConfirmationVisible = ref(false)
 const thinkingLevels = thinkingLevelOptions.map((option) => option.value)
 
-const {
-	data: model,
-	isLoading: isLoadingModel,
-	error: modelError,
-	hasExecuted: hasLoadedModel,
-} = usePortfolioModelQuery(serverApi, modelProviderId, modelId)
-
-const {
-	data: references,
-	isLoading: isLoadingReferences,
-	error: referencesError,
-	hasExecuted: hasLoadedReferences,
-} = usePortfolioModelReferencesQuery(serverApi, modelProviderId, modelId)
-
-watch(
-	model,
-	(loadedModel) => {
-		if (loadedModel === null) return
-		modelUpdateForm.loadEntity({ name: loadedModel.name, capabilities: loadedModel.capabilities, pricing: loadedModel.pricing })
-		preflightEvidence.value = null
-	},
-	{ immediate: true },
+const { model, isLoadingModel, modelError, hasLoadedModel, isRefreshingModel } = useModelDetail(modelProviderId, modelId)
+const { references, isLoadingReferences, referencesError, hasLoadedReferences, isRefreshingReferences } = useModelReferences(
+	modelProviderId,
+	modelId,
 )
-
-const {
-	isLoading: isSavingModel,
-	error: saveModelError,
-	execute: saveModel,
-} = useApiAction(async () => {
-	const updated = await serverApi.updateModel(modelProviderId.value, modelId.value, modelUpdateForm.toModel())
-	invalidateModelQueries()
-	toasts.success({ title: 'Model saved.', body: updated.name })
+const { modelUpdateForm, isSavingModel, saveModelError, saveModel } = useModelUpdate(modelProviderId, modelId, model)
+const { preflightEvidence, isPreflightingModel, preflightModelError, preflightModel } = useModelPreflight(modelProviderId, modelId, model)
+const { isChangingModelLifecycle, modelLifecycleError, runModelLifecycle } = useModelLifecycle(modelProviderId, modelId, {
+	onSuccess: () => {
+		isModelArchiveConfirmationVisible.value = false
+	},
 })
-
-const {
-	isLoading: isPreflightingModel,
-	error: preflightModelError,
-	execute: preflightModel,
-} = useApiAction(async () => {
-	preflightEvidence.value = await serverApi.preflightModel(modelProviderId.value, modelId.value)
-})
-
-const {
-	isLoading: isChangingModelLifecycle,
-	error: modelLifecycleError,
-	execute: runModelLifecycle,
-} = useApiAction(async (action: 'archive' | 'unarchive') => {
-	const updated =
-		action === 'archive'
-			? await serverApi.archiveModel(modelProviderId.value, modelId.value)
-			: await serverApi.unarchiveModel(modelProviderId.value, modelId.value)
-	isModelArchiveConfirmationVisible.value = false
-	invalidateModelQueries()
-	toasts.success({ title: action === 'archive' ? 'Model archived.' : 'Model unarchived.', body: updated.name })
-})
-
-function invalidateModelQueries(): void {
-	invalidate(queryKeys.portfolio.model(portfolio.value.id, modelProviderId.value, modelId.value), { exact: true })
-	invalidate(queryKeys.portfolio.modelReferences(portfolio.value.id, modelProviderId.value, modelId.value), { exact: true })
-	invalidate(queryKeys.portfolio.modelProvider(portfolio.value.id, modelProviderId.value), { exact: true })
-	invalidate(queryKeys.portfolio.modelProviders(portfolio.value.id), { exact: true })
-}
 
 function togglePricing(): void {
 	if (modelUpdateForm.pricing.enabled) modelUpdateForm.pricing.clear()
