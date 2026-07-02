@@ -86,5 +86,4 @@ const {
 	error: providersError,
 	hasExecuted: hasLoadedProviders,
 } = usePortfolioModelProvidersQuery(serverApi)
-
 </script>

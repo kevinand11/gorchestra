@@ -33,7 +33,8 @@
 					<div class="border border-dimmer bg-card p-3">
 						<strong class="block font-semibold">Plaintext is not available here.</strong>
 						<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-							Use this page to inspect metadata and direct references. Create a replacement Secret when the value needs to change.
+							Use this page to inspect metadata and direct references. Create a replacement Secret when the value needs to
+							change.
 						</p>
 					</div>
 				</div>

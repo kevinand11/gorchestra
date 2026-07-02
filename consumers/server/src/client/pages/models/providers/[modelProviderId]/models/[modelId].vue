@@ -35,7 +35,8 @@
 							}}</span>
 						</div>
 						<div class="flex justify-between gap-3 border-b border-dimmer py-2 sm:col-span-2">
-							<span class="text-dim">Provider model id</span><span class="min-w-0 truncate font-mono">{{ model.providerModelId }}</span>
+							<span class="text-dim">Provider model id</span
+							><span class="min-w-0 truncate font-mono">{{ model.providerModelId }}</span>
 						</div>
 						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
 							<span class="text-dim">Created</span><span>{{ formatDate(model.created.at) }}</span>
@@ -66,7 +67,8 @@
 					<section class="border-b border-dimmer px-3 py-3">
 						<h2 class="m-0 text-sz-subsection font-semibold">Capability limits</h2>
 						<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-							Context window is setup metadata until token counting lands. Max output tokens are passed to provider calls as the output cap.
+							Context window is setup metadata until token counting lands. Max output tokens are passed to provider calls as
+							the output cap.
 						</p>
 						<div class="mt-3 grid gap-3 md:grid-cols-2">
 							<UiFormGroup label="Supported inputs" for-id="model-inputs">
@@ -94,7 +96,8 @@
 					<section class="border-b border-dimmer px-3 py-3">
 						<h2 class="m-0 text-sz-subsection font-semibold">Reasoning</h2>
 						<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-							Enabled levels become selectable Thinking Levels. Leave all levels disabled when provider reasoning support is unknown.
+							Enabled levels become selectable Thinking Levels. Leave all levels disabled when provider reasoning support is
+							unknown.
 						</p>
 						<div class="mt-3 border-y border-dimmer">
 							<div
@@ -195,7 +198,12 @@
 						Archiving prevents new work from selecting this Model while preserving existing references.
 					</p>
 					<div class="mt-3">
-						<UiButton v-if="model.archived" type="button" variant="secondary" :loading="isChangingModelLifecycle" @click="unarchiveModel()">
+						<UiButton
+							v-if="model.archived"
+							type="button"
+							variant="secondary"
+							:loading="isChangingModelLifecycle"
+							@click="unarchiveModel()">
 							Unarchive Model
 						</UiButton>
 						<UiButton v-else type="button" variant="ghost" :loading="isChangingModelLifecycle" @click="requestModelArchive()">
@@ -219,14 +227,19 @@
 				<section class="border-b border-dimmer px-3 py-3">
 					<h2 class="m-0 text-sz-subsection font-semibold">References</h2>
 					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-						Direct config references that can use this Model for future work. Inherited defaults and Agent Run transcript history are not included.
+						Direct config references that can use this Model for future work. Inherited defaults and Agent Run transcript
+						history are not included.
 					</p>
 				</section>
 				<section>
-					<div v-if="isLoadingReferences && !hasLoadedReferences" class="border-b border-dimmer px-3 py-3 text-sz-helper text-dim">
+					<div
+						v-if="isLoadingReferences && !hasLoadedReferences"
+						class="border-b border-dimmer px-3 py-3 text-sz-helper text-dim">
 						Loading references…
 					</div>
-					<div v-else-if="referencesError" class="border-b border-dimmer px-3 py-3 text-sz-helper text-error">{{ referencesError }}</div>
+					<div v-else-if="referencesError" class="border-b border-dimmer px-3 py-3 text-sz-helper text-error">
+						{{ referencesError }}
+					</div>
 					<div v-else-if="references.length === 0" class="border-b border-dimmer px-3 py-3 text-sz-helper text-dim">
 						No direct config references for this Model.
 					</div>
@@ -241,7 +254,9 @@
 							<span class="mt-1 block truncate text-sz-micro text-dim">{{ modelReferenceSubtitle(reference) }}</span>
 						</NuxtLink>
 					</div>
-					<p v-if="isLoadingReferences && hasLoadedReferences" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
+					<p
+						v-if="isLoadingReferences && hasLoadedReferences"
+						class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
 						Refreshing references…
 					</p>
 				</section>
