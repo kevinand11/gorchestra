@@ -3,9 +3,9 @@ import { computed, type Ref } from 'vue'
 import { ProjectCreationFormDraft } from '../../forms/project'
 import { useSelectedPortfolio } from '../auth/session'
 import { useApiAction, useFetchAction } from '../core/action-state'
+import { useOverlay } from '../core/overlay'
 import { useQueryCache } from '../core/query-cache'
 import { useServerApi, type ServerApi } from '../core/server-api'
-import { useToasts } from '../core/toasts'
 
 export type ListedProject = Awaited<ReturnType<ServerApi['listProjects']>>[number]
 type ProjectDetails = Awaited<ReturnType<ServerApi['getProject']>>
@@ -57,7 +57,7 @@ export function useProjectDetail(projectId: Ref<string>) {
 
 export function useProjectsCreate(options: ProjectsCreateOptions = {}) {
 	const serverApi = useServerApi()
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const queryCache = useQueryCache()
 	const { portfolio } = useSelectedPortfolio()
 	const projectCreationForm = new ProjectCreationFormDraft()
@@ -71,7 +71,7 @@ export function useProjectsCreate(options: ProjectsCreateOptions = {}) {
 		const project = await serverApi.createProject(projectCreationForm.toModel())
 		queryCache.set(queryKeys.portfolio.project(portfolio.value.id, project.id), project)
 		queryCache.invalidate(queryKeys.portfolio.projects(portfolio.value.id), { exact: true })
-		toasts.success({ title: 'Project created.', body: project.title })
+		toast.success({ title: 'Project created.', body: project.title })
 		await options.onSuccess?.(project)
 		return project
 	})

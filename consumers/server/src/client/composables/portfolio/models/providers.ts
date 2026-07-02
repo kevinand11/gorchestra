@@ -4,9 +4,9 @@ import { ModelCreationFormDraft, ModelUpdateFormDraft } from '../../../forms/mod
 import { ModelProviderFormDraft, type ModelProviderFormModel } from '../../../forms/model-provider'
 import { useSelectedPortfolio } from '../../auth/session'
 import { useApiAction, useFetchAction } from '../../core/action-state'
+import { useOverlay } from '../../core/overlay'
 import { useQueryCache } from '../../core/query-cache'
 import { useServerApi, type ServerApi, type UpdateModelProviderInput } from '../../core/server-api'
-import { useToasts } from '../../core/toasts'
 
 export type ListedModelProvider = Awaited<ReturnType<ServerApi['listModelProviders']>>[number]
 type ModelProviderDetails = Awaited<ReturnType<ServerApi['getModelProvider']>>
@@ -81,7 +81,7 @@ export function useModelProviderDetail(modelProviderId: Ref<string>) {
 
 export function useModelProviderCreate(options: ModelProviderCreateOptions = {}) {
 	const serverApi = useServerApi()
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const queryCache = useQueryCache()
 	const { portfolio } = useSelectedPortfolio()
 	const providerForm = new ModelProviderFormDraft()
@@ -94,7 +94,7 @@ export function useModelProviderCreate(options: ModelProviderCreateOptions = {})
 	} = useApiAction(async () => {
 		const provider = await serverApi.createModelProvider(providerForm.toModel())
 		queryCache.invalidate(queryKeys.portfolio.modelProviders(portfolio.value.id), { exact: true })
-		toasts.success({ title: 'Model Provider created.', body: provider.name })
+		toast.success({ title: 'Model Provider created.', body: provider.name })
 		await options.onSuccess?.(provider)
 		return provider
 	})
@@ -104,7 +104,7 @@ export function useModelProviderCreate(options: ModelProviderCreateOptions = {})
 
 export function useModelProviderUpdate(modelProviderId: Ref<string>, provider: ModelProviderRef) {
 	const serverApi = useServerApi()
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const queryCache = useQueryCache()
 	const { portfolio } = useSelectedPortfolio()
 	const providerForm = new ModelProviderFormDraft()
@@ -126,7 +126,7 @@ export function useModelProviderUpdate(modelProviderId: Ref<string>, provider: M
 	} = useApiAction(async () => {
 		const updated = await serverApi.updateModelProvider(modelProviderId.value, modelProviderUpdateInput(providerForm.toModel()))
 		invalidateModelProviderQueries(queryCache, portfolio.value.id, modelProviderId.value)
-		toasts.success({ title: 'Model Provider saved.', body: updated.name })
+		toast.success({ title: 'Model Provider saved.', body: updated.name })
 		return updated
 	})
 
@@ -135,7 +135,7 @@ export function useModelProviderUpdate(modelProviderId: Ref<string>, provider: M
 
 export function useModelProviderLifecycle(modelProviderId: Ref<string>, options: ModelProviderLifecycleOptions = {}) {
 	const serverApi = useServerApi()
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const queryCache = useQueryCache()
 	const { portfolio } = useSelectedPortfolio()
 	const {
@@ -149,7 +149,7 @@ export function useModelProviderLifecycle(modelProviderId: Ref<string>, options:
 				? await serverApi.archiveModelProvider(modelProviderId.value)
 				: await serverApi.unarchiveModelProvider(modelProviderId.value)
 		invalidateModelProviderQueries(queryCache, portfolio.value.id, modelProviderId.value)
-		toasts.success({ title: action === 'archive' ? 'Model Provider archived.' : 'Model Provider unarchived.', body: updated.name })
+		toast.success({ title: action === 'archive' ? 'Model Provider archived.' : 'Model Provider unarchived.', body: updated.name })
 		await options.onSuccess?.(updated, action)
 		return updated
 	})
@@ -159,7 +159,7 @@ export function useModelProviderLifecycle(modelProviderId: Ref<string>, options:
 
 export function useModelCreate(modelProviderId: Ref<string>, options: ModelCreateOptions = {}) {
 	const serverApi = useServerApi()
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const queryCache = useQueryCache()
 	const { portfolio } = useSelectedPortfolio()
 	const modelCreationForm = new ModelCreationFormDraft()
@@ -172,7 +172,7 @@ export function useModelCreate(modelProviderId: Ref<string>, options: ModelCreat
 		const model = await serverApi.createModel(modelProviderId.value, modelCreationForm.toModel())
 		modelCreationForm.reset()
 		invalidateModelProviderQueries(queryCache, portfolio.value.id, modelProviderId.value)
-		toasts.success({ title: 'Model added.', body: model.name })
+		toast.success({ title: 'Model added.', body: model.name })
 		await options.onSuccess?.(model)
 		return model
 	})
@@ -230,7 +230,7 @@ export function useModelReferences(modelProviderId: Ref<string>, modelId: Ref<st
 
 export function useModelUpdate(modelProviderId: Ref<string>, modelId: Ref<string>, model: ModelRef) {
 	const serverApi = useServerApi()
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const queryCache = useQueryCache()
 	const { portfolio } = useSelectedPortfolio()
 	const modelUpdateForm = new ModelUpdateFormDraft()
@@ -252,7 +252,7 @@ export function useModelUpdate(modelProviderId: Ref<string>, modelId: Ref<string
 	} = useApiAction(async () => {
 		const updated = await serverApi.updateModel(modelProviderId.value, modelId.value, modelUpdateForm.toModel())
 		invalidateModelQueries(queryCache, portfolio.value.id, modelProviderId.value, modelId.value)
-		toasts.success({ title: 'Model saved.', body: updated.name })
+		toast.success({ title: 'Model saved.', body: updated.name })
 		return updated
 	})
 
@@ -261,7 +261,7 @@ export function useModelUpdate(modelProviderId: Ref<string>, modelId: Ref<string
 
 export function useModelPreflight(modelProviderId: Ref<string>, modelId: Ref<string>, model?: ModelRef) {
 	const serverApi = useServerApi()
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const preflightEvidence = ref<ModelPreflightEvidence | null>(null)
 
 	watch(
@@ -279,8 +279,8 @@ export function useModelPreflight(modelProviderId: Ref<string>, modelId: Ref<str
 	} = useApiAction(async () => {
 		const evidence = await serverApi.preflightModel(modelProviderId.value, modelId.value)
 		preflightEvidence.value = evidence
-		if (evidence.passed) toasts.success({ title: 'Model preflight passed.', body: evidence.summary })
-		else toasts.info({ title: 'Model preflight failed.', body: evidence.summary })
+		if (evidence.passed) toast.success({ title: 'Model preflight passed.', body: evidence.summary })
+		else toast.info({ title: 'Model preflight failed.', body: evidence.summary })
 		return evidence
 	})
 
@@ -289,7 +289,7 @@ export function useModelPreflight(modelProviderId: Ref<string>, modelId: Ref<str
 
 export function useModelLifecycle(modelProviderId: Ref<string>, modelId: Ref<string>, options: ModelLifecycleOptions = {}) {
 	const serverApi = useServerApi()
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const queryCache = useQueryCache()
 	const { portfolio } = useSelectedPortfolio()
 	const {
@@ -303,7 +303,7 @@ export function useModelLifecycle(modelProviderId: Ref<string>, modelId: Ref<str
 				? await serverApi.archiveModel(modelProviderId.value, modelId.value)
 				: await serverApi.unarchiveModel(modelProviderId.value, modelId.value)
 		invalidateModelQueries(queryCache, portfolio.value.id, modelProviderId.value, modelId.value)
-		toasts.success({ title: action === 'archive' ? 'Model archived.' : 'Model unarchived.', body: updated.name })
+		toast.success({ title: action === 'archive' ? 'Model archived.' : 'Model unarchived.', body: updated.name })
 		await options.onSuccess?.(updated, action)
 		return updated
 	})

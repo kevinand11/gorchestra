@@ -3,8 +3,8 @@ import { ref, watch } from 'vue'
 import { EmailOtpChallengeFormDraft, EmailOtpVerificationFormDraft } from '../../forms/auth'
 import { useAuth } from '../auth/session'
 import { useApiAction } from '../core/action-state'
+import { useOverlay } from '../core/overlay'
 import { useServerApi } from '../core/server-api'
-import { useToasts } from '../core/toasts'
 
 type EmailOtpSignInOptions = {
 	onSuccess?: () => void | Promise<void>
@@ -13,7 +13,7 @@ type EmailOtpSignInOptions = {
 export function useEmailOtpSignIn(options: EmailOtpSignInOptions = {}) {
 	const serverApi = useServerApi()
 	const { setSession } = useAuth()
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const emailOtpChallengeForm = new EmailOtpChallengeFormDraft()
 	const emailOtpVerificationForm = new EmailOtpVerificationFormDraft()
 	const challengeRequested = ref(false)
@@ -35,7 +35,7 @@ export function useEmailOtpSignIn(options: EmailOtpSignInOptions = {}) {
 		await serverApi.requestEmailOtp(input.email)
 		emailOtpVerificationForm.loadEntity({ email: input.email, code: '' })
 		challengeRequested.value = true
-		toasts.success({ title: 'Sign-in code sent.', body: 'Check your email for the six-digit code.' })
+		toast.success({ title: 'Sign-in code sent.', body: 'Check your email for the six-digit code.' })
 	})
 
 	const {

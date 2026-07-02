@@ -2,26 +2,26 @@
 	<TransitionGroup
 		name="toast"
 		tag="section"
-		class="pointer-events-none fixed right-4 top-4 z-50 grid w-[min(420px,calc(100vw-32px))] gap-3"
+		class="pointer-events-none fixed top-4 right-4 z-50 grid w-[min(420px,calc(100vw-32px))] gap-3"
 		aria-live="polite"
 		aria-label="Notifications">
 		<article
-			v-for="toast in toastMessages"
-			:key="toast.id"
+			v-for="message in toastMessages"
+			:key="message.id"
 			class="pointer-events-auto rounded-card border bg-card p-4 text-card-contrast shadow-panel"
-			:class="kindClass(toast.kind)"
-			:role="toast.kind === 'error' ? 'alert' : 'status'">
+			:class="kindClass(message.kind)"
+			:role="message.kind === 'error' ? 'alert' : 'status'">
 			<div class="flex items-start justify-between gap-3">
 				<div class="grid gap-1">
-					<UiHeading as="h2" size="subsection">{{ toast.title }}</UiHeading>
-					<UiText v-if="toast.body" tone="muted" size="helper">{{ toast.body }}</UiText>
+					<UiHeading as="h2" size="subsection">{{ message.title }}</UiHeading>
+					<UiText v-if="message.body" tone="muted" size="helper">{{ message.body }}</UiText>
 				</div>
 				<UiButton
 					type="button"
 					variant="ghost"
 					size="icon"
-					:aria-label="`Dismiss notification: ${toast.title}`"
-					@click="dismiss(toast.id)">
+					:aria-label="`Dismiss notification: ${message.title}`"
+					@click="dismiss(message.id)">
 					×
 				</UiButton>
 			</div>
@@ -30,12 +30,15 @@
 </template>
 
 <script setup lang="ts">
-import { useToasts, type ToastKind } from '../composables/core/toasts'
-import UiButton from './ui/UiButton.vue'
-import UiHeading from './ui/UiHeading.vue'
-import UiText from './ui/UiText.vue'
+import { useOverlayShelf } from '../../composables/core/overlay'
+import UiButton from '../ui/UiButton.vue'
+import UiHeading from '../ui/UiHeading.vue'
+import UiText from '../ui/UiText.vue'
 
-const { toasts: toastMessages, dismiss } = useToasts()
+type ToastKind = ReturnType<typeof useOverlayShelf>['toast']['messages']['value'][number]['kind']
+
+const { toast } = useOverlayShelf()
+const { messages: toastMessages, dismiss } = toast
 
 function kindClass(kind: ToastKind): string {
 	const classes = {

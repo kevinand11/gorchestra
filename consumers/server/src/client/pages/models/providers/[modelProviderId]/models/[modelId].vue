@@ -211,13 +211,6 @@
 							Archive Model
 						</UiButton>
 					</div>
-					<UiCallout v-if="isModelArchiveConfirmationVisible" class="mt-3" tone="notice">
-						Archiving can make direct config references unusable until those configs change.
-						<span class="mt-2 flex gap-2">
-							<UiButton type="button" variant="secondary" @click="archiveModel()">Confirm archive</UiButton>
-							<UiButton type="button" variant="ghost" @click="isModelArchiveConfirmationVisible = false">Cancel</UiButton>
-						</span>
-					</UiCallout>
 					<UiText v-if="modelLifecycleError" tone="error">{{ modelLifecycleError }}</UiText>
 				</section>
 			</div>
@@ -265,7 +258,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 
 import UiButton from '../../../../../components/ui/UiButton.vue'
 import UiCallout from '../../../../../components/ui/UiCallout.vue'
@@ -273,6 +266,7 @@ import UiForm from '../../../../../components/ui/UiForm.vue'
 import UiFormGroup from '../../../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../../../components/ui/UiInput.vue'
 import UiText from '../../../../../components/ui/UiText.vue'
+import { useOverlay } from '../../../../../composables/core/overlay'
 import type { ServerApi } from '../../../../../composables/core/server-api'
 import { thinkingLevelLabel, thinkingLevelOptions } from '../../../../../utils/model-provider-options'
 import {
@@ -292,7 +286,7 @@ type ModelReferencePurpose = ModelReference['purpose']
 const route = useRoute()
 const modelProviderId = computed(() => route.params.modelProviderId as string)
 const modelId = computed(() => route.params.modelId as string)
-const isModelArchiveConfirmationVisible = ref(false)
+const { confirm } = useOverlay()
 const thinkingLevels = thinkingLevelOptions.map((option) => option.value)
 
 const { model, isLoadingModel, modelError, hasLoadedModel, isRefreshingModel } = useModelDetail(modelProviderId, modelId)
@@ -302,23 +296,21 @@ const { references, isLoadingReferences, referencesError, hasLoadedReferences, i
 )
 const { modelUpdateForm, isSavingModel, saveModelError, saveModel } = useModelUpdate(modelProviderId, modelId, model)
 const { preflightEvidence, isPreflightingModel, preflightModelError, preflightModel } = useModelPreflight(modelProviderId, modelId, model)
-const { isChangingModelLifecycle, modelLifecycleError, runModelLifecycle } = useModelLifecycle(modelProviderId, modelId, {
-	onSuccess: () => {
-		isModelArchiveConfirmationVisible.value = false
-	},
-})
+const { isChangingModelLifecycle, modelLifecycleError, runModelLifecycle } = useModelLifecycle(modelProviderId, modelId)
 
 function togglePricing(): void {
 	if (modelUpdateForm.pricing.enabled) modelUpdateForm.pricing.clear()
 	else modelUpdateForm.pricing.enabled = true
 }
 
-function requestModelArchive(): void {
-	isModelArchiveConfirmationVisible.value = true
-}
-
-function archiveModel(): Promise<unknown> {
-	return runModelLifecycle('archive')
+async function requestModelArchive(): Promise<void> {
+	const confirmed = await confirm({
+		title: 'Archive Model?',
+		body: 'Archiving can make direct config references unusable until those configs change.',
+		confirm: { label: 'Archive Model', tone: 'danger' },
+	})
+	if (!confirmed) return
+	await runModelLifecycle('archive')
 }
 
 function unarchiveModel(): Promise<unknown> {

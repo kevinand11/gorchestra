@@ -3,9 +3,9 @@ import { computed, ref, type Ref } from 'vue'
 import { RepositoryCreationFormDraft } from '../../../forms/repository'
 import { useSelectedPortfolio } from '../../auth/session'
 import { useApiAction, useFetchAction } from '../../core/action-state'
+import { useOverlay } from '../../core/overlay'
 import { useQueryCache } from '../../core/query-cache'
 import { useServerApi, type ServerApi } from '../../core/server-api'
-import { useToasts } from '../../core/toasts'
 
 export type ListedRepository = Awaited<ReturnType<ServerApi['listRepositories']>>[number]
 type RepositoryDetails = Awaited<ReturnType<ServerApi['getRepository']>>
@@ -74,7 +74,7 @@ export function useRepositoryDetail(projectId: Ref<string>, repositoryId: Ref<st
 
 export function useRepositoriesCreate(projectId: Ref<string>, options: RepositoriesCreateOptions = {}) {
 	const serverApi = useServerApi()
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const queryCache = useQueryCache()
 	const { portfolio } = useSelectedPortfolio()
 	const repositoryCreationForm = new RepositoryCreationFormDraft()
@@ -90,7 +90,7 @@ export function useRepositoriesCreate(projectId: Ref<string>, options: Repositor
 		queryCache.invalidate(queryKeys.portfolio.repositories(portfolio.value.id, projectId.value), { exact: true })
 		queryCache.invalidate(queryKeys.portfolio.project(portfolio.value.id, projectId.value), { exact: true })
 		queryCache.invalidate(queryKeys.portfolio.projects(portfolio.value.id), { exact: true })
-		toasts.success({ title: 'Repository created.', body: `${repository.config.owner}/${repository.config.name}` })
+		toast.success({ title: 'Repository created.', body: `${repository.config.owner}/${repository.config.name}` })
 		await options.onSuccess?.(repository)
 		return repository
 	})
@@ -100,7 +100,7 @@ export function useRepositoriesCreate(projectId: Ref<string>, options: Repositor
 
 export function useRepositoryPreflight(projectId: Ref<string>, repositoryId: Ref<string>) {
 	const serverApi = useServerApi()
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const preflightEvidence = ref<RepositoryPreflightEvidence | null>(null)
 	const {
 		isLoading: isPreflightingRepository,
@@ -110,8 +110,8 @@ export function useRepositoryPreflight(projectId: Ref<string>, repositoryId: Ref
 	} = useApiAction(async () => {
 		const evidence = await serverApi.preflightRepository(projectId.value, repositoryId.value)
 		preflightEvidence.value = evidence
-		if (evidence.passed) toasts.success({ title: 'Repository preflight passed.', body: evidence.summary })
-		else toasts.info({ title: 'Repository preflight failed.', body: evidence.summary })
+		if (evidence.passed) toast.success({ title: 'Repository preflight passed.', body: evidence.summary })
+		else toast.info({ title: 'Repository preflight failed.', body: evidence.summary })
 		return evidence
 	})
 

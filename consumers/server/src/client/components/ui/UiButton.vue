@@ -13,22 +13,28 @@
 const props = withDefaults(
 	defineProps<{
 		variant?: 'primary' | 'secondary' | 'ghost'
+		tone?: 'default' | 'danger'
 		size?: 'default' | 'icon'
 		loading?: boolean
 	}>(),
-	{ variant: 'primary', size: 'default', loading: false },
+	{ variant: 'primary', tone: 'default', size: 'default', loading: false },
 )
 const attrs = useAttrs() as { disabled?: boolean; type?: 'button' | 'submit' | 'reset' }
 
 const buttonType = computed(() => attrs.type ?? 'button')
 const isDisabled = computed(() => props.loading || Boolean(attrs.disabled))
 const variantClass = computed(() => {
-	const variants = {
+	const defaultVariants = {
 		primary: 'border-primary bg-primary text-primary-contrast hover:brightness-110',
 		secondary: 'border-dimmer bg-secondary text-secondary-contrast hover:border-dim hover:brightness-110',
 		ghost: 'border-transparent bg-transparent text-dim hover:text-current',
 	}
-	return variants[props.variant]
+	const dangerVariants = {
+		primary: 'border-error bg-error text-error-contrast hover:brightness-110',
+		secondary: 'border-error bg-secondary text-error hover:brightness-110',
+		ghost: 'border-transparent bg-transparent text-error hover:brightness-110',
+	}
+	return props.tone === 'danger' ? dangerVariants[props.variant] : defaultVariants[props.variant]
 })
 const sizeClass = computed(() => {
 	const sizes = {

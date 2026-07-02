@@ -3,9 +3,9 @@ import { computed, type Ref } from 'vue'
 import { PlanCreationFormDraft } from '../../../forms/plan'
 import { useSelectedPortfolio } from '../../auth/session'
 import { useApiAction, useFetchAction } from '../../core/action-state'
+import { useOverlay } from '../../core/overlay'
 import { useQueryCache } from '../../core/query-cache'
 import { useServerApi, type ServerApi } from '../../core/server-api'
-import { useToasts } from '../../core/toasts'
 
 export type ListedPlan = Awaited<ReturnType<ServerApi['listPlans']>>[number]
 type PlanDetails = Awaited<ReturnType<ServerApi['getPlan']>>
@@ -57,7 +57,7 @@ export function usePlanDetail(projectId: Ref<string>, planId: Ref<string>) {
 
 export function usePlansCreate(projectId: Ref<string>, options: PlansCreateOptions = {}) {
 	const serverApi = useServerApi()
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const queryCache = useQueryCache()
 	const { portfolio } = useSelectedPortfolio()
 	const planCreationForm = new PlanCreationFormDraft()
@@ -71,7 +71,7 @@ export function usePlansCreate(projectId: Ref<string>, options: PlansCreateOptio
 		const plan = await serverApi.createPlan(projectId.value, planCreationForm.toModel())
 		queryCache.set(queryKeys.portfolio.plan(portfolio.value.id, projectId.value, plan.id), plan)
 		queryCache.invalidate(queryKeys.portfolio.plans(portfolio.value.id, projectId.value), { exact: true })
-		toasts.success({ title: 'Plan created.', body: plan.title })
+		toast.success({ title: 'Plan created.', body: plan.title })
 		await options.onSuccess?.(plan)
 		return plan
 	})

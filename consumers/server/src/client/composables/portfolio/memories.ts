@@ -3,9 +3,9 @@ import { computed, watch, type Ref } from 'vue'
 import { MemoryCreationFormDraft, MemoryRevisionFormDraft } from '../../forms/memory'
 import { useSelectedPortfolio } from '../auth/session'
 import { useApiAction, useFetchAction } from '../core/action-state'
+import { useOverlay } from '../core/overlay'
 import { useQueryCache } from '../core/query-cache'
 import { useServerApi, type ServerApi } from '../core/server-api'
-import { useToasts } from '../core/toasts'
 
 type MemoryParentIdRef = Readonly<Ref<string | null>>
 export type ListedMemory = Awaited<ReturnType<ServerApi['listMemoryChildren']>>[number]
@@ -64,7 +64,7 @@ export function useMemoryDetail(memoryId: Ref<string>) {
 
 export function useMemoryCreate(parentId: MemoryParentIdRef, options: MemoryCreateOptions = {}) {
 	const serverApi = useServerApi()
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const queryCache = useQueryCache()
 	const { portfolio } = useSelectedPortfolio()
 	const memoryCreationForm = new MemoryCreationFormDraft(parentId.value)
@@ -77,7 +77,7 @@ export function useMemoryCreate(parentId: MemoryParentIdRef, options: MemoryCrea
 		const memory = await serverApi.createMemory(memoryCreationForm.toModel())
 		invalidateMemoryContainer(queryCache, portfolio.value.id, memory.parentId)
 		memoryCreationForm.reset()
-		toasts.success({ title: 'Memory created.', body: memory.currentRevision.title })
+		toast.success({ title: 'Memory created.', body: memory.currentRevision.title })
 		await options.onSuccess?.(memory)
 		return memory
 	})
@@ -92,7 +92,7 @@ export function useMemoryCreate(parentId: MemoryParentIdRef, options: MemoryCrea
 
 export function useMemoryRevisionCreate(memoryId: Ref<string>, options: MemoryRevisionCreateOptions = {}) {
 	const serverApi = useServerApi()
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const queryCache = useQueryCache()
 	const { portfolio } = useSelectedPortfolio()
 	const memoryRevisionForm = new MemoryRevisionFormDraft()
@@ -106,7 +106,7 @@ export function useMemoryRevisionCreate(memoryId: Ref<string>, options: MemoryRe
 		const updatedDetails = await serverApi.getMemory(updatedMemory.id)
 		queryCache.set(queryCache.queryKeys.portfolio.memory(portfolio.value.id, updatedDetails.id), updatedDetails)
 		invalidateMemoryContainer(queryCache, portfolio.value.id, updatedDetails.parentId)
-		toasts.success({ title: 'Memory revised.', body: updatedDetails.currentRevision.title })
+		toast.success({ title: 'Memory revised.', body: updatedDetails.currentRevision.title })
 		await options.onSuccess?.(updatedDetails)
 		return updatedDetails
 	})

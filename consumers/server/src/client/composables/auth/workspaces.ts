@@ -3,9 +3,9 @@ import { computed, ref } from 'vue'
 import { useAuth } from './session'
 import { ProvisionWorkspaceFormDraft } from '../../forms/workspace'
 import { useApiAction, useFetchAction } from '../core/action-state'
+import { useOverlay } from '../core/overlay'
 import { useQueryCache } from '../core/query-cache'
 import { useServerApi, type ServerApi } from '../core/server-api'
-import { useToasts } from '../core/toasts'
 
 type WorkspacePortfolios = Awaited<ReturnType<ServerApi['listWorkspacePortfolios']>>
 type ProvisionDefaultWorkspaceResponse = Awaited<ReturnType<ServerApi['provisionDefaultWorkspace']>>
@@ -51,7 +51,7 @@ export function useDefaultWorkspaceProvision(options: DefaultWorkspaceProvisionO
 	const { setSelection } = useAuth()
 	const queryCache = useQueryCache()
 	const { queryKeys } = queryCache
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const provisionWorkspaceForm = new ProvisionWorkspaceFormDraft()
 	const {
 		isLoading: isProvisioningWorkspace,
@@ -69,7 +69,7 @@ export function useDefaultWorkspaceProvision(options: DefaultWorkspaceProvisionO
 			portfolio: response.portfolio,
 			activeWorkspaceOwnerRole: response.workspaceOwnerRole,
 		})
-		toasts.success({ title: 'Workspace created and Portfolio selected.' })
+		toast.success({ title: 'Workspace created and Portfolio selected.' })
 		await options.onSuccess?.(response)
 		return response
 	})
@@ -80,7 +80,7 @@ export function useDefaultWorkspaceProvision(options: DefaultWorkspaceProvisionO
 export function usePortfolioSelection(options: PortfolioSelectionOptions = {}) {
 	const serverApi = useServerApi()
 	const { setSelection } = useAuth()
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const selectingPortfolioKey = ref('')
 	const {
 		isLoading: isSelectingPortfolio,
@@ -90,7 +90,7 @@ export function usePortfolioSelection(options: PortfolioSelectionOptions = {}) {
 	} = useApiAction(async (workspaceId: string, portfolioId: string) => {
 		const selection = await serverApi.setSelection(workspaceId, portfolioId)
 		setSelection(selection)
-		toasts.success({ title: 'Portfolio selected.' })
+		toast.success({ title: 'Portfolio selected.' })
 		await options.onSuccess?.(selection)
 		return selection
 	})

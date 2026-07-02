@@ -1,8 +1,8 @@
 <template>
 	<NuxtPage />
-	<ToastShelf />
+	<OverlayShelf />
 </template>
 
 <script setup lang="ts">
-import ToastShelf from './components/ToastShelf.vue'
+import OverlayShelf from './components/overlay/OverlayShelf.vue'
 </script>

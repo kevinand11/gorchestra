@@ -3,9 +3,9 @@ import { computed, type Ref } from 'vue'
 import { SecretCreationFormDraft } from '../../forms/secret'
 import { useSelectedPortfolio } from '../auth/session'
 import { useApiAction, useFetchAction } from '../core/action-state'
+import { useOverlay } from '../core/overlay'
 import { useQueryCache } from '../core/query-cache'
 import { useServerApi, type ServerApi } from '../core/server-api'
-import { useToasts } from '../core/toasts'
 
 type ListedSecret = Awaited<ReturnType<ServerApi['listSecrets']>>[number]
 type SecretDetails = Awaited<ReturnType<ServerApi['getSecret']>>
@@ -57,7 +57,7 @@ export function useSecretDetail(secretId: Ref<string>) {
 
 export function useSecretsCreate(options: SecretsCreateOptions = {}) {
 	const serverApi = useServerApi()
-	const toasts = useToasts()
+	const { toast } = useOverlay()
 	const queryCache = useQueryCache()
 	const { portfolio } = useSelectedPortfolio()
 	const secretCreationForm = new SecretCreationFormDraft()
@@ -71,7 +71,7 @@ export function useSecretsCreate(options: SecretsCreateOptions = {}) {
 		const secret = await serverApi.createSecret(secretCreationForm.toModel())
 		queryCache.set(queryKeys.portfolio.secret(portfolio.value.id, secret.id), secret)
 		queryCache.invalidate(queryKeys.portfolio.secrets(portfolio.value.id), { exact: true })
-		toasts.success({ title: 'Secret created.', body: secret.name })
+		toast.success({ title: 'Secret created.', body: secret.name })
 		await options.onSuccess?.(secret)
 		return secret
 	})

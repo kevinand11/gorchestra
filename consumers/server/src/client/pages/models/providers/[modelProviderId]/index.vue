@@ -133,13 +133,6 @@
 							>Archive Provider</UiButton
 						>
 					</div>
-					<UiCallout v-if="isProviderArchiveConfirmationVisible" class="mt-3" tone="notice">
-						Archiving can make Portfolio Config references unusable until the config is changed.
-						<span class="mt-2 flex gap-2">
-							<UiButton type="button" variant="secondary" @click="archiveProvider()">Confirm archive</UiButton>
-							<UiButton type="button" variant="ghost" @click="isProviderArchiveConfirmationVisible = false">Cancel</UiButton>
-						</span>
-					</UiCallout>
 					<UiText v-if="providerLifecycleError" tone="error">{{ providerLifecycleError }}</UiText>
 				</section>
 
@@ -181,15 +174,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 
 import UiButton from '../../../../components/ui/UiButton.vue'
-import UiCallout from '../../../../components/ui/UiCallout.vue'
 import UiForm from '../../../../components/ui/UiForm.vue'
 import UiFormGroup from '../../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../../components/ui/UiInput.vue'
 import UiSelect from '../../../../components/ui/UiSelect.vue'
 import UiText from '../../../../components/ui/UiText.vue'
+import { useOverlay } from '../../../../composables/core/overlay'
 import {
 	useModelCreate,
 	useModelProviderDetail,
@@ -204,16 +197,12 @@ definePageMeta({ middleware: ['has-selection'] })
 const route = useRoute()
 const router = useRouter()
 const modelProviderId = computed(() => route.params.modelProviderId as string)
-const isProviderArchiveConfirmationVisible = ref(false)
+const { confirm } = useOverlay()
 
 const { provider, isLoadingProvider, providerError, hasLoadedProvider, isRefreshingProvider } = useModelProviderDetail(modelProviderId)
 const { providerForm, isSavingProvider, saveProviderError, saveProvider } = useModelProviderUpdate(modelProviderId, provider)
 const { activeSecretOptions: secretOptions } = useActiveSecretSelectOptions()
-const { isChangingProviderLifecycle, providerLifecycleError, runProviderLifecycle } = useModelProviderLifecycle(modelProviderId, {
-	onSuccess: () => {
-		isProviderArchiveConfirmationVisible.value = false
-	},
-})
+const { isChangingProviderLifecycle, providerLifecycleError, runProviderLifecycle } = useModelProviderLifecycle(modelProviderId)
 const { modelCreationForm, isCreatingModel, createModelError, createModel } = useModelCreate(modelProviderId, {
 	onSuccess: async (model) => {
 		await router.push(`/models/providers/${modelProviderId.value}/models/${model.id}`)
@@ -222,12 +211,14 @@ const { modelCreationForm, isCreatingModel, createModelError, createModel } = us
 
 const authSecretOptions = computed(() => [{ value: null, label: 'No auth Secret' }, ...secretOptions.value])
 
-function requestProviderArchive(): void {
-	isProviderArchiveConfirmationVisible.value = true
-}
-
-function archiveProvider(): Promise<unknown> {
-	return runProviderLifecycle('archive')
+async function requestProviderArchive(): Promise<void> {
+	const confirmed = await confirm({
+		title: 'Archive Model Provider?',
+		body: 'Archiving can make Portfolio Config references unusable until the config is changed.',
+		confirm: { label: 'Archive Provider', tone: 'danger' },
+	})
+	if (!confirmed) return
+	await runProviderLifecycle('archive')
 }
 
 function unarchiveProvider(): Promise<unknown> {
