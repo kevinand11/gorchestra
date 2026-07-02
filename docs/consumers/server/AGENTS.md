@@ -34,4 +34,5 @@ The `docs/consumers/server/` tree documents the v1 deployed multi-user Server Co
 ## Child DOX Index
 
 - `DESIGN_SYSTEM.md` — Server Consumer UI design-system guidance.
+- `TODO.md` — intentionally deferred Server Consumer follow-up items.
 - `adr/` — Server Consumer ADRs. No child AGENTS.md currently required.

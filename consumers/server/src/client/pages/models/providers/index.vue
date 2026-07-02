@@ -28,7 +28,7 @@
 					v-for="provider in providers"
 					:key="provider.id"
 					:to="`/models/providers/${provider.id}`"
-					class="grid min-h-[58px] grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-dimmer px-3 py-3 text-body hover:bg-card focus-visible:bg-secondary"
+					class="grid min-h-[58px] grid-cols-[minmax(0,1fr)] gap-3 border-b border-dimmer px-3 py-3 text-body hover:bg-card focus-visible:bg-secondary"
 					:class="provider.archived ? 'opacity-50' : ''">
 					<span class="min-w-0">
 						<strong class="block truncate font-semibold">{{ provider.name }}</strong>
@@ -36,9 +36,6 @@
 							<span class="font-mono">{{ provider.protocol.type }}</span> · {{ provider.baseUrl }}
 						</span>
 					</span>
-					<span class="self-center text-sz-helper text-dim"
-						>{{ provider.models.length }} {{ modelCountLabel(provider.models.length) }}</span
-					>
 				</NuxtLink>
 			</nav>
 			<p v-if="isLoadingProviders && hasLoadedProviders" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
@@ -90,7 +87,4 @@ const {
 	hasExecuted: hasLoadedProviders,
 } = usePortfolioModelProvidersQuery(serverApi)
 
-function modelCountLabel(count: number): string {
-	return count === 1 ? 'Model' : 'Models'
-}
 </script>

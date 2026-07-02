@@ -48,11 +48,8 @@
 				</section>
 
 				<section>
-					<div class="flex min-h-11 items-center justify-between gap-3 border-b border-dimmer px-3 py-2">
+					<div class="flex min-h-11 items-center border-b border-dimmer px-3 py-2">
 						<h2 class="m-0 text-sz-subsection font-semibold">Models</h2>
-						<span class="text-sz-helper text-dim"
-							>{{ provider.models.length }} {{ modelCountLabel(provider.models.length) }}</span
-						>
 					</div>
 					<div v-if="provider.models.length === 0" class="border-b border-dimmer px-3 py-4">
 						<h3 class="m-0 text-sz-helper font-semibold">No Models yet.</h3>
@@ -60,11 +57,12 @@
 							Add a Model from the right rail before selecting this provider in Portfolio Config.
 						</p>
 					</div>
-					<div v-else>
-						<div
+					<nav v-else aria-label="Models">
+						<NuxtLink
 							v-for="model in provider.models"
 							:key="model.id"
-							class="grid min-h-[54px] grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-dimmer px-3 py-3"
+							:to="`/models/providers/${provider.id}/models/${model.id}`"
+							class="grid min-h-[54px] grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-dimmer px-3 py-3 text-body hover:bg-card focus-visible:bg-secondary"
 							:class="model.archived ? 'opacity-50' : ''">
 							<div class="min-w-0">
 								<strong class="block truncate font-semibold">{{ model.name }}</strong>
@@ -73,8 +71,8 @@
 							<span class="self-center text-sz-helper" :class="model.archived ? 'text-dim' : 'text-success'">{{
 								model.archived ? 'Archived' : 'Active'
 							}}</span>
-						</div>
-					</div>
+						</NuxtLink>
+					</nav>
 				</section>
 			</div>
 		</section>
@@ -135,17 +133,17 @@
 							>Archive Provider</UiButton
 						>
 					</div>
-					<UiCallout v-if="pendingArchiveTarget === 'provider'" class="mt-3" tone="notice">
+					<UiCallout v-if="isProviderArchiveConfirmationVisible" class="mt-3" tone="notice">
 						Archiving can make Portfolio Config references unusable until the config is changed.
 						<span class="mt-2 flex gap-2">
 							<UiButton type="button" variant="secondary" @click="archiveProvider()">Confirm archive</UiButton>
-							<UiButton type="button" variant="ghost" @click="pendingArchiveTarget = null">Cancel</UiButton>
+							<UiButton type="button" variant="ghost" @click="isProviderArchiveConfirmationVisible = false">Cancel</UiButton>
 						</span>
 					</UiCallout>
 					<UiText v-if="providerLifecycleError" tone="error">{{ providerLifecycleError }}</UiText>
 				</section>
 
-				<section class="border-b border-dimmer px-3 py-3">
+				<section class="px-3 py-3">
 					<div>
 						<h2 class="m-0 text-sz-subsection font-semibold">Add Model</h2>
 						<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
@@ -177,142 +175,6 @@
 						<UiText v-if="createModelError" tone="error">{{ createModelError }}</UiText>
 					</UiForm>
 				</section>
-
-				<section class="border-b border-dimmer px-3 py-3">
-					<UiFormGroup label="Selected Model" for-id="selected-model">
-						<UiSelect
-							id="selected-model"
-							v-model="selectedModelId"
-							:options="modelOptions"
-							placeholder="Select Model"
-							:disabled="provider.models.length === 0" />
-					</UiFormGroup>
-					<UiForm v-if="selectedModel" class="mt-3 grid gap-3" @submit.prevent="saveModel()">
-						<UiFormGroup label="Model name" for-id="selected-model-name" :error="modelUpdateForm.errors.name">
-							<UiInput id="selected-model-name" v-model="modelUpdateForm.name" :invalid="!!modelUpdateForm.errors.name" />
-						</UiFormGroup>
-						<div class="grid gap-3 md:grid-cols-2">
-							<UiFormGroup label="Context window tokens" for-id="context-window-tokens">
-								<UiInput
-									id="context-window-tokens"
-									type="number"
-									:min="1"
-									:model-value="modelUpdateForm.capabilities.contextWindowTokens"
-									@update:model-value="setModelCapability('contextWindowTokens', numberFieldValue($event))" />
-							</UiFormGroup>
-							<UiFormGroup label="Max output tokens" for-id="max-output-tokens">
-								<UiInput
-									id="max-output-tokens"
-									type="number"
-									:min="1"
-									:model-value="modelUpdateForm.capabilities.maxOutputTokens"
-									@update:model-value="setModelCapability('maxOutputTokens', numberFieldValue($event))" />
-							</UiFormGroup>
-						</div>
-						<div class="border-y border-dimmer">
-							<div class="py-2 text-sz-helper font-semibold text-dim">Reasoning</div>
-							<div v-for="level in thinkingLevels" :key="level" class="grid gap-2 border-t border-dimmer py-2">
-								<label class="flex items-center gap-2 text-sz-helper">
-									<input
-										:checked="isReasoningLevelEnabled(level)"
-										type="checkbox"
-										@change="setReasoningLevelEnabled(level, isChecked($event))" />
-									{{ thinkingLevelLabel(level) }}
-								</label>
-								<UiInput
-									:model-value="reasoningProviderValue(level)"
-									:disabled="!isReasoningLevelEnabled(level)"
-									placeholder="Provider value"
-									@update:model-value="setReasoningProviderValue(level, String($event))" />
-							</div>
-						</div>
-						<div class="border-b border-dimmer pb-3">
-							<div class="flex items-center justify-between gap-3 py-2">
-								<span class="text-sz-helper font-semibold text-dim">Pricing</span>
-								<UiButton type="button" variant="ghost" @click="togglePricing()">{{
-									modelUpdateForm.pricing === null ? 'Configure' : 'Clear'
-								}}</UiButton>
-							</div>
-							<div v-if="modelUpdateForm.pricing !== null" class="grid gap-3 md:grid-cols-2">
-								<UiFormGroup label="Input $/M" for-id="pricing-input"
-									><UiInput
-										id="pricing-input"
-										:model-value="pricingUsdPerMillion('input')"
-										@update:model-value="setPricingUsdPerMillion('input', String($event))"
-								/></UiFormGroup>
-								<UiFormGroup label="Output $/M" for-id="pricing-output"
-									><UiInput
-										id="pricing-output"
-										:model-value="pricingUsdPerMillion('output')"
-										@update:model-value="setPricingUsdPerMillion('output', String($event))"
-								/></UiFormGroup>
-								<UiFormGroup label="Cache read $/M" for-id="pricing-cache-read"
-									><UiInput
-										id="pricing-cache-read"
-										:model-value="pricingUsdPerMillion('cacheRead')"
-										@update:model-value="setPricingUsdPerMillion('cacheRead', String($event))"
-								/></UiFormGroup>
-								<UiFormGroup label="Cache write $/M" for-id="pricing-cache-write"
-									><UiInput
-										id="pricing-cache-write"
-										:model-value="pricingUsdPerMillion('cacheWrite')"
-										@update:model-value="setPricingUsdPerMillion('cacheWrite', String($event))"
-								/></UiFormGroup>
-							</div>
-						</div>
-						<UiButton
-							type="submit"
-							variant="secondary"
-							:loading="isSavingModel"
-							:disabled="!modelUpdateForm.valid || !modelUpdateForm.dirty"
-							>Save Model</UiButton
-						>
-						<UiText v-if="saveModelError" tone="error">{{ saveModelError }}</UiText>
-					</UiForm>
-				</section>
-
-				<section v-if="selectedModel" class="border-b border-dimmer px-3 py-3">
-					<h2 class="m-0 text-sz-helper font-semibold">Model Preflight</h2>
-					<div class="mt-3 grid gap-2">
-						<UiButton
-							type="button"
-							variant="secondary"
-							:loading="isPreflightingModel"
-							:disabled="selectedModel.archived || provider.archived"
-							@click="preflightModel()"
-							>Preflight Model</UiButton
-						>
-						<UiCallout v-if="preflightEvidence" :tone="preflightEvidence.passed ? 'success' : 'error'">
-							{{ preflightEvidence.summary }}
-						</UiCallout>
-						<UiText v-if="preflightModelError" tone="error">{{ preflightModelError }}</UiText>
-					</div>
-				</section>
-
-				<section v-if="selectedModel" class="px-3 py-3">
-					<h2 class="m-0 text-sz-helper font-semibold">Model lifecycle</h2>
-					<div class="mt-3">
-						<UiButton
-							v-if="selectedModel.archived"
-							type="button"
-							variant="secondary"
-							:loading="isChangingModelLifecycle"
-							@click="unarchiveModel()"
-							>Unarchive Model</UiButton
-						>
-						<UiButton v-else type="button" variant="ghost" :loading="isChangingModelLifecycle" @click="requestModelArchive()"
-							>Archive Model</UiButton
-						>
-					</div>
-					<UiCallout v-if="pendingArchiveTarget === 'model'" class="mt-3" tone="notice">
-						Archiving can make current Portfolio Config references unusable until the config is changed.
-						<span class="mt-2 flex gap-2">
-							<UiButton type="button" variant="secondary" @click="archiveModel()">Confirm archive</UiButton>
-							<UiButton type="button" variant="ghost" @click="pendingArchiveTarget = null">Cancel</UiButton>
-						</span>
-					</UiCallout>
-					<UiText v-if="modelLifecycleError" tone="error">{{ modelLifecycleError }}</UiText>
-				</section>
 			</aside>
 		</template>
 	</NuxtLayout>
@@ -332,21 +194,16 @@ import { useApiAction } from '../../../composables/action-state'
 import { usePortfolioModelProviderQuery, usePortfolioSecretsQuery } from '../../../composables/portfolio-resource-queries'
 import { useQueryCache } from '../../../composables/query-cache'
 import { useSelectedPortfolio } from '../../../composables/selected-portfolio'
-import { useServerApi, type ModelThinkingLevel, type ModelTokenPricing, type ServerApi } from '../../../composables/useServerApi'
+import { useServerApi } from '../../../composables/useServerApi'
+import { ModelCreationFormDraft } from '../../../forms/model'
 import { ModelProviderFormDraft } from '../../../forms/model-provider'
-import { ModelCreationFormDraft, ModelUpdateFormDraft } from '../../../forms/model'
-import { thinkingLevelLabel, thinkingLevelOptions } from '../../../composables/model-provider-options'
 import { useToasts } from '../../../composables/toasts'
 import { formatDate } from '../../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
 
-type ModelProviderDetails = Awaited<ReturnType<ServerApi['getModelProvider']>>
-type ListedModel = ModelProviderDetails['models'][number]
-type PreflightEvidence = Awaited<ReturnType<ServerApi['preflightModel']>>
-type ArchiveTarget = 'provider' | 'model'
-
 const route = useRoute()
+const router = useRouter()
 const modelProviderId = computed(() => route.params.modelProviderId as string)
 const serverApi = useServerApi()
 const toasts = useToasts()
@@ -354,11 +211,7 @@ const { portfolio } = useSelectedPortfolio()
 const { queryKeys, invalidate } = useQueryCache()
 const providerForm = new ModelProviderFormDraft()
 const modelCreationForm = new ModelCreationFormDraft()
-const modelUpdateForm = new ModelUpdateFormDraft()
-const selectedModelId = ref('')
-const pendingArchiveTarget = ref<ArchiveTarget | null>(null)
-const preflightEvidence = ref<PreflightEvidence | null>(null)
-const thinkingLevels = thinkingLevelOptions.map((option) => option.value)
+const isProviderArchiveConfirmationVisible = ref(false)
 
 const {
 	data: provider,
@@ -372,10 +225,6 @@ const secretOptions = computed(() =>
 	secrets.value.filter((secret) => !secret.archived).map((secret) => ({ value: secret.id, label: secret.name })),
 )
 const authSecretOptions = computed(() => [{ value: '', label: 'No auth Secret' }, ...secretOptions.value])
-const modelOptions = computed(
-	() => provider.value?.models.map((model) => ({ value: model.id, label: `${model.name} (${model.providerModelId})` })) ?? [],
-)
-const selectedModel = computed(() => provider.value?.models.find((model) => model.id === selectedModelId.value) ?? null)
 
 watch(
 	provider,
@@ -388,17 +237,6 @@ watch(
 			auth: loadedProvider.auth,
 			headers: loadedProvider.headers,
 		})
-		selectedModelId.value = selectedProviderModelId(loadedProvider.models)
-	},
-	{ immediate: true },
-)
-
-watch(
-	selectedModel,
-	(model) => {
-		if (model === null) return
-		modelUpdateForm.loadEntity({ name: model.name, capabilities: model.capabilities, pricing: model.pricing })
-		preflightEvidence.value = null
 	},
 	{ immediate: true },
 )
@@ -423,7 +261,7 @@ const {
 		action === 'archive'
 			? await serverApi.archiveModelProvider(modelProviderId.value)
 			: await serverApi.unarchiveModelProvider(modelProviderId.value)
-	pendingArchiveTarget.value = null
+	isProviderArchiveConfirmationVisible.value = false
 	invalidateProviderQueries()
 	toasts.success({ title: action === 'archive' ? 'Model Provider archived.' : 'Model Provider unarchived.', body: updated.name })
 })
@@ -434,43 +272,10 @@ const {
 	execute: createModel,
 } = useApiAction(async () => {
 	const model = await serverApi.createModel(modelProviderId.value, modelCreationForm.toModel())
-	selectedModelId.value = model.id
 	modelCreationForm.reset()
 	invalidateProviderQueries()
 	toasts.success({ title: 'Model added.', body: model.name })
-})
-
-const {
-	isLoading: isSavingModel,
-	error: saveModelError,
-	execute: saveModel,
-} = useApiAction(async () => {
-	const model = await serverApi.updateModel(modelProviderId.value, requireSelectedModel().id, modelUpdateForm.toModel())
-	invalidateProviderQueries()
-	toasts.success({ title: 'Model saved.', body: model.name })
-})
-
-const {
-	isLoading: isChangingModelLifecycle,
-	error: modelLifecycleError,
-	execute: runModelLifecycle,
-} = useApiAction(async (action: 'archive' | 'unarchive') => {
-	const model = requireSelectedModel()
-	const updated =
-		action === 'archive'
-			? await serverApi.archiveModel(modelProviderId.value, model.id)
-			: await serverApi.unarchiveModel(modelProviderId.value, model.id)
-	pendingArchiveTarget.value = null
-	invalidateProviderQueries()
-	toasts.success({ title: action === 'archive' ? 'Model archived.' : 'Model unarchived.', body: updated.name })
-})
-
-const {
-	isLoading: isPreflightingModel,
-	error: preflightModelError,
-	execute: preflightModel,
-} = useApiAction(async () => {
-	preflightEvidence.value = await serverApi.preflightModel(modelProviderId.value, requireSelectedModel().id)
+	await router.push(`/models/providers/${modelProviderId.value}/models/${model.id}`)
 })
 
 function invalidateProviderQueries(): void {
@@ -479,7 +284,7 @@ function invalidateProviderQueries(): void {
 }
 
 function requestProviderArchive(): void {
-	pendingArchiveTarget.value = 'provider'
+	isProviderArchiveConfirmationVisible.value = true
 }
 
 function archiveProvider(): Promise<unknown> {
@@ -488,87 +293,5 @@ function archiveProvider(): Promise<unknown> {
 
 function unarchiveProvider(): Promise<unknown> {
 	return runProviderLifecycle('unarchive')
-}
-
-function requestModelArchive(): void {
-	pendingArchiveTarget.value = 'model'
-}
-
-function archiveModel(): Promise<unknown> {
-	return runModelLifecycle('archive')
-}
-
-function unarchiveModel(): Promise<unknown> {
-	return runModelLifecycle('unarchive')
-}
-
-function requireSelectedModel(): ListedModel {
-	if (selectedModel.value === null) throw new Error('Select a Model first')
-	return selectedModel.value
-}
-
-function selectedProviderModelId(models: ListedModel[]): string {
-	return models.some((model) => model.id === selectedModelId.value) ? selectedModelId.value : (models[0]?.id ?? '')
-}
-
-function numberFieldValue(value: string | number): number {
-	return typeof value === 'number' ? value : Number(value)
-}
-
-function setModelCapability(field: 'contextWindowTokens' | 'maxOutputTokens', value: number): void {
-	modelUpdateForm.capabilities = { ...modelUpdateForm.capabilities, [field]: value }
-}
-
-function isReasoningLevelEnabled(level: ModelThinkingLevel): boolean {
-	return modelUpdateForm.capabilities.reasoning?.[level] !== null && modelUpdateForm.capabilities.reasoning?.[level] !== undefined
-}
-
-function setReasoningLevelEnabled(level: ModelThinkingLevel, enabled: boolean): void {
-	const reasoning = reasoningMap()
-	modelUpdateForm.capabilities = {
-		...modelUpdateForm.capabilities,
-		reasoning: { ...reasoning, [level]: enabled ? { type: 'provider-value', value: reasoningProviderValue(level) || level } : null },
-	}
-}
-
-function reasoningProviderValue(level: ModelThinkingLevel): string {
-	return modelUpdateForm.capabilities.reasoning?.[level]?.value ?? ''
-}
-
-function setReasoningProviderValue(level: ModelThinkingLevel, value: string): void {
-	if (!isReasoningLevelEnabled(level)) return
-	modelUpdateForm.capabilities = {
-		...modelUpdateForm.capabilities,
-		reasoning: { ...reasoningMap(), [level]: { type: 'provider-value', value } },
-	}
-}
-
-function reasoningMap(): NonNullable<typeof modelUpdateForm.capabilities.reasoning> {
-	return modelUpdateForm.capabilities.reasoning ?? { off: null, minimal: null, low: null, medium: null, high: null, xhigh: null }
-}
-
-function isChecked(event: Event): boolean {
-	return event.target instanceof HTMLInputElement && event.target.checked
-}
-
-function togglePricing(): void {
-	modelUpdateForm.pricing = modelUpdateForm.pricing === null ? emptyPricing() : null
-}
-
-function emptyPricing(): ModelTokenPricing {
-	return { unit: 'micro-usd-per-million-tokens', input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
-}
-
-function pricingUsdPerMillion(field: keyof Omit<ModelTokenPricing, 'unit'>): string {
-	return modelUpdateForm.pricing === null ? '' : String(modelUpdateForm.pricing[field] / 1_000_000)
-}
-
-function setPricingUsdPerMillion(field: keyof Omit<ModelTokenPricing, 'unit'>, value: string): void {
-	const pricing = modelUpdateForm.pricing ?? emptyPricing()
-	modelUpdateForm.pricing = { ...pricing, [field]: Math.round(Number(value) * 1_000_000) }
-}
-
-function modelCountLabel(count: number): string {
-	return count === 1 ? 'Model' : 'Models'
 }
 </script>

@@ -14,7 +14,7 @@
 			</div>
 		</header>
 
-		<div class="flex min-h-11 items-center justify-between gap-3 border-b border-dimmer px-3 py-2">
+		<div class="flex min-h-11 items-center gap-3 border-b border-dimmer px-3 py-2">
 			<div class="flex overflow-hidden border border-dimmer">
 				<NuxtLink
 					v-for="(tab, index) in secretTabs"
@@ -25,9 +25,6 @@
 					{{ tab.shortLabel }}
 				</NuxtLink>
 			</div>
-			<span class="text-sz-helper text-dim"
-				>{{ visibleSecrets.length }} {{ visibleSecrets.length === 1 ? 'Secret' : 'Secrets' }}</span
-			>
 		</div>
 
 		<section>
@@ -56,13 +53,12 @@
 					v-for="secret in visibleSecrets"
 					:key="secret.id"
 					:to="`/secrets/${secret.id}`"
-					class="grid min-h-[52px] grid-cols-[24px_minmax(0,1fr)_92px_110px] items-center gap-2 border-b border-dimmer px-3 py-2 text-body hover:bg-card focus-visible:bg-secondary">
+					class="grid min-h-[52px] grid-cols-[24px_minmax(0,1fr)_110px] items-center gap-2 border-b border-dimmer px-3 py-2 text-body hover:bg-card focus-visible:bg-secondary">
 					<span class="grid size-5 place-items-center border border-dimmer text-sz-micro text-dim">S</span>
 					<span class="min-w-0">
 						<strong class="block truncate font-semibold">{{ secret.name }}</strong>
 						<span class="text-sz-helper text-dim">Created {{ formatDate(secret.created.at) }}</span>
 					</span>
-					<span class="text-sz-helper text-dim">{{ referenceCountLabel(secret.references.length) }}</span>
 					<span class="justify-self-start" :class="secret.archived ? archivedBadgeClass : activeBadgeClass">
 						<span class="size-2 rounded-full" :class="secret.archived ? 'bg-dim' : 'bg-success'" />
 						{{ secret.archived ? 'archived' : 'active' }}
@@ -131,10 +127,6 @@ function secretTabLocation(tab: SecretTab) {
 function parseSecretTab(value: unknown): SecretTab {
 	const tab = Array.isArray(value) ? value[0] : value
 	return secretTabs.some((option) => option.value === tab) ? (tab as SecretTab) : 'all'
-}
-
-function referenceCountLabel(count: number): string {
-	return `${count} ${count === 1 ? 'ref' : 'refs'}`
 }
 
 function secretFilterPillClass(tab: SecretTab): string {

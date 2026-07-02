@@ -7,6 +7,7 @@ The Server Consumer UI is a dense, flat operations interface for managing select
 - **Flat first**: prefer direct layout, full-width separators, and restrained status marks over boxed panels.
 - **Full-width structure**: borders and row dividers must run edge-to-edge within their owning rail, page, form, or section. Never put borders on elements whose parent padding shortens the separator line; put the border on the full-width section/row and padding on the content inside it.
 - **Content over decoration**: avoid decorative metric/count cards unless a count is the primary domain object being inspected or acted on.
+- Do not show routine list item counts in section headers or helper copy; the visible list rows are enough unless the count itself drives an action or decision.
 - **Actions belong where they act**: put lifecycle actions on detail pages, section toolbars, or near the form they submit. Do not clutter index rows with secondary actions.
 - **Shared controls**: use `Ui*` components for buttons, forms, labels, inputs, textareas, selects, cards, and text before adding page-local native controls.
 
@@ -81,7 +82,8 @@ type UiSelectOptions<TValue extends string = string> = readonly (UiSelectOption<
 - The top-level `Models` surface lists Model Providers only.
 - Model Provider rows link directly to provider detail pages.
 - Model Provider rows do not show `Open`, `Archive`, or `Preflight` actions.
-- Model Provider detail pages own the list and lifecycle actions for Models under that provider.
+- Model Provider detail pages own Provider metadata/actions, Provider lifecycle, Model creation, and a flat linked list of Models under that Provider.
+- Model detail pages own Model metadata, capability/pricing editing, Model References, Model Preflight, and Model lifecycle actions.
 - The top-level `Portfolio Config` surface lives at `/portfolio-config` and edits Portfolio Config directly.
 - Portfolio Config should be the last item in the left rail and visually separated at the bottom of the rail.
 - Portfolio Config should not be presented as generic Workspace or account settings.
