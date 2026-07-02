@@ -18,7 +18,7 @@ export const coreStorageMigrations = [
 			createTable('repositories', [stringField('projectId'), objectField('config'), objectField('created')]),
 			createTable('model_providers', [
 				stringField('name'),
-				stringField('protocol'),
+				objectField('protocol'),
 				stringField('baseUrl'),
 				nullableField(objectField('auth')),
 				arrayField('headers'),
@@ -30,6 +30,8 @@ export const coreStorageMigrations = [
 				stringField('providerId'),
 				stringField('name'),
 				stringField('providerModelId'),
+				objectField('capabilities'),
+				nullableField(objectField('pricing')),
 				objectField('created'),
 				nullableField(objectField('updated')),
 				arrayField('archivePeriods'),
