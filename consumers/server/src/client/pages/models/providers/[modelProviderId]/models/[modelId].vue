@@ -13,39 +13,6 @@
 			<p v-if="isRefreshingModel" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">Refreshing Model…</p>
 			<div v-else-if="modelError" class="border-b border-dimmer px-3 py-4 text-error">{{ modelError }}</div>
 			<div v-else-if="model" class="grid gap-0">
-				<section class="border-b border-dimmer px-3 py-3">
-					<h2 class="m-0 text-sz-subsection font-semibold">Identity</h2>
-					<div class="mt-2 grid gap-2 text-sz-helper sm:grid-cols-2">
-						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
-							<span class="text-dim">Status</span
-							><span :class="model.archived ? 'text-dim' : 'text-success'">{{ model.archived ? 'Archived' : 'Active' }}</span>
-						</div>
-						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
-							<span class="text-dim">Provider</span><span class="min-w-0 truncate">{{ model.provider.name }}</span>
-						</div>
-						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
-							<span class="text-dim">Protocol</span><span class="font-mono">{{ model.provider.protocol.type }}</span>
-						</div>
-						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
-							<span class="text-dim">Provider status</span
-							><span :class="model.provider.archived ? 'text-dim' : 'text-success'">{{
-								model.provider.archived ? 'Archived' : 'Active'
-							}}</span>
-						</div>
-						<div class="flex justify-between gap-3 border-b border-dimmer py-2 sm:col-span-2">
-							<span class="text-dim">Provider model id</span
-							><span class="min-w-0 truncate font-mono">{{ model.providerModelId }}</span>
-						</div>
-						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
-							<span class="text-dim">Created</span><span>{{ formatDate(model.created.at) }}</span>
-						</div>
-						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
-							<span class="text-dim">Updated</span
-							><span>{{ model.updated === null ? 'Never' : formatDate(model.updated.at) }}</span>
-						</div>
-					</div>
-				</section>
-
 				<UiForm class="border-b border-dimmer" @submit.prevent="saveModel()">
 					<section class="border-b border-dimmer px-3 py-3">
 						<h2 class="m-0 text-sz-subsection font-semibold">Editable metadata</h2>
@@ -171,6 +138,41 @@
 						<UiText v-if="saveModelError" class="mt-2" tone="error">{{ saveModelError }}</UiText>
 					</section>
 				</UiForm>
+			</div>
+		</section>
+
+		<template v-if="model" #right>
+			<aside>
+				<section class="border-b border-dimmer">
+					<div class="px-3 py-3">
+						<h2 class="m-0 text-sz-subsection font-semibold">Identity</h2>
+					</div>
+					<div class="text-sz-helper">
+						<div class="flex justify-between gap-3 border-t border-dimmer px-3 py-2">
+							<span class="text-dim">Status</span
+							><span :class="model.archived ? 'text-dim' : 'text-success'">{{ model.archived ? 'Archived' : 'Active' }}</span>
+						</div>
+						<div class="flex justify-between gap-3 border-t border-dimmer px-3 py-2">
+							<span class="text-dim">Provider</span><span class="min-w-0 truncate">{{ model.provider.name }}</span>
+						</div>
+						<div class="flex justify-between gap-3 border-t border-dimmer px-3 py-2">
+							<span class="text-dim">Protocol</span><span class="font-mono">{{ model.provider.protocol.type }}</span>
+						</div>
+						<div class="flex justify-between gap-3 border-t border-dimmer px-3 py-2">
+							<span class="text-dim">Provider status</span
+							><span :class="model.provider.archived ? 'text-dim' : 'text-success'">{{
+								model.provider.archived ? 'Archived' : 'Active'
+							}}</span>
+						</div>
+						<div class="flex justify-between gap-3 border-t border-dimmer px-3 py-2">
+							<span class="text-dim">Created</span><span>{{ formatDate(model.created.at) }}</span>
+						</div>
+						<div class="flex justify-between gap-3 border-t border-dimmer px-3 py-2">
+							<span class="text-dim">Updated</span
+							><span>{{ model.updated === null ? 'Never' : formatDate(model.updated.at) }}</span>
+						</div>
+					</div>
+				</section>
 
 				<section class="border-b border-dimmer px-3 py-3">
 					<h2 class="m-0 text-sz-subsection font-semibold">Model Preflight</h2>
@@ -193,7 +195,7 @@
 					</div>
 				</section>
 
-				<section class="px-3 py-3">
+				<section class="border-b border-dimmer px-3 py-3">
 					<h2 class="m-0 text-sz-subsection font-semibold">Model lifecycle</h2>
 					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
 						Archiving prevents new work from selecting this Model while preserving existing references.
@@ -213,11 +215,7 @@
 					</div>
 					<UiText v-if="modelLifecycleError" tone="error">{{ modelLifecycleError }}</UiText>
 				</section>
-			</div>
-		</section>
 
-		<template v-if="model" #right>
-			<aside>
 				<section class="border-b border-dimmer px-3 py-3">
 					<h2 class="m-0 text-sz-subsection font-semibold">References</h2>
 					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
