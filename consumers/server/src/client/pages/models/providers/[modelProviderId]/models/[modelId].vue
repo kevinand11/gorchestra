@@ -276,11 +276,11 @@ import UiText from '../../../../../components/ui/UiText.vue'
 import type { ServerApi } from '../../../../../composables/core/server-api'
 import { thinkingLevelLabel, thinkingLevelOptions } from '../../../../../composables/model-provider-options'
 import {
-    useModelDetail,
-    useModelLifecycle,
-    useModelPreflight,
-    useModelReferences,
-    useModelUpdate,
+	useModelDetail,
+	useModelLifecycle,
+	useModelPreflight,
+	useModelReferences,
+	useModelUpdate,
 } from '../../../../../composables/portfolio/models/providers'
 import { formatDate } from '../../../../../utils/time'
 

@@ -1,6 +1,7 @@
-import { useSession } from '../composables/auth/session'
+import { useSessionLoaders } from '../composables/auth/session'
 
 export default defineNuxtRouteMiddleware(async () => {
-	const { session } = useSession()
-	if (!session.value || !session.value.authenticated) return navigateTo('/sign-in')
+	const { loadSession } = useSessionLoaders()
+	const session = await loadSession()
+	if (!session.authenticated) return navigateTo('/sign-in')
 })

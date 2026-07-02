@@ -123,7 +123,7 @@ import UiForm from '../components/ui/UiForm.vue'
 import UiFormGroup from '../components/ui/UiFormGroup.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import UiText from '../components/ui/UiText.vue'
-import { useSelectionClear, useSession, useSignout } from '../composables/auth/session'
+import { useAuth, useSelectionClear, useSignout } from '../composables/auth/session'
 import { useDefaultWorkspaceProvision, usePortfolioSelection, useWorkspacePortfoliosList } from '../composables/auth/workspaces'
 
 definePageMeta({ middleware: ['is-authenticated'] })
@@ -146,7 +146,7 @@ const { isSelectingPortfolio, selectPortfolio, isSelectingThisPortfolio, portfol
 	},
 })
 
-const { selection } = useSession()
+const { selection } = useAuth()
 const { isClearingSelection, clearSelectionError, clearSelection } = useSelectionClear()
 const { isSigningOut, signOutError, signOut } = useSignout()
 

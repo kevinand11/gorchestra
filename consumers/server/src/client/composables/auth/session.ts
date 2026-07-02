@@ -1,37 +1,50 @@
+import { fetchSelection, fetchSession, loadSelection, loadSessionWithRefresh, type Selection, type Session } from '../../utils/sessions'
 import { useApiAction, useFetchAction } from '../core/action-state'
 import { useQueryCache } from '../core/query-cache'
-import { useServerApi, type ServerApi } from '../core/server-api'
+import { useServerApi } from '../core/server-api'
 import { useToasts } from '../core/toasts'
 
-type SessionStatus = Awaited<ReturnType<ServerApi['getSession']>>
-type SelectionAccess = Awaited<ReturnType<ServerApi['getSelection']>>
-
-export function useSession() {
+export function useAuth() {
 	const serverApi = useServerApi()
 	const queryCache = useQueryCache()
-	const { queryKeys } = queryCache
 
-	// TODO: need to implement refrsh session if recommended, but this is a bit tricky because we need to avoid infinite loops when the refresh fails and we get a new session that also needs to be refreshed. For now, we'll just fetch the session and selection without refreshing.
-
-	const { data: session } = useFetchAction(() => serverApi.getSession(), {
-		queryKey: queryKeys.session(),
-		initialData: null as SessionStatus | null,
+	const { data: session } = useFetchAction(() => fetchSession(serverApi), {
+		queryKey: queryCache.queryKeys.session(),
+		initialData: null as Session | null,
 	})
 
-	const { data: selection } = useFetchAction(() => serverApi.getSelection(), {
-		queryKey: queryKeys.selection(),
-		initialData: null as SelectionAccess | null,
+	const { data: selection } = useFetchAction(() => fetchSelection(serverApi), {
+		queryKey: queryCache.queryKeys.selection(),
+		initialData: null as Selection | null,
 	})
+
+	const setSession = (session: Session | null) => {
+		queryCache.clear([])
+		if (session !== null) queryCache.set(queryCache.queryKeys.session(), session)
+	}
+
+	const setSelection = (selection: Selection | null) => {
+		queryCache.clear(['portfolio'])
+		queryCache.clear(queryCache.queryKeys.selection(), { exact: true })
+		if (selection !== null) queryCache.set(queryCache.queryKeys.selection(), selection)
+	}
+
+	return { session, selection, setSession, setSelection }
+}
+
+export function useSessionLoaders() {
+	const serverApi = useServerApi()
+	const queryCache = useQueryCache()
 
 	return {
-		session,
-		selection,
+		loadSession: async () => await loadSessionWithRefresh(serverApi, queryCache),
+		loadSelection: async () => await loadSelection(serverApi, queryCache),
 	}
 }
 
 export function useSelectionClear() {
 	const serverApi = useServerApi()
-	const queryCache = useQueryCache()
+	const { setSelection } = useAuth()
 	const toasts = useToasts()
 
 	const {
@@ -41,8 +54,7 @@ export function useSelectionClear() {
 		reset: resetClearSelection,
 	} = useApiAction(async () => {
 		await serverApi.clearSelection()
-		queryCache.clear(['portfolio'])
-		queryCache.set(queryCache.queryKeys.selection(), { selected: false, reason: 'missing-token' })
+		setSelection(null)
 		toasts.info({ title: 'Selection cleared.' })
 	})
 
@@ -55,7 +67,7 @@ export function useSelectionClear() {
 }
 
 export function useSelectedPortfolio() {
-	const { selection } = useSession()
+	const { selection } = useAuth()
 	const selected = computed(() => {
 		const select = selection.value
 		if (!select || !select.selected) throw new Error('Selected Portfolio context requires a valid selected Workspace and Portfolio')

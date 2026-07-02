@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 
+import { useAuth } from './session'
 import { ProvisionWorkspaceFormDraft } from '../../forms/workspace'
 import { useApiAction, useFetchAction } from '../core/action-state'
 import { useQueryCache } from '../core/query-cache'
@@ -47,6 +48,7 @@ export function useWorkspacePortfoliosList() {
 
 export function useDefaultWorkspaceProvision(options: DefaultWorkspaceProvisionOptions = {}) {
 	const serverApi = useServerApi()
+	const { setSelection } = useAuth()
 	const queryCache = useQueryCache()
 	const { queryKeys } = queryCache
 	const toasts = useToasts()
@@ -58,9 +60,8 @@ export function useDefaultWorkspaceProvision(options: DefaultWorkspaceProvisionO
 		reset: resetProvisionWorkspace,
 	} = useApiAction(async () => {
 		const response = await serverApi.provisionDefaultWorkspace(provisionWorkspaceForm.toModel())
-		queryCache.clear(['portfolio'])
 		queryCache.invalidate(queryKeys.workspacePortfolios())
-		queryCache.set(queryKeys.selection(), {
+		setSelection({
 			selected: true,
 			selection: response.selection,
 			workspace: response.workspace,
@@ -78,8 +79,7 @@ export function useDefaultWorkspaceProvision(options: DefaultWorkspaceProvisionO
 
 export function usePortfolioSelection(options: PortfolioSelectionOptions = {}) {
 	const serverApi = useServerApi()
-	const queryCache = useQueryCache()
-	const { queryKeys } = queryCache
+	const { setSelection } = useAuth()
 	const toasts = useToasts()
 	const selectingPortfolioKey = ref('')
 	const {
@@ -89,8 +89,7 @@ export function usePortfolioSelection(options: PortfolioSelectionOptions = {}) {
 		reset: resetSelectPortfolio,
 	} = useApiAction(async (workspaceId: string, portfolioId: string) => {
 		const selection = await serverApi.setSelection(workspaceId, portfolioId)
-		queryCache.clear(['portfolio'])
-		queryCache.set(queryKeys.selection(), selection)
+		setSelection(selection)
 		toasts.success({ title: 'Portfolio selected.' })
 		await options.onSuccess?.(selection)
 		return selection

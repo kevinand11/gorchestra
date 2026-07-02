@@ -1,8 +1,8 @@
 import { ref, watch } from 'vue'
 
 import { EmailOtpChallengeFormDraft, EmailOtpVerificationFormDraft } from '../../forms/auth'
+import { useAuth } from '../auth/session'
 import { useApiAction } from '../core/action-state'
-import { useQueryCache } from '../core/query-cache'
 import { useServerApi } from '../core/server-api'
 import { useToasts } from '../core/toasts'
 
@@ -12,8 +12,7 @@ type EmailOtpSignInOptions = {
 
 export function useEmailOtpSignIn(options: EmailOtpSignInOptions = {}) {
 	const serverApi = useServerApi()
-	const queryCache = useQueryCache()
-	const { queryKeys } = queryCache
+	const { setSession } = useAuth()
 	const toasts = useToasts()
 	const emailOtpChallengeForm = new EmailOtpChallengeFormDraft()
 	const emailOtpVerificationForm = new EmailOtpVerificationFormDraft()
@@ -47,9 +46,7 @@ export function useEmailOtpSignIn(options: EmailOtpSignInOptions = {}) {
 	} = useApiAction(async () => {
 		const input = emailOtpVerificationForm.toModel()
 		const response = await serverApi.verifyEmailOtpSignIn(input.email, input.code)
-		queryCache.clear([])
-		queryCache.set(queryKeys.session(), { authenticated: true, session: response.session, refreshRecommended: false })
-		queryCache.set(queryKeys.selection(), { selected: false, reason: 'missing-token' })
+		setSession({ authenticated: true, session: response.session, refreshRecommended: false })
 		emailOtpVerificationForm.code = ''
 		challengeRequested.value = false
 		await options.onSuccess?.()
