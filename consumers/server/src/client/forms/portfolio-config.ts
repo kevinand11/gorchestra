@@ -105,11 +105,11 @@ if (import.meta.vitest) {
 		it('models Portfolio Config with nullable purpose Model Use Config values', () => {
 			const factory = new PortfolioConfigFormDraft()
 
-			factory.defaultModelUse.modelId = ' model-default '
-			factory.planningModelUse.modelId = ' '
-			factory.revisionPlanningModelUse.modelId = ' model-revision-planning '
-			factory.executionModelUse.modelId = ' '
-			factory.revisionExecutionModelUse.modelId = ' model-revision-execution '
+			factory.defaultModelUse.modelId = 'model-default'
+			factory.planningModelUse.modelId = null
+			factory.revisionPlanningModelUse.modelId = 'model-revision-planning'
+			factory.executionModelUse.modelId = null
+			factory.revisionExecutionModelUse.modelId = 'model-revision-execution'
 			factory.maxProcessableSliceSlots = 2
 			factory.maxCorrectionRetriesPerFailure = 0
 			factory.modelTimeoutMs = 60_000

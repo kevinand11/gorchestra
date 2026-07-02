@@ -389,7 +389,7 @@ if (import.meta.vitest) {
 
 	class NameFormDraft extends FormDraft<NameModel, NameModel, NameFields> {
 		protected readonly rules = {
-			name: v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Name is required')),
+			name: v.string().pipe(v.min<string>(1, 'Name is required')),
 		}
 
 		constructor(initialName = '') {
@@ -409,7 +409,7 @@ if (import.meta.vitest) {
 	class ParentFormDraft extends FormDraft<ParentModel, ParentModel, ParentFields> {
 		protected readonly rules = {
 			child: formDraftPipe<NameFormDraft>(),
-			label: v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Label is required')),
+			label: v.string().pipe(v.min<string>(1, 'Label is required')),
 		}
 
 		constructor() {
@@ -435,19 +435,19 @@ if (import.meta.vitest) {
 			expect(validFactory.valid).toBe(true)
 		})
 
-		it('sanitizes valid field values through Valleyed pipes', () => {
+		it('validates field values without transforming visible input', () => {
 			const factory = new NameFormDraft()
 
 			factory.name = '  Gorchestra  '
 
-			expect(factory.name).toBe('Gorchestra')
-			expect(factory.toModel()).toEqual({ name: 'Gorchestra' })
+			expect(factory.name).toBe('  Gorchestra  ')
+			expect(factory.toModel()).toEqual({ name: '  Gorchestra  ' })
 		})
 
 		it('exposes field errors for invalid changed values', () => {
 			const factory = new NameFormDraft('Gorchestra')
 
-			factory.name = '   '
+			factory.name = ''
 
 			expect(factory.valid).toBe(false)
 			expect(factory.errors.name).toBe('Name is required')
@@ -474,10 +474,10 @@ if (import.meta.vitest) {
 
 			factory.loadEntity({ name: '  Loaded  ' })
 
-			expect(factory.name).toBe('Loaded')
+			expect(factory.name).toBe('  Loaded  ')
 			expect(factory.valid).toBe(true)
 			expect(factory.dirty).toBe(false)
-			expect(factory.toModel()).toEqual({ name: 'Loaded' })
+			expect(factory.toModel()).toEqual({ name: '  Loaded  ' })
 		})
 
 		it('throws a draft validation error from toModel when invalid', async () => {
@@ -496,7 +496,7 @@ if (import.meta.vitest) {
 			expect(factory.isDirty('child')).toBe(false)
 			expect(factory.isDirty('label')).toBe(false)
 
-			factory.child.name = '   '
+			factory.child.name = ''
 
 			expect(factory.valid).toBe(false)
 			expect(factory.dirty).toBe(true)

@@ -11,8 +11,8 @@ type SecretCreationFormModel = {
 	value: string
 }
 
-const secretNamePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a Secret name'))
-const secretValuePipe = v.string().pipe(v.custom<string>((value) => value.trim().length > 0, 'Enter a Secret value'))
+const secretNamePipe = v.string().pipe(v.min<string>(1, 'Enter a Secret name'))
+const secretValuePipe = v.string().pipe(v.min<string>(1, 'Enter a Secret value'))
 
 export class SecretCreationFormDraft extends FormDraft<SecretCreationFormModel, SecretCreationFormModel, SecretCreationFormFields> {
 	protected readonly rules = {
@@ -36,21 +36,21 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
 	describe('SecretCreationFormDraft', () => {
-		it('trims names but preserves valid Secret values', () => {
+		it('models Secret names and values without transforming visible fields', () => {
 			const factory = new SecretCreationFormDraft()
 
 			factory.name = '  GitHub PAT  '
 			factory.value = '  token-value  '
 
 			expect(factory.valid).toBe(true)
-			expect(factory.toModel()).toEqual({ name: 'GitHub PAT', value: '  token-value  ' })
+			expect(factory.toModel()).toEqual({ name: '  GitHub PAT  ', value: '  token-value  ' })
 		})
 
-		it('rejects empty names and blank values', () => {
-			const factory = new SecretCreationFormDraft()
+		it('rejects empty names and values', () => {
+			const factory = new SecretCreationFormDraft().loadEntity({ name: 'Secret', value: 'value' })
 
-			factory.name = '  '
-			factory.value = '  '
+			factory.name = ''
+			factory.value = ''
 
 			expect(factory.valid).toBe(false)
 			expect(factory.errors.name).toBe('Enter a Secret name')

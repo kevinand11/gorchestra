@@ -103,16 +103,13 @@
 								:key="level"
 								class="grid gap-2 border-b border-dimmer py-2 last:border-b-0 md:grid-cols-[160px_minmax(0,1fr)] md:items-center">
 								<label class="flex items-center gap-2 text-sz-helper font-semibold">
-									<input
-										:checked="isReasoningLevelEnabled(level)"
-										type="checkbox"
-										@change="setReasoningLevelEnabled(level, isChecked($event))" />
+									<input v-model="modelUpdateForm.capabilities.reasoning[level].enabled" type="checkbox" />
 									{{ thinkingLevelLabel(level) }}
 								</label>
 								<UiInput
-									:model-value="reasoningProviderValue(level)"
-									:disabled="!isReasoningLevelEnabled(level)"
-									@update:model-value="setReasoningProviderValue(level, String($event))" />
+									v-model="modelUpdateForm.capabilities.reasoning[level].providerValue"
+									:disabled="!modelUpdateForm.capabilities.reasoning[level].enabled"
+									:invalid="!!modelUpdateForm.capabilities.reasoning[level].errors.providerValue" />
 							</div>
 						</div>
 					</section>
@@ -126,33 +123,41 @@
 								</p>
 							</div>
 							<UiButton type="button" variant="ghost" @click="togglePricing()">{{
-								modelUpdateForm.pricing === null ? 'Configure' : 'Clear'
+								modelUpdateForm.pricing.enabled ? 'Clear' : 'Configure'
 							}}</UiButton>
 						</div>
-						<div v-if="modelUpdateForm.pricing !== null" class="mt-3 grid gap-3 md:grid-cols-2">
+						<div v-if="modelUpdateForm.pricing.enabled" class="mt-3 grid gap-3 md:grid-cols-2">
 							<UiFormGroup label="Input $ per 1M tokens" for-id="pricing-input">
 								<UiInput
 									id="pricing-input"
-									:model-value="pricingUsdPerMillion('input')"
-									@update:model-value="setPricingUsdPerMillion('input', String($event))" />
+									v-model="modelUpdateForm.pricing.inputUsdPerMillion"
+									type="number"
+									:min="0"
+									step="0.000001" />
 							</UiFormGroup>
 							<UiFormGroup label="Output $ per 1M tokens" for-id="pricing-output">
 								<UiInput
 									id="pricing-output"
-									:model-value="pricingUsdPerMillion('output')"
-									@update:model-value="setPricingUsdPerMillion('output', String($event))" />
+									v-model="modelUpdateForm.pricing.outputUsdPerMillion"
+									type="number"
+									:min="0"
+									step="0.000001" />
 							</UiFormGroup>
 							<UiFormGroup label="Cache read $ per 1M tokens" for-id="pricing-cache-read">
 								<UiInput
 									id="pricing-cache-read"
-									:model-value="pricingUsdPerMillion('cacheRead')"
-									@update:model-value="setPricingUsdPerMillion('cacheRead', String($event))" />
+									v-model="modelUpdateForm.pricing.cacheReadUsdPerMillion"
+									type="number"
+									:min="0"
+									step="0.000001" />
 							</UiFormGroup>
 							<UiFormGroup label="Cache write $ per 1M tokens" for-id="pricing-cache-write">
 								<UiInput
 									id="pricing-cache-write"
-									:model-value="pricingUsdPerMillion('cacheWrite')"
-									@update:model-value="setPricingUsdPerMillion('cacheWrite', String($event))" />
+									v-model="modelUpdateForm.pricing.cacheWriteUsdPerMillion"
+									type="number"
+									:min="0"
+									step="0.000001" />
 							</UiFormGroup>
 						</div>
 					</section>
@@ -277,7 +282,7 @@ import { thinkingLevelLabel, thinkingLevelOptions } from '../../../../../composa
 import { usePortfolioModelQuery, usePortfolioModelReferencesQuery } from '../../../../../composables/portfolio-resource-queries'
 import { useQueryCache } from '../../../../../composables/query-cache'
 import { useSelectedPortfolio } from '../../../../../composables/selected-portfolio'
-import { useServerApi, type ModelThinkingLevel, type ModelTokenPricing, type ServerApi } from '../../../../../composables/useServerApi'
+import { useServerApi, type ServerApi } from '../../../../../composables/useServerApi'
 import { useToasts } from '../../../../../composables/toasts'
 import { ModelUpdateFormDraft } from '../../../../../forms/model'
 import { formatDate } from '../../../../../utils/time'
@@ -363,53 +368,9 @@ function invalidateModelQueries(): void {
 	invalidate(queryKeys.portfolio.modelProviders(portfolio.value.id), { exact: true })
 }
 
-function isReasoningLevelEnabled(level: ModelThinkingLevel): boolean {
-	return modelUpdateForm.capabilities.reasoning?.[level] !== null && modelUpdateForm.capabilities.reasoning?.[level] !== undefined
-}
-
-function setReasoningLevelEnabled(level: ModelThinkingLevel, enabled: boolean): void {
-	const reasoning = reasoningMap()
-	modelUpdateForm.capabilities = {
-		...modelUpdateForm.capabilities,
-		reasoning: { ...reasoning, [level]: enabled ? { type: 'provider-value', value: reasoningProviderValue(level) || level } : null },
-	}
-}
-
-function reasoningProviderValue(level: ModelThinkingLevel): string {
-	return modelUpdateForm.capabilities.reasoning?.[level]?.value ?? ''
-}
-
-function setReasoningProviderValue(level: ModelThinkingLevel, value: string): void {
-	if (!isReasoningLevelEnabled(level)) return
-	modelUpdateForm.capabilities = {
-		...modelUpdateForm.capabilities,
-		reasoning: { ...reasoningMap(), [level]: { type: 'provider-value', value } },
-	}
-}
-
-function reasoningMap(): NonNullable<typeof modelUpdateForm.capabilities.reasoning> {
-	return modelUpdateForm.capabilities.reasoning ?? { off: null, minimal: null, low: null, medium: null, high: null, xhigh: null }
-}
-
-function isChecked(event: Event): boolean {
-	return event.target instanceof HTMLInputElement && event.target.checked
-}
-
 function togglePricing(): void {
-	modelUpdateForm.pricing = modelUpdateForm.pricing === null ? emptyPricing() : null
-}
-
-function emptyPricing(): ModelTokenPricing {
-	return { unit: 'micro-usd-per-million-tokens', input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
-}
-
-function pricingUsdPerMillion(field: keyof Omit<ModelTokenPricing, 'unit'>): string {
-	return modelUpdateForm.pricing === null ? '' : String(modelUpdateForm.pricing[field] / 1_000_000)
-}
-
-function setPricingUsdPerMillion(field: keyof Omit<ModelTokenPricing, 'unit'>, value: string): void {
-	const pricing = modelUpdateForm.pricing ?? emptyPricing()
-	modelUpdateForm.pricing = { ...pricing, [field]: Math.round(Number(value) * 1_000_000) }
+	if (modelUpdateForm.pricing.enabled) modelUpdateForm.pricing.clear()
+	else modelUpdateForm.pricing.enabled = true
 }
 
 function requestModelArchive(): void {

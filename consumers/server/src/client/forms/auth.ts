@@ -19,11 +19,8 @@ type EmailOtpVerificationFormModel = {
 	code: string
 }
 
-const emailPipe = v.string().pipe(v.asTrimmed(), v.email('Enter a valid email address'))
-const emailOtpCodePipe = v.string().pipe(
-	v.asTrimmed(),
-	v.custom((code) => /^\d{6}$/.test(code), 'Enter the six-digit code'),
-)
+const emailPipe = v.string().pipe(v.email('Enter a valid email address'))
+const emailOtpCodePipe = v.string().pipe(v.custom((code) => /^\d{6}$/.test(code), 'Enter the six-digit code'))
 
 export class EmailOtpChallengeFormDraft extends FormDraft<
 	EmailOtpChallengeFormModel,
@@ -71,10 +68,10 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
 	describe('EmailOtpChallengeFormDraft', () => {
-		it('trims and models valid email input', () => {
+		it('models valid email input', () => {
 			const factory = new EmailOtpChallengeFormDraft()
 
-			factory.email = '  person@example.com  '
+			factory.email = 'person@example.com'
 
 			expect(factory.valid).toBe(true)
 			expect(factory.toModel()).toEqual({ email: 'person@example.com' })
@@ -95,7 +92,7 @@ if (import.meta.vitest) {
 			const factory = new EmailOtpVerificationFormDraft()
 
 			factory.email = 'person@example.com'
-			factory.code = ' 123456 '
+			factory.code = '123456'
 
 			expect(factory.valid).toBe(true)
 			expect(factory.toModel()).toEqual({ email: 'person@example.com', code: '123456' })

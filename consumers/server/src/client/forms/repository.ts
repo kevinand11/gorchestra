@@ -16,9 +16,9 @@ type RepositoryCreationFormModel = {
 	}
 }
 
-const repositoryOwnerPipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a GitHub owner'))
-const repositoryNamePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a GitHub Repository name'))
-const repositorySecretIdPipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Select a GitHub access Secret'))
+const repositoryOwnerPipe = v.string().pipe(v.min<string>(1, 'Enter a GitHub owner'))
+const repositoryNamePipe = v.string().pipe(v.min<string>(1, 'Enter a GitHub Repository name'))
+const repositorySecretIdPipe = v.string().pipe(v.min<string>(1, 'Select a GitHub access Secret'))
 
 export class RepositoryCreationFormDraft extends FormDraft<
 	RepositoryCreationFormModel,
@@ -50,25 +50,27 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
 	describe('RepositoryCreationFormDraft', () => {
-		it('trims GitHub target fields and models fixed GitHub provider config', () => {
+		it('models fixed GitHub provider config without transforming visible fields', () => {
 			const factory = new RepositoryCreationFormDraft()
 
 			factory.owner = '  octocat  '
 			factory.name = '  Hello-World  '
-			factory.secretId = ' secret-1 '
+			factory.secretId = 'secret-1'
 
 			expect(factory.valid).toBe(true)
 			expect(factory.toModel()).toEqual({
-				config: { provider: 'github', owner: 'octocat', name: 'Hello-World', secretId: 'secret-1' },
+				config: { provider: 'github', owner: '  octocat  ', name: '  Hello-World  ', secretId: 'secret-1' },
 			})
 		})
 
-		it('rejects blank GitHub target fields and missing Secret selection', () => {
-			const factory = new RepositoryCreationFormDraft()
+		it('rejects empty GitHub target fields and missing Secret selection', () => {
+			const factory = new RepositoryCreationFormDraft().loadEntity({
+				config: { provider: 'github', owner: 'octocat', name: 'Hello-World', secretId: 'secret-1' },
+			})
 
-			factory.owner = '  '
-			factory.name = '  '
-			factory.secretId = '  '
+			factory.owner = ''
+			factory.name = ''
+			factory.secretId = ''
 
 			expect(factory.valid).toBe(false)
 			expect(factory.errors.owner).toBe('Enter a GitHub owner')

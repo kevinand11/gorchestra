@@ -224,7 +224,7 @@ const { data: secrets } = usePortfolioSecretsQuery(serverApi)
 const secretOptions = computed(() =>
 	secrets.value.filter((secret) => !secret.archived).map((secret) => ({ value: secret.id, label: secret.name })),
 )
-const authSecretOptions = computed(() => [{ value: '', label: 'No auth Secret' }, ...secretOptions.value])
+const authSecretOptions = computed(() => [{ value: null, label: 'No auth Secret' }, ...secretOptions.value])
 
 watch(
 	provider,

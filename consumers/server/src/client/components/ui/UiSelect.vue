@@ -65,23 +65,12 @@
 	</div>
 </template>
 
-<script setup lang="ts" generic="TValue extends string = string">
+<script setup lang="ts" generic="TValue = string">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 
+import type { UiSelectOption, UiSelectOptionGroup, UiSelectOptionInput } from './select-options'
+
 defineOptions({ inheritAttrs: false })
-
-type UiSelectOption<TValue extends string = string> = {
-	value: TValue
-	label: string
-	disabled?: boolean
-}
-
-type UiSelectOptionGroup<TValue extends string = string> = {
-	label: string
-	options: readonly UiSelectOption<TValue>[]
-}
-
-type UiSelectOptionInput<TValue extends string = string> = UiSelectOption<TValue> | UiSelectOptionGroup<TValue>
 
 type UiSelectGroupRow = {
 	type: 'group'
@@ -89,14 +78,14 @@ type UiSelectGroupRow = {
 	label: string
 }
 
-type UiSelectOptionRow<TValue extends string = string> = {
+type UiSelectOptionRow<TValue = string> = {
 	type: 'option'
 	key: string
 	groupLabel: string | null
 	option: UiSelectOption<TValue>
 }
 
-type UiSelectRow<TValue extends string = string> = UiSelectGroupRow | UiSelectOptionRow<TValue>
+type UiSelectRow<TValue = string> = UiSelectGroupRow | UiSelectOptionRow<TValue>
 
 const props = withDefaults(
 	defineProps<{
@@ -133,7 +122,7 @@ const isExpanded = computed(() => (props.alwaysOpen || isOpen.value) && !props.d
 const rows = computed(() => groupedRows(props.options))
 const optionRows = computed(() => rows.value.filter(isOptionRow))
 const selectedOptions = computed(() =>
-	optionRows.value.map((row) => row.option).filter((option) => selectedValues.value.includes(option.value)),
+	optionRows.value.map((row) => row.option).filter((option) => selectedValues.value.some((value) => sameValue(value, option.value))),
 )
 const selectedSummary = computed(() => selectedOptions.value.map(optionLabel).join(', '))
 const selectedValues = computed<TValue[]>(() => (props.multiple ? multipleSelectedValues() : singleSelectedValue()))
@@ -182,11 +171,7 @@ function multipleSelectedValues(): TValue[] {
 }
 
 function singleSelectedValue(): TValue[] {
-	return isNonEmptySelectedValue(model.value) ? [model.value] : []
-}
-
-function isNonEmptySelectedValue(value: TValue | TValue[]): value is TValue {
-	return typeof value === 'string' && value.length > 0
+	return Array.isArray(model.value) ? [] : [model.value]
 }
 
 function toggleOptions(): void {
@@ -218,7 +203,7 @@ function selectOption(option: UiSelectOption<TValue>): void {
 	}
 
 	model.value = isSelected(option.value)
-		? selectedValues.value.filter((value) => value !== option.value)
+		? selectedValues.value.filter((value) => !sameValue(value, option.value))
 		: [...selectedValues.value, option.value]
 }
 
@@ -303,7 +288,11 @@ async function scrollActiveOptionIntoView(): Promise<void> {
 }
 
 function isSelected(value: TValue): boolean {
-	return selectedValues.value.includes(value)
+	return selectedValues.value.some((selectedValue) => sameValue(selectedValue, value))
+}
+
+function sameValue(left: TValue, right: TValue): boolean {
+	return Object.is(left, right)
 }
 
 function optionId(index: number): string | undefined {
@@ -312,7 +301,11 @@ function optionId(index: number): string | undefined {
 }
 
 function optionMatchesSearch(option: UiSelectOption<TValue>, searchValue: string): boolean {
-	return option.value.toLowerCase().includes(searchValue) || option.label.toLowerCase().includes(searchValue)
+	return optionSearchText(option).includes(searchValue)
+}
+
+function optionSearchText(option: UiSelectOption<TValue>): string {
+	return `${option.label} ${String(option.value)}`.toLowerCase()
 }
 
 function optionLabel(option: UiSelectOption<TValue>): string {

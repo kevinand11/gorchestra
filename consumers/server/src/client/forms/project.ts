@@ -9,7 +9,7 @@ type ProjectCreationFormModel = {
 	title: string
 }
 
-const projectTitlePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a Project title'))
+const projectTitlePipe = v.string().pipe(v.min<string>(1, 'Enter a Project title'))
 
 export class ProjectCreationFormDraft extends FormDraft<ProjectCreationFormModel, ProjectCreationFormModel, ProjectCreationFormFields> {
 	protected readonly rules = {
@@ -31,19 +31,19 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
 	describe('ProjectCreationFormDraft', () => {
-		it('trims and models valid Project titles', () => {
+		it('models valid Project titles without transforming the visible value', () => {
 			const factory = new ProjectCreationFormDraft()
 
 			factory.title = '  Delivery Ops  '
 
 			expect(factory.valid).toBe(true)
-			expect(factory.toModel()).toEqual({ title: 'Delivery Ops' })
+			expect(factory.toModel()).toEqual({ title: '  Delivery Ops  ' })
 		})
 
 		it('rejects empty Project titles', () => {
-			const factory = new ProjectCreationFormDraft()
+			const factory = new ProjectCreationFormDraft().loadEntity({ title: 'Project' })
 
-			factory.title = '  '
+			factory.title = ''
 
 			expect(factory.valid).toBe(false)
 			expect(factory.errors.title).toBe('Enter a Project title')

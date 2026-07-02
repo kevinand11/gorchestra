@@ -61,32 +61,32 @@
 					</div>
 					<div v-else class="border-t border-dimmer">
 						<div
-							v-for="(header, index) in providerForm.headers"
+							v-for="(header, index) in headerDrafts"
 							:key="index"
 							class="grid gap-3 border-b border-dimmer px-3 py-3 md:grid-cols-[1fr_1fr_auto]">
-							<UiFormGroup label="Header name" :for-id="`provider-header-name-${index}`">
+							<UiFormGroup label="Header name" :for-id="`provider-header-name-${index}`" :error="header.errors.name">
 								<UiInput
 									:id="`provider-header-name-${index}`"
-									:model-value="header.name"
+									v-model="header.name"
 									placeholder="X-Provider-Header"
-									@update:model-value="updateHeaderName(index, $event)" />
+									:invalid="!!header.errors.name" />
 							</UiFormGroup>
-							<UiFormGroup label="Header Secret" :for-id="`provider-header-secret-${index}`">
+							<UiFormGroup
+								label="Header Secret"
+								:for-id="`provider-header-secret-${index}`"
+								:error="header.errors.valueSecretId">
 								<UiSelect
 									:id="`provider-header-secret-${index}`"
-									:model-value="header.valueSecretId"
+									v-model="header.valueSecretId"
 									:options="headerSecretOptions"
 									placeholder="Select Secret"
-									@update:model-value="updateHeaderSecret(index, $event)" />
+									:invalid="!!header.errors.valueSecretId" />
 							</UiFormGroup>
 							<div class="self-end">
 								<UiButton type="button" variant="ghost" @click="removeHeader(index)">Remove</UiButton>
 							</div>
 						</div>
 					</div>
-					<p v-if="providerForm.errors.headers" class="m-0 border-t border-dimmer px-3 py-2 text-sz-helper text-error">
-						{{ providerForm.errors.headers }}
-					</p>
 				</section>
 
 				<section class="px-3 py-3">
@@ -131,6 +131,8 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+
 import UiButton from '../../../components/ui/UiButton.vue'
 import UiForm from '../../../components/ui/UiForm.vue'
 import UiFormGroup from '../../../components/ui/UiFormGroup.vue'
@@ -141,7 +143,7 @@ import { useApiAction } from '../../../composables/action-state'
 import { usePortfolioSecretsQuery } from '../../../composables/portfolio-resource-queries'
 import { useQueryCache } from '../../../composables/query-cache'
 import { useSelectedPortfolio } from '../../../composables/selected-portfolio'
-import { useServerApi, type ModelProviderHeader, type ModelProviderProtocolType } from '../../../composables/useServerApi'
+import { useServerApi, type ModelProviderProtocolType } from '../../../composables/useServerApi'
 import { ModelProviderFormDraft } from '../../../forms/model-provider'
 import { useToasts } from '../../../composables/toasts'
 
@@ -161,8 +163,9 @@ const { queryKeys, invalidate } = useQueryCache()
 const providerForm = new ModelProviderFormDraft()
 const { data: secrets } = usePortfolioSecretsQuery(serverApi)
 
-const authSecretOptions = computed(() => [{ value: '', label: 'No auth Secret' }, ...secretOptions.value])
+const authSecretOptions = computed(() => [{ value: null, label: 'No auth Secret' }, ...secretOptions.value])
 const headerSecretOptions = computed(() => secretOptions.value)
+const headerDrafts = computed(() => [...providerForm.headers])
 const secretOptions = computed(() =>
 	secrets.value.filter((secret) => !secret.archived).map((secret) => ({ value: secret.id, label: secret.name })),
 )
@@ -179,22 +182,10 @@ const {
 })
 
 function addHeader(): void {
-	providerForm.headers = [...providerForm.headers, { name: '', valueSecretId: '' }]
+	providerForm.headers.add()
 }
 
 function removeHeader(index: number): void {
-	providerForm.headers = providerForm.headers.filter((_, currentIndex) => currentIndex !== index)
-}
-
-function updateHeaderName(index: number, value: string | number): void {
-	updateHeader(index, { name: String(value) })
-}
-
-function updateHeaderSecret(index: number, value: string | string[]): void {
-	updateHeader(index, { valueSecretId: Array.isArray(value) ? (value[0] ?? '') : value })
-}
-
-function updateHeader(index: number, patch: Partial<ModelProviderHeader>): void {
-	providerForm.headers = providerForm.headers.map((header, currentIndex) => (currentIndex === index ? { ...header, ...patch } : header))
+	providerForm.headers.delete(index)
 }
 </script>

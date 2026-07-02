@@ -16,8 +16,8 @@ type PlanCreationFormModel = {
 	config: PlanConfigInput
 }
 
-const planTitlePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a Plan title'))
-const initialMessagePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter an initial planning message'))
+const planTitlePipe = v.string().pipe(v.min<string>(1, 'Enter a Plan title'))
+const initialMessagePipe = v.string().pipe(v.min<string>(1, 'Enter an initial planning message'))
 
 export class PlanCreationFormDraft extends FormDraft<PlanCreationFormModel, PlanCreationFormModel, PlanCreationFormFields> {
 	protected readonly rules = {
@@ -47,7 +47,7 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
 	describe('PlanCreationFormDraft', () => {
-		it('trims and models valid Plan creation input', () => {
+		it('models valid Plan creation input without transforming visible fields', () => {
 			const factory = new PlanCreationFormDraft()
 
 			factory.title = '  Repository setup plan  '
@@ -55,8 +55,8 @@ if (import.meta.vitest) {
 
 			expect(factory.valid).toBe(true)
 			expect(factory.toModel()).toEqual({
-				title: 'Repository setup plan',
-				initialMessage: 'Please plan repository onboarding.',
+				title: '  Repository setup plan  ',
+				initialMessage: '  Please plan repository onboarding.  ',
 				config: { model: { planning: null } },
 			})
 		})
@@ -66,7 +66,7 @@ if (import.meta.vitest) {
 
 			factory.title = 'Plan'
 			factory.initialMessage = 'Plan this.'
-			factory.planningModelUse.modelId = ' model-1 '
+			factory.planningModelUse.modelId = 'model-1'
 
 			expect(factory.toModel()).toEqual({
 				title: 'Plan',
@@ -76,10 +76,14 @@ if (import.meta.vitest) {
 		})
 
 		it('rejects empty Plan creation input', () => {
-			const factory = new PlanCreationFormDraft()
+			const factory = new PlanCreationFormDraft().loadEntity({
+				title: 'Plan',
+				initialMessage: 'Plan this.',
+				config: { model: { planning: null } },
+			})
 
-			factory.title = '  '
-			factory.initialMessage = '  '
+			factory.title = ''
+			factory.initialMessage = ''
 
 			expect(factory.valid).toBe(false)
 			expect(factory.errors.title).toBe('Enter a Plan title')

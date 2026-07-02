@@ -11,7 +11,7 @@ type ProvisionWorkspaceFormModel = {
 	portfolioDisplayName: string
 }
 
-const displayNamePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a display name'))
+const displayNamePipe = v.string().pipe(v.min<string>(1, 'Enter a display name'))
 
 export class ProvisionWorkspaceFormDraft extends FormDraft<
 	ProvisionWorkspaceFormModel,
@@ -49,19 +49,19 @@ if (import.meta.vitest) {
 			expect(factory.toModel()).toEqual({ workspaceDisplayName: 'Delivery Ops', portfolioDisplayName: 'Main Portfolio' })
 		})
 
-		it('trims display names in the model', () => {
+		it('models display names without transforming visible fields', () => {
 			const factory = new ProvisionWorkspaceFormDraft()
 
 			factory.workspaceDisplayName = '  Team Ops  '
 			factory.portfolioDisplayName = '  Launch Portfolio  '
 
-			expect(factory.toModel()).toEqual({ workspaceDisplayName: 'Team Ops', portfolioDisplayName: 'Launch Portfolio' })
+			expect(factory.toModel()).toEqual({ workspaceDisplayName: '  Team Ops  ', portfolioDisplayName: '  Launch Portfolio  ' })
 		})
 
 		it('rejects empty display names', () => {
 			const factory = new ProvisionWorkspaceFormDraft()
 
-			factory.workspaceDisplayName = '  '
+			factory.workspaceDisplayName = ''
 			factory.portfolioDisplayName = ''
 
 			expect(factory.valid).toBe(false)

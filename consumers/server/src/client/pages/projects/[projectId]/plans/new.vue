@@ -166,7 +166,7 @@ const inheritedPlanningModelIsActive = computed(
 )
 const inheritedPlanningModelLabel = computed(() => activeInheritedModelLabel())
 const requiresPlanModelOverride = computed(() => !inheritedPlanningModelIsActive.value)
-const hasPlanModelOverride = computed(() => planCreationForm.planningModelUse.modelId.trim().length > 0)
+const hasPlanModelOverride = computed(() => planCreationForm.planningModelUse.modelId !== null)
 const hasRequiredPlanningModel = computed(() => !requiresPlanModelOverride.value || hasPlanModelOverride.value)
 const canCreatePlan = computed(() =>
 	[planCreationForm.valid, hasActiveModels.value, hasRequiredPlanningModel.value, !isCreatingPlan.value].every(Boolean),

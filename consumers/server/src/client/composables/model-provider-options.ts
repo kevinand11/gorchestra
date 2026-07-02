@@ -1,10 +1,11 @@
 import type { ModelThinkingLevel, ServerApi } from './useServerApi'
+import type { UiSelectOption, UiSelectOptionGroup } from '../components/ui/select-options'
 
 type ListedModelProvider = Awaited<ReturnType<ServerApi['listModelProviders']>>[number]
 
-export type ModelSelectOption = { value: string; label: string }
-export type ModelSelectOptionGroup = { label: string; options: ModelSelectOption[] }
-type ThinkingLevelOption = { value: ModelThinkingLevel; label: string }
+export type ModelSelectOption = UiSelectOption<string>
+export type ModelSelectOptionGroup = UiSelectOptionGroup<string>
+type ThinkingLevelOption = UiSelectOption<ModelThinkingLevel>
 type ListedModel = ListedModelProvider['models'][number]
 
 export const thinkingLevelOptions: ThinkingLevelOption[] = [
@@ -32,14 +33,14 @@ export function modelOptionLabel(groups: readonly ModelSelectOptionGroup[], mode
 	return groups.flatMap((group) => group.options).find((option) => option.value === modelId)?.label ?? modelId
 }
 
-export function thinkingLevelOptionsForModel(providers: readonly ListedModelProvider[], modelId: string): ThinkingLevelOption[] {
+export function thinkingLevelOptionsForModel(providers: readonly ListedModelProvider[], modelId: string | null): ThinkingLevelOption[] {
 	const model = activeModelFromProviders(providers, modelId)
 	return model === null ? [] : thinkingLevelOptions.filter((option) => model.availableThinkingLevels.includes(option.value))
 }
 
 export function modelHasThinkingLevel(
 	providers: readonly ListedModelProvider[],
-	modelId: string,
+	modelId: string | null,
 	thinkingLevel: ModelThinkingLevel,
 ): boolean {
 	return thinkingLevelOptionsForModel(providers, modelId).some((option) => option.value === thinkingLevel)
@@ -52,15 +53,14 @@ function activeModelOptionGroup(provider: ListedModelProvider): ModelSelectOptio
 	}
 }
 
-function activeModelFromProviders(providers: readonly ListedModelProvider[], modelId: string): ListedModel | null {
-	const trimmedModelId = modelId.trim()
-	if (trimmedModelId.length === 0) return null
+function activeModelFromProviders(providers: readonly ListedModelProvider[], modelId: string | null): ListedModel | null {
+	if (modelId === null) return null
 
 	return (
 		providers
 			.filter((provider) => !provider.archived)
 			.flatMap((provider) => provider.models)
-			.find((model) => !model.archived && model.id === trimmedModelId) ?? null
+			.find((model) => !model.archived && model.id === modelId) ?? null
 	)
 }
 
@@ -96,6 +96,7 @@ if (import.meta.vitest) {
 				{ value: 'off', label: 'Off' },
 				{ value: 'high', label: 'High' },
 			])
+			expect(thinkingLevelOptionsForModel(providers, null)).toEqual([])
 			expect(thinkingLevelOptionsForModel(providers, 'model-archived')).toEqual([])
 			expect(thinkingLevelOptionsForModel(providers, 'model-2')).toEqual([])
 		})

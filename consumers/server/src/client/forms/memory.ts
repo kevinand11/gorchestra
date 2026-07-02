@@ -17,8 +17,8 @@ type MemoryRevisionFormEntity = {
 
 type MemoryRevisionFormFields = MemoryRevisionFormEntity
 
-const memoryTitlePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a Memory title'))
-const memoryBodyPipe = v.string().pipe(v.asTrimmed())
+const memoryTitlePipe = v.string().pipe(v.min<string>(1, 'Enter a Memory title'))
+const memoryBodyPipe = v.string()
 
 export class MemoryCreationFormDraft extends FormDraft<CreateMemoryInput, CreateMemoryInput, MemoryCreationFormFields> {
 	protected readonly rules = {
@@ -70,14 +70,14 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
 	describe('MemoryCreationFormDraft', () => {
-		it('models root Memories with trimmed title and body', () => {
+		it('models root Memories with raw title and body', () => {
 			const draft = new MemoryCreationFormDraft(null)
 
 			draft.title = '  Route Contracts  '
 			draft.body = '  Body  '
 
 			expect(draft.valid).toBe(true)
-			expect(draft.toModel()).toEqual({ parentId: null, title: 'Route Contracts', body: 'Body' })
+			expect(draft.toModel()).toEqual({ parentId: null, title: '  Route Contracts  ', body: '  Body  ' })
 		})
 
 		it('models child Memories with a parent id', () => {
@@ -102,9 +102,9 @@ if (import.meta.vitest) {
 		})
 
 		it('rejects empty titles', () => {
-			const draft = new MemoryCreationFormDraft(null)
+			const draft = new MemoryCreationFormDraft(null).loadEntity({ parentId: null, title: 'Memory', body: '' })
 
-			draft.title = '  '
+			draft.title = ''
 
 			expect(draft.valid).toBe(false)
 			expect(draft.errors.title).toBe('Enter a Memory title')
@@ -122,7 +122,7 @@ if (import.meta.vitest) {
 			draft.title = ' Updated '
 
 			expect(draft.dirty).toBe(true)
-			expect(draft.toModel()).toEqual({ expectedCurrentRevisionId: 'revision-current', title: 'Updated', body: 'Body' })
+			expect(draft.toModel()).toEqual({ expectedCurrentRevisionId: 'revision-current', title: ' Updated ', body: ' Body ' })
 		})
 
 		it('tracks loaded content as clean until title or body changes', () => {
@@ -147,7 +147,7 @@ if (import.meta.vitest) {
 				body: 'Body',
 			})
 
-			draft.title = '  '
+			draft.title = ''
 
 			expect(draft.valid).toBe(false)
 			expect(draft.errors.title).toBe('Enter a Memory title')
