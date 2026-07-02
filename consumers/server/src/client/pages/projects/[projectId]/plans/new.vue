@@ -72,7 +72,6 @@
 							placeholder="Use inherited/default"
 							search-placeholder="Search Models…"
 							empty-label="No active Models available"
-							:always-open="true"
 							:invalid="!!planCreationForm.planningModelUse.errors.modelId"
 							:disabled="!hasActiveModels" />
 					</UiFormGroup>

@@ -18,6 +18,7 @@
 							{ label: 'Deliveries', to: `/projects/${projectId}/deliveries` },
 							{ label: 'Plans', to: `/projects/${projectId}/plans` },
 							{ label: 'Repositories', to: `/projects/${projectId}/repositories` },
+							{ label: 'Config', to: `/projects/${projectId}/config` },
 						]"
 						:key="to"
 						:to="to"
