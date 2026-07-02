@@ -55,9 +55,7 @@
 			<div v-else>
 				<div class="flex min-h-11 items-center justify-between gap-3 border-b border-dimmer px-3 py-2">
 					<strong class="font-semibold">Available Portfolios</strong>
-					<span v-if="isLoadingWorkspacePortfolios && hasLoadedWorkspacePortfolios" class="text-sz-helper text-dim"
-						>Refreshing…</span
-					>
+					<span v-if="isRefreshingWorkspacePortfolios" class="text-sz-helper text-dim">Refreshing…</span>
 				</div>
 				<div>
 					<div
@@ -120,101 +118,46 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-
 import UiButton from '../components/ui/UiButton.vue'
 import UiForm from '../components/ui/UiForm.vue'
 import UiFormGroup from '../components/ui/UiFormGroup.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import UiText from '../components/ui/UiText.vue'
-import { useApiAction, useFetchAction } from '../composables/action-state'
-import { useAuthState, useSelectionAccess } from '../composables/auth-state'
-import { useQueryCache } from '../composables/query-cache'
-import { useServerApi, type ServerApi } from '../composables/useServerApi'
-import { ProvisionWorkspaceFormDraft } from '../forms/workspace'
-import { useToasts } from '../composables/toasts'
+import {
+	useCurrentSelection,
+	useDefaultWorkspaceProvision,
+	useLogoutAction,
+	usePortfolioSelection,
+	useSelectionClear,
+	useWorkspacePortfoliosList,
+} from '../composables/auth/selection'
 
 definePageMeta({ middleware: ['is-authenticated'] })
 
-type WorkspacePortfolios = Awaited<ReturnType<ServerApi['listWorkspacePortfolios']>>
-
-const authState = useAuthState()
-const toasts = useToasts()
-const serverApi = useServerApi()
-const queryCache = useQueryCache()
-const { queryKeys } = queryCache
-
-const provisionWorkspaceForm = new ProvisionWorkspaceFormDraft()
-const selectingPortfolioKey = ref('')
-const { data: selection } = useSelectionAccess({ immediate: true })
-
+const { selection } = useCurrentSelection()
 const {
-	data: workspacePortfolios,
-	isLoading: isLoadingWorkspacePortfolios,
-	error: workspacePortfoliosError,
-	hasExecuted: hasLoadedWorkspacePortfolios,
-} = useFetchAction(() => serverApi.listWorkspacePortfolios(), {
-	queryKey: queryKeys.workspacePortfolios(),
-	initialData: [] as WorkspacePortfolios,
+	workspacePortfolios,
+	isLoadingWorkspacePortfolios,
+	workspacePortfoliosError,
+	hasLoadedWorkspacePortfolios,
+	isRefreshingWorkspacePortfolios,
+} = useWorkspacePortfoliosList()
+const { provisionWorkspaceForm, isProvisioningWorkspace, provisionWorkspaceError, provisionWorkspace } = useDefaultWorkspaceProvision({
+	onSuccess: async () => {
+		await navigateTo('/projects')
+	},
 })
-
-const {
-	isLoading: isProvisioningWorkspace,
-	error: provisionWorkspaceError,
-	execute: provisionWorkspace,
-} = useApiAction(async () => {
-	await authState.provisionDefaultWorkspace(provisionWorkspaceForm.toModel())
-	toasts.success({ title: 'Workspace created and Portfolio selected.' })
-	await navigateTo('/projects')
+const { isSelectingPortfolio, selectPortfolio, isSelectingThisPortfolio, portfolioSelectionError } = usePortfolioSelection({
+	onSuccess: async () => {
+		await navigateTo('/projects')
+	},
 })
-
-const {
-	isLoading: isSelectingPortfolio,
-	error: selectPortfolioError,
-	execute: executeSelectPortfolio,
-} = useApiAction(async (workspaceId: string, portfolioId: string) => {
-	await authState.setSelection(workspaceId, portfolioId)
-	toasts.success({ title: 'Portfolio selected.' })
-	await navigateTo('/projects')
-})
-
-async function selectPortfolio(workspaceId: string, portfolioId: string): Promise<void> {
-	selectingPortfolioKey.value = portfolioActionKey(workspaceId, portfolioId)
-	await executeSelectPortfolio(workspaceId, portfolioId)
-}
-
-const {
-	isLoading: isClearingSelection,
-	error: clearSelectionError,
-	execute: clearSelection,
-} = useApiAction(async () => {
-	await authState.clearSelection()
-	toasts.info({ title: 'Selection cleared.' })
-})
-
-const {
-	isLoading: isLoggingOut,
-	error: logoutError,
-	execute: logout,
-} = useApiAction(async () => {
-	await authState.logout()
-})
+const { isClearingSelection, clearSelectionError, clearSelection } = useSelectionClear()
+const { isLoggingOut, logoutError, logout } = useLogoutAction()
 
 function isCurrentSelection(workspaceId: string, portfolioId: string): boolean {
 	return (
 		selection.value?.selected === true && selection.value.workspace.id === workspaceId && selection.value.portfolio.id === portfolioId
 	)
-}
-
-function isSelectingThisPortfolio(workspaceId: string, portfolioId: string): boolean {
-	return isSelectingPortfolio.value && selectingPortfolioKey.value === portfolioActionKey(workspaceId, portfolioId)
-}
-
-function portfolioSelectionError(workspaceId: string, portfolioId: string): string {
-	return selectingPortfolioKey.value === portfolioActionKey(workspaceId, portfolioId) ? selectPortfolioError.value : ''
-}
-
-function portfolioActionKey(workspaceId: string, portfolioId: string): string {
-	return `${workspaceId}:${portfolioId}`
 }
 </script>

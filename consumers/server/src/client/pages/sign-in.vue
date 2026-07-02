@@ -116,18 +116,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-
 import UiButton from '../components/ui/UiButton.vue'
 import UiForm from '../components/ui/UiForm.vue'
 import UiFormGroup from '../components/ui/UiFormGroup.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import UiLabel from '../components/ui/UiLabel.vue'
 import UiText from '../components/ui/UiText.vue'
-import { useApiAction } from '../composables/action-state'
+import { useEmailOtpSignIn } from '../composables/auth/sign-in'
 import { isAuthenticatedSession, useAuthState } from '../composables/auth-state'
-import { EmailOtpChallengeFormDraft, EmailOtpVerificationFormDraft } from '../forms/auth'
-import { useToasts } from '../composables/toasts'
 
 definePageMeta({
 	middleware: [
@@ -139,46 +135,20 @@ definePageMeta({
 	],
 })
 
-const authState = useAuthState()
-const toasts = useToasts()
-
-const emailOtpChallengeForm = new EmailOtpChallengeFormDraft()
-const emailOtpVerificationForm = new EmailOtpVerificationFormDraft()
-const challengeRequested = ref(false)
-
-watch(
-	() => emailOtpChallengeForm.email,
-	(email) => {
-		if (!challengeRequested.value) emailOtpVerificationForm.email = email
+const {
+	emailOtpChallengeForm,
+	emailOtpVerificationForm,
+	challengeRequested,
+	isRequestingEmailOtp,
+	requestEmailOtpError,
+	requestEmailOtp,
+	isVerifyingEmailOtp,
+	verifyEmailOtpError,
+	verifyEmailOtp,
+	changeEmail,
+} = useEmailOtpSignIn({
+	onSuccess: async () => {
+		await navigateTo(await useAuthState().getHomePath())
 	},
-)
-
-const {
-	isLoading: isRequestingEmailOtp,
-	error: requestEmailOtpError,
-	execute: requestEmailOtp,
-} = useApiAction(async () => {
-	const input = emailOtpChallengeForm.toModel()
-	await authState.requestEmailOtp(input.email)
-	emailOtpVerificationForm.loadEntity({ email: input.email, code: '' })
-	challengeRequested.value = true
-	toasts.success({ title: 'Sign-in code sent.', body: 'Check your email for the six-digit code.' })
 })
-
-const {
-	isLoading: isVerifyingEmailOtp,
-	error: verifyEmailOtpError,
-	execute: verifyEmailOtp,
-} = useApiAction(async () => {
-	const input = emailOtpVerificationForm.toModel()
-	await authState.verifyEmailOtpSignIn(input.email, input.code)
-	emailOtpVerificationForm.code = ''
-	challengeRequested.value = false
-	await navigateTo(await authState.getHomePath())
-})
-
-function changeEmail(): void {
-	challengeRequested.value = false
-	emailOtpVerificationForm.loadEntity({ email: emailOtpChallengeForm.email, code: '' })
-}
 </script>

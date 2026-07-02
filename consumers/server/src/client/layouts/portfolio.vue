@@ -75,8 +75,7 @@
 <script setup lang="ts">
 import GorchestraMark from '../components/layout/GorchestraMark.vue'
 import UiButton from '../components/ui/UiButton.vue'
-import { useApiAction } from '../composables/action-state'
-import { useAuthState } from '../composables/auth-state'
+import { useLogoutAction } from '../composables/auth/selection'
 import { useSelectedPortfolio } from '../composables/selected-portfolio'
 import DefaultLayout from './default.vue'
 
@@ -86,7 +85,6 @@ withDefaults(defineProps<{ topbarSearchLabel?: string }>(), {
 
 const route = useRoute()
 const { workspace, portfolio } = useSelectedPortfolio()
-const authState = useAuthState()
 
 const primaryNavItems = [
 	{ label: 'Projects', to: '/projects' },
@@ -95,7 +93,7 @@ const primaryNavItems = [
 	{ label: 'Models', to: '/models/providers' },
 ]
 
-const { isLoading: isLoggingOut, error: logoutError, execute: logout } = useApiAction(authState.logout)
+const { isLoggingOut, logoutError, logout } = useLogoutAction()
 
 function navItemClass(path: string): string {
 	return route.path.startsWith(path) ? 'bg-secondary text-body' : 'text-dim hover:bg-secondary hover:text-body'
