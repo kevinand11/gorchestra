@@ -42,6 +42,7 @@ function createGoogleGenerativeAIClient(input: GoogleGenerativeAIPreflightInput)
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
+	const { defaultModelCapabilities } = await import('../../domain/model')
 
 	describe('Google Generative AI Model Provider Protocol provider', () => {
 		it('gets provider model metadata with configured access', async () => {
@@ -103,6 +104,8 @@ if (import.meta.vitest) {
 				providerId: 'model-provider-1',
 				name: 'Gemini Pro',
 				providerModelId: 'gemini-2.5-pro',
+				capabilities: defaultModelCapabilities,
+				pricing: null,
 				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				updated: null,
 				archivePeriods: [],
@@ -110,7 +113,7 @@ if (import.meta.vitest) {
 			modelProvider: {
 				id: 'model-provider-1',
 				name: 'Google',
-				protocol: 'google-generative-ai',
+				protocol: { type: 'google-generative-ai' },
 				baseUrl: 'https://generativelanguage.googleapis.com',
 				auth: { type: 'apiKey', secretId: 'secret-1' },
 				headers: [{ name: 'X-Goog-User-Project', valueSecretId: 'secret-2' }],

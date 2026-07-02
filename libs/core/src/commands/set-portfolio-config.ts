@@ -8,10 +8,12 @@ import type { Result as CoreResult } from '../utils/types'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { buildCommandHandler } from './utils/handler'
 import {
-	modelIdsFromPortfolioConfig,
+	loadSelectableModelFacts,
+	modelIdsFromModelUses,
+	modelUsesFromPortfolioConfig,
 	normalizePortfolioConfig,
 	setPortfolioConfig,
-	validateSelectableModels,
+	validateModelUseConfigs,
 	withAuditStampTransaction,
 } from './utils/storage'
 
@@ -31,8 +33,12 @@ export function createSetPortfolioConfigCommand(runtime: CoreRuntime): Operation
 			context,
 			async (storage, stamp): Promise<CoreResult<PortfolioConfigRecord, Exclude<Error, InvalidInputError>>> => {
 				const config = normalizePortfolioConfig(input.config)
-				const referenceValidation = await validateSelectableModels(storage, modelIdsFromPortfolioConfig(config))
-				if (!referenceValidation.ok) return referenceValidation
+				const modelUses = modelUsesFromPortfolioConfig(config)
+				const facts = await loadSelectableModelFacts(storage, modelIdsFromModelUses(modelUses))
+				if (!facts.ok) return facts
+
+				const modelUseValidation = validateModelUseConfigs(facts.value, modelUses)
+				if (!modelUseValidation.ok) return modelUseValidation
 
 				const record: PortfolioConfigRecord = { configured: stamp, value: config }
 				const stored = await setPortfolioConfig(storage, record)
@@ -57,11 +63,11 @@ if (import.meta.vitest) {
 				{
 					config: {
 						model: {
-							defaultModelId: ' model-1 ',
-							planningModelId: null,
-							revisionPlanningModelId: 'model-1',
-							executionModelId: null,
-							revisionExecutionModelId: null,
+							default: { modelId: ' model-1 ', thinkingLevel: 'off' },
+							planning: null,
+							revisionPlanning: { modelId: 'model-1', thinkingLevel: 'off' },
+							execution: null,
+							revisionExecution: null,
 						},
 						work: { maxProcessableSliceSlots: 2, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
 					},
@@ -75,11 +81,11 @@ if (import.meta.vitest) {
 					configured: localStamp(),
 					value: {
 						model: {
-							defaultModelId: 'model-1',
-							planningModelId: null,
-							revisionPlanningModelId: 'model-1',
-							executionModelId: null,
-							revisionExecutionModelId: null,
+							default: { modelId: 'model-1', thinkingLevel: 'off' },
+							planning: null,
+							revisionPlanning: { modelId: 'model-1', thinkingLevel: 'off' },
+							execution: null,
+							revisionExecution: null,
 						},
 						work: { maxProcessableSliceSlots: 2, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
 					},

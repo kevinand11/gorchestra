@@ -1,49 +1,62 @@
 import { FormDraft } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
+import type { ModelThinkingLevel, ModelUseConfig, PlanConfigInput } from '../composables/useServerApi'
+
 type PlanCreationFormFields = {
 	title: string
 	initialMessage: string
 	planningModelId: string
+	planningThinkingLevel: ModelThinkingLevel
 }
 
 type PlanCreationFormModel = {
 	title: string
 	initialMessage: string
-	config: { model: { planningModelId: string | null } | null }
+	config: PlanConfigInput
 }
 
 const planTitlePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a Plan title'))
 const initialMessagePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter an initial planning message'))
 const optionalModelIdPipe = v.string().pipe(v.asTrimmed())
+const thinkingLevelPipe = v.in(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const)
 
 export class PlanCreationFormDraft extends FormDraft<PlanCreationFormModel, PlanCreationFormModel, PlanCreationFormFields> {
 	protected readonly rules = {
 		title: planTitlePipe,
 		initialMessage: initialMessagePipe,
 		planningModelId: optionalModelIdPipe,
+		planningThinkingLevel: thinkingLevelPipe,
 	}
 
 	constructor() {
-		super({ title: '', initialMessage: '', planningModelId: '' })
+		super({ title: '', initialMessage: '', planningModelId: '', planningThinkingLevel: 'off' })
 	}
 
 	protected model = (): PlanCreationFormModel => ({
 		title: this.title,
 		initialMessage: this.initialMessage,
-		config: { model: { planningModelId: nullableId(this.planningModelId) } },
+		config: { model: { planning: optionalModelUse(this.planningModelId, this.planningThinkingLevel) } },
 	})
 
 	protected load = (entity: PlanCreationFormModel): void => {
+		const planning = planningModelUseFields(entity.config)
+
 		this.title = entity.title
 		this.initialMessage = entity.initialMessage
-		this.planningModelId = entity.config.model?.planningModelId ?? ''
+		this.planningModelId = planning.modelId
+		this.planningThinkingLevel = planning.thinkingLevel
 	}
 }
 
-function nullableId(value: string): string | null {
-	const trimmed = value.trim()
-	return trimmed.length === 0 ? null : trimmed
+function planningModelUseFields(config: PlanConfigInput): { modelId: string; thinkingLevel: ModelThinkingLevel } {
+	if (config.model === null || config.model.planning === null) return { modelId: '', thinkingLevel: 'off' }
+	return config.model.planning
+}
+
+function optionalModelUse(modelId: string, thinkingLevel: ModelThinkingLevel): ModelUseConfig | null {
+	const trimmed = modelId.trim()
+	return trimmed.length === 0 ? null : { modelId: trimmed, thinkingLevel }
 }
 
 if (import.meta.vitest) {
@@ -60,7 +73,7 @@ if (import.meta.vitest) {
 			expect(factory.toModel()).toEqual({
 				title: 'Repository setup plan',
 				initialMessage: 'Please plan repository onboarding.',
-				config: { model: { planningModelId: null } },
+				config: { model: { planning: null } },
 			})
 		})
 
@@ -74,7 +87,7 @@ if (import.meta.vitest) {
 			expect(factory.toModel()).toEqual({
 				title: 'Plan',
 				initialMessage: 'Plan this.',
-				config: { model: { planningModelId: 'model-1' } },
+				config: { model: { planning: { modelId: 'model-1', thinkingLevel: 'off' } } },
 			})
 		})
 

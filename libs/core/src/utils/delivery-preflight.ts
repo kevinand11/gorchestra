@@ -302,14 +302,14 @@ function modelSecretSummary(modelProvider: ModelProvider, secretKind: 'auth' | '
 }
 
 function protocolDisplayName(modelProvider: ModelProvider): string {
-	const names: Record<ModelProvider['protocol'], string> = {
+	const names: Record<ModelProvider['protocol']['type'], string> = {
 		'anthropic-messages': 'Anthropic Messages',
 		'openai-responses': 'OpenAI Responses',
 		'openai-completions': 'OpenAI Completions',
 		'google-generative-ai': 'Google Generative AI',
 	}
 
-	return names[modelProvider.protocol]
+	return names[modelProvider.protocol.type]
 }
 
 function validationEvidence(operation: ValidationEvidence['operation']['type'], passed: boolean, summary: string): ValidationEvidence {

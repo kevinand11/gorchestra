@@ -112,8 +112,7 @@ if (import.meta.vitest) {
 					event(1, {
 						type: 'agent-run-model-selected',
 						modelId: 'model-1',
-						modelProviderId: 'provider-1',
-						protocol: 'anthropic-messages',
+						thinkingLevel: 'off',
 						authorized: null,
 					}),
 					event(2, {

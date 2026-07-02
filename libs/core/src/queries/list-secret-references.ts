@@ -316,7 +316,7 @@ if (import.meta.vitest) {
 						type: 'model-provider-auth',
 						modelProviderId: 'model-provider-1',
 						name: 'Anthropic',
-						protocol: 'anthropic-messages',
+						protocol: { type: 'anthropic-messages' },
 						archived: true,
 						created: stamp,
 					},
@@ -324,7 +324,7 @@ if (import.meta.vitest) {
 						type: 'model-provider-header',
 						modelProviderId: 'model-provider-1',
 						name: 'Anthropic',
-						protocol: 'anthropic-messages',
+						protocol: { type: 'anthropic-messages' },
 						headerName: 'X-Team',
 						archived: true,
 						created: stamp,
@@ -380,7 +380,7 @@ if (import.meta.vitest) {
 		options.tx.modelProviders.records.set('model-provider-1', {
 			id: 'model-provider-1',
 			name: 'Anthropic',
-			protocol: 'anthropic-messages',
+			protocol: { type: 'anthropic-messages' },
 			baseUrl: 'https://api.anthropic.com',
 			auth: { type: 'apiKey', secretId: 'secret-1' },
 			headers: [

@@ -25,7 +25,7 @@ import {
 import { deliveryClosedPipe, deliveryTargetPipe, type Delivery } from '../domain/delivery'
 import { graphNodeRefPipe, linkTypePipe, type Link } from '../domain/graph'
 import { currentMemoryRevisionPipe, memoryBodyPipe, memoryTitlePipe, type Memory, type MemoryRevision } from '../domain/memory'
-import { type Model } from '../domain/model'
+import { modelCapabilitiesPipe, modelTokenPricingPipe, type Model } from '../domain/model'
 import { modelProviderAuthPipe, modelProviderHeaderPipe, modelProviderProtocolPipe, type ModelProvider } from '../domain/model-provider'
 import { instructionSourcePipe, type Plan } from '../domain/plan'
 import { projectSourcePipe, type Project } from '../domain/project'
@@ -83,6 +83,8 @@ export const modelSchema = Schema.from('models')
 	.field('providerId', idPipe)
 	.field('name', nonEmptyTrimmedStringPipe)
 	.field('providerModelId', nonEmptyTrimmedStringPipe)
+	.field('capabilities', modelCapabilitiesPipe)
+	.field('pricing', v.nullable(modelTokenPricingPipe))
 	.field('created', auditStampPipe)
 	.field('updated', v.nullable(auditStampPipe))
 	.field('archivePeriods', archivePeriodsPipe)

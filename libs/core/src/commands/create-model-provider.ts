@@ -79,7 +79,13 @@ if (import.meta.vitest) {
 			const command = createCreateModelProviderCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ name: '  Anthropic  ', protocol: 'anthropic-messages', baseUrl: ' https://api.example.com ', auth: null, headers: [] },
+				{
+					name: '  Anthropic  ',
+					protocol: { type: 'anthropic-messages' },
+					baseUrl: ' https://api.example.com ',
+					auth: null,
+					headers: [],
+				},
 				context,
 			)
 
@@ -88,7 +94,7 @@ if (import.meta.vitest) {
 				value: {
 					id: 'model-provider-1',
 					name: 'Anthropic',
-					protocol: 'anthropic-messages',
+					protocol: { type: 'anthropic-messages' },
 					baseUrl: 'https://api.example.com',
 					auth: null,
 					headers: [],

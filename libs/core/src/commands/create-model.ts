@@ -2,7 +2,7 @@ import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
 import { idPipe, nonEmptyTrimmedStringPipe } from '../domain/commons'
-import { type Model } from '../domain/model'
+import { defaultModelCapabilities, type Model } from '../domain/model'
 import type {
 	ArchivedModelProviderReferenceError,
 	InvalidCoreServiceOutputError,
@@ -61,6 +61,8 @@ export function createCreateModelCommand(runtime: CoreRuntime): Operation {
 				providerId: input.providerId,
 				name: input.name,
 				providerModelId: input.providerModelId,
+				capabilities: defaultModelCapabilities,
+				pricing: null,
 				created: stamp.value,
 				updated: null,
 				archivePeriods: [],
@@ -84,7 +86,15 @@ if (import.meta.vitest) {
 
 			expect(result).toMatchObject({
 				ok: true,
-				value: { id: 'model-1', providerId: 'provider-1', name: 'Sonnet', providerModelId: 'claude-sonnet', archivePeriods: [] },
+				value: {
+					id: 'model-1',
+					providerId: 'provider-1',
+					name: 'Sonnet',
+					providerModelId: 'claude-sonnet',
+					capabilities: defaultModelCapabilities,
+					pricing: null,
+					archivePeriods: [],
+				},
 			})
 		})
 	})

@@ -12,10 +12,12 @@ import { buildCommandHandler } from './utils/handler'
 import {
 	auditStamp,
 	createRecordValue,
-	modelIdsFromProjectConfigRecord,
+	loadSelectableModelFacts,
+	modelIdsFromModelUses,
+	modelUsesFromProjectConfigRecord,
 	nextId,
 	normalizeProjectConfigRecordForCreate,
-	validateSelectableModels,
+	validateModelUseConfigs,
 	withTransaction,
 } from './utils/storage'
 
@@ -43,8 +45,12 @@ export function createCreateProjectCommand(runtime: CoreRuntime): Operation {
 		return withTransaction(runtime.services, async (storage): Promise<CoreResult<Project, Exclude<Error, InvalidInputError>>> => {
 			const config = normalizeProjectConfigRecordForCreate(input.config, stampResult.value)
 			if (config !== null) {
-				const referenceValidation = await validateSelectableModels(storage, modelIdsFromProjectConfigRecord(config))
-				if (!referenceValidation.ok) return referenceValidation
+				const modelUses = modelUsesFromProjectConfigRecord(config)
+				const facts = await loadSelectableModelFacts(storage, modelIdsFromModelUses(modelUses))
+				if (!facts.ok) return facts
+
+				const modelUseValidation = validateModelUseConfigs(facts.value, modelUses)
+				if (!modelUseValidation.ok) return modelUseValidation
 			}
 
 			const project: Project = {
@@ -74,10 +80,10 @@ if (import.meta.vitest) {
 					source: { type: 'source-control' },
 					config: {
 						model: {
-							planningModelId: null,
-							revisionPlanningModelId: null,
-							executionModelId: null,
-							revisionExecutionModelId: null,
+							planning: null,
+							revisionPlanning: null,
+							execution: null,
+							revisionExecution: null,
 						},
 						work: null,
 					},

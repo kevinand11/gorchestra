@@ -3,6 +3,7 @@ import { v, type PipeOutput } from 'valleyed'
 import type { CommandContext } from './types'
 import type { AgentRunEvent } from '../domain/agent-run'
 import { idPipe, type AuditStamp } from '../domain/commons'
+import { modelThinkingLevelPipe } from '../domain/model'
 import type {
 	AgentRunNotActiveError,
 	AgentRunNotInteractiveError,
@@ -11,6 +12,7 @@ import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
+	ModelThinkingLevelUnavailableError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
@@ -20,9 +22,9 @@ import { appendAgentRunEvent } from '../utils/agent-run-events'
 import { requireInteractiveAgentRunTargetOpen } from '../utils/agent-run-targets'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
-import { getRequired, validateSelectableModels, withAuditStampTransaction } from './utils/storage'
+import { loadSelectableModelFacts, validateModelUseConfigs, withAuditStampTransaction } from './utils/storage'
 
-const selectAgentRunModelInputPipe = v.object({ agentRunId: idPipe, modelId: idPipe })
+const selectAgentRunModelInputPipe = v.object({ agentRunId: idPipe, modelId: idPipe, thinkingLevel: modelThinkingLevelPipe })
 export type Input = PipeOutput<typeof selectAgentRunModelInputPipe>
 
 export type Result = AgentRunEvent
@@ -34,6 +36,7 @@ export type Error =
 	| InvariantViolationError
 	| ArchivedModelReferenceError
 	| ArchivedModelProviderReferenceError
+	| ModelThinkingLevelUnavailableError
 	| AgentRunNotInteractiveError
 	| AgentRunNotActiveError
 
@@ -61,29 +64,25 @@ async function appendSelectedAgentRunModel(
 	input: Input,
 	stamp: AuditStamp,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const selectable = await validateSelectableModels(storage, [input.modelId])
-	return selectable.ok ? appendValidatedSelectedAgentRunModel(runtime, storage, input, stamp) : selectable
+	const facts = await loadSelectableModelFacts(storage, [input.modelId])
+	if (!facts.ok) return facts
+
+	const modelUseValidation = validateModelUseConfigs(facts.value, [{ modelId: input.modelId, thinkingLevel: input.thinkingLevel }])
+	return modelUseValidation.ok ? appendValidatedSelectedAgentRunModel(runtime, storage, input, stamp) : modelUseValidation
 }
 
-async function appendValidatedSelectedAgentRunModel(
+function appendValidatedSelectedAgentRunModel(
 	runtime: CoreRuntime,
 	storage: CoreStorage,
 	input: Input,
 	stamp: AuditStamp,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const model = await getRequired('model', storage, input.modelId)
-	if (!model.ok) return model
-
-	const provider = await getRequired('model-provider', storage, model.value.providerId)
-	return provider.ok
-		? appendAgentRunEvent(runtime, storage, input.agentRunId, {
-				type: 'agent-run-model-selected',
-				modelId: model.value.id,
-				modelProviderId: provider.value.id,
-				protocol: provider.value.protocol,
-				authorized: stamp,
-			})
-		: provider
+	return appendAgentRunEvent(runtime, storage, input.agentRunId, {
+		type: 'agent-run-model-selected',
+		modelId: input.modelId,
+		thinkingLevel: input.thinkingLevel,
+		authorized: stamp,
+	})
 }
 
 if (import.meta.vitest) {
@@ -97,7 +96,7 @@ if (import.meta.vitest) {
 			seedSelectableModel(options.tx, 'model-2')
 			const command = createSelectAgentRunModelCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', modelId: 'model-2' }, context)
+			const result = await command({ agentRunId: 'agent-run-1', modelId: 'model-2', thinkingLevel: 'off' }, context)
 
 			expect(result).toEqual({
 				ok: true,
@@ -109,8 +108,7 @@ if (import.meta.vitest) {
 					body: {
 						type: 'agent-run-model-selected',
 						modelId: 'model-2',
-						modelProviderId: 'model-2-provider',
-						protocol: 'anthropic-messages',
+						thinkingLevel: 'off',
 						authorized: localStamp(),
 					},
 				},
@@ -122,7 +120,7 @@ if (import.meta.vitest) {
 			seedSelectableModel(options.tx, 'model-2', { modelArchived: true })
 			const command = createSelectAgentRunModelCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', modelId: 'model-2' }, context)
+			const result = await command({ agentRunId: 'agent-run-1', modelId: 'model-2', thinkingLevel: 'off' }, context)
 
 			expect(result).toEqual({ ok: false, error: { type: 'archived-model-reference', modelId: 'model-2' } })
 		})
@@ -138,7 +136,7 @@ if (import.meta.vitest) {
 			}
 			const command = createSelectAgentRunModelCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', modelId: 'model-2' }, context)
+			const result = await command({ agentRunId: 'agent-run-1', modelId: 'model-2', thinkingLevel: 'off' }, context)
 
 			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-interactive', agentRunId: 'agent-run-1' } })
 		})
@@ -148,7 +146,7 @@ if (import.meta.vitest) {
 			seedSelectableModel(options.tx, 'model-2')
 			const command = createSelectAgentRunModelCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', modelId: 'model-2' }, context)
+			const result = await command({ agentRunId: 'agent-run-1', modelId: 'model-2', thinkingLevel: 'off' }, context)
 
 			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: 'agent-run-1' } })
 		})

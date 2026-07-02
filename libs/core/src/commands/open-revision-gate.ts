@@ -3,12 +3,12 @@ import { v, type PipeOutput } from 'valleyed'
 import type { CommandContext } from './types'
 import type { AgentRun } from '../domain/agent-run'
 import { idPipe, type AuditStamp, type Id, type RuntimeRecord } from '../domain/commons'
-import type { PortfolioConfigRecord } from '../domain/config'
+import type { ModelUseConfig, PortfolioConfigRecord } from '../domain/config'
 import type { Delivery } from '../domain/delivery'
 import type { Project } from '../domain/project'
 import type { FetchedFeedback, ReviewSurface, ReviewSurfaceScope } from '../domain/review-surface'
 import type { RevisionGate, RevisionScope } from '../domain/revision'
-import type { AgentRunModelUnresolvedError, InvalidInputError, ReviewSurfaceAlreadyMergedError } from '../errors'
+import type { AgentRunModelUseUnresolvedError, InvalidInputError, ReviewSurfaceAlreadyMergedError } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
 import { createModelAgentRunWithInitialModel } from '../utils/agent-run-events'
@@ -21,9 +21,11 @@ import {
 	createRecordValue,
 	getPortfolioConfig,
 	getRequired,
+	loadSelectableModelFacts,
+	modelIdsFromModelUses,
 	nextId,
 	runtimeRecord,
-	validateSelectableModels,
+	validateModelUseConfigs,
 	withTransaction,
 } from './utils/storage'
 
@@ -42,7 +44,7 @@ export type Error =
 	| InvalidInputError
 	| ConfigCommandReferenceError
 	| ConfigCommandStorageError
-	| AgentRunModelUnresolvedError
+	| AgentRunModelUseUnresolvedError
 	| ReviewSurfaceAlreadyMergedError
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
@@ -65,7 +67,7 @@ type OpenRevisionGateFacts = {
 	revisionGate: RevisionGate
 	agentRunId: Id
 	started: RuntimeRecord
-	modelId: Id
+	modelUse: ModelUseConfig
 	runtimeValues: CoreRuntimeValues
 }
 
@@ -131,14 +133,14 @@ async function openRevisionGateFacts(
 	const notMerged = validateReviewSurfaceNotMerged(reviewSurface.value)
 	if (!notMerged.ok) return notMerged
 
-	const modelId = await resolveRevisionPlanningModelId(storage, values.revisionGateId, reviewSurface.value.scope)
-	return modelId.ok ? { ok: true, value: openRevisionGateFactsValue(values, reviewSurface.value, modelId.value) } : modelId
+	const modelUse = await resolveRevisionPlanningModelUse(storage, values.revisionGateId, reviewSurface.value.scope)
+	return modelUse.ok ? { ok: true, value: openRevisionGateFactsValue(values, reviewSurface.value, modelUse.value) } : modelUse
 }
 
 function openRevisionGateFactsValue(
 	values: OpenRevisionGateRuntimeValues,
 	reviewSurface: ReviewSurface,
-	modelId: Id,
+	modelUse: ModelUseConfig,
 ): OpenRevisionGateFacts {
 	return {
 		revisionGate: {
@@ -150,7 +152,7 @@ function openRevisionGateFactsValue(
 		},
 		agentRunId: values.agentRunId,
 		started: values.started,
-		modelId,
+		modelUse,
 		runtimeValues: values.runtimeValues,
 	}
 }
@@ -166,7 +168,8 @@ async function writeOpenRevisionGateFacts(
 		agentRunId: facts.agentRunId,
 		purpose: { type: 'revision-planning', revisionGateId: revisionGate.value.id },
 		started: facts.started,
-		modelId: facts.modelId,
+		modelId: facts.modelUse.modelId,
+		thinkingLevel: facts.modelUse.thinkingLevel,
 	})
 	return agentRun.ok ? { ok: true, value: { revisionGate: revisionGate.value, agentRun: agentRun.value, feedback: [] } } : agentRun
 }
@@ -184,72 +187,65 @@ function revisionScopeFromReviewSurfaceScope(scope: ReviewSurfaceScope): Revisio
 	}
 }
 
-async function resolveRevisionPlanningModelId(
+async function resolveRevisionPlanningModelUse(
 	storage: CoreStorage,
 	revisionGateId: Id,
 	scope: ReviewSurfaceScope,
-): Promise<CoreResult<Id, Exclude<Error, InvalidInputError | ReviewSurfaceAlreadyMergedError>>> {
+): Promise<CoreResult<ModelUseConfig, Exclude<Error, InvalidInputError | ReviewSurfaceAlreadyMergedError>>> {
 	const delivery = await reviewSurfaceDelivery(storage, scope)
-	return delivery.ok ? resolveRevisionPlanningModelIdForDelivery(storage, revisionGateId, delivery.value) : delivery
+	return delivery.ok ? resolveRevisionPlanningModelUseForDelivery(storage, revisionGateId, delivery.value) : delivery
 }
 
 async function reviewSurfaceDelivery(
 	storage: CoreStorage,
 	scope: ReviewSurfaceScope,
-): Promise<CoreResult<Delivery, Exclude<Error, InvalidInputError | AgentRunModelUnresolvedError | ReviewSurfaceAlreadyMergedError>>> {
+): Promise<CoreResult<Delivery, Exclude<Error, InvalidInputError | AgentRunModelUseUnresolvedError | ReviewSurfaceAlreadyMergedError>>> {
 	if (scope.type === 'delivery') return getRequired('delivery', storage, scope.deliveryId)
 
 	const slice = await getRequired('slice', storage, scope.sliceId)
 	return slice.ok ? getRequired('delivery', storage, slice.value.deliveryId) : slice
 }
 
-async function resolveRevisionPlanningModelIdForDelivery(
+async function resolveRevisionPlanningModelUseForDelivery(
 	storage: CoreStorage,
 	revisionGateId: Id,
 	delivery: Delivery,
-): Promise<CoreResult<Id, Exclude<Error, InvalidInputError | ReviewSurfaceAlreadyMergedError>>> {
+): Promise<CoreResult<ModelUseConfig, Exclude<Error, InvalidInputError | ReviewSurfaceAlreadyMergedError>>> {
 	const project = await getRequired('project', storage, delivery.projectId)
-	return project.ok ? resolveRevisionPlanningModelIdForProjectDelivery(storage, revisionGateId, delivery, project.value) : project
+	return project.ok ? resolveRevisionPlanningModelUseForProject(storage, revisionGateId, project.value) : project
 }
 
-async function resolveRevisionPlanningModelIdForProjectDelivery(
+async function resolveRevisionPlanningModelUseForProject(
 	storage: CoreStorage,
 	revisionGateId: Id,
-	delivery: Delivery,
 	project: Project,
-): Promise<CoreResult<Id, Exclude<Error, InvalidInputError | ReviewSurfaceAlreadyMergedError>>> {
+): Promise<CoreResult<ModelUseConfig, Exclude<Error, InvalidInputError | ReviewSurfaceAlreadyMergedError>>> {
 	const portfolioConfig = await getPortfolioConfig(storage)
 	return portfolioConfig.ok
-		? validateResolvedRevisionPlanningModel(storage, revisionGateId, revisionPlanningModelId(delivery, project, portfolioConfig.value))
+		? validateResolvedRevisionPlanningModelUse(storage, revisionGateId, revisionPlanningModelUse(project, portfolioConfig.value))
 		: portfolioConfig
 }
 
-async function validateResolvedRevisionPlanningModel(
+async function validateResolvedRevisionPlanningModelUse(
 	storage: CoreStorage,
 	revisionGateId: Id,
-	modelId: Id | null,
-): Promise<CoreResult<Id, Exclude<Error, InvalidInputError | ReviewSurfaceAlreadyMergedError>>> {
-	if (modelId === null) return agentRunModelUnresolved({ type: 'revision-planning', revisionGateId })
+	modelUse: ModelUseConfig | null,
+): Promise<CoreResult<ModelUseConfig, Exclude<Error, InvalidInputError | ReviewSurfaceAlreadyMergedError>>> {
+	if (modelUse === null) return agentRunModelUseUnresolved({ type: 'revision-planning', revisionGateId })
 
-	const modelValidation = await validateSelectableModels(storage, [modelId])
-	return modelValidation.ok ? { ok: true, value: modelId } : modelValidation
+	const facts = await loadSelectableModelFacts(storage, modelIdsFromModelUses([modelUse]))
+	if (!facts.ok) return facts
+
+	const modelUseValidation = validateModelUseConfigs(facts.value, [modelUse])
+	return modelUseValidation.ok ? { ok: true, value: modelUse } : modelUseValidation
 }
 
-function revisionPlanningModelId(delivery: Delivery, project: Project, portfolioConfig: PortfolioConfigRecord | null): Id | null {
+function revisionPlanningModelUse(project: Project, portfolioConfig: PortfolioConfigRecord | null): ModelUseConfig | null {
 	return firstPresent([
-		deliveryRevisionPlanningModelId(delivery),
-		projectRevisionPlanningModelId(project),
-		portfolioConfig?.value.model.revisionPlanningModelId,
-		portfolioConfig?.value.model.defaultModelId,
+		project.config?.value?.model?.revisionPlanning,
+		portfolioConfig?.value.model.revisionPlanning,
+		portfolioConfig?.value.model.default,
 	])
-}
-
-function deliveryRevisionPlanningModelId(delivery: Delivery): Id | null {
-	return delivery.config?.value?.model?.revisionPlanningModelId ?? null
-}
-
-function projectRevisionPlanningModelId(project: Project): Id | null {
-	return project.config?.value?.model?.revisionPlanningModelId ?? null
 }
 
 function firstPresent<T>(values: Array<T | null | undefined>): T | null {
@@ -262,8 +258,8 @@ function validateReviewSurfaceNotMerged(reviewSurface: ReviewSurface): CoreResul
 		: { ok: true, value: undefined }
 }
 
-function agentRunModelUnresolved(purpose: AgentRun['purpose']): CoreResult<never, AgentRunModelUnresolvedError> {
-	return { ok: false, error: { type: 'agent-run-model-unresolved', purpose } }
+function agentRunModelUseUnresolved(purpose: AgentRun['purpose']): CoreResult<never, AgentRunModelUseUnresolvedError> {
+	return { ok: false, error: { type: 'agent-run-model-use-unresolved', purpose } }
 }
 
 if (import.meta.vitest) {
@@ -300,8 +296,7 @@ if (import.meta.vitest) {
 			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toEqual({
 				type: 'agent-run-model-selected',
 				modelId: 'model-1',
-				modelProviderId: 'model-1-provider',
-				protocol: 'anthropic-messages',
+				thinkingLevel: 'off',
 				authorized: null,
 			})
 		})
@@ -323,7 +318,7 @@ if (import.meta.vitest) {
 					feedback: [],
 				},
 			})
-			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toMatchObject({ modelId: 'model-delivery' })
+			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toMatchObject({ modelId: 'model-project' })
 		})
 
 		it('returns not-found when the Review Surface does not exist', async () => {
@@ -368,11 +363,16 @@ if (import.meta.vitest) {
 		seedDelivery(options.tx, 'delivery-1')
 		seedSlice(options.tx, 'slice-1', 'delivery-1')
 		seedSelectableModel(options.tx, 'model-1')
-		seedSelectableModel(options.tx, 'model-delivery')
-		options.tx.deliveries.records.get('delivery-1')!.config = {
+		seedSelectableModel(options.tx, 'model-project')
+		options.tx.projects.records.get('project-1')!.config = {
 			configured: localStamp(),
 			value: {
-				model: { revisionPlanningModelId: 'model-delivery', executionModelId: null, revisionExecutionModelId: null },
+				model: {
+					planning: null,
+					revisionPlanning: { modelId: 'model-project', thinkingLevel: 'off' },
+					execution: null,
+					revisionExecution: null,
+				},
 				work: null,
 			},
 		}
@@ -440,11 +440,11 @@ if (import.meta.vitest) {
 			configured: stamp,
 			value: {
 				model: {
-					defaultModelId,
-					planningModelId: null,
-					revisionPlanningModelId: null,
-					executionModelId: null,
-					revisionExecutionModelId: null,
+					default: { modelId: defaultModelId, thinkingLevel: 'off' },
+					planning: null,
+					revisionPlanning: null,
+					execution: null,
+					revisionExecution: null,
 				},
 				work: null,
 			},

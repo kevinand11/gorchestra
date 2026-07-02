@@ -1,6 +1,6 @@
 import type { DeliveryContext } from './types'
 import type { Id } from '../../domain/commons'
-import type { DeliveryWorkConfig, ProjectConfigRecord } from '../../domain/config'
+import type { DeliveryWorkConfig, ModelUseConfig, ProjectConfigRecord } from '../../domain/config'
 import type { ValidationEvidence } from '../../domain/evidence'
 import type { Model } from '../../domain/model'
 import type { ModelProvider } from '../../domain/model-provider'
@@ -16,6 +16,7 @@ import type { Result } from '../types'
 
 export interface DeliveryWorkResolution {
 	workConfig: DeliveryWorkConfig
+	executionModelUse: ModelUseConfig
 	executionModel: Model
 	executionModelProvider: ModelProvider
 }
@@ -62,17 +63,18 @@ export async function resolveDeliveryWork(
 ): Promise<Result<DeliveryPreflight, DeliveryPreflightError>> {
 	if (context.portfolioConfig === null) return ok(portfolioConfigMissing())
 
-	const modelFacts = await selectedModelFacts(storage, resolveExecutionModelId(context))
+	const executionModelUse = resolveExecutionModelUse(context)
+	const modelFacts = await selectedModelFacts(storage, executionModelUse)
 	if (!modelFacts.ok) return modelFacts
 	if (isFailedDeliveryPreflight(modelFacts.value)) return ok(modelFacts.value)
 
-	return resolvedWorkConfig(context, modelFacts.value.model, modelFacts.value.modelProvider)
+	return resolvedWorkConfig(context, executionModelUse, modelFacts.value.model, modelFacts.value.modelProvider)
 }
 
 type SelectedModelFacts = { model: Model; modelProvider: ModelProvider }
 
-async function selectedModelFacts(storage: CoreStorage, modelId: Id): Promise<PreflightStep<SelectedModelFacts>> {
-	const model = await selectedModel(storage, modelId)
+async function selectedModelFacts(storage: CoreStorage, modelUse: ModelUseConfig): Promise<PreflightStep<SelectedModelFacts>> {
+	const model = await selectedModel(storage, modelUse.modelId)
 	return model.ok ? selectedModelFactsAfterModel(storage, model.value) : model
 }
 
@@ -111,6 +113,7 @@ async function selectedModelProvider(storage: CoreStorage, providerId: Id): Prom
 
 function resolvedWorkConfig(
 	context: DeliveryContext,
+	executionModelUse: ModelUseConfig,
 	executionModel: Model,
 	executionModelProvider: ModelProvider,
 ): Result<DeliveryPreflight, never> {
@@ -123,7 +126,7 @@ function resolvedWorkConfig(
 					unresolvedWorkConfigSnapshot(context, executionModel, executionModelProvider),
 				),
 			)
-		: ok(passedPreflight({ workConfig, executionModel, executionModelProvider }))
+		: ok(passedPreflight({ workConfig, executionModelUse, executionModel, executionModelProvider }))
 }
 
 function passedPreflight(resolution: DeliveryWorkResolution): PassedDeliveryPreflight {
@@ -158,14 +161,14 @@ function failedPreflight(summary: string, reason: FailedDeliveryPreflightReason,
 	}
 }
 
-function resolveExecutionModelId(context: DeliveryContext): Id {
-	if (context.portfolioConfig === null) throw new Error('Expected Portfolio Config before resolving execution Model.')
+function resolveExecutionModelUse(context: DeliveryContext): ModelUseConfig {
+	if (context.portfolioConfig === null) throw new Error('Expected Portfolio Config before resolving execution Model Use Config.')
 
 	return firstPresent([
-		context.delivery.config?.value?.model?.executionModelId,
-		context.projectConfig?.value?.model?.executionModelId,
-		context.portfolioConfig.value.model.executionModelId,
-		context.portfolioConfig.value.model.defaultModelId,
+		context.delivery.config?.value?.model?.execution,
+		context.projectConfig?.value?.model?.execution,
+		context.portfolioConfig.value.model.execution,
+		context.portfolioConfig.value.model.default,
 	])
 }
 

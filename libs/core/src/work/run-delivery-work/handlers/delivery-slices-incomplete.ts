@@ -371,11 +371,11 @@ if (import.meta.vitest) {
 			configured: localStamp(),
 			value: {
 				model: {
-					defaultModelId: 'model-1',
-					planningModelId: null,
-					revisionPlanningModelId: null,
-					executionModelId: null,
-					revisionExecutionModelId: null,
+					default: { modelId: 'model-1', thinkingLevel: 'off' },
+					planning: null,
+					revisionPlanning: null,
+					execution: null,
+					revisionExecution: null,
 				},
 				work: includeWorkConfig ? { maxProcessableSliceSlots, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 } : null,
 			},

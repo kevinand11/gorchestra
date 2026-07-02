@@ -123,7 +123,7 @@ async function loadLoopStateModel(
 	const model = await getRequired('model', storage, base.modelSelection.modelId)
 	if (!model.ok) return model
 
-	const provider = await getRequired('model-provider', storage, base.modelSelection.modelProviderId)
+	const provider = await getRequired('model-provider', storage, model.value.providerId)
 	return provider.ok
 		? {
 				ok: true,
@@ -605,8 +605,7 @@ if (import.meta.vitest) {
 			body: {
 				type: 'agent-run-model-selected',
 				modelId: 'model-1',
-				modelProviderId: 'model-1-provider',
-				protocol: 'anthropic-messages',
+				thinkingLevel: 'off',
 				authorized: null,
 			},
 		})

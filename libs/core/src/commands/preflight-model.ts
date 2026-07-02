@@ -3,7 +3,7 @@ import { v, type PipeOutput } from 'valleyed'
 import type { CommandContext } from './types'
 import { idPipe } from '../domain/commons'
 import type { ValidationEvidence } from '../domain/evidence'
-import type { Model } from '../domain/model'
+import { defaultModelCapabilities, type Model } from '../domain/model'
 import type { ModelProvider, ModelProviderHeader } from '../domain/model-provider'
 import type {
 	InvalidCoreServiceOutputError,
@@ -389,6 +389,8 @@ if (import.meta.vitest) {
 			providerId: 'model-provider-1',
 			name: 'GPT 5',
 			providerModelId: 'gpt-5',
+			capabilities: defaultModelCapabilities,
+			pricing: null,
 			created: stamp,
 			updated: null,
 			archivePeriods: archived ? [{ archived: stamp, unarchived: null }] : [],
@@ -399,7 +401,7 @@ if (import.meta.vitest) {
 		return {
 			id: 'model-provider-1',
 			name: 'OpenAI',
-			protocol: 'openai-responses',
+			protocol: { type: 'openai-responses' },
 			baseUrl: 'https://api.openai.com/v1',
 			auth: { type: 'apiKey', secretId: 'secret-1' },
 			headers: [{ name: 'OpenAI-Organization', valueSecretId: 'secret-2' }],

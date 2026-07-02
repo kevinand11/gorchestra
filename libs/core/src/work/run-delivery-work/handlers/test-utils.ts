@@ -20,6 +20,7 @@ export async function createRunDeliveryWorkHandlerTestContext(options: { sliceId
 
 	const workResolution = {
 		workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
+		executionModelUse: { modelId: 'model-1', thinkingLevel: 'off' as const },
 		executionModel: services.tx.models.records.get('model-1')!,
 		executionModelProvider: services.tx.modelProviders.records.get('model-1-provider')!,
 	}

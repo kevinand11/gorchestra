@@ -19,22 +19,43 @@ export type CreateMemoryRevisionInput = {
 	body: string
 }
 
-export type ModelProviderProtocol = 'anthropic-messages' | 'openai-responses' | 'openai-completions' | 'google-generative-ai'
+export type ModelProviderProtocol =
+	| { type: 'anthropic-messages' }
+	| { type: 'openai-responses' }
+	| { type: 'openai-completions' }
+	| { type: 'google-generative-ai' }
+export type ModelProviderProtocolType = ModelProviderProtocol['type']
 export type ModelProviderAuth = { type: 'apiKey'; secretId: string }
 export type ModelProviderHeader = { name: string; valueSecretId: string }
+export type ModelThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+export type ModelThinkingLevelMap = Record<ModelThinkingLevel, { type: 'provider-value'; value: string } | null>
+export type ModelCapabilities = {
+	inputs: Array<'text'>
+	contextWindowTokens: number
+	maxOutputTokens: number
+	reasoning: ModelThinkingLevelMap | null
+}
+export type ModelTokenPricing = {
+	unit: 'micro-usd-per-million-tokens'
+	input: number
+	output: number
+	cacheRead: number
+	cacheWrite: number
+}
+export type ModelUseConfig = { modelId: string; thinkingLevel: ModelThinkingLevel }
 
 export type PortfolioConfigInput = {
 	model: {
-		defaultModelId: string
-		planningModelId: string | null
-		revisionPlanningModelId: string | null
-		executionModelId: string | null
-		revisionExecutionModelId: string | null
+		default: ModelUseConfig
+		planning: ModelUseConfig | null
+		revisionPlanning: ModelUseConfig | null
+		execution: ModelUseConfig | null
+		revisionExecution: ModelUseConfig | null
 	}
 	work: { maxProcessableSliceSlots: number; maxCorrectionRetriesPerFailure: number; modelTimeoutMs: number } | null
 }
 
-export type PlanConfigInput = { model: { planningModelId: string | null } | null }
+export type PlanConfigInput = { model: { planning: ModelUseConfig | null } | null }
 
 export type CreateModelProviderInput = {
 	name: string
@@ -46,7 +67,7 @@ export type CreateModelProviderInput = {
 
 export type UpdateModelProviderInput = Omit<CreateModelProviderInput, 'protocol'>
 export type CreateModelInput = { name: string; providerModelId: string }
-export type UpdateModelInput = { name: string }
+export type UpdateModelInput = { name: string; capabilities: ModelCapabilities; pricing: ModelTokenPricing | null }
 
 type ServerApiOptionsResolver = () => ServerApiOptions | null
 type PreconditionRequiredHandler = () => void | Promise<void>

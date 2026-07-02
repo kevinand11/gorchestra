@@ -1,7 +1,7 @@
 import type { AgentRunModelMessageOutcome } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
 import type { Model } from '../../domain/model'
-import type { ModelProvider, ModelProviderProtocol } from '../../domain/model-provider'
+import type { ModelProvider, ModelProviderProtocolType } from '../../domain/model-provider'
 import type { InvalidCoreServiceOutputError, StorageOperationFailedError } from '../../errors'
 import type { AgentRunModelDelta } from '../../runtime/agent-runs/live-events'
 import type { AgentRunProviderMessage, AgentRunProviderTool } from '../../runtime/agent-runs/types'
@@ -61,14 +61,14 @@ export interface ModelProviderProtocolAccess {
 	headers: Array<{ name: string; plaintext: string }>
 }
 
-export interface ModelProviderProtocolProviderPreflightModelInput<Protocol extends ModelProviderProtocol> {
+export interface ModelProviderProtocolProviderPreflightModelInput<Protocol extends ModelProviderProtocolType> {
 	model: Model
-	modelProvider: ModelProvider & { protocol: Protocol }
+	modelProvider: ModelProvider & { protocol: { type: Protocol } }
 	access: ModelProviderProtocolAccess
 }
 
-export interface ModelProviderProtocolProviderModelAgentTurnInput<Protocol extends ModelProviderProtocol> extends ModelAgentTurnInput {
-	modelProvider: ModelProvider & { protocol: Protocol }
+export interface ModelProviderProtocolProviderModelAgentTurnInput<Protocol extends ModelProviderProtocolType> extends ModelAgentTurnInput {
+	modelProvider: ModelProvider & { protocol: { type: Protocol } }
 	access: ModelProviderProtocolAccess
 }
 
@@ -86,7 +86,7 @@ export type ModelProviderProtocolProviderPreflight =
 			>
 	  }
 
-export interface ModelProviderProtocolProvider<Protocol extends ModelProviderProtocol> {
+export interface ModelProviderProtocolProvider<Protocol extends ModelProviderProtocolType> {
 	preflightModel(input: ModelProviderProtocolProviderPreflightModelInput<Protocol>): Promise<ModelProviderProtocolProviderPreflight>
 	runModelAgentTurn?(input: ModelProviderProtocolProviderModelAgentTurnInput<Protocol>): Promise<ModelAgentTurnOutput>
 }

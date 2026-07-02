@@ -3,8 +3,14 @@ import { v, type PipeOutput } from 'valleyed'
 import { archivePeriodPipe, auditStampPipe, idPipe, nonEmptyTrimmedStringPipe } from './commons'
 import { listedModelPipe } from './model'
 
-export const modelProviderProtocolPipe = v.in(['anthropic-messages', 'openai-responses', 'openai-completions', 'google-generative-ai'])
+export const modelProviderProtocolPipe = v.discriminate((value) => value.type, {
+	'anthropic-messages': v.object({ type: v.eq('anthropic-messages') }),
+	'openai-responses': v.object({ type: v.eq('openai-responses') }),
+	'openai-completions': v.object({ type: v.eq('openai-completions') }),
+	'google-generative-ai': v.object({ type: v.eq('google-generative-ai') }),
+})
 export type ModelProviderProtocol = PipeOutput<typeof modelProviderProtocolPipe>
+export type ModelProviderProtocolType = ModelProviderProtocol['type']
 
 export const modelProviderBaseUrlPipe = nonEmptyTrimmedStringPipe
 	.pipe((value) => value.replace(/\/+$/, ''))
@@ -78,3 +84,14 @@ export const listedModelProviderPipe = v.object({
 	models: v.array(listedModelPipe),
 })
 export type ListedModelProvider = PipeOutput<typeof listedModelProviderPipe>
+
+if (import.meta.vitest) {
+	const { describe, expect, it } = import.meta.vitest
+
+	describe('ModelProvider domain pipes', () => {
+		it('accepts object protocol variants and rejects legacy strings', () => {
+			expect(v.validate(modelProviderProtocolPipe, { type: 'openai-responses' })).toMatchObject({ valid: true })
+			expect(v.validate(modelProviderProtocolPipe, 'openai-responses')).toMatchObject({ valid: false })
+		})
+	})
+}

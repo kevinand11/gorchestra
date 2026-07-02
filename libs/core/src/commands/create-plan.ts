@@ -1,13 +1,13 @@
-import { v, type PipeOutput } from 'valleyed'
+import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
 import type { AgentRun } from '../domain/agent-run'
 import { idPipe, nonEmptyTrimmedStringPipe, type AuditStamp, type Id, type RuntimeRecord } from '../domain/commons'
-import type { PortfolioConfigRecord } from '../domain/config'
+import type { ModelUseConfig, PortfolioConfigRecord } from '../domain/config'
 import { planConfigPipe } from '../domain/config'
 import type { Plan, PlanWithPlanningAgentRun } from '../domain/plan'
 import type { Project } from '../domain/project'
-import type { AgentRunModelUnresolvedError, InvalidInputError } from '../errors'
+import type { AgentRunModelUseUnresolvedError, InvalidInputError } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreDispatchRequest, CoreStorage } from '../services'
 import { appendAgentRunEvent, createModelAgentRunWithInitialModel } from '../utils/agent-run-events'
@@ -20,10 +20,12 @@ import {
 	createRecordValue,
 	getPortfolioConfig,
 	getRequired,
+	loadSelectableModelFacts,
+	modelIdsFromModelUses,
 	nextId,
 	normalizePlanConfigRecord,
 	runtimeRecord,
-	validateSelectableModels,
+	validateModelUseConfigs,
 	withTransaction,
 } from './utils/storage'
 
@@ -33,11 +35,12 @@ const createPlanInputPipe = v.object({
 	initialMessage: nonEmptyTrimmedStringPipe,
 	config: planConfigPipe,
 })
-export type Input = PipeOutput<typeof createPlanInputPipe>
+export type Input = PipeInput<typeof createPlanInputPipe>
+type ValidatedInput = PipeOutput<typeof createPlanInputPipe>
 
 export type Result = PlanWithPlanningAgentRun
 
-export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError | AgentRunModelUnresolvedError
+export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError | AgentRunModelUseUnresolvedError
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
@@ -57,7 +60,7 @@ type PlanCreationFacts = {
 	plan: Plan
 	agentRunId: Id
 	started: RuntimeRecord
-	modelId: Id
+	modelUse: ModelUseConfig
 	initialMessage: string
 	stamp: AuditStamp
 	runtimeValues: CoreRuntimeValues
@@ -65,7 +68,7 @@ type PlanCreationFacts = {
 
 async function handleCreatePlan(
 	runtime: CoreRuntime,
-	input: Input,
+	input: ValidatedInput,
 	context: CommandContext,
 ): Promise<CoreResult<PlanWithPlanningAgentRun, Error>> {
 	const values = planCreationRuntimeValues(runtime, context)
@@ -110,7 +113,7 @@ function planCreationRuntimeValuesAfterAgentRunId(
 async function writePlan(
 	runtime: CoreRuntime,
 	storage: CoreStorage,
-	input: Input,
+	input: ValidatedInput,
 	values: PlanCreationRuntimeValues,
 ): Promise<CoreResult<PlanWithPlanningAgentRun, Exclude<Error, InvalidInputError>>> {
 	const facts = await planCreationFacts(storage, input, values)
@@ -119,7 +122,7 @@ async function writePlan(
 
 async function planCreationFacts(
 	storage: CoreStorage,
-	input: Input,
+	input: ValidatedInput,
 	values: PlanCreationRuntimeValues,
 ): Promise<CoreResult<PlanCreationFacts, Exclude<Error, InvalidInputError>>> {
 	const project = await getRequired('project', storage, input.projectId)
@@ -128,39 +131,44 @@ async function planCreationFacts(
 
 async function planCreationFactsForProject(
 	storage: CoreStorage,
-	input: Input,
+	input: ValidatedInput,
 	values: PlanCreationRuntimeValues,
 	project: Project,
 ): Promise<CoreResult<PlanCreationFacts, Exclude<Error, InvalidInputError>>> {
 	const config = normalizePlanConfigRecord(input.config, values.stamp)
-	const modelId = await resolvePlanningModelId(storage, values.planId, config, project)
-	return modelId.ok ? validatedPlanCreationFacts(storage, input, values, project, config, modelId.value) : modelId
+	const modelUse = await resolvePlanningModelUse(storage, values.planId, config, project)
+	return modelUse.ok ? validatedPlanCreationFacts(storage, input, values, project, config, modelUse.value) : modelUse
 }
 
 async function validatedPlanCreationFacts(
 	storage: CoreStorage,
-	input: Input,
+	input: ValidatedInput,
 	values: PlanCreationRuntimeValues,
 	project: Project,
 	config: ReturnType<typeof normalizePlanConfigRecord>,
-	modelId: Id,
+	modelUse: ModelUseConfig,
 ): Promise<CoreResult<PlanCreationFacts, Exclude<Error, InvalidInputError>>> {
-	const modelValidation = await validateSelectableModels(storage, [modelId])
-	return modelValidation.ok ? { ok: true, value: planCreationFactsValue(input, values, project, config, modelId) } : modelValidation
+	const facts = await loadSelectableModelFacts(storage, modelIdsFromModelUses([modelUse]))
+	if (!facts.ok) return facts
+
+	const modelUseValidation = validateModelUseConfigs(facts.value, [modelUse])
+	return modelUseValidation.ok
+		? { ok: true, value: planCreationFactsValue(input, values, project, config, modelUse) }
+		: modelUseValidation
 }
 
 function planCreationFactsValue(
-	input: Input,
+	input: ValidatedInput,
 	values: PlanCreationRuntimeValues,
 	project: Project,
 	config: ReturnType<typeof normalizePlanConfigRecord>,
-	modelId: Id,
+	modelUse: ModelUseConfig,
 ): PlanCreationFacts {
 	return {
 		plan: { id: values.planId, projectId: project.id, title: input.title, config, created: values.stamp },
 		agentRunId: values.agentRunId,
 		started: values.started,
-		modelId,
+		modelUse,
 		initialMessage: input.initialMessage,
 		stamp: values.stamp,
 		runtimeValues: values.runtimeValues,
@@ -186,7 +194,8 @@ async function writePlanningAgentRun(
 		agentRunId: facts.agentRunId,
 		purpose: { type: 'planning', planId: plan.id },
 		started: facts.started,
-		modelId: facts.modelId,
+		modelId: facts.modelUse.modelId,
+		thinkingLevel: facts.modelUse.thinkingLevel,
 	})
 	return storedAgentRun.ok ? writeInitialPlanningInput(runtime, storage, plan, storedAgentRun.value, facts) : storedAgentRun
 }
@@ -214,53 +223,45 @@ async function writeInitialPlanningInput(
 	return { ok: true, value: { ...plan, agentRun } }
 }
 
-async function resolvePlanningModelId(
+async function resolvePlanningModelUse(
 	storage: CoreStorage,
 	planId: Id,
 	config: ReturnType<typeof normalizePlanConfigRecord>,
 	project: Project,
-): Promise<CoreResult<Id, Exclude<Error, InvalidInputError | ConfigCommandReferenceError>>> {
+): Promise<CoreResult<ModelUseConfig, Exclude<Error, InvalidInputError | ConfigCommandReferenceError>>> {
 	const portfolioConfig = await getPortfolioConfig(storage)
-	return portfolioConfig.ok ? resolvedPlanningModelId(planId, config, project, portfolioConfig.value) : portfolioConfig
+	return portfolioConfig.ok ? resolvedPlanningModelUse(planId, config, project, portfolioConfig.value) : portfolioConfig
 }
 
-function resolvedPlanningModelId(
+function resolvedPlanningModelUse(
 	planId: Id,
 	config: ReturnType<typeof normalizePlanConfigRecord>,
 	project: Project,
 	portfolioConfig: PortfolioConfigRecord | null,
-): CoreResult<Id, AgentRunModelUnresolvedError> {
-	const modelId = firstPresent([
-		planPlanningModelId(config),
-		projectPlanningModelId(project),
-		portfolioPlanningModelId(portfolioConfig),
-		portfolioDefaultModelId(portfolioConfig),
+): CoreResult<ModelUseConfig, AgentRunModelUseUnresolvedError> {
+	const modelUse = firstPresent([
+		planPlanningModelUse(config),
+		projectPlanningModelUse(project),
+		portfolioConfig?.value.model.planning,
+		portfolioConfig?.value.model.default,
 	])
-	return modelId === null ? agentRunModelUnresolved({ type: 'planning', planId }) : { ok: true, value: modelId }
+	return modelUse === null ? agentRunModelUseUnresolved({ type: 'planning', planId }) : { ok: true, value: modelUse }
 }
 
-function planPlanningModelId(config: ReturnType<typeof normalizePlanConfigRecord>): Id | null {
-	return config?.value?.model?.planningModelId ?? null
+function planPlanningModelUse(config: ReturnType<typeof normalizePlanConfigRecord>): ModelUseConfig | null {
+	return config?.value?.model?.planning ?? null
 }
 
-function projectPlanningModelId(project: Project): Id | null {
-	return project.config?.value?.model?.planningModelId ?? null
-}
-
-function portfolioPlanningModelId(config: PortfolioConfigRecord | null): Id | null {
-	return config?.value.model.planningModelId ?? null
-}
-
-function portfolioDefaultModelId(config: PortfolioConfigRecord | null): Id | null {
-	return config?.value.model.defaultModelId ?? null
+function projectPlanningModelUse(project: Project): ModelUseConfig | null {
+	return project.config?.value?.model?.planning ?? null
 }
 
 function firstPresent<T>(values: Array<T | null | undefined>): T | null {
 	return values.find((candidate): candidate is T => candidate !== null && candidate !== undefined) ?? null
 }
 
-function agentRunModelUnresolved(purpose: AgentRun['purpose']): CoreResult<never, AgentRunModelUnresolvedError> {
-	return { ok: false, error: { type: 'agent-run-model-unresolved', purpose } }
+function agentRunModelUseUnresolved(purpose: AgentRun['purpose']): CoreResult<never, AgentRunModelUseUnresolvedError> {
+	return { ok: false, error: { type: 'agent-run-model-use-unresolved', purpose } }
 }
 
 if (import.meta.vitest) {
@@ -303,7 +304,7 @@ if (import.meta.vitest) {
 					projectId: 'project-1',
 					title: '  Plan setup  ',
 					initialMessage: '  Please plan repository onboarding.  ',
-					config: { model: { planningModelId: null } },
+					config: { model: { planning: null } },
 				},
 				context,
 			)
@@ -314,8 +315,7 @@ if (import.meta.vitest) {
 			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toEqual({
 				type: 'agent-run-model-selected',
 				modelId: 'model-1',
-				modelProviderId: 'model-1-provider',
-				protocol: 'anthropic-messages',
+				thinkingLevel: 'off',
 				authorized: null,
 			})
 			expect(options.tx.agentRunEvents.records.get('agent-run-event-2')?.body).toEqual({
@@ -391,10 +391,10 @@ if (import.meta.vitest) {
 				configured: localStamp(),
 				value: {
 					model: {
-						planningModelId: 'model-project',
-						revisionPlanningModelId: null,
-						executionModelId: null,
-						revisionExecutionModelId: null,
+						planning: { modelId: 'model-project', thinkingLevel: 'off' },
+						revisionPlanning: null,
+						execution: null,
+						revisionExecution: null,
 					},
 					work: null,
 				},
@@ -407,7 +407,7 @@ if (import.meta.vitest) {
 					projectId: 'project-1',
 					title: 'Plan',
 					initialMessage: 'Plan this.',
-					config: { model: { planningModelId: 'model-plan' } },
+					config: { model: { planning: { modelId: 'model-plan', thinkingLevel: 'off' } } },
 				},
 				context,
 			)
@@ -428,7 +428,7 @@ if (import.meta.vitest) {
 
 			expect(result).toEqual({
 				ok: false,
-				error: { type: 'agent-run-model-unresolved', purpose: { type: 'planning', planId: 'plan-1' } },
+				error: { type: 'agent-run-model-use-unresolved', purpose: { type: 'planning', planId: 'plan-1' } },
 			})
 			expect(options.tx.plans.records.size).toBe(0)
 			expect(options.tx.agentRuns.records.size).toBe(0)
@@ -460,11 +460,11 @@ if (import.meta.vitest) {
 			configured: stamp,
 			value: {
 				model: {
-					defaultModelId,
-					planningModelId,
-					revisionPlanningModelId: null,
-					executionModelId: null,
-					revisionExecutionModelId: null,
+					default: { modelId: defaultModelId, thinkingLevel: 'off' },
+					planning: planningModelId === null ? null : { modelId: planningModelId, thinkingLevel: 'off' },
+					revisionPlanning: null,
+					execution: null,
+					revisionExecution: null,
 				},
 				work: null,
 			},

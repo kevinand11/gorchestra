@@ -23,6 +23,7 @@ interface SliceExecutionAgentRunInput {
 	purpose: Extract<AgentRun['purpose'], { type: 'execution' }>
 	started: RuntimeRecord
 	modelId: Id
+	thinkingLevel: DeliveryWorkResolution['executionModelUse']['thinkingLevel']
 }
 
 async function writeSliceExecutionAgentRun(
@@ -65,7 +66,8 @@ function sliceExecutionAgentRun(
 				mode: executionModeForState(state),
 			},
 			started: started.value,
-			modelId: resolution.executionModel.id,
+			modelId: resolution.executionModelUse.modelId,
+			thinkingLevel: resolution.executionModelUse.thinkingLevel,
 		},
 	}
 }
@@ -103,8 +105,7 @@ if (import.meta.vitest) {
 			expect(context.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toEqual({
 				type: 'agent-run-model-selected',
 				modelId: 'model-1',
-				modelProviderId: 'model-1-provider',
-				protocol: 'anthropic-messages',
+				thinkingLevel: 'off',
 				authorized: null,
 			})
 			expect(context.tx.agentRunEvents.records.get('agent-run-event-2')?.body).toEqual({
@@ -139,11 +140,14 @@ if (import.meta.vitest) {
 
 	const resolution: DeliveryWorkResolution = {
 		workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
+		executionModelUse: { modelId: 'model-1', thinkingLevel: 'off' },
 		executionModel: {
 			id: 'model-1',
 			providerId: 'model-provider-1',
 			name: 'Model',
 			providerModelId: 'provider-model',
+			capabilities: { inputs: ['text'], contextWindowTokens: 128000, maxOutputTokens: 16384, reasoning: null },
+			pricing: null,
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 			updated: null,
 			archivePeriods: [],
@@ -151,7 +155,7 @@ if (import.meta.vitest) {
 		executionModelProvider: {
 			id: 'model-provider-1',
 			name: 'Provider',
-			protocol: 'anthropic-messages',
+			protocol: { type: 'anthropic-messages' },
 			baseUrl: 'https://api.anthropic.com',
 			auth: null,
 			headers: [],

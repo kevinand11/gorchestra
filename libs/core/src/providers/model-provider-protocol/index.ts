@@ -24,7 +24,7 @@ import type {
 	ModelProviderProtocolProviders,
 } from './types'
 import type { ArchivePeriod, Id } from '../../domain/commons'
-import type { ModelProvider, ModelProviderHeader, ModelProviderProtocol } from '../../domain/model-provider'
+import type { ModelProvider, ModelProviderHeader, ModelProviderProtocol, ModelProviderProtocolType } from '../../domain/model-provider'
 import type { Secret } from '../../domain/secret'
 import type { CoreStorageOperation } from '../../errors'
 import {
@@ -113,7 +113,7 @@ function modelAccessFailureOutput(preflight: ModelProviderProtocolPreflight): Mo
 }
 
 function agentTurnNotImplementedOutput(protocol: ModelProviderProtocol): ModelAgentTurnOutput {
-	return { outcome: { type: 'error', message: null, summary: `${protocol} agent turns are not implemented.` } }
+	return { outcome: { type: 'error', message: null, summary: `${protocol.type} agent turns are not implemented.` } }
 }
 
 function concreteProviderForProtocol(concrete: Required<ModelProviderProtocolProviderImplementations>, protocol: ModelProviderProtocol) {
@@ -122,7 +122,7 @@ function concreteProviderForProtocol(concrete: Required<ModelProviderProtocolPro
 		'openai-responses': concrete.openAIResponses,
 		'openai-completions': concrete.openAICompletions,
 		'google-generative-ai': concrete.googleGenerativeAI,
-	}[protocol]
+	}[protocol.type]
 }
 
 function concretePreflight(
@@ -130,7 +130,7 @@ function concretePreflight(
 	input: ModelProviderProtocolPreflightModelInput,
 	access: ModelProviderProtocolAccess,
 ) {
-	return concretePreflightDispatch(concrete, input, access)[input.modelProvider.protocol]()
+	return concretePreflightDispatch(concrete, input, access)[input.modelProvider.protocol.type]()
 }
 
 function concretePreflightDispatch(
@@ -375,12 +375,16 @@ function unresolvedSecretPreflight(protocol: ModelProviderProtocol, secretId: Id
 	return modelProviderProtocolPreflight(protocol, { type: 'failed', reason: { type: 'model-provider-secret-unresolved', secretId } })
 }
 
-function protocolProviderInput<Protocol extends ModelProviderProtocol>(
+function protocolProviderInput<Protocol extends ModelProviderProtocolType>(
 	input: ModelProviderProtocolPreflightModelInput,
 	access: ModelProviderProtocolAccess,
 	protocol: Protocol,
 ): ModelProviderProtocolProviderPreflightModelInput<Protocol> {
-	return { ...input, modelProvider: { ...input.modelProvider, protocol }, access }
+	return {
+		...input,
+		modelProvider: { ...input.modelProvider, protocol: { type: protocol } },
+		access,
+	} as ModelProviderProtocolProviderPreflightModelInput<Protocol>
 }
 
 function isProtocolAccess(value: ModelProviderProtocolAccess | ModelProviderProtocolPreflight): value is ModelProviderProtocolAccess {
@@ -402,7 +406,7 @@ const modelProviderProtocolFailureSummaries: Record<ModelProviderProtocolPreflig
 	'provider-preflight-not-implemented': (name) => `${name} model preflight is not implemented.`,
 }
 
-const protocolDisplayNames: Record<ModelProviderProtocol, string> = {
+const protocolDisplayNames: Record<ModelProviderProtocolType, string> = {
 	'anthropic-messages': 'Anthropic Messages',
 	'openai-responses': 'OpenAI Responses',
 	'openai-completions': 'OpenAI Completions',
@@ -417,7 +421,7 @@ export function modelProviderProtocolFailureSummary(
 }
 
 function protocolDisplayName(protocol: ModelProviderProtocol): string {
-	return protocolDisplayNames[protocol]
+	return protocolDisplayNames[protocol.type]
 }
 
 export type { AnthropicMessagesModelProviderProtocolProvider } from './anthropic-messages'
@@ -439,6 +443,7 @@ export type {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
+	const { defaultModelCapabilities } = await import('../../domain/model')
 
 	describe('Model Provider Protocol family', () => {
 		it('resolves OpenAI Responses access Secrets and dispatches to the concrete provider', async () => {
@@ -645,6 +650,8 @@ if (import.meta.vitest) {
 			providerId: 'model-provider-1',
 			name: 'GPT 5',
 			providerModelId: 'gpt-5',
+			capabilities: defaultModelCapabilities,
+			pricing: null,
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 			updated: null,
 			archivePeriods: [],
@@ -659,7 +666,7 @@ if (import.meta.vitest) {
 		return {
 			id: 'model-provider-1',
 			name: 'OpenAI',
-			protocol: 'openai-responses',
+			protocol: { type: 'openai-responses' },
 			baseUrl: 'https://api.openai.com/v1',
 			auth: { type: 'apiKey', secretId: 'secret-1' },
 			headers: [{ name: 'OpenAI-Organization', valueSecretId: 'secret-2' }],
@@ -670,15 +677,15 @@ if (import.meta.vitest) {
 	}
 
 	function openAICompletionsModelProvider(): ModelProvider {
-		return { ...openAIResponsesModelProvider(), protocol: 'openai-completions' }
+		return { ...openAIResponsesModelProvider(), protocol: { type: 'openai-completions' } }
 	}
 
 	function anthropicModelProvider(): ModelProvider {
-		return { ...openAIResponsesModelProvider(), protocol: 'anthropic-messages', auth: null, headers: [] }
+		return { ...openAIResponsesModelProvider(), protocol: { type: 'anthropic-messages' }, auth: null, headers: [] }
 	}
 
 	function googleGenerativeAIModelProvider(): ModelProvider {
-		return { ...openAIResponsesModelProvider(), protocol: 'google-generative-ai', auth: null, headers: [] }
+		return { ...openAIResponsesModelProvider(), protocol: { type: 'google-generative-ai' }, auth: null, headers: [] }
 	}
 
 	function neverCalledOpenAIResponsesProvider(): OpenAIResponsesModelProviderProtocolProvider {

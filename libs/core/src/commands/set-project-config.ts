@@ -1,4 +1,4 @@
-import { v, type PipeOutput } from 'valleyed'
+import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
 import { idPipe } from '../domain/commons'
@@ -11,15 +11,18 @@ import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './u
 import { buildCommandHandler } from './utils/handler'
 import {
 	getRequired,
-	modelIdsFromProjectConfigRecord,
+	loadSelectableModelFacts,
+	modelIdsFromModelUses,
+	modelUsesFromProjectConfigRecord,
 	normalizeProjectConfigRecord,
 	updateRecordValue,
-	validateSelectableModels,
+	validateModelUseConfigs,
 	withAuditStampTransaction,
 } from './utils/storage'
 
 const setProjectConfigInputPipe = v.object({ projectId: idPipe, config: projectConfigPipe })
-export type Input = PipeOutput<typeof setProjectConfigInputPipe>
+export type Input = PipeInput<typeof setProjectConfigInputPipe>
+type ValidatedInput = PipeOutput<typeof setProjectConfigInputPipe>
 
 export type Result = Project
 
@@ -28,7 +31,7 @@ export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigComm
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createSetProjectConfigCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('setProjectConfig', setProjectConfigInputPipe, (input, context) =>
+	return buildCommandHandler('setProjectConfig', setProjectConfigInputPipe, (input: ValidatedInput, context) =>
 		withAuditStampTransaction(
 			runtime,
 			context,
@@ -37,8 +40,12 @@ export function createSetProjectConfigCommand(runtime: CoreRuntime): Operation {
 				if (!projectResult.ok) return projectResult
 
 				const config = normalizeProjectConfigRecord(input.config, stamp)
-				const referenceValidation = await validateSelectableModels(storage, modelIdsFromProjectConfigRecord(config))
-				if (!referenceValidation.ok) return referenceValidation
+				const modelUses = modelUsesFromProjectConfigRecord(config)
+				const facts = await loadSelectableModelFacts(storage, modelIdsFromModelUses(modelUses))
+				if (!facts.ok) return facts
+
+				const modelUseValidation = validateModelUseConfigs(facts.value, modelUses)
+				if (!modelUseValidation.ok) return modelUseValidation
 
 				return updateRecordValue('project', storage, projectResult.value.id, { config })
 			},

@@ -19,7 +19,7 @@ export function modelOptionLabel(groups: readonly ModelSelectOptionGroup[], mode
 
 function activeModelOptionGroup(provider: ListedModelProvider): ModelSelectOptionGroup {
 	return {
-		label: `${provider.name} · ${provider.protocol}`,
+		label: `${provider.name} · ${provider.protocol.type}`,
 		options: provider.archived ? [] : provider.models.filter((model) => !model.archived).map(modelOption),
 	}
 }

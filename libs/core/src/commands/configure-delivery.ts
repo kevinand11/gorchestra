@@ -1,4 +1,4 @@
-import { v, type PipeOutput } from 'valleyed'
+import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
 import type { Action } from '../domain/action'
@@ -15,15 +15,18 @@ import { buildCommandHandler } from './utils/handler'
 import {
 	auditStamp,
 	deliveryWorkStateMismatch,
-	modelIdsFromDeliveryConfigRecord,
+	loadSelectableModelFacts,
+	modelIdsFromModelUses,
+	modelUsesFromDeliveryConfigRecord,
 	normalizeDeliveryConfigRecord,
 	updateRecordValue,
-	validateSelectableModels,
+	validateModelUseConfigs,
 	withTransaction,
 } from './utils/storage'
 
 const configureDeliveryInputPipe = v.object({ deliveryId: idPipe, config: deliveryConfigPipe })
-export type Input = PipeOutput<typeof configureDeliveryInputPipe>
+export type Input = PipeInput<typeof configureDeliveryInputPipe>
+type ValidatedInput = PipeOutput<typeof configureDeliveryInputPipe>
 
 export type Result = Delivery
 
@@ -45,7 +48,7 @@ export function createConfigureDeliveryCommand(runtime: CoreRuntime): Operation 
 
 async function handleConfigureDelivery(
 	runtime: CoreRuntime,
-	input: Input,
+	input: ValidatedInput,
 	context: CommandContext,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const stampResult = auditStamp(runtime.values, context)
@@ -56,15 +59,19 @@ async function handleConfigureDelivery(
 
 async function writeDeliveryConfig(
 	storage: CoreStorage,
-	input: Input,
+	input: ValidatedInput,
 	stamp: AuditStamp,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const deliveryResult = await requireOpenDelivery(storage, input.deliveryId)
 	if (!deliveryResult.ok) return deliveryResult
 
 	const config = normalizeDeliveryConfigRecord(input.config, stamp)
-	const referenceValidation = await validateSelectableModels(storage, modelIdsFromDeliveryConfigRecord(config))
-	if (!referenceValidation.ok) return referenceValidation
+	const modelUses = modelUsesFromDeliveryConfigRecord(config)
+	const facts = await loadSelectableModelFacts(storage, modelIdsFromModelUses(modelUses))
+	if (!facts.ok) return facts
+
+	const modelUseValidation = validateModelUseConfigs(facts.value, modelUses)
+	if (!modelUseValidation.ok) return modelUseValidation
 
 	return writeConfiguredDelivery(storage, deliveryResult.value, config)
 }
@@ -260,8 +267,8 @@ if (import.meta.vitest) {
 		return { model: null, work: null }
 	}
 
-	function deliveryModelConfig(executionModelId: string): NonNullable<Input['config']['model']> {
-		return { revisionPlanningModelId: null, executionModelId, revisionExecutionModelId: null }
+	function deliveryModelConfig(executionModelId: string): NonNullable<NonNullable<ValidatedInput['config']>['model']> {
+		return { execution: { modelId: executionModelId, thinkingLevel: 'off' }, revisionExecution: null }
 	}
 
 	function seedAction(

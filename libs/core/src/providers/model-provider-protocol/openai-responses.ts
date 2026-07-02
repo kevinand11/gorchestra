@@ -597,6 +597,7 @@ function errorSummary(error: unknown): string {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
+	const { defaultModelCapabilities } = await import('../../domain/model')
 
 	describe('OpenAI Responses Model Provider Protocol provider', () => {
 		it('streams text into a stop outcome', async () => {
@@ -764,6 +765,8 @@ if (import.meta.vitest) {
 				providerId: 'model-provider-1',
 				name: 'GPT 5',
 				providerModelId: 'gpt-5',
+				capabilities: defaultModelCapabilities,
+				pricing: null,
 				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				updated: null,
 				archivePeriods: [],
@@ -771,7 +774,7 @@ if (import.meta.vitest) {
 			modelProvider: {
 				id: 'model-provider-1',
 				name: 'OpenAI',
-				protocol: 'openai-responses',
+				protocol: { type: 'openai-responses' },
 				baseUrl: 'https://api.openai.com/v1',
 				auth: null,
 				headers: [],

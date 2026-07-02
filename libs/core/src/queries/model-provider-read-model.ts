@@ -1,5 +1,5 @@
 import { isArchived } from '../commands/utils/storage'
-import type { ListedModel, Model } from '../domain/model'
+import { availableThinkingLevels, defaultModelCapabilities, type ListedModel, type Model } from '../domain/model'
 import type { ListedModelProvider, ModelProvider } from '../domain/model-provider'
 
 export function listedModelProviders(modelProviders: ModelProvider[], models: Model[]): ListedModelProvider[] {
@@ -13,7 +13,7 @@ export function listedModelProviders(modelProviders: ModelProvider[], models: Mo
 
 function listedModel(model: Model): ListedModel {
 	const { archivePeriods, ...modelFields } = model
-	return { ...modelFields, archived: isArchived(archivePeriods) }
+	return { ...modelFields, archived: isArchived(archivePeriods), availableThinkingLevels: availableThinkingLevels(model.capabilities) }
 }
 
 function groupModelsByProviderId(models: ListedModel[]): Map<string, ListedModel[]> {
@@ -56,7 +56,7 @@ if (import.meta.vitest) {
 		return {
 			id: input.id,
 			name: input.id,
-			protocol: 'openai-responses',
+			protocol: { type: 'openai-responses' },
 			baseUrl: 'https://api.example.com',
 			auth: null,
 			headers: [],
@@ -72,6 +72,8 @@ if (import.meta.vitest) {
 			providerId: input.providerId,
 			name: input.id,
 			providerModelId: input.id,
+			capabilities: defaultModelCapabilities,
+			pricing: null,
 			created: { origin: 'imported', at: input.createdAt },
 			updated: null,
 			archivePeriods: input.archived === true ? [{ archived: stamp, unarchived: null }] : [],
@@ -85,6 +87,6 @@ if (import.meta.vitest) {
 
 	function listedModelRecord(modelRecord: Model, archived: boolean): ListedModel {
 		const { archivePeriods: _archivePeriods, ...modelFields } = modelRecord
-		return { ...modelFields, archived }
+		return { ...modelFields, archived, availableThinkingLevels: ['off'] }
 	}
 }

@@ -1,7 +1,6 @@
 import type { AgentRun, AgentRunEvent, AgentRunEventBody, AgentRunPurpose } from '../domain/agent-run'
 import type { Id, RuntimeRecord } from '../domain/commons'
-import type { Model } from '../domain/model'
-import type { ModelProvider } from '../domain/model-provider'
+import type { Model, ModelThinkingLevel } from '../domain/model'
 import type { InvalidCoreServiceOutputError, InvariantViolationError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreStorage } from '../services'
 import { nextId, runtimeRecord, type CoreRuntimeValues } from './runtime-values'
@@ -29,25 +28,25 @@ export async function createModelAgentRunWithInitialModel<TPurpose extends Agent
 		purpose: TPurpose
 		started: RuntimeRecord
 		modelId: Id
+		thinkingLevel: ModelThinkingLevel
 	},
 ): Promise<Result<ModelAgentRunWithPurpose<TPurpose>, CreateModelAgentRunError>> {
-	const modelSelection = await getModelSelection(storage, input.modelId)
+	const modelSelection = await getModelSelection(storage, input.modelId, input.thinkingLevel)
 	return modelSelection.ok ? createModelAgentRunWithSelection(values, storage, input, modelSelection.value) : modelSelection
 }
 
 interface ModelSelection {
 	model: Model
-	provider: ModelProvider
+	thinkingLevel: ModelThinkingLevel
 }
 
-async function getModelSelection(storage: CoreStorage, modelId: Id): Promise<Result<ModelSelection, CreateModelAgentRunError>> {
+async function getModelSelection(
+	storage: CoreStorage,
+	modelId: Id,
+	thinkingLevel: ModelThinkingLevel,
+): Promise<Result<ModelSelection, CreateModelAgentRunError>> {
 	const model = await getRequired('model', storage, modelId)
-	return model.ok ? getModelSelectionProvider(storage, model.value) : model
-}
-
-async function getModelSelectionProvider(storage: CoreStorage, model: Model): Promise<Result<ModelSelection, CreateModelAgentRunError>> {
-	const provider = await getRequired('model-provider', storage, model.providerId)
-	return provider.ok ? { ok: true, value: { model, provider: provider.value } } : provider
+	return model.ok ? { ok: true, value: { model: model.value, thinkingLevel } } : model
 }
 
 async function createModelAgentRunWithSelection<TPurpose extends AgentRunPurpose>(
@@ -70,8 +69,7 @@ async function appendInitialModelSelection<TPurpose extends AgentRunPurpose>(
 	const event = await appendAgentRunEvent(values, storage, agentRun.id, {
 		type: 'agent-run-model-selected',
 		modelId: selection.model.id,
-		modelProviderId: selection.provider.id,
-		protocol: selection.provider.protocol,
+		thinkingLevel: selection.thinkingLevel,
 		authorized: null,
 	})
 	return event.ok ? { ok: true, value: agentRun } : event
@@ -157,6 +155,7 @@ async function nextAgentRunEventSequence(
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { createTestCoreServices } = await import('./test-helpers')
+	const { defaultModelCapabilities } = await import('../domain/model')
 
 	describe('createModelAgentRunWithInitialModel', () => {
 		it('creates a Model Agent Run with an initial model selection event', async () => {
@@ -164,7 +163,7 @@ if (import.meta.vitest) {
 			options.tx.modelProviders.records.set('model-provider-1', {
 				id: 'model-provider-1',
 				name: 'Provider',
-				protocol: 'anthropic-messages',
+				protocol: { type: 'anthropic-messages' },
 				baseUrl: 'https://api.example.com',
 				auth: null,
 				headers: [],
@@ -177,6 +176,8 @@ if (import.meta.vitest) {
 				providerId: 'model-provider-1',
 				name: 'Model',
 				providerModelId: 'provider-model',
+				capabilities: defaultModelCapabilities,
+				pricing: null,
 				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				updated: null,
 				archivePeriods: [],
@@ -187,6 +188,7 @@ if (import.meta.vitest) {
 				purpose: { type: 'planning', planId: 'plan-1' },
 				started: { at: '2026-06-10T12:00:00.000Z' },
 				modelId: 'model-1',
+				thinkingLevel: 'off',
 			})
 
 			expect(result).toEqual({
@@ -202,8 +204,7 @@ if (import.meta.vitest) {
 			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toEqual({
 				type: 'agent-run-model-selected',
 				modelId: 'model-1',
-				modelProviderId: 'model-provider-1',
-				protocol: 'anthropic-messages',
+				thinkingLevel: 'off',
 				authorized: null,
 			})
 		})

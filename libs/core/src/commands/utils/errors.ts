@@ -5,13 +5,18 @@ import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
+	ModelThinkingLevelUnavailableError,
 	ProjectSourceTypeMismatchError,
 	ResourceNotFoundError,
 	SecretNotActiveError,
 	StorageOperationFailedError,
 } from '../../errors'
 
-export type ConfigCommandReferenceError = ResourceNotFoundError | ArchivedModelReferenceError | ArchivedModelProviderReferenceError
+export type ConfigCommandReferenceError =
+	| ResourceNotFoundError
+	| ArchivedModelReferenceError
+	| ArchivedModelProviderReferenceError
+	| ModelThinkingLevelUnavailableError
 export type ConfigCommandStorageError = StorageOperationFailedError | InvalidCoreServiceOutputError | InvariantViolationError
 export type RepositoryCommandReferenceError = ResourceNotFoundError | SecretNotActiveError | ProjectSourceTypeMismatchError
 export type DeliveryActionCommandError =

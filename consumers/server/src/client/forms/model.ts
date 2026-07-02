@@ -1,7 +1,7 @@
 import { FormDraft } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
-import type { CreateModelInput, UpdateModelInput } from '../composables/useServerApi'
+import type { CreateModelInput, ModelCapabilities, ModelTokenPricing, UpdateModelInput } from '../composables/useServerApi'
 
 export type ModelCreationFormModel = CreateModelInput
 export type ModelUpdateFormModel = UpdateModelInput
@@ -13,10 +13,20 @@ type ModelCreationFormFields = {
 
 type ModelUpdateFormFields = {
 	name: string
+	capabilities: ModelCapabilities
+	pricing: ModelTokenPricing | null
 }
 
 const modelNamePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a Model name'))
 const providerModelIdPipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a provider model id'))
+const passThroughPipe = v.any<unknown>()
+
+const defaultModelCapabilities: ModelCapabilities = {
+	inputs: ['text'],
+	contextWindowTokens: 128000,
+	maxOutputTokens: 16384,
+	reasoning: null,
+}
 
 export class ModelCreationFormDraft extends FormDraft<ModelCreationFormModel, ModelCreationFormModel, ModelCreationFormFields> {
 	protected readonly rules = { name: modelNamePipe, providerModelId: providerModelIdPipe }
@@ -34,16 +44,18 @@ export class ModelCreationFormDraft extends FormDraft<ModelCreationFormModel, Mo
 }
 
 export class ModelUpdateFormDraft extends FormDraft<ModelUpdateFormModel, ModelUpdateFormModel, ModelUpdateFormFields> {
-	protected readonly rules = { name: modelNamePipe }
+	protected readonly rules = { name: modelNamePipe, capabilities: passThroughPipe, pricing: passThroughPipe }
 
 	constructor() {
-		super({ name: '' })
+		super({ name: '', capabilities: defaultModelCapabilities, pricing: null })
 	}
 
-	protected model = (): ModelUpdateFormModel => ({ name: this.name })
+	protected model = (): ModelUpdateFormModel => ({ name: this.name, capabilities: this.capabilities, pricing: this.pricing })
 
 	protected load = (entity: ModelUpdateFormModel): void => {
 		this.name = entity.name
+		this.capabilities = entity.capabilities
+		this.pricing = entity.pricing
 	}
 }
 
@@ -74,13 +86,15 @@ if (import.meta.vitest) {
 	})
 
 	describe('ModelUpdateFormDraft', () => {
-		it('trims and models Model update input', () => {
+		it('trims and models Model update input with existing metadata', () => {
 			const factory = new ModelUpdateFormDraft()
+			const pricing: ModelTokenPricing = { unit: 'micro-usd-per-million-tokens', input: 1, output: 2, cacheRead: 0, cacheWrite: 0 }
 
-			factory.name = '  Sonnet 4  '
+			factory.loadEntity({ name: '  Sonnet 4  ', capabilities: defaultModelCapabilities, pricing })
+			factory.name = '  Sonnet 4 updated  '
 
 			expect(factory.valid).toBe(true)
-			expect(factory.toModel()).toEqual({ name: 'Sonnet 4' })
+			expect(factory.toModel()).toEqual({ name: 'Sonnet 4 updated', capabilities: defaultModelCapabilities, pricing })
 		})
 	})
 }

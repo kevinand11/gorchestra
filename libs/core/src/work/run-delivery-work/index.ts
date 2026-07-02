@@ -173,7 +173,7 @@ if (import.meta.vitest) {
 			options.tx.modelProviders.records.set('model-provider-with-missing-secret', {
 				id: 'model-provider-with-missing-secret',
 				name: 'Provider',
-				protocol: 'anthropic-messages',
+				protocol: { type: 'anthropic-messages' },
 				baseUrl: 'https://api.example.com',
 				auth: { type: 'apiKey', secretId: 'missing-model-secret' },
 				headers: [],
@@ -538,11 +538,11 @@ if (import.meta.vitest) {
 			configured: localStamp(),
 			value: {
 				model: {
-					defaultModelId: 'model-1',
-					planningModelId: null,
-					revisionPlanningModelId: null,
-					executionModelId: null,
-					revisionExecutionModelId: null,
+					default: { modelId: 'model-1', thinkingLevel: 'off' },
+					planning: null,
+					revisionPlanning: null,
+					execution: null,
+					revisionExecution: null,
 				},
 				work: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
 			},

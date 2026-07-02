@@ -5,6 +5,7 @@ import type { Id } from './domain/commons'
 import type { DeliveryClosedOutcome, DeliveryWorkState } from './domain/delivery'
 import type { ExternalOperationEvidence, ValidationEvidence } from './domain/evidence'
 import type { GraphNodeRef, LinkType } from './domain/graph'
+import type { ModelThinkingLevel } from './domain/model'
 import type { SecretBindingScope } from './domain/secret'
 
 export type CorePreflightCheckName = 'storage' | 'secrets' | 'sandbox' | 'dispatcher'
@@ -227,6 +228,18 @@ export interface AgentRunModelUnresolvedError {
 	purpose: AgentRunPurpose
 }
 
+export interface AgentRunModelUseUnresolvedError {
+	type: 'agent-run-model-use-unresolved'
+	purpose: AgentRunPurpose
+}
+
+export interface ModelThinkingLevelUnavailableError {
+	type: 'model-thinking-level-unavailable'
+	modelId: Id
+	thinkingLevel: ModelThinkingLevel
+	reason: { type: 'model-reasoning-unconfigured' } | { type: 'thinking-level-unconfigured' }
+}
+
 export interface AgentRunNotInteractiveError {
 	type: 'agent-run-not-interactive'
 	agentRunId: Id
@@ -294,6 +307,8 @@ export type CoreError =
 	| DeliveryClosedError
 	| ReviewSurfaceAlreadyMergedError
 	| AgentRunModelUnresolvedError
+	| AgentRunModelUseUnresolvedError
+	| ModelThinkingLevelUnavailableError
 	| AgentRunNotInteractiveError
 	| AgentRunNotActiveError
 	| ProposalAlreadyReviewedError

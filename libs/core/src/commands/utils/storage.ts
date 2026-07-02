@@ -3,6 +3,7 @@ import type { ArchivePeriod, AuditStamp, Id } from '../../domain/commons'
 import type {
 	DeliveryConfig,
 	DeliveryConfigRecord,
+	ModelUseConfig,
 	PlanConfig,
 	PlanConfigRecord,
 	PortfolioConfig,
@@ -10,7 +11,7 @@ import type {
 	ProjectConfigRecord,
 } from '../../domain/config'
 import type { DeliveryWorkState } from '../../domain/delivery'
-import type { Model } from '../../domain/model'
+import type { Model, ModelThinkingLevel } from '../../domain/model'
 import type { ModelProvider, ModelProviderAuth, ModelProviderHeader } from '../../domain/model-provider'
 import type { Project } from '../../domain/project'
 import type { RepositoryConfig } from '../../domain/repository'
@@ -27,6 +28,7 @@ import type {
 	DuplicateSecretBindingError,
 	InvalidCoreServiceOutputError,
 	InvariantViolationError,
+	ModelThinkingLevelUnavailableError,
 	NotArchivedError,
 	ProjectSourceTypeMismatchError,
 	ResourceNotFoundError,
@@ -156,39 +158,109 @@ export function deliveryWorkStateMismatch(
 	}
 }
 
-export async function validateSelectableModels(
-	storage: CoreStorage,
-	modelIds: Id[],
-): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError>> {
-	for (const modelId of uniqueIds(modelIds)) {
-		const validation = await validateSelectableModel(storage, modelId)
-		if (!validation.ok) return validation
-	}
-
-	return { ok: true, value: undefined }
+export interface SelectableModelFacts {
+	model: Model
+	provider: ModelProvider
 }
 
-async function validateSelectableModel(
+export async function loadSelectableModelFacts(
+	storage: CoreStorage,
+	modelIds: Id[],
+): Promise<Result<Map<Id, SelectableModelFacts>, ConfigCommandReferenceError | ConfigCommandStorageError>> {
+	const facts = new Map<Id, SelectableModelFacts>()
+	const providers = new Map<Id, ModelProvider>()
+
+	for (const modelId of uniqueIds(modelIds)) {
+		const fact = await loadSelectableModelFact(storage, modelId, providers)
+		if (!fact.ok) return fact
+
+		facts.set(modelId, fact.value)
+	}
+
+	return { ok: true, value: facts }
+}
+
+async function loadSelectableModelFact(
 	storage: CoreStorage,
 	modelId: Id,
-): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError>> {
+	providers: Map<Id, ModelProvider>,
+): Promise<Result<SelectableModelFacts, ConfigCommandReferenceError | ConfigCommandStorageError>> {
 	const modelResult = await getRequired('model', storage, modelId)
 	if (!modelResult.ok) return modelResult
 
 	const modelSelectability = validateActiveModel(modelResult.value)
 	if (!modelSelectability.ok) return modelSelectability
 
-	return validateSelectableModelProvider(storage, modelResult.value.providerId)
+	const providerResult = await loadSelectableModelProvider(storage, modelResult.value.providerId, providers)
+	return providerResult.ok ? { ok: true, value: { model: modelResult.value, provider: providerResult.value } } : providerResult
 }
 
-async function validateSelectableModelProvider(
+export async function validateSelectableModels(
+	storage: CoreStorage,
+	modelIds: Id[],
+): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError>> {
+	const facts = await loadSelectableModelFacts(storage, modelIds)
+	return facts.ok ? { ok: true, value: undefined } : facts
+}
+
+export function validateModelUseConfigs(
+	facts: Map<Id, SelectableModelFacts>,
+	modelUses: ModelUseConfig[],
+): Result<void, ModelThinkingLevelUnavailableError | InvariantViolationError> {
+	for (const modelUse of modelUses) {
+		const fact = facts.get(modelUse.modelId)
+		if (fact === undefined) return invariant(`Selectable Model facts missing for ${modelUse.modelId}.`)
+
+		const validation = validateModelThinkingLevel(fact.model, modelUse.thinkingLevel)
+		if (!validation.ok) return validation
+	}
+
+	return { ok: true, value: undefined }
+}
+
+export function validateModelThinkingLevel(
+	model: Model,
+	thinkingLevel: ModelThinkingLevel,
+): Result<void, ModelThinkingLevelUnavailableError> {
+	if (model.capabilities.reasoning === null) {
+		return thinkingLevel === 'off'
+			? { ok: true, value: undefined }
+			: modelThinkingLevelUnavailable(model.id, thinkingLevel, 'model-reasoning-unconfigured')
+	}
+
+	return model.capabilities.reasoning[thinkingLevel] === null
+		? modelThinkingLevelUnavailable(model.id, thinkingLevel, 'thinking-level-unconfigured')
+		: { ok: true, value: undefined }
+}
+
+async function loadSelectableModelProvider(
 	storage: CoreStorage,
 	providerId: Id,
-): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError>> {
+	cache: Map<Id, ModelProvider>,
+): Promise<Result<ModelProvider, ConfigCommandReferenceError | ConfigCommandStorageError>> {
+	const cached = cache.get(providerId)
+	if (cached !== undefined) return { ok: true, value: cached }
+
 	const providerResult = await getRequired('model-provider', storage, providerId)
 	if (!providerResult.ok) return providerResult
 
-	return validateActiveModelProvider(providerResult.value)
+	const providerSelectability = validateActiveModelProvider(providerResult.value)
+	if (!providerSelectability.ok) return providerSelectability
+
+	cache.set(providerId, providerResult.value)
+	return providerResult
+}
+
+function modelThinkingLevelUnavailable(
+	modelId: Id,
+	thinkingLevel: ModelThinkingLevel,
+	reason: ModelThinkingLevelUnavailableError['reason']['type'],
+): Result<never, ModelThinkingLevelUnavailableError> {
+	return { ok: false, error: { type: 'model-thinking-level-unavailable', modelId, thinkingLevel, reason: { type: reason } } }
+}
+
+function invariant(message: string): Result<never, InvariantViolationError> {
+	return { ok: false, error: { type: 'invariant-violation', message } }
 }
 
 export async function validateSourceControlProject(
@@ -402,91 +474,68 @@ export function normalizePortfolioConfig(config: PortfolioConfig): PortfolioConf
 }
 
 export function normalizeProjectConfigRecordForCreate(config: ProjectConfig | null, configured: AuditStamp): ProjectConfigRecord | null {
-	if (config === null) {
-		return null
-	}
-
-	const normalized = normalizeProjectConfig(config)
-	return normalized === null ? null : { configured, value: normalized }
+	return config === null ? null : { configured, value: config }
 }
 
-export function normalizeProjectConfigRecord(config: ProjectConfig | null, configured: AuditStamp): ProjectConfigRecord | null {
-	if (config === null) {
-		return null
-	}
-
-	return { configured, value: normalizeProjectConfig(config) }
+export function normalizeProjectConfigRecord(config: ProjectConfig | null, configured: AuditStamp): ProjectConfigRecord {
+	return { configured, value: config }
 }
 
-export function normalizeProjectConfig(config: ProjectConfig): ProjectConfig | null {
-	const model = normalizeProjectModelConfig(config.model)
-	const work = config.work === null ? null : { ...config.work }
-
-	if (model === null && work === null) {
-		return null
-	}
-
-	return { model, work }
-}
-
-export function normalizeDeliveryConfigRecord(config: DeliveryConfig, configured: AuditStamp): DeliveryConfigRecord {
-	return { configured, value: normalizeDeliveryConfig(config) }
-}
-
-export function normalizeDeliveryConfig(config: DeliveryConfig): DeliveryConfig | null {
-	const model = normalizeDeliveryModelConfig(config.model)
-	const work = config.work === null ? null : { ...config.work }
-
-	if (model === null && work === null) {
-		return null
-	}
-
-	return { model, work }
+export function normalizeDeliveryConfigRecord(config: DeliveryConfig | null, configured: AuditStamp): DeliveryConfigRecord {
+	return { configured, value: config }
 }
 
 export function normalizePlanConfigRecord(config: PlanConfig | null, configured: AuditStamp): PlanConfigRecord | null {
-	if (config === null) {
-		return null
-	}
-
-	const normalized = normalizePlanConfig(config)
-	return normalized === null ? null : { configured, value: normalized }
+	return config === null ? null : { configured, value: config }
 }
 
 export function normalizeRepositoryConfig(config: RepositoryConfig): RepositoryConfig {
 	return { ...config }
 }
 
-export function modelIdsFromPortfolioConfig(config: PortfolioConfig): Id[] {
+export function modelUsesFromPortfolioConfig(config: PortfolioConfig): ModelUseConfig[] {
 	return [
-		config.model.defaultModelId,
-		config.model.planningModelId,
-		config.model.revisionPlanningModelId,
-		config.model.executionModelId,
-		config.model.revisionExecutionModelId,
-	].filter((modelId): modelId is Id => modelId !== null)
+		config.model.default,
+		config.model.planning,
+		config.model.revisionPlanning,
+		config.model.execution,
+		config.model.revisionExecution,
+	].filter(isModelUseConfig)
+}
+
+export function modelUsesFromProjectConfigRecord(config: ProjectConfigRecord | null): ModelUseConfig[] {
+	const model = config?.value?.model ?? null
+	return model === null ? [] : [model.planning, model.revisionPlanning, model.execution, model.revisionExecution].filter(isModelUseConfig)
+}
+
+export function modelUsesFromPlanConfigRecord(config: PlanConfigRecord | null): ModelUseConfig[] {
+	const planning = config?.value?.model?.planning ?? null
+	return planning === null ? [] : [planning]
+}
+
+export function modelUsesFromDeliveryConfigRecord(config: DeliveryConfigRecord): ModelUseConfig[] {
+	const model = config.value?.model ?? null
+	return model === null ? [] : [model.execution, model.revisionExecution].filter(isModelUseConfig)
+}
+
+export function modelIdsFromModelUses(modelUses: ModelUseConfig[]): Id[] {
+	return modelUses.map((modelUse) => modelUse.modelId)
+}
+
+export function modelIdsFromPortfolioConfig(config: PortfolioConfig): Id[] {
+	return modelIdsFromModelUses(modelUsesFromPortfolioConfig(config))
 }
 
 export function modelIdsFromProjectConfigRecord(config: ProjectConfigRecord | null): Id[] {
-	const model = config?.value?.model ?? null
-
-	return model === null
-		? []
-		: nullableIds([model.planningModelId, model.revisionPlanningModelId, model.executionModelId, model.revisionExecutionModelId])
+	return modelIdsFromModelUses(modelUsesFromProjectConfigRecord(config))
 }
 
-export function modelIdsFromPlanConfigRecord(config: PlanConfigRecord): Id[] {
-	if (config.value === null || config.value.model === null || config.value.model.planningModelId === null) {
-		return []
-	}
-
-	return [config.value.model.planningModelId]
+export function modelIdsFromPlanConfigRecord(config: PlanConfigRecord | null): Id[] {
+	return modelIdsFromModelUses(modelUsesFromPlanConfigRecord(config))
 }
 
 export function modelIdsFromDeliveryConfigRecord(config: DeliveryConfigRecord): Id[] {
-	const model = config.value?.model ?? null
-
-	return model === null ? [] : nullableIds([model.revisionPlanningModelId, model.executionModelId, model.revisionExecutionModelId])
+	return modelIdsFromModelUses(modelUsesFromDeliveryConfigRecord(config))
 }
 
 export function secretReferencesFromModelProviderConfig(auth: ModelProviderAuth | null, headers: ModelProviderHeader[]): Id[] {
@@ -534,35 +583,8 @@ export function archivedModelProviderReference(modelProviderId: Id): Result<neve
 	return { ok: false, error: { type: 'archived-model-provider-reference', modelProviderId } }
 }
 
-function normalizeProjectModelConfig(model: ProjectConfig['model']): ProjectConfig['model'] {
-	return model === null || !hasAnyProjectModelId(model) ? null : { ...model }
-}
-
-function normalizeDeliveryModelConfig(model: DeliveryConfig['model']): DeliveryConfig['model'] {
-	return model === null || !hasAnyDeliveryModelId(model) ? null : { ...model }
-}
-
-function hasAnyProjectModelId(model: NonNullable<ProjectConfig['model']>): boolean {
-	return (
-		nullableIds([model.planningModelId, model.revisionPlanningModelId, model.executionModelId, model.revisionExecutionModelId]).length >
-		0
-	)
-}
-
-function hasAnyDeliveryModelId(model: NonNullable<DeliveryConfig['model']>): boolean {
-	return nullableIds([model.revisionPlanningModelId, model.executionModelId, model.revisionExecutionModelId]).length > 0
-}
-
-function nullableIds(modelIds: Array<Id | null>): Id[] {
-	return modelIds.filter((modelId): modelId is Id => modelId !== null)
-}
-
-function normalizePlanConfig(config: PlanConfig): PlanConfig | null {
-	if (config.model === null || config.model.planningModelId === null) {
-		return null
-	}
-
-	return { model: { ...config.model } }
+function isModelUseConfig(modelUse: ModelUseConfig | null): modelUse is ModelUseConfig {
+	return modelUse !== null
 }
 
 function validateActiveModel(model: Model): Result<void, ArchivedModelProviderReferenceError | ArchivedModelReferenceError> {

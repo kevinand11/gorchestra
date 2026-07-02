@@ -1,13 +1,13 @@
 import { FormDraft } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
-import type { CreateModelProviderInput, ModelProviderHeader, ModelProviderProtocol } from '../composables/useServerApi'
+import type { CreateModelProviderInput, ModelProviderHeader, ModelProviderProtocolType } from '../composables/useServerApi'
 
 export type ModelProviderFormModel = CreateModelProviderInput
 
 type ModelProviderFormFields = {
 	name: string
-	protocol: ModelProviderProtocol
+	protocol: ModelProviderProtocolType
 	baseUrl: string
 	authSecretId: string
 	headers: ModelProviderHeader[]
@@ -32,13 +32,13 @@ export class ModelProviderFormDraft extends FormDraft<ModelProviderFormModel, Mo
 		headers: modelProviderHeadersPipe,
 	}
 
-	constructor(protocol: ModelProviderProtocol = 'openai-responses') {
+	constructor(protocol: ModelProviderProtocolType = 'openai-responses') {
 		super({ name: '', protocol, baseUrl: '', authSecretId: '', headers: [] })
 	}
 
 	protected model = (): ModelProviderFormModel => ({
 		name: this.name,
-		protocol: this.protocol,
+		protocol: { type: this.protocol },
 		baseUrl: this.baseUrl,
 		auth: this.authSecretId.length === 0 ? null : { type: 'apiKey', secretId: this.authSecretId },
 		headers: this.headers,
@@ -46,7 +46,7 @@ export class ModelProviderFormDraft extends FormDraft<ModelProviderFormModel, Mo
 
 	protected load = (entity: ModelProviderFormModel): void => {
 		this.name = entity.name
-		this.protocol = entity.protocol
+		this.protocol = entity.protocol.type
 		this.baseUrl = entity.baseUrl
 		this.authSecretId = entity.auth?.secretId ?? ''
 		this.headers = entity.headers
@@ -68,7 +68,7 @@ if (import.meta.vitest) {
 			expect(factory.valid).toBe(true)
 			expect(factory.toModel()).toEqual({
 				name: 'OpenAI',
-				protocol: 'openai-responses',
+				protocol: { type: 'openai-responses' },
 				baseUrl: 'https://api.openai.com/v1',
 				auth: { type: 'apiKey', secretId: 'secret-1' },
 				headers: [{ name: 'X-Team', valueSecretId: 'secret-2' }],
@@ -87,7 +87,7 @@ if (import.meta.vitest) {
 
 			factory.loadEntity({
 				name: 'Provider',
-				protocol: 'google-generative-ai',
+				protocol: { type: 'google-generative-ai' },
 				baseUrl: 'https://generativelanguage.googleapis.com',
 				auth: null,
 				headers: [],
@@ -95,7 +95,7 @@ if (import.meta.vitest) {
 
 			expect(factory.toModel()).toEqual({
 				name: 'Provider',
-				protocol: 'google-generative-ai',
+				protocol: { type: 'google-generative-ai' },
 				baseUrl: 'https://generativelanguage.googleapis.com',
 				auth: null,
 				headers: [],

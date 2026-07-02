@@ -9,10 +9,13 @@ const selectionCookieSchema = optionalCookiePipe(selectionCookieName)
 
 export const portfolioRequestCookieSchema = v.merge(sessionCookieSchema, selectionCookieSchema)
 export const createProjectRequestSchema = v.object({ title: Domain.Commons.nonEmptyTrimmedStringPipe })
+const planModelConfigRequestSchema = v.object({ planning: v.nullable(Domain.Config.modelUseConfigPipe) })
+const planConfigRequestSchema = v.object({ model: v.nullable(planModelConfigRequestSchema) })
+
 export const createPlanRequestSchema = v.object({
 	title: Domain.Commons.nonEmptyTrimmedStringPipe,
 	initialMessage: Domain.Commons.nonEmptyTrimmedStringPipe,
-	config: Domain.Config.planConfigPipe,
+	config: planConfigRequestSchema,
 })
 export const setPortfolioConfigRequestSchema = v.object({ config: Domain.Config.portfolioConfigPipe })
 export const createModelProviderRequestSchema = v.object({
@@ -32,7 +35,11 @@ export const createModelRequestSchema = v.object({
 	name: Domain.Commons.nonEmptyTrimmedStringPipe,
 	providerModelId: Domain.Commons.nonEmptyTrimmedStringPipe,
 })
-export const updateModelRequestSchema = v.object({ name: Domain.Commons.nonEmptyTrimmedStringPipe })
+export const updateModelRequestSchema = v.object({
+	name: Domain.Commons.nonEmptyTrimmedStringPipe,
+	capabilities: Domain.Model.modelCapabilitiesPipe,
+	pricing: v.nullable(Domain.Model.modelTokenPricingPipe),
+})
 export const createMemoryRequestSchema = v.object({
 	parentId: v.nullable(Domain.Commons.idPipe),
 	title: Domain.Memory.memoryTitlePipe,

@@ -40,6 +40,7 @@ function createAnthropicMessagesClient(input: AnthropicMessagesPreflightInput): 
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
+	const { defaultModelCapabilities } = await import('../../domain/model')
 
 	describe('Anthropic Messages Model Provider Protocol provider', () => {
 		it('retrieves provider model metadata with configured access', async () => {
@@ -101,6 +102,8 @@ if (import.meta.vitest) {
 				providerId: 'model-provider-1',
 				name: 'Claude Sonnet',
 				providerModelId: 'claude-sonnet-4-5',
+				capabilities: defaultModelCapabilities,
+				pricing: null,
 				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				updated: null,
 				archivePeriods: [],
@@ -108,7 +111,7 @@ if (import.meta.vitest) {
 			modelProvider: {
 				id: 'model-provider-1',
 				name: 'Anthropic',
-				protocol: 'anthropic-messages',
+				protocol: { type: 'anthropic-messages' },
 				baseUrl: 'https://api.anthropic.com',
 				auth: { type: 'apiKey', secretId: 'secret-1' },
 				headers: [{ name: 'anthropic-beta', valueSecretId: 'secret-2' }],

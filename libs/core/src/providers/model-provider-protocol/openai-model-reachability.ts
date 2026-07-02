@@ -43,6 +43,7 @@ function createOpenAIModelReachabilityClient<Protocol extends OpenAIModelReachab
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
+	const { defaultModelCapabilities } = await import('../../domain/model')
 
 	describe('OpenAI model reachability preflight', () => {
 		it('retrieves provider model metadata with configured access', async () => {
@@ -106,6 +107,8 @@ if (import.meta.vitest) {
 				providerId: 'model-provider-1',
 				name: 'GPT 5',
 				providerModelId: 'gpt-5',
+				capabilities: defaultModelCapabilities,
+				pricing: null,
 				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				updated: null,
 				archivePeriods: [],
@@ -113,7 +116,7 @@ if (import.meta.vitest) {
 			modelProvider: {
 				id: 'model-provider-1',
 				name: 'OpenAI',
-				protocol,
+				protocol: { type: protocol },
 				baseUrl: 'https://api.openai.com/v1',
 				auth: { type: 'apiKey', secretId: 'secret-1' },
 				headers: [{ name: 'OpenAI-Organization', valueSecretId: 'secret-2' }],
@@ -125,6 +128,6 @@ if (import.meta.vitest) {
 				auth: { type: 'apiKey', plaintext: 'token' },
 				headers: [{ name: 'OpenAI-Organization', plaintext: 'org-1' }],
 			},
-		}
+		} as OpenAIModelReachabilityInput<Protocol>
 	}
 }

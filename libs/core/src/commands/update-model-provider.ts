@@ -70,7 +70,7 @@ if (import.meta.vitest) {
 			options.tx.modelProviders.records.set('provider-1', {
 				id: 'provider-1',
 				name: 'Provider',
-				protocol: 'anthropic-messages',
+				protocol: { type: 'anthropic-messages' },
 				baseUrl: 'https://old.example.com',
 				auth: null,
 				headers: [],
@@ -85,7 +85,10 @@ if (import.meta.vitest) {
 				context,
 			)
 
-			expect(result).toMatchObject({ ok: true, value: { id: 'provider-1', name: 'Updated', protocol: 'anthropic-messages' } })
+			expect(result).toMatchObject({
+				ok: true,
+				value: { id: 'provider-1', name: 'Updated', protocol: { type: 'anthropic-messages' } },
+			})
 		})
 	})
 }

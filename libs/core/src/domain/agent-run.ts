@@ -1,7 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { auditStampPipe, freeFormStringPipe, idPipe, nonNegativeIntegerPipe, runtimeRecordPipe } from './commons'
-import { modelProviderProtocolPipe } from './model-provider'
+import { modelThinkingLevelPipe } from './model'
 import { planOutputProposalPipe, revisionOutputProposalPipe } from './proposals'
 
 export const agentPipe = v.discriminate((value) => value.type, {
@@ -52,6 +52,7 @@ export const agentRunTextContentPipe = v.object({ type: v.eq('text'), text: free
 export type AgentRunTextContent = PipeOutput<typeof agentRunTextContentPipe>
 
 export const agentRunModelCostPipe = v.object({
+	unit: v.eq('micro-usd'),
 	input: nonNegativeIntegerPipe,
 	output: nonNegativeIntegerPipe,
 	cacheRead: nonNegativeIntegerPipe,
@@ -204,8 +205,7 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 	'agent-run-model-selected': v.object({
 		type: v.eq('agent-run-model-selected'),
 		modelId: idPipe,
-		modelProviderId: idPipe,
-		protocol: modelProviderProtocolPipe,
+		thinkingLevel: modelThinkingLevelPipe,
 		authorized: v.nullable(auditStampPipe),
 	}),
 	'input-message': v.object({ type: v.eq('input-message'), source: agentRunInputSourcePipe, content: v.array(agentRunTextContentPipe) }),
@@ -291,8 +291,7 @@ if (import.meta.vitest) {
 				v.validate(agentRunEventBodyPipe, {
 					type: 'agent-run-model-selected',
 					modelId: 'model-1',
-					modelProviderId: 'provider-1',
-					protocol: 'anthropic-messages',
+					thinkingLevel: 'off',
 					authorized: null,
 				}),
 			).toMatchObject({ valid: true })

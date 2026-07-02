@@ -11,7 +11,7 @@ import type { Delivery } from '../domain/delivery'
 import type { ExternalOperation, ExternalOperationEvidence, ValidationEvidence, ValidationOperation } from '../domain/evidence'
 import type { Link } from '../domain/graph'
 import type { Memory, MemoryRevision } from '../domain/memory'
-import type { Model } from '../domain/model'
+import { defaultModelCapabilities, type Model } from '../domain/model'
 import type { ModelProvider } from '../domain/model-provider'
 import type { Plan } from '../domain/plan'
 import type { Project } from '../domain/project'
@@ -241,7 +241,7 @@ export function seedModelProvider(tx: TestStorageTransaction, id: string, archiv
 	tx.modelProviders.records.set(id, {
 		id,
 		name: 'Provider',
-		protocol: 'anthropic-messages',
+		protocol: { type: 'anthropic-messages' },
 		baseUrl: 'https://api.example.com',
 		auth: null,
 		headers: [],
@@ -263,6 +263,8 @@ export function seedSelectableModel(
 		providerId,
 		name: 'Model',
 		providerModelId: 'model',
+		capabilities: defaultModelCapabilities,
+		pricing: null,
 		created: stamp,
 		updated: null,
 		archivePeriods: options.modelArchived ? [{ archived: stamp, unarchived: null }] : [],
