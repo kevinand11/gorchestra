@@ -44,6 +44,8 @@ export type ModelTokenPricing = {
 }
 export type ModelUseConfig = { modelId: string; thinkingLevel: ModelThinkingLevel }
 
+export type DeliveryWorkConfigInput = { maxProcessableSliceSlots: number; maxCorrectionRetriesPerFailure: number; modelTimeoutMs: number }
+
 export type PortfolioConfigInput = {
 	model: {
 		default: ModelUseConfig
@@ -52,7 +54,17 @@ export type PortfolioConfigInput = {
 		execution: ModelUseConfig | null
 		revisionExecution: ModelUseConfig | null
 	}
-	work: { maxProcessableSliceSlots: number; maxCorrectionRetriesPerFailure: number; modelTimeoutMs: number } | null
+	work: DeliveryWorkConfigInput | null
+}
+
+export type ProjectConfigInput = {
+	model: {
+		planning: ModelUseConfig | null
+		revisionPlanning: ModelUseConfig | null
+		execution: ModelUseConfig | null
+		revisionExecution: ModelUseConfig | null
+	} | null
+	work: DeliveryWorkConfigInput | null
 }
 
 export type PlanConfigInput = { model: { planning: ModelUseConfig | null } | null }
@@ -150,6 +162,9 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		},
 		async getProject(projectId: string) {
 			return routes.request('get', '/api/portfolio/projects/:projectId', { params: { projectId } })
+		},
+		async setProjectConfig(projectId: string, input: { config: ProjectConfigInput }) {
+			return routes.request('put', '/api/portfolio/projects/:projectId/config', { params: { projectId }, body: input })
 		},
 		async listPlans(projectId: string) {
 			return routes.request('get', '/api/portfolio/projects/:projectId/plans', { params: { projectId } })

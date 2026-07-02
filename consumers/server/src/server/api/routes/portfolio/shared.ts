@@ -18,6 +18,7 @@ export const createPlanRequestSchema = v.object({
 	config: planConfigRequestSchema,
 })
 export const setPortfolioConfigRequestSchema = v.object({ config: Domain.Config.portfolioConfigPipe })
+export const setProjectConfigRequestSchema = v.object({ config: Domain.Config.projectConfigPipe })
 export const createModelProviderRequestSchema = v.object({
 	name: Domain.Commons.nonEmptyTrimmedStringPipe,
 	protocol: Domain.ModelProvider.modelProviderProtocolPipe,
@@ -60,6 +61,7 @@ export type PortfolioRequestCookies = Record<string, string | undefined>
 export type CreateProjectRequest = PipeOutput<typeof createProjectRequestSchema>
 export type CreatePlanRequest = PipeOutput<typeof createPlanRequestSchema>
 export type SetPortfolioConfigRequest = PipeOutput<typeof setPortfolioConfigRequestSchema>
+export type SetProjectConfigRequest = PipeOutput<typeof setProjectConfigRequestSchema>
 export type CreateModelProviderRequest = PipeOutput<typeof createModelProviderRequestSchema>
 export type UpdateModelProviderRequest = PipeOutput<typeof updateModelProviderRequestSchema>
 export type CreateModelRequest = PipeOutput<typeof createModelRequestSchema>

@@ -2,7 +2,14 @@ import { type Domain, Queries } from '@gorchestra/core'
 import { Router } from 'equipped/server'
 import { v } from 'valleyed'
 
-import { createProjectRequestSchema, portfolioRequestCookieSchema, type CreateProjectRequest, type PortfolioRequestCookies } from './shared'
+import {
+	createProjectRequestSchema,
+	portfolioRequestCookieSchema,
+	setProjectConfigRequestSchema,
+	type CreateProjectRequest,
+	type PortfolioRequestCookies,
+	type SetProjectConfigRequest,
+} from './shared'
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
 import { withSelectedPortfolioCore, withSelectedPortfolioOwnerCore } from '../../portfolio-context'
@@ -28,6 +35,14 @@ export function createProjectsApiRouter(context: ServerApiContext) {
 				response: Queries.GetProject.resultPipe,
 			},
 		})(async (req) => getSelectedPortfolioProject(context, req.cookies, req.params.projectId))
+		.put('/projects/:projectId/config', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ projectId: idPipe }),
+				body: setProjectConfigRequestSchema,
+				response: Queries.GetProject.resultPipe,
+			},
+		})(async (req) => setSelectedProjectConfig(context, req.cookies, req.params.projectId, req.body))
 }
 
 async function createSelectedPortfolioProject(
@@ -50,6 +65,24 @@ function getSelectedPortfolioProject(
 	projectId: string,
 ): Promise<Queries.GetProject.Result> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
+		const project = await core.queries.getProject({ projectId })
+		return project.ok ? project.value : throwCoreOperationError(project.error)
+	})
+}
+
+function setSelectedProjectConfig(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	projectId: string,
+	input: SetProjectConfigRequest,
+): Promise<Queries.GetProject.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
+		const saved = await core.commands.setProjectConfig(
+			{ projectId, config: input.config ?? { model: null, work: null } },
+			{ actor: { type: 'workspace-member', id: workspaceMember.id }, correlationId: null },
+		)
+		if (!saved.ok) return throwCoreOperationError(saved.error)
+
 		const project = await core.queries.getProject({ projectId })
 		return project.ok ? project.value : throwCoreOperationError(project.error)
 	})
