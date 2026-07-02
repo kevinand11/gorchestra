@@ -41,7 +41,8 @@ The Server Consumer UI is a dense, flat operations interface for managing select
 - Rows that primarily navigate should be full-row links.
 - Do not put routine `Open` buttons on rows that are already links.
 - Do not put archive, preflight, or other secondary lifecycle actions on provider/model index rows. Put those actions on the relevant detail page.
-- Status badges are appropriate for active/archived state and important readiness state, but keep them terse.
+- Represent inactive, archived, or otherwise muted states on index/list rows by muting the row itself rather than adding routine status badges. Detail pages may show the same state with more explicit metadata, explanatory copy, and lifecycle context.
+- Status badges are appropriate for important readiness state, but keep them terse.
 
 ## Forms
 
