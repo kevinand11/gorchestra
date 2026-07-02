@@ -5,6 +5,8 @@ Durable follow-up items that are known but intentionally deferred.
 ## Agent Run runtime follow-ups
 
 - Implement Agent Run Events as the stream-friendly durable Agent Run transcript: ordered per-AgentRun events for model selection, input, turn boundaries, model/tool outcomes, interrupts, proposals, proposal reviews, and compaction summaries, with live-only model/tool update deltas for subscribers.
+- Enforce Model context window limits through provider-aware token counting and context compaction. Until then, Model context window values are setup/display metadata rather than runtime guards.
+- Introduce explicit immutable revision-planning creation config, mirroring Plan creation config, so revision planning can select its initial Model and Model Thinking Level without using Delivery Config.
 
 ## Delivery work ownership and runtime follow-ups
 

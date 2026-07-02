@@ -112,6 +112,10 @@ _Avoid_: Project kind, target type
 Portfolio-wide orchestration settings that provide defaults for Planning and Delivery work across Projects unless overridden by narrower configuration. A Portfolio may have no Portfolio Config until configured; Portfolio Config belongs to the Core Portfolio, not to a Server Consumer Workspace.
 _Avoid_: Workspace Settings, global settings, account settings
 
+**Model Use Config**:
+A scoped configuration value that selects a Model and Model Thinking Level together for one Agent Run purpose. Model Use Config is inherited atomically; a narrower scope either overrides both the Model and Model Thinking Level or inherits both from a broader scope.
+_Avoid_: model id config, thinking override, partial model selection
+
 **Project Config**:
 Project-level orchestration settings that apply to Plans and Deliveries in a Project unless overridden at a narrower scope. Project Config does not change the Project Source.
 _Avoid_: scheduler settings
@@ -137,7 +141,7 @@ A Project-level reusable planning and discovery artifact. A Plan belongs to exac
 _Avoid_: Grill
 
 **Plan Config**:
-Immutable Plan-level orchestration settings for Planning, set only when the Plan is created. Plan Config may leave Plan-level model settings unset so Planning inherits Project or Portfolio model configuration, and it does not control accepted Delivery execution.
+Immutable Plan-level orchestration settings for Planning, set only when the Plan is created. Plan Config may leave Plan-level Model Use Config unset so Planning inherits Project or Portfolio Model Use Config, and it does not control accepted Delivery execution.
 _Avoid_: Delivery Config, Project Config
 
 **Planning**:
@@ -189,7 +193,7 @@ Immutable stored instructions used by Agent Runs to perform accepted Slice or Re
 _Avoid_: Plan Output, Revision Output, prompt
 
 **Delivery Config**:
-Scoped configuration for a Delivery's work. Delivery Config covers all configurable Delivery work behavior, including scheduler-processable Slice work slots, correction retry limits per failure chain, Model selection for Actions, and Model timeout. Model timeout applies only to Model Agent work; future Agent types get their own config fields. Delivery Config may be configured at Portfolio, Project, or Delivery scope and inherited by a Delivery. Delivery Config is resolved on demand when work needs it, so changing a Delivery's config affects future work. Invalid Delivery Config is rejected when set. An unresolved Delivery Work Config is a failed Delivery preflight condition, not an unimplemented work state.
+Scoped configuration for a Delivery's executable work. Delivery Config covers scheduler-processable Slice work slots, correction retry limits per failure chain, Model Use Config and Model timeout for execution and revision-execution Actions, and other Delivery work behavior. Revision planning uses planning configuration captured when revision planning is created rather than Delivery Config. Delivery Config may be configured at Portfolio, Project, or Delivery scope and inherited by a Delivery. Delivery Config is resolved on demand when work needs it, so changing a Delivery's config affects future work. Invalid Delivery Config is rejected when set. An unresolved Delivery Work Config is a failed Delivery preflight condition, not an unimplemented work state.
 _Avoid_: Execution Config, Execution Policy, scheduler settings
 
 **Delivery Work State**:
@@ -217,16 +221,20 @@ A Portfolio-owned configured source of selectable language Models. A Model Provi
 _Avoid_: model source, LLM provider, consumer model adapter
 
 **Model Provider Protocol**:
-The stable wire/API protocol Gorchestra uses to call a Model Provider. A Model Provider Protocol is a Core-owned provider behavior contract, not consumer-defined integration logic.
+The stable Core-owned wire/API protocol variant Gorchestra uses to call a Model Provider. A Model Provider Protocol may carry protocol-specific behavior options, and Consumers do not provide Model Provider Protocol implementations.
 _Avoid_: provider brand, model type, API key type
 
 **Model**:
-A named Portfolio-owned selectable language model under a Model Provider. A Model has a human-readable name and an immutable provider-facing model identifier. Editable Model fields record when they were last updated. Models may be archived, which makes them unavailable for new work while retaining them for historical references. Archived Models may be updated before being unarchived.
-_Avoid_: provider/model string, model slug
+A named Portfolio-owned selectable language model under a Model Provider, with a provider-facing model identifier and capability metadata such as supported inputs, context and output limits, reasoning support, and pricing. A Model describes what the language model can do; scoped configuration describes how Gorchestra uses it for a Plan, Delivery, or Agent Run. Models may be archived, which makes them unavailable for new work while retaining them for historical references. Archived Models may be updated before being unarchived.
+_Avoid_: provider/model string, model slug, runtime model policy
 
 **Model Preflight**:
 An observational validation operation that checks whether a stored Model is ready for Model Provider Protocol access. Model Preflight returns Validation Evidence and does not record lifecycle facts. Expected readiness failures, including archived Models or Model Providers, missing, inactive, or unresolved provider access Secrets, and provider access or model availability failures, are reported as failed Validation Evidence; missing target Model records, missing referenced Model Provider records, storage failures, and invalid Core Service Outputs remain operation errors. Provider setup guidance lives in `provider-setup.md`.
 _Avoid_: Model status, Model health state, access lifecycle event
+
+**Model Thinking Level**:
+A Core canonical level for requesting or disabling provider reasoning behavior during a Model Agent turn. Model Thinking Levels are recorded with Agent Run model selection transcript state and validated against the selected Model's reasoning capability metadata before provider execution.
+_Avoid_: reasoning effort, thinking budget, provider reasoning value
 
 **Model Agent**:
 An Agent Type where Gorchestra's Core-owned agent loop uses selected Models to perform goal-directed work consistently across consumers. Model selection is Agent Run transcript state rather than part of the Agent value itself.
