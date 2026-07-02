@@ -33,7 +33,7 @@
 					<span class="min-w-0">
 						<strong class="block truncate font-semibold">{{ provider.name }}</strong>
 						<span class="mt-1 block truncate text-sz-helper text-dim">
-							<span class="font-mono">{{ provider.protocol }}</span> · {{ provider.baseUrl }}
+							<span class="font-mono">{{ provider.protocol.type }}</span> · {{ provider.baseUrl }}
 						</span>
 					</span>
 					<span class="self-center text-sz-helper text-dim"

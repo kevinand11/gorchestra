@@ -25,7 +25,7 @@
 							}}</span>
 						</div>
 						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
-							<span class="text-dim">Protocol</span><span class="font-mono">{{ provider.protocol }}</span>
+							<span class="text-dim">Protocol</span><span class="font-mono">{{ provider.protocol.type }}</span>
 						</div>
 						<div class="flex justify-between gap-3 border-b border-dimmer py-2 sm:col-span-2">
 							<span class="text-dim">Base URL</span><span class="min-w-0 truncate font-mono">{{ provider.baseUrl }}</span>
@@ -191,6 +191,75 @@
 						<UiFormGroup label="Model name" for-id="selected-model-name" :error="modelUpdateForm.errors.name">
 							<UiInput id="selected-model-name" v-model="modelUpdateForm.name" :invalid="!!modelUpdateForm.errors.name" />
 						</UiFormGroup>
+						<div class="grid gap-3 md:grid-cols-2">
+							<UiFormGroup label="Context window tokens" for-id="context-window-tokens">
+								<UiInput
+									id="context-window-tokens"
+									type="number"
+									:min="1"
+									:model-value="modelUpdateForm.capabilities.contextWindowTokens"
+									@update:model-value="setModelCapability('contextWindowTokens', numberFieldValue($event))" />
+							</UiFormGroup>
+							<UiFormGroup label="Max output tokens" for-id="max-output-tokens">
+								<UiInput
+									id="max-output-tokens"
+									type="number"
+									:min="1"
+									:model-value="modelUpdateForm.capabilities.maxOutputTokens"
+									@update:model-value="setModelCapability('maxOutputTokens', numberFieldValue($event))" />
+							</UiFormGroup>
+						</div>
+						<div class="border-y border-dimmer">
+							<div class="py-2 text-sz-helper font-semibold text-dim">Reasoning</div>
+							<div v-for="level in thinkingLevels" :key="level" class="grid gap-2 border-t border-dimmer py-2">
+								<label class="flex items-center gap-2 text-sz-helper">
+									<input
+										:checked="isReasoningLevelEnabled(level)"
+										type="checkbox"
+										@change="setReasoningLevelEnabled(level, isChecked($event))" />
+									{{ thinkingLevelLabel(level) }}
+								</label>
+								<UiInput
+									:model-value="reasoningProviderValue(level)"
+									:disabled="!isReasoningLevelEnabled(level)"
+									placeholder="Provider value"
+									@update:model-value="setReasoningProviderValue(level, String($event))" />
+							</div>
+						</div>
+						<div class="border-b border-dimmer pb-3">
+							<div class="flex items-center justify-between gap-3 py-2">
+								<span class="text-sz-helper font-semibold text-dim">Pricing</span>
+								<UiButton type="button" variant="ghost" @click="togglePricing()">{{
+									modelUpdateForm.pricing === null ? 'Configure' : 'Clear'
+								}}</UiButton>
+							</div>
+							<div v-if="modelUpdateForm.pricing !== null" class="grid gap-3 md:grid-cols-2">
+								<UiFormGroup label="Input $/M" for-id="pricing-input"
+									><UiInput
+										id="pricing-input"
+										:model-value="pricingUsdPerMillion('input')"
+										@update:model-value="setPricingUsdPerMillion('input', String($event))"
+								/></UiFormGroup>
+								<UiFormGroup label="Output $/M" for-id="pricing-output"
+									><UiInput
+										id="pricing-output"
+										:model-value="pricingUsdPerMillion('output')"
+										@update:model-value="setPricingUsdPerMillion('output', String($event))"
+								/></UiFormGroup>
+								<UiFormGroup label="Cache read $/M" for-id="pricing-cache-read"
+									><UiInput
+										id="pricing-cache-read"
+										:model-value="pricingUsdPerMillion('cacheRead')"
+										@update:model-value="setPricingUsdPerMillion('cacheRead', String($event))"
+								/></UiFormGroup>
+								<UiFormGroup label="Cache write $/M" for-id="pricing-cache-write"
+									><UiInput
+										id="pricing-cache-write"
+										:model-value="pricingUsdPerMillion('cacheWrite')"
+										@update:model-value="setPricingUsdPerMillion('cacheWrite', String($event))"
+								/></UiFormGroup>
+							</div>
+						</div>
 						<UiButton
 							type="submit"
 							variant="secondary"
@@ -263,9 +332,10 @@ import { useApiAction } from '../../../composables/action-state'
 import { usePortfolioModelProviderQuery, usePortfolioSecretsQuery } from '../../../composables/portfolio-resource-queries'
 import { useQueryCache } from '../../../composables/query-cache'
 import { useSelectedPortfolio } from '../../../composables/selected-portfolio'
-import { useServerApi, type ServerApi } from '../../../composables/useServerApi'
+import { useServerApi, type ModelThinkingLevel, type ModelTokenPricing, type ServerApi } from '../../../composables/useServerApi'
 import { ModelProviderFormDraft } from '../../../forms/model-provider'
 import { ModelCreationFormDraft, ModelUpdateFormDraft } from '../../../forms/model'
+import { thinkingLevelLabel, thinkingLevelOptions } from '../../../composables/model-provider-options'
 import { useToasts } from '../../../composables/toasts'
 import { formatDate } from '../../../utils/time'
 
@@ -288,6 +358,7 @@ const modelUpdateForm = new ModelUpdateFormDraft()
 const selectedModelId = ref('')
 const pendingArchiveTarget = ref<ArchiveTarget | null>(null)
 const preflightEvidence = ref<PreflightEvidence | null>(null)
+const thinkingLevels = thinkingLevelOptions.map((option) => option.value)
 
 const {
 	data: provider,
@@ -326,7 +397,7 @@ watch(
 	selectedModel,
 	(model) => {
 		if (model === null) return
-		modelUpdateForm.loadEntity({ name: model.name })
+		modelUpdateForm.loadEntity({ name: model.name, capabilities: model.capabilities, pricing: model.pricing })
 		preflightEvidence.value = null
 	},
 	{ immediate: true },
@@ -438,6 +509,63 @@ function requireSelectedModel(): ListedModel {
 
 function selectedProviderModelId(models: ListedModel[]): string {
 	return models.some((model) => model.id === selectedModelId.value) ? selectedModelId.value : (models[0]?.id ?? '')
+}
+
+function numberFieldValue(value: string | number): number {
+	return typeof value === 'number' ? value : Number(value)
+}
+
+function setModelCapability(field: 'contextWindowTokens' | 'maxOutputTokens', value: number): void {
+	modelUpdateForm.capabilities = { ...modelUpdateForm.capabilities, [field]: value }
+}
+
+function isReasoningLevelEnabled(level: ModelThinkingLevel): boolean {
+	return modelUpdateForm.capabilities.reasoning?.[level] !== null && modelUpdateForm.capabilities.reasoning?.[level] !== undefined
+}
+
+function setReasoningLevelEnabled(level: ModelThinkingLevel, enabled: boolean): void {
+	const reasoning = reasoningMap()
+	modelUpdateForm.capabilities = {
+		...modelUpdateForm.capabilities,
+		reasoning: { ...reasoning, [level]: enabled ? { type: 'provider-value', value: reasoningProviderValue(level) || level } : null },
+	}
+}
+
+function reasoningProviderValue(level: ModelThinkingLevel): string {
+	return modelUpdateForm.capabilities.reasoning?.[level]?.value ?? ''
+}
+
+function setReasoningProviderValue(level: ModelThinkingLevel, value: string): void {
+	if (!isReasoningLevelEnabled(level)) return
+	modelUpdateForm.capabilities = {
+		...modelUpdateForm.capabilities,
+		reasoning: { ...reasoningMap(), [level]: { type: 'provider-value', value } },
+	}
+}
+
+function reasoningMap(): NonNullable<typeof modelUpdateForm.capabilities.reasoning> {
+	return modelUpdateForm.capabilities.reasoning ?? { off: null, minimal: null, low: null, medium: null, high: null, xhigh: null }
+}
+
+function isChecked(event: Event): boolean {
+	return event.target instanceof HTMLInputElement && event.target.checked
+}
+
+function togglePricing(): void {
+	modelUpdateForm.pricing = modelUpdateForm.pricing === null ? emptyPricing() : null
+}
+
+function emptyPricing(): ModelTokenPricing {
+	return { unit: 'micro-usd-per-million-tokens', input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+}
+
+function pricingUsdPerMillion(field: keyof Omit<ModelTokenPricing, 'unit'>): string {
+	return modelUpdateForm.pricing === null ? '' : String(modelUpdateForm.pricing[field] / 1_000_000)
+}
+
+function setPricingUsdPerMillion(field: keyof Omit<ModelTokenPricing, 'unit'>, value: string): void {
+	const pricing = modelUpdateForm.pricing ?? emptyPricing()
+	modelUpdateForm.pricing = { ...pricing, [field]: Math.round(Number(value) * 1_000_000) }
 }
 
 function modelCountLabel(count: number): string {

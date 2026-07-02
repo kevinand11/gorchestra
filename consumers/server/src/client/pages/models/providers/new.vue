@@ -141,13 +141,13 @@ import { useApiAction } from '../../../composables/action-state'
 import { usePortfolioSecretsQuery } from '../../../composables/portfolio-resource-queries'
 import { useQueryCache } from '../../../composables/query-cache'
 import { useSelectedPortfolio } from '../../../composables/selected-portfolio'
-import { useServerApi, type ModelProviderHeader, type ModelProviderProtocol } from '../../../composables/useServerApi'
+import { useServerApi, type ModelProviderHeader, type ModelProviderProtocolType } from '../../../composables/useServerApi'
 import { ModelProviderFormDraft } from '../../../forms/model-provider'
 import { useToasts } from '../../../composables/toasts'
 
 definePageMeta({ middleware: ['has-selection'] })
 
-const protocolOptions: Array<{ value: ModelProviderProtocol; label: string }> = [
+const protocolOptions: Array<{ value: ModelProviderProtocolType; label: string }> = [
 	{ value: 'openai-responses', label: 'OpenAI Responses' },
 	{ value: 'anthropic-messages', label: 'Anthropic Messages' },
 	{ value: 'openai-completions', label: 'OpenAI Completions' },

@@ -47,6 +47,9 @@
 								:invalid="!!configForm.errors.defaultModelId"
 								:disabled="!hasActiveModels" />
 						</UiFormGroup>
+						<UiFormGroup label="Default Thinking" for-id="default-thinking">
+							<UiSelect id="default-thinking" v-model="configForm.defaultThinkingLevel" :options="thinkingLevelOptions" />
+						</UiFormGroup>
 						<UiFormGroup label="Planning Model" for-id="planning-model">
 							<UiSelect
 								id="planning-model"
@@ -54,6 +57,13 @@
 								:options="optionalModelOptions"
 								placeholder="Use default"
 								:disabled="!hasActiveModels" />
+						</UiFormGroup>
+						<UiFormGroup label="Planning Thinking" for-id="planning-thinking">
+							<UiSelect
+								id="planning-thinking"
+								v-model="configForm.planningThinkingLevel"
+								:options="thinkingLevelOptions"
+								:disabled="configForm.planningModelId.trim().length === 0" />
 						</UiFormGroup>
 						<UiFormGroup label="Revision Planning Model" for-id="revision-planning-model">
 							<UiSelect
@@ -63,6 +73,13 @@
 								placeholder="Use default"
 								:disabled="!hasActiveModels" />
 						</UiFormGroup>
+						<UiFormGroup label="Revision Planning Thinking" for-id="revision-planning-thinking">
+							<UiSelect
+								id="revision-planning-thinking"
+								v-model="configForm.revisionPlanningThinkingLevel"
+								:options="thinkingLevelOptions"
+								:disabled="configForm.revisionPlanningModelId.trim().length === 0" />
+						</UiFormGroup>
 						<UiFormGroup label="Execution Model" for-id="execution-model">
 							<UiSelect
 								id="execution-model"
@@ -71,6 +88,13 @@
 								placeholder="Use default"
 								:disabled="!hasActiveModels" />
 						</UiFormGroup>
+						<UiFormGroup label="Execution Thinking" for-id="execution-thinking">
+							<UiSelect
+								id="execution-thinking"
+								v-model="configForm.executionThinkingLevel"
+								:options="thinkingLevelOptions"
+								:disabled="configForm.executionModelId.trim().length === 0" />
+						</UiFormGroup>
 						<UiFormGroup label="Revision Execution Model" for-id="revision-execution-model">
 							<UiSelect
 								id="revision-execution-model"
@@ -78,6 +102,13 @@
 								:options="optionalModelOptions"
 								placeholder="Use default"
 								:disabled="!hasActiveModels" />
+						</UiFormGroup>
+						<UiFormGroup label="Revision Execution Thinking" for-id="revision-execution-thinking">
+							<UiSelect
+								id="revision-execution-thinking"
+								v-model="configForm.revisionExecutionThinkingLevel"
+								:options="thinkingLevelOptions"
+								:disabled="configForm.revisionExecutionModelId.trim().length === 0" />
 						</UiFormGroup>
 					</div>
 				</section>
@@ -164,7 +195,7 @@ import UiFormGroup from '../components/ui/UiFormGroup.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import UiSelect from '../components/ui/UiSelect.vue'
 import { useApiAction } from '../composables/action-state'
-import { activeModelOptionGroupsFromProviders } from '../composables/model-provider-options'
+import { activeModelOptionGroupsFromProviders, thinkingLevelOptions } from '../composables/model-provider-options'
 import { usePortfolioConfigQuery, usePortfolioModelProvidersQuery } from '../composables/portfolio-resource-queries'
 import { useQueryCache } from '../composables/query-cache'
 import { useSelectedPortfolio } from '../composables/selected-portfolio'

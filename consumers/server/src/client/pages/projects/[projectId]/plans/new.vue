@@ -63,15 +63,25 @@
 					No active inherited Planning Model is configured. Select a Plan-level Planning Model below.
 				</UiCallout>
 
-				<div class="mt-4">
-					<UiSelect
-						v-model="planCreationForm.planningModelId"
-						:options="planningModelOptions"
-						placeholder="Use inherited/default"
-						search-placeholder="Search Models…"
-						empty-label="No active Models available"
-						:always-open="true"
-						:disabled="!hasActiveModels" />
+				<div class="mt-4 grid gap-3 md:grid-cols-2">
+					<UiFormGroup label="Planning Model" for-id="planning-model">
+						<UiSelect
+							id="planning-model"
+							v-model="planCreationForm.planningModelId"
+							:options="planningModelOptions"
+							placeholder="Use inherited/default"
+							search-placeholder="Search Models…"
+							empty-label="No active Models available"
+							:always-open="true"
+							:disabled="!hasActiveModels" />
+					</UiFormGroup>
+					<UiFormGroup label="Planning Thinking" for-id="planning-thinking">
+						<UiSelect
+							id="planning-thinking"
+							v-model="planCreationForm.planningThinkingLevel"
+							:options="thinkingLevelOptions"
+							:disabled="planCreationForm.planningModelId.trim().length === 0" />
+					</UiFormGroup>
 				</div>
 			</section>
 
@@ -114,7 +124,13 @@ import UiInput from '../../../../components/ui/UiInput.vue'
 import UiSelect from '../../../../components/ui/UiSelect.vue'
 import UiTextarea from '../../../../components/ui/UiTextarea.vue'
 import { useApiAction } from '../../../../composables/action-state'
-import { activeModelOptionGroupsFromProviders, modelOptionIds, modelOptionLabel } from '../../../../composables/model-provider-options'
+import {
+	activeModelOptionGroupsFromProviders,
+	modelOptionIds,
+	modelOptionLabel,
+	thinkingLevelLabel,
+	thinkingLevelOptions,
+} from '../../../../composables/model-provider-options'
 import {
 	usePortfolioConfigQuery,
 	usePortfolioModelProvidersQuery,
@@ -122,7 +138,7 @@ import {
 } from '../../../../composables/portfolio-resource-queries'
 import { useQueryCache } from '../../../../composables/query-cache'
 import { useSelectedPortfolio } from '../../../../composables/selected-portfolio'
-import { useServerApi, type ServerApi } from '../../../../composables/useServerApi'
+import { useServerApi, type ModelUseConfig, type ServerApi } from '../../../../composables/useServerApi'
 import { useToasts } from '../../../../composables/toasts'
 import { PlanCreationFormDraft } from '../../../../forms/plan'
 
@@ -151,7 +167,8 @@ const activeModelOptionGroups = computed(() => activeModelOptionGroupsFromProvid
 const planningModelOptions = computed(() => [{ value: '', label: 'Use inherited/default' }, ...activeModelOptionGroups.value])
 const activeModelIds = computed(() => modelOptionIds(activeModelOptionGroups.value))
 const hasActiveModels = computed(() => activeModelIds.value.size > 0)
-const inheritedPlanningModelId = computed(() => planningModelIdFromConfig(project.value, portfolioConfig.value))
+const inheritedPlanningModelUse = computed(() => planningModelUseFromConfig(project.value, portfolioConfig.value))
+const inheritedPlanningModelId = computed(() => inheritedPlanningModelUse.value?.modelId ?? null)
 const inheritedPlanningModelIsActive = computed(
 	() => inheritedPlanningModelId.value !== null && activeModelIds.value.has(inheritedPlanningModelId.value),
 )
@@ -175,41 +192,43 @@ const {
 	await navigateTo(`/projects/${projectId.value}/plans/${plan.id}`)
 })
 
-function planningModelIdFromConfig(projectDetails: ProjectDetails | null, config: PortfolioConfig): string | null {
-	return firstPresent([projectPlanningModelId(projectDetails), portfolioPlanningModelId(config), portfolioDefaultModelId(config)])
+function planningModelUseFromConfig(projectDetails: ProjectDetails | null, config: PortfolioConfig): ModelUseConfig | null {
+	return firstPresent([projectPlanningModelUse(projectDetails), portfolioPlanningModelUse(config), portfolioDefaultModelUse(config)])
 }
 
-function firstPresent(values: Array<string | null>): string | null {
-	return values.find((value): value is string => value !== null) ?? null
+function firstPresent(values: Array<ModelUseConfig | null>): ModelUseConfig | null {
+	return values.find((value): value is ModelUseConfig => value !== null) ?? null
 }
 
-function projectPlanningModelId(projectDetails: ProjectDetails | null): string | null {
-	return projectDetails === null ? null : projectConfigPlanningModelId(projectDetails.config)
+function projectPlanningModelUse(projectDetails: ProjectDetails | null): ModelUseConfig | null {
+	return projectDetails === null ? null : projectConfigPlanningModelUse(projectDetails.config)
 }
 
-function projectConfigPlanningModelId(configRecord: ProjectConfigRecord): string | null {
+function projectConfigPlanningModelUse(configRecord: ProjectConfigRecord): ModelUseConfig | null {
 	const config = projectConfigValue(configRecord)
-	return config === null ? null : projectModelPlanningModelId(config.model)
+	return config === null ? null : projectModelPlanningModelUse(config.model)
 }
 
 function projectConfigValue(configRecord: ProjectConfigRecord): ProjectConfigValue | null {
 	return configRecord === null ? null : configRecord.value
 }
 
-function projectModelPlanningModelId(model: ProjectModelConfig): string | null {
-	return model === null ? null : model.planningModelId
+function projectModelPlanningModelUse(model: ProjectModelConfig): ModelUseConfig | null {
+	return model === null ? null : model.planning
 }
 
-function portfolioPlanningModelId(config: PortfolioConfig): string | null {
-	return config === null ? null : config.value.model.planningModelId
+function portfolioPlanningModelUse(config: PortfolioConfig): ModelUseConfig | null {
+	return config === null ? null : config.value.model.planning
 }
 
-function portfolioDefaultModelId(config: PortfolioConfig): string | null {
-	return config === null ? null : config.value.model.defaultModelId
+function portfolioDefaultModelUse(config: PortfolioConfig): ModelUseConfig | null {
+	return config === null ? null : config.value.model.default
 }
 
 function activeInheritedModelLabel(): string {
-	const modelId = inheritedPlanningModelId.value
-	return inheritedPlanningModelIsActive.value && modelId !== null ? modelOptionLabel(activeModelOptionGroups.value, modelId) : ''
+	const modelUse = inheritedPlanningModelUse.value
+	return inheritedPlanningModelIsActive.value && modelUse !== null
+		? `${modelOptionLabel(activeModelOptionGroups.value, modelUse.modelId)} · ${thinkingLevelLabel(modelUse.thinkingLevel)}`
+		: ''
 }
 </script>

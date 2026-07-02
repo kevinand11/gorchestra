@@ -1,9 +1,22 @@
-import type { ServerApi } from './useServerApi'
+import type { ModelThinkingLevel, ServerApi } from './useServerApi'
 
 type ListedModelProvider = Awaited<ReturnType<ServerApi['listModelProviders']>>[number]
 
 export type ModelSelectOption = { value: string; label: string }
 export type ModelSelectOptionGroup = { label: string; options: ModelSelectOption[] }
+
+export const thinkingLevelOptions: Array<{ value: ModelThinkingLevel; label: string }> = [
+	{ value: 'off', label: 'Off' },
+	{ value: 'minimal', label: 'Minimal' },
+	{ value: 'low', label: 'Low' },
+	{ value: 'medium', label: 'Medium' },
+	{ value: 'high', label: 'High' },
+	{ value: 'xhigh', label: 'Extra High' },
+]
+
+export function thinkingLevelLabel(level: ModelThinkingLevel): string {
+	return thinkingLevelOptions.find((option) => option.value === level)?.label ?? level
+}
 
 export function activeModelOptionGroupsFromProviders(providers: readonly ListedModelProvider[]): ModelSelectOptionGroup[] {
 	return providers.map(activeModelOptionGroup).filter(hasModelOptions)
