@@ -48,74 +48,46 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 
 import UiButton from '../../../../components/ui/UiButton.vue'
 import UiText from '../../../../components/ui/UiText.vue'
-import { useApiAction } from '../../../../composables/action-state'
-import { usePortfolioRepositoryQuery, usePortfolioSecretsQuery } from '../../../../composables/portfolio-resource-queries'
-import { useServerApi, type ServerApi } from '../../../../composables/useServerApi'
-import { useToasts } from '../../../../composables/toasts'
+import { useRepositoryDetail, useRepositoryPreflight } from '../../../../composables/portfolio/project/repositories'
+import { useSecretsList } from '../../../../composables/portfolio/secrets'
 import { formatDate } from '../../../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
 
-type RepositoryPreflightEvidence = Awaited<ReturnType<ServerApi['preflightRepository']>>
-
 const route = useRoute()
-const serverApi = useServerApi()
-const toasts = useToasts()
 const projectId = computed(() => route.params.projectId as string)
 const repositoryId = computed(() => route.params.repositoryId as string)
-const preflightEvidence = ref<RepositoryPreflightEvidence | null>(null)
+const { repository, isLoadingRepository, repositoryError, hasLoadedRepository, isRefreshingRepository } = useRepositoryDetail(
+	projectId,
+	repositoryId,
+)
+const { secrets, isLoadingSecrets, secretsError, hasLoadedSecrets, isRefreshingSecrets } = useSecretsList()
+const { preflightEvidence, isPreflightingRepository, preflightRepositoryError, preflightRepository } = useRepositoryPreflight(
+	projectId,
+	repositoryId,
+)
 
-const {
-	data: repository,
-	isLoading: isLoadingRepository,
-	error: repositoryError,
-	hasExecuted: hasLoadedRepository,
-} = usePortfolioRepositoryQuery(serverApi, projectId, repositoryId)
-
-const {
-	data: secrets,
-	isLoading: isLoadingSecrets,
-	error: secretsError,
-	hasExecuted: hasLoadedSecrets,
-} = usePortfolioSecretsQuery(serverApi)
-
-const secretsById = computed(() => new Map(secrets.value.map((secret) => [secret.id, secret])))
 const referencedSecret = computed(() => {
 	const secretId = repository.value?.config.secretId
-	return secretId === undefined ? undefined : secretsById.value.get(secretId)
+	if (!secretId) return undefined
+	return secrets.value.find((secret) => secret.id === secretId)
 })
 const secretLabel = computed(() => {
-	const secretId = repository.value?.config.secretId
-	if (secretId === undefined) return 'Loading Secret…'
 	const secret = referencedSecret.value
 	if (secret === undefined) return 'not found'
 	return secret.archived ? `${secret.name} — archived` : secret.name
 })
 const secretToneClass = computed(() => {
-	if (repository.value === null) return 'text-dim'
 	const secret = referencedSecret.value
-	return secret === undefined || secret.archived ? 'text-error' : 'text-success'
+	return !secret || secret.archived ? 'text-error' : 'text-success'
 })
-const repositoryPageFetches = [
-	{ isLoading: isLoadingRepository, hasExecuted: hasLoadedRepository },
-	{ isLoading: isLoadingSecrets, hasExecuted: hasLoadedSecrets },
-]
-const isLoadingRepositoryPage = computed(() => repositoryPageFetches.some((fetch) => fetch.isLoading.value && !fetch.hasExecuted.value))
+const isLoadingRepositoryPage = computed(
+	() => (isLoadingRepository.value && !hasLoadedRepository.value) || (isLoadingSecrets.value && !hasLoadedSecrets.value),
+)
 const repositoryPageError = computed(() => repositoryError.value || secretsError.value)
-const isRefreshingRepositoryPage = computed(() => repositoryPageFetches.some((fetch) => fetch.isLoading.value && fetch.hasExecuted.value))
-
-const {
-	isLoading: isPreflightingRepository,
-	error: preflightRepositoryError,
-	execute: preflightRepository,
-} = useApiAction(async () => {
-	const evidence = await serverApi.preflightRepository(projectId.value, repositoryId.value)
-	preflightEvidence.value = evidence
-	if (evidence.passed) toasts.success({ title: 'Repository preflight passed.', body: evidence.summary })
-	else toasts.info({ title: 'Repository preflight failed.', body: evidence.summary })
-})
+const isRefreshingRepositoryPage = computed(() => isRefreshingRepository.value || isRefreshingSecrets.value)
 </script>

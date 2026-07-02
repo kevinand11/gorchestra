@@ -90,48 +90,23 @@ import UiFormGroup from '../../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../../components/ui/UiInput.vue'
 import UiSelect from '../../../../components/ui/UiSelect.vue'
 import UiText from '../../../../components/ui/UiText.vue'
-import { useApiAction } from '../../../../composables/action-state'
-import { usePortfolioSecretsQuery } from '../../../../composables/portfolio-resource-queries'
-import { useQueryCache } from '../../../../composables/query-cache'
-import { useSelectedPortfolio } from '../../../../composables/selected-portfolio'
-import { useServerApi } from '../../../../composables/useServerApi'
-import { RepositoryCreationFormDraft } from '../../../../forms/repository'
-import { useToasts } from '../../../../composables/toasts'
+import { useRepositoriesCreate } from '../../../../composables/portfolio/project/repositories'
+import { useActiveSecretSelectOptions } from '../../../../composables/portfolio/secrets'
 
 definePageMeta({ middleware: ['has-selection'] })
 
 const route = useRoute()
 const projectId = computed(() => route.params.projectId as string)
-const { portfolio } = useSelectedPortfolio()
-const serverApi = useServerApi()
-const toasts = useToasts()
-const { queryKeys, invalidate } = useQueryCache()
-const repositoryCreationForm = new RepositoryCreationFormDraft()
-
-const {
-	data: secrets,
-	isLoading: isLoadingSecrets,
-	error: secretsError,
-	hasExecuted: hasLoadedSecrets,
-} = usePortfolioSecretsQuery(serverApi)
-
-const activeSecrets = computed(() => secrets.value.filter((secret) => !secret.archived))
-const activeSecretOptions = computed(() => activeSecrets.value.map((secret) => ({ value: secret.id, label: secret.name })))
+const { repositoryCreationForm, isCreatingRepository, createRepositoryError, createRepository } = useRepositoriesCreate(projectId, {
+	onSuccess: async (repository) => {
+		await navigateTo(`/projects/${projectId.value}/repositories/${repository.id}`)
+	},
+})
+const { activeSecrets, activeSecretOptions, isLoadingSecrets, secretsError, hasLoadedSecrets, isRefreshingSecrets } =
+	useActiveSecretSelectOptions()
 
 const isLoadingSetup = computed(() => isLoadingSecrets.value && !hasLoadedSecrets.value)
 const setupError = computed(() => secretsError.value)
 const hasLoadedSetup = computed(() => hasLoadedSecrets.value)
-const isRefreshingSetup = computed(() => isLoadingSecrets.value && hasLoadedSecrets.value)
-
-const {
-	isLoading: isCreatingRepository,
-	error: createRepositoryError,
-	execute: createRepository,
-} = useApiAction(async () => {
-	const repository = await serverApi.createRepository(projectId.value, repositoryCreationForm.toModel())
-	invalidate(queryKeys.portfolio.projects(portfolio.value.id), { exact: true })
-	invalidate(queryKeys.portfolio.project(portfolio.value.id, projectId.value))
-	toasts.success({ title: 'Repository created.', body: `${repository.config.owner}/${repository.config.name}` })
-	await navigateTo(`/projects/${projectId.value}/repositories/${repository.id}`)
-})
+const isRefreshingSetup = computed(() => isRefreshingSecrets.value)
 </script>
