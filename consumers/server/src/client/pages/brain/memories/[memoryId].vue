@@ -2,11 +2,9 @@
 	<NuxtLayout name="brain" title="Memory Detail" subtitle="Inspect and revise one Portfolio Memory.">
 		<section>
 			<div v-if="isLoadingMemory && !hasLoadedMemory" class="border-b border-dimmer px-3 py-4 text-dim">Loading Memory…</div>
-			<p v-if="isLoadingMemory && hasLoadedMemory" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
-				Refreshing Memory…
-			</p>
+			<p v-if="isRefreshingMemory" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">Refreshing Memory…</p>
 			<div v-else-if="memoryError" class="border-b border-dimmer px-3 py-4 text-error">{{ memoryError }}</div>
-			<article v-else-if="memory">
+			<article v-else-if="memory && shownRevision">
 				<header class="border-b border-dimmer px-3 py-3">
 					<nav class="flex flex-wrap gap-2 text-sz-helper" aria-label="Memory hierarchy">
 						<NuxtLink class="text-dim hover:text-primary" to="/brain/memories">Root Memories</NuxtLink>
@@ -125,55 +123,59 @@ import { computed, ref, watch } from 'vue'
 import MemoryForm from '../../../components/brain/MemoryForm.vue'
 import MemoryRow from '../../../components/brain/MemoryRow.vue'
 import UiButton from '../../../components/ui/UiButton.vue'
-import { useApiAction } from '../../../composables/action-state'
-import { usePortfolioMemoryQuery } from '../../../composables/portfolio-resource-queries'
-import { useQueryCache } from '../../../composables/query-cache'
-import { useSelectedPortfolio } from '../../../composables/selected-portfolio'
-import { useServerApi, type ServerApi } from '../../../composables/useServerApi'
-import { useToasts } from '../../../composables/toasts'
-import { MemoryCreationFormDraft, MemoryRevisionFormDraft } from '../../../forms/memory'
+import { useMemoryCreate, useMemoryDetail, useMemoryRevisionCreate, type MemoryDetails } from '../../../composables/portfolio/memories'
 import { formatDate } from '../../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
 
-type MemoryDetails = Awaited<ReturnType<ServerApi['getMemory']>>
 type MemoryRevisionDisplay = MemoryDetails['currentRevision']
 
 const route = useRoute()
 const router = useRouter()
-const serverApi = useServerApi()
-const toasts = useToasts()
-const { portfolio } = useSelectedPortfolio()
-const { queryKeys, invalidate, set } = useQueryCache()
 const memoryId = computed(() => route.params.memoryId as string)
 const revisionId = computed(() => (typeof route.query.revisionId === 'string' ? route.query.revisionId : null))
 const isEditingMemory = ref(false)
 const showChildCreationForm = ref(false)
-const revisionForm = new MemoryRevisionFormDraft()
-const childCreationForm = new MemoryCreationFormDraft(memoryId.value)
 
+const { memory, isLoadingMemory, memoryError, hasLoadedMemory, isRefreshingMemory } = useMemoryDetail(memoryId)
 const {
-	data: memory,
-	isLoading: isLoadingMemory,
-	error: memoryError,
-	hasExecuted: hasLoadedMemory,
-} = usePortfolioMemoryQuery(serverApi, memoryId)
+	memoryRevisionForm: revisionForm,
+	isSavingRevision,
+	saveRevisionError,
+	saveRevision,
+} = useMemoryRevisionCreate(memoryId, {
+	onSuccess: async (updatedMemory) => {
+		loadRevisionForm(updatedMemory.currentRevision)
+		isEditingMemory.value = false
+		await backToCurrentRevision()
+	},
+})
+const {
+	memoryCreationForm: childCreationForm,
+	isCreatingMemory: isCreatingChildMemory,
+	createMemoryError: createChildMemoryError,
+	createMemory: createChildMemory,
+} = useMemoryCreate(memoryId, {
+	onSuccess: async (child) => {
+		showChildCreationForm.value = false
+		await navigateTo(`/brain/memories/${child.id}`)
+	},
+})
 
 const selectedRevision = computed(() => {
 	if (memory.value === null) return null
 	return memory.value.revisions.find((revision) => revision.id === revisionId.value) ?? null
 })
-const shownRevision = computed<MemoryRevisionDisplay>(() => selectedRevision.value ?? memory.value?.currentRevision ?? emptyRevision)
-const selectedRevisionId = computed(() => shownRevision.value.id)
+const shownRevision = computed<MemoryRevisionDisplay | null>(() => selectedRevision.value ?? memory.value?.currentRevision ?? null)
+const selectedRevisionId = computed(() => shownRevision.value?.id ?? null)
 const isViewingHistoricalRevision = computed(
 	() => memory.value !== null && selectedRevision.value !== null && selectedRevision.value.id !== memory.value.currentRevision.id,
 )
 const isSaveRevisionDisabled = computed(() => !revisionForm.isDirty('title', 'body'))
 
-watch(memoryId, (nextMemoryId) => {
+watch(memoryId, () => {
 	isEditingMemory.value = false
 	showChildCreationForm.value = false
-	childCreationForm.parentId = nextMemoryId
 	childCreationForm.reset()
 })
 
@@ -183,34 +185,6 @@ watch(
 		if (!isEditingMemory.value) loadRevisionFormFromCurrentMemory()
 	},
 )
-
-const {
-	isLoading: isSavingRevision,
-	error: saveRevisionError,
-	execute: saveRevision,
-} = useApiAction(async () => {
-	const updatedMemory = await serverApi.createMemoryRevision(memoryId.value, revisionForm.toModel())
-	const updatedDetails = await serverApi.getMemory(updatedMemory.id)
-	set(queryKeys.portfolio.memory(portfolio.value.id, updatedDetails.id), updatedDetails)
-	invalidateMemoryContainers(updatedDetails.parentId)
-	loadRevisionForm(updatedDetails.currentRevision)
-	isEditingMemory.value = false
-	await backToCurrentRevision()
-	toasts.success({ title: 'Memory revised.', body: updatedDetails.currentRevision.title })
-})
-
-const {
-	isLoading: isCreatingChildMemory,
-	error: createChildMemoryError,
-	execute: createChildMemory,
-} = useApiAction(async () => {
-	const child = await serverApi.createMemory(childCreationForm.toModel())
-	invalidate(queryKeys.portfolio.memory(portfolio.value.id, memoryId.value), { exact: true })
-	childCreationForm.reset()
-	showChildCreationForm.value = false
-	toasts.success({ title: 'Memory created.', body: child.currentRevision.title })
-	await navigateTo(`/brain/memories/${child.id}`)
-})
 
 function startEditing(): void {
 	loadRevisionFormFromCurrentMemory()
@@ -251,25 +225,5 @@ function loadRevisionFormFromCurrentMemory(): void {
 
 function loadRevisionForm(revision: MemoryRevisionDisplay): void {
 	revisionForm.loadEntity({ expectedCurrentRevisionId: revision.id, title: revision.title, body: revision.body })
-}
-
-function invalidateMemoryContainers(parentId: string | null): void {
-	if (parentId === null) {
-		invalidate(queryKeys.portfolio.memories(portfolio.value.id, 'root'), { exact: true })
-		return
-	}
-	invalidate(queryKeys.portfolio.memory(portfolio.value.id, parentId), { exact: true })
-}
-
-const emptyRevision: MemoryRevisionDisplay = {
-	id: '',
-	title: '',
-	body: '',
-	created: {
-		origin: 'local',
-		at: '1970-01-01T00:00:00.000Z',
-		actor: { type: '', id: '' },
-		correlationId: null,
-	},
 }
 </script>

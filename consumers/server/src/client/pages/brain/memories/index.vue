@@ -73,44 +73,23 @@ import { computed, ref } from 'vue'
 import MemoryForm from '../../../components/brain/MemoryForm.vue'
 import MemoryRow from '../../../components/brain/MemoryRow.vue'
 import UiButton from '../../../components/ui/UiButton.vue'
-import { useApiAction } from '../../../composables/action-state'
-import { usePortfolioMemoryChildrenQuery } from '../../../composables/portfolio-resource-queries.js'
-import { useQueryCache } from '../../../composables/query-cache'
-import { useSelectedPortfolio } from '../../../composables/selected-portfolio'
-import { useServerApi } from '../../../composables/useServerApi.js'
-import { useToasts } from '../../../composables/toasts'
-import { MemoryCreationFormDraft } from '../../../forms/memory'
+import { useMemoryChildren, useMemoryCreate } from '../../../composables/portfolio/memories'
 
 definePageMeta({ middleware: ['has-selection'] })
 
-const serverApi = useServerApi()
-const toasts = useToasts()
-const { portfolio } = useSelectedPortfolio()
-const { queryKeys, invalidate } = useQueryCache()
 const rootParentId = computed(() => null as string | null)
 const showCreationForm = ref(false)
-const creationForm = new MemoryCreationFormDraft(null)
+const { memories, isLoadingMemories, memoriesError, hasLoadedMemories, isRefreshingMemories } = useMemoryChildren(rootParentId)
 const {
-	data: memories,
-	isLoading: isLoadingMemories,
-	error: memoriesError,
-	hasExecuted: hasLoadedMemories,
-} = usePortfolioMemoryChildrenQuery(serverApi, rootParentId)
-
-const isRefreshingMemories = computed(() => isLoadingMemories.value && hasLoadedMemories.value)
-const rootMemoriesQueryKey = computed(() => queryKeys.portfolio.memories(portfolio.value.id, 'root'))
-
-const {
-	isLoading: isCreatingMemory,
-	error: createMemoryError,
-	execute: createMemory,
-} = useApiAction(async () => {
-	const memory = await serverApi.createMemory(creationForm.toModel())
-	invalidate(rootMemoriesQueryKey.value, { exact: true })
-	creationForm.reset()
-	showCreationForm.value = false
-	toasts.success({ title: 'Memory created.', body: memory.currentRevision.title })
-	await navigateTo(`/brain/memories/${memory.id}`)
+	memoryCreationForm: creationForm,
+	isCreatingMemory,
+	createMemoryError,
+	createMemory,
+} = useMemoryCreate(rootParentId, {
+	onSuccess: async (memory) => {
+		showCreationForm.value = false
+		await navigateTo(`/brain/memories/${memory.id}`)
+	},
 })
 
 function toggleCreationForm(): void {
