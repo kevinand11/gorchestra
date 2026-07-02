@@ -38,22 +38,26 @@
 					</div>
 
 					<div class="mt-4 grid gap-3 md:grid-cols-2">
-						<UiFormGroup label="Default Model" for-id="default-model" :error="configForm.errors.defaultModelId">
+						<UiFormGroup label="Default Model" for-id="default-model" :error="configForm.defaultModelUse.errors.modelId">
 							<UiSelect
 								id="default-model"
-								v-model="configForm.defaultModelId"
+								v-model="configForm.defaultModelUse.modelId"
 								:options="activeModelOptionGroups"
 								placeholder="Select default Model"
-								:invalid="!!configForm.errors.defaultModelId"
+								:invalid="!!configForm.defaultModelUse.errors.modelId"
 								:disabled="!hasActiveModels" />
 						</UiFormGroup>
 						<UiFormGroup label="Default Thinking" for-id="default-thinking">
-							<UiSelect id="default-thinking" v-model="configForm.defaultThinkingLevel" :options="thinkingLevelOptions" />
+							<UiSelect
+								id="default-thinking"
+								v-model="configForm.defaultModelUse.thinkingLevel"
+								:options="defaultModelSelect.thinkingLevelOptions.value"
+								:disabled="defaultModelSelect.thinkingLevelOptions.value.length === 0" />
 						</UiFormGroup>
 						<UiFormGroup label="Planning Model" for-id="planning-model">
 							<UiSelect
 								id="planning-model"
-								v-model="configForm.planningModelId"
+								v-model="configForm.planningModelUse.modelId"
 								:options="optionalModelOptions"
 								placeholder="Use default"
 								:disabled="!hasActiveModels" />
@@ -61,14 +65,14 @@
 						<UiFormGroup label="Planning Thinking" for-id="planning-thinking">
 							<UiSelect
 								id="planning-thinking"
-								v-model="configForm.planningThinkingLevel"
-								:options="thinkingLevelOptions"
-								:disabled="configForm.planningModelId.trim().length === 0" />
+								v-model="configForm.planningModelUse.thinkingLevel"
+								:options="planningModelSelect.thinkingLevelOptions.value"
+								:disabled="planningModelSelect.thinkingLevelDisabled.value" />
 						</UiFormGroup>
 						<UiFormGroup label="Revision Planning Model" for-id="revision-planning-model">
 							<UiSelect
 								id="revision-planning-model"
-								v-model="configForm.revisionPlanningModelId"
+								v-model="configForm.revisionPlanningModelUse.modelId"
 								:options="optionalModelOptions"
 								placeholder="Use default"
 								:disabled="!hasActiveModels" />
@@ -76,14 +80,14 @@
 						<UiFormGroup label="Revision Planning Thinking" for-id="revision-planning-thinking">
 							<UiSelect
 								id="revision-planning-thinking"
-								v-model="configForm.revisionPlanningThinkingLevel"
-								:options="thinkingLevelOptions"
-								:disabled="configForm.revisionPlanningModelId.trim().length === 0" />
+								v-model="configForm.revisionPlanningModelUse.thinkingLevel"
+								:options="revisionPlanningModelSelect.thinkingLevelOptions.value"
+								:disabled="revisionPlanningModelSelect.thinkingLevelDisabled.value" />
 						</UiFormGroup>
 						<UiFormGroup label="Execution Model" for-id="execution-model">
 							<UiSelect
 								id="execution-model"
-								v-model="configForm.executionModelId"
+								v-model="configForm.executionModelUse.modelId"
 								:options="optionalModelOptions"
 								placeholder="Use default"
 								:disabled="!hasActiveModels" />
@@ -91,14 +95,14 @@
 						<UiFormGroup label="Execution Thinking" for-id="execution-thinking">
 							<UiSelect
 								id="execution-thinking"
-								v-model="configForm.executionThinkingLevel"
-								:options="thinkingLevelOptions"
-								:disabled="configForm.executionModelId.trim().length === 0" />
+								v-model="configForm.executionModelUse.thinkingLevel"
+								:options="executionModelSelect.thinkingLevelOptions.value"
+								:disabled="executionModelSelect.thinkingLevelDisabled.value" />
 						</UiFormGroup>
 						<UiFormGroup label="Revision Execution Model" for-id="revision-execution-model">
 							<UiSelect
 								id="revision-execution-model"
-								v-model="configForm.revisionExecutionModelId"
+								v-model="configForm.revisionExecutionModelUse.modelId"
 								:options="optionalModelOptions"
 								placeholder="Use default"
 								:disabled="!hasActiveModels" />
@@ -106,9 +110,9 @@
 						<UiFormGroup label="Revision Execution Thinking" for-id="revision-execution-thinking">
 							<UiSelect
 								id="revision-execution-thinking"
-								v-model="configForm.revisionExecutionThinkingLevel"
-								:options="thinkingLevelOptions"
-								:disabled="configForm.revisionExecutionModelId.trim().length === 0" />
+								v-model="configForm.revisionExecutionModelUse.thinkingLevel"
+								:options="revisionExecutionModelSelect.thinkingLevelOptions.value"
+								:disabled="revisionExecutionModelSelect.thinkingLevelDisabled.value" />
 						</UiFormGroup>
 					</div>
 				</section>
@@ -122,11 +126,10 @@
 						<UiFormGroup label="Slice slots" for-id="slice-slots" :error="configForm.errors.maxProcessableSliceSlots">
 							<UiInput
 								id="slice-slots"
+								v-model="configForm.maxProcessableSliceSlots"
 								type="number"
 								:min="1"
-								:model-value="configForm.maxProcessableSliceSlots"
-								:invalid="!!configForm.errors.maxProcessableSliceSlots"
-								@update:model-value="configForm.maxProcessableSliceSlots = numberFieldValue($event)" />
+								:invalid="!!configForm.errors.maxProcessableSliceSlots" />
 						</UiFormGroup>
 						<UiFormGroup
 							label="Correction retries"
@@ -134,20 +137,18 @@
 							:error="configForm.errors.maxCorrectionRetriesPerFailure">
 							<UiInput
 								id="correction-retries"
+								v-model="configForm.maxCorrectionRetriesPerFailure"
 								type="number"
 								:min="0"
-								:model-value="configForm.maxCorrectionRetriesPerFailure"
-								:invalid="!!configForm.errors.maxCorrectionRetriesPerFailure"
-								@update:model-value="configForm.maxCorrectionRetriesPerFailure = numberFieldValue($event)" />
+								:invalid="!!configForm.errors.maxCorrectionRetriesPerFailure" />
 						</UiFormGroup>
 						<UiFormGroup label="Model timeout ms" for-id="model-timeout" :error="configForm.errors.modelTimeoutMs">
 							<UiInput
 								id="model-timeout"
+								v-model="configForm.modelTimeoutMs"
 								type="number"
 								:min="1"
-								:model-value="configForm.modelTimeoutMs"
-								:invalid="!!configForm.errors.modelTimeoutMs"
-								@update:model-value="configForm.modelTimeoutMs = numberFieldValue($event)" />
+								:invalid="!!configForm.errors.modelTimeoutMs" />
 						</UiFormGroup>
 					</div>
 				</section>
@@ -195,11 +196,11 @@ import UiFormGroup from '../components/ui/UiFormGroup.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import UiSelect from '../components/ui/UiSelect.vue'
 import { useApiAction } from '../composables/action-state'
-import { activeModelOptionGroupsFromProviders, thinkingLevelOptions } from '../composables/model-provider-options'
-import { usePortfolioConfigQuery, usePortfolioModelProvidersQuery } from '../composables/portfolio-resource-queries'
+import { usePortfolioConfigQuery } from '../composables/portfolio-resource-queries'
 import { useQueryCache } from '../composables/query-cache'
 import { useSelectedPortfolio } from '../composables/selected-portfolio'
 import { useServerApi } from '../composables/useServerApi'
+import { useSelectModel } from '../composables/use-select-model'
 import { PortfolioConfigFormDraft } from '../forms/portfolio-config'
 import { useToasts } from '../composables/toasts'
 
@@ -217,19 +218,19 @@ const {
 	error: configError,
 	hasExecuted: hasLoadedConfig,
 } = usePortfolioConfigQuery(serverApi)
-const {
-	data: providers,
-	isLoading: isLoadingProviders,
-	error: providersError,
-	hasExecuted: hasLoadedProviders,
-} = usePortfolioModelProvidersQuery(serverApi)
+const defaultModelSelect = useSelectModel(configForm.defaultModelUse)
+const planningModelSelect = useSelectModel(configForm.planningModelUse, { providers: defaultModelSelect.providers })
+const revisionPlanningModelSelect = useSelectModel(configForm.revisionPlanningModelUse, { providers: defaultModelSelect.providers })
+const executionModelSelect = useSelectModel(configForm.executionModelUse, { providers: defaultModelSelect.providers })
+const revisionExecutionModelSelect = useSelectModel(configForm.revisionExecutionModelUse, { providers: defaultModelSelect.providers })
 
-const activeModelOptionGroups = computed(() => activeModelOptionGroupsFromProviders(providers.value))
-const optionalModelOptions = computed(() => [{ value: '', label: 'Use default' }, ...activeModelOptionGroups.value])
-const hasActiveModels = computed(() => activeModelOptionGroups.value.length > 0)
-const canSaveConfig = computed(
-	() => configForm.valid && hasActiveModels.value && configForm.defaultModelId.trim().length > 0 && !isSavingConfig.value,
-)
+const activeModelOptionGroups = defaultModelSelect.activeModelOptionGroups
+const optionalModelOptions = defaultModelSelect.optionalModelOptions
+const hasActiveModels = defaultModelSelect.hasActiveModels
+const isLoadingProviders = defaultModelSelect.isLoadingProviders
+const providersError = defaultModelSelect.providersError
+const hasLoadedProviders = defaultModelSelect.hasLoadedProviders
+const canSaveConfig = computed(() => configForm.valid && !isSavingConfig.value)
 
 watch(
 	portfolioConfig,
@@ -249,8 +250,4 @@ const {
 	invalidate(queryKeys.portfolio.portfolioConfig(portfolio.value.id), { exact: true })
 	toasts.success({ title: 'Portfolio Config saved.' })
 })
-
-function numberFieldValue(value: string | number): number {
-	return typeof value === 'number' ? value : Number(value)
-}
 </script>

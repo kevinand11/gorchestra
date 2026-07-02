@@ -76,6 +76,7 @@ type UiSelectOptions<TValue extends string = string> = readonly (UiSelectOption<
 - If a group label matches the search, show that group's child options.
 - `UiSelect` may expose an always-open prop for embedded selection panels where the option list is part of the page design rather than a transient dropdown.
 - Model selectors should group Models under their Model Providers.
+- Forms that select a Model and Model Thinking Level together must derive the Thinking Level options from the selected Model's available Thinking Levels; do not show unavailable Thinking Levels for that Model.
 
 ## Models and Portfolio Config surfaces
 

@@ -1,44 +1,32 @@
-import { FormDraft } from '@gorchestra/form-draft'
+import { FormDraft, formDraftPipe } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
-import type { ModelThinkingLevel, ModelUseConfig, PortfolioConfigInput } from '../composables/useServerApi'
+import { ModelUseFormDraft } from './model-use'
+import type { ModelUseConfig, PortfolioConfigInput } from '../composables/useServerApi'
 
 export type PortfolioConfigFormModel = { config: PortfolioConfigInput }
 
 type PortfolioConfigFormFields = {
-	defaultModelId: string
-	defaultThinkingLevel: ModelThinkingLevel
-	planningModelId: string
-	planningThinkingLevel: ModelThinkingLevel
-	revisionPlanningModelId: string
-	revisionPlanningThinkingLevel: ModelThinkingLevel
-	executionModelId: string
-	executionThinkingLevel: ModelThinkingLevel
-	revisionExecutionModelId: string
-	revisionExecutionThinkingLevel: ModelThinkingLevel
+	defaultModelUse: ModelUseFormDraft
+	planningModelUse: ModelUseFormDraft
+	revisionPlanningModelUse: ModelUseFormDraft
+	executionModelUse: ModelUseFormDraft
+	revisionExecutionModelUse: ModelUseFormDraft
 	maxProcessableSliceSlots: number
 	maxCorrectionRetriesPerFailure: number
 	modelTimeoutMs: number
 }
 
-const requiredModelIdPipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Select a default Model'))
-const optionalModelIdPipe = v.string().pipe(v.asTrimmed())
-const thinkingLevelPipe = v.in(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const)
 const positiveIntegerFieldPipe = v.number().pipe(v.int(), v.gte(1))
 const nonNegativeIntegerFieldPipe = v.number().pipe(v.int(), v.gte(0))
 
 export class PortfolioConfigFormDraft extends FormDraft<PortfolioConfigFormModel, PortfolioConfigFormModel, PortfolioConfigFormFields> {
 	protected readonly rules = {
-		defaultModelId: requiredModelIdPipe,
-		defaultThinkingLevel: thinkingLevelPipe,
-		planningModelId: optionalModelIdPipe,
-		planningThinkingLevel: thinkingLevelPipe,
-		revisionPlanningModelId: optionalModelIdPipe,
-		revisionPlanningThinkingLevel: thinkingLevelPipe,
-		executionModelId: optionalModelIdPipe,
-		executionThinkingLevel: thinkingLevelPipe,
-		revisionExecutionModelId: optionalModelIdPipe,
-		revisionExecutionThinkingLevel: thinkingLevelPipe,
+		defaultModelUse: formDraftPipe<ModelUseFormDraft>(),
+		planningModelUse: formDraftPipe<ModelUseFormDraft>(),
+		revisionPlanningModelUse: formDraftPipe<ModelUseFormDraft>(),
+		executionModelUse: formDraftPipe<ModelUseFormDraft>(),
+		revisionExecutionModelUse: formDraftPipe<ModelUseFormDraft>(),
 		maxProcessableSliceSlots: positiveIntegerFieldPipe,
 		maxCorrectionRetriesPerFailure: nonNegativeIntegerFieldPipe,
 		modelTimeoutMs: positiveIntegerFieldPipe,
@@ -46,16 +34,11 @@ export class PortfolioConfigFormDraft extends FormDraft<PortfolioConfigFormModel
 
 	constructor() {
 		super({
-			defaultModelId: '',
-			defaultThinkingLevel: 'off',
-			planningModelId: '',
-			planningThinkingLevel: 'off',
-			revisionPlanningModelId: '',
-			revisionPlanningThinkingLevel: 'off',
-			executionModelId: '',
-			executionThinkingLevel: 'off',
-			revisionExecutionModelId: '',
-			revisionExecutionThinkingLevel: 'off',
+			defaultModelUse: new ModelUseFormDraft({ required: true }),
+			planningModelUse: new ModelUseFormDraft(),
+			revisionPlanningModelUse: new ModelUseFormDraft(),
+			executionModelUse: new ModelUseFormDraft(),
+			revisionExecutionModelUse: new ModelUseFormDraft(),
 			maxProcessableSliceSlots: 1,
 			maxCorrectionRetriesPerFailure: 1,
 			modelTimeoutMs: 30_000,
@@ -65,11 +48,11 @@ export class PortfolioConfigFormDraft extends FormDraft<PortfolioConfigFormModel
 	protected model = (): PortfolioConfigFormModel => ({
 		config: {
 			model: {
-				default: { modelId: this.defaultModelId, thinkingLevel: this.defaultThinkingLevel },
-				planning: optionalModelUse(this.planningModelId, this.planningThinkingLevel),
-				revisionPlanning: optionalModelUse(this.revisionPlanningModelId, this.revisionPlanningThinkingLevel),
-				execution: optionalModelUse(this.executionModelId, this.executionThinkingLevel),
-				revisionExecution: optionalModelUse(this.revisionExecutionModelId, this.revisionExecutionThinkingLevel),
+				default: requireModelUse(this.defaultModelUse.toModel()),
+				planning: this.planningModelUse.toModel(),
+				revisionPlanning: this.revisionPlanningModelUse.toModel(),
+				execution: this.executionModelUse.toModel(),
+				revisionExecution: this.revisionExecutionModelUse.toModel(),
 			},
 			work: {
 				maxProcessableSliceSlots: this.maxProcessableSliceSlots,
@@ -83,21 +66,11 @@ export class PortfolioConfigFormDraft extends FormDraft<PortfolioConfigFormModel
 		const model = entity.config.model
 		const work = deliveryWorkConfigFields(entity.config.work)
 
-		const planning = optionalModelUseFields(model.planning)
-		const revisionPlanning = optionalModelUseFields(model.revisionPlanning)
-		const execution = optionalModelUseFields(model.execution)
-		const revisionExecution = optionalModelUseFields(model.revisionExecution)
-
-		this.defaultModelId = model.default.modelId
-		this.defaultThinkingLevel = model.default.thinkingLevel
-		this.planningModelId = planning.modelId
-		this.planningThinkingLevel = planning.thinkingLevel
-		this.revisionPlanningModelId = revisionPlanning.modelId
-		this.revisionPlanningThinkingLevel = revisionPlanning.thinkingLevel
-		this.executionModelId = execution.modelId
-		this.executionThinkingLevel = execution.thinkingLevel
-		this.revisionExecutionModelId = revisionExecution.modelId
-		this.revisionExecutionThinkingLevel = revisionExecution.thinkingLevel
+		this.defaultModelUse.loadEntity(model.default)
+		this.planningModelUse.loadEntity(model.planning)
+		this.revisionPlanningModelUse.loadEntity(model.revisionPlanning)
+		this.executionModelUse.loadEntity(model.execution)
+		this.revisionExecutionModelUse.loadEntity(model.revisionExecution)
 		this.maxProcessableSliceSlots = work.maxProcessableSliceSlots
 		this.maxCorrectionRetriesPerFailure = work.maxCorrectionRetriesPerFailure
 		this.modelTimeoutMs = work.modelTimeoutMs
@@ -112,14 +85,9 @@ function defaultDeliveryWorkConfig(): NonNullable<PortfolioConfigInput['work']> 
 	return { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 }
 }
 
-function optionalModelUseFields(modelUse: ModelUseConfig | null): { modelId: string; thinkingLevel: ModelThinkingLevel } {
-	if (modelUse === null) return { modelId: '', thinkingLevel: 'off' }
+function requireModelUse(modelUse: ModelUseConfig | null): ModelUseConfig {
+	if (modelUse === null) throw new Error('Default Model Use Config is required')
 	return modelUse
-}
-
-function optionalModelUse(modelId: string, thinkingLevel: ModelThinkingLevel): ModelUseConfig | null {
-	const trimmed = modelId.trim()
-	return trimmed.length === 0 ? null : { modelId: trimmed, thinkingLevel }
 }
 
 if (import.meta.vitest) {
@@ -137,11 +105,11 @@ if (import.meta.vitest) {
 		it('models Portfolio Config with nullable purpose Model Use Config values', () => {
 			const factory = new PortfolioConfigFormDraft()
 
-			factory.defaultModelId = ' model-default '
-			factory.planningModelId = ' '
-			factory.revisionPlanningModelId = ' model-revision-planning '
-			factory.executionModelId = ' '
-			factory.revisionExecutionModelId = ' model-revision-execution '
+			factory.defaultModelUse.modelId = ' model-default '
+			factory.planningModelUse.modelId = ' '
+			factory.revisionPlanningModelUse.modelId = ' model-revision-planning '
+			factory.executionModelUse.modelId = ' '
+			factory.revisionExecutionModelUse.modelId = ' model-revision-execution '
 			factory.maxProcessableSliceSlots = 2
 			factory.maxCorrectionRetriesPerFailure = 0
 			factory.modelTimeoutMs = 60_000

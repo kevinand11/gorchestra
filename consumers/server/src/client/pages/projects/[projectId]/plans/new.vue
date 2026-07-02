@@ -67,7 +67,7 @@
 					<UiFormGroup label="Planning Model" for-id="planning-model">
 						<UiSelect
 							id="planning-model"
-							v-model="planCreationForm.planningModelId"
+							v-model="planCreationForm.planningModelUse.modelId"
 							:options="planningModelOptions"
 							placeholder="Use inherited/default"
 							search-placeholder="Search Models…"
@@ -78,9 +78,9 @@
 					<UiFormGroup label="Planning Thinking" for-id="planning-thinking">
 						<UiSelect
 							id="planning-thinking"
-							v-model="planCreationForm.planningThinkingLevel"
-							:options="thinkingLevelOptions"
-							:disabled="planCreationForm.planningModelId.trim().length === 0" />
+							v-model="planCreationForm.planningModelUse.thinkingLevel"
+							:options="planningModelSelect.thinkingLevelOptions.value"
+							:disabled="planningModelSelect.thinkingLevelDisabled.value" />
 					</UiFormGroup>
 				</div>
 			</section>
@@ -124,21 +124,12 @@ import UiInput from '../../../../components/ui/UiInput.vue'
 import UiSelect from '../../../../components/ui/UiSelect.vue'
 import UiTextarea from '../../../../components/ui/UiTextarea.vue'
 import { useApiAction } from '../../../../composables/action-state'
-import {
-	activeModelOptionGroupsFromProviders,
-	modelOptionIds,
-	modelOptionLabel,
-	thinkingLevelLabel,
-	thinkingLevelOptions,
-} from '../../../../composables/model-provider-options'
-import {
-	usePortfolioConfigQuery,
-	usePortfolioModelProvidersQuery,
-	usePortfolioProjectQuery,
-} from '../../../../composables/portfolio-resource-queries'
+import { modelOptionLabel, thinkingLevelLabel } from '../../../../composables/model-provider-options'
+import { usePortfolioConfigQuery, usePortfolioProjectQuery } from '../../../../composables/portfolio-resource-queries'
 import { useQueryCache } from '../../../../composables/query-cache'
 import { useSelectedPortfolio } from '../../../../composables/selected-portfolio'
 import { useServerApi, type ModelUseConfig, type ServerApi } from '../../../../composables/useServerApi'
+import { useSelectModel } from '../../../../composables/use-select-model'
 import { useToasts } from '../../../../composables/toasts'
 import { PlanCreationFormDraft } from '../../../../forms/plan'
 
@@ -161,12 +152,13 @@ const planCreationForm = new PlanCreationFormDraft()
 
 const { data: project } = usePortfolioProjectQuery(serverApi, projectId)
 const { data: portfolioConfig } = usePortfolioConfigQuery(serverApi)
-const { data: providers, error: providersError } = usePortfolioModelProvidersQuery(serverApi)
+const planningModelSelect = useSelectModel(planCreationForm.planningModelUse, { optionalLabel: 'Use inherited/default' })
 
-const activeModelOptionGroups = computed(() => activeModelOptionGroupsFromProviders(providers.value))
-const planningModelOptions = computed(() => [{ value: '', label: 'Use inherited/default' }, ...activeModelOptionGroups.value])
-const activeModelIds = computed(() => modelOptionIds(activeModelOptionGroups.value))
-const hasActiveModels = computed(() => activeModelIds.value.size > 0)
+const activeModelOptionGroups = planningModelSelect.activeModelOptionGroups
+const planningModelOptions = planningModelSelect.optionalModelOptions
+const activeModelIds = planningModelSelect.activeModelIds
+const hasActiveModels = planningModelSelect.hasActiveModels
+const providersError = planningModelSelect.providersError
 const inheritedPlanningModelUse = computed(() => planningModelUseFromConfig(project.value, portfolioConfig.value))
 const inheritedPlanningModelId = computed(() => inheritedPlanningModelUse.value?.modelId ?? null)
 const inheritedPlanningModelIsActive = computed(
@@ -174,7 +166,7 @@ const inheritedPlanningModelIsActive = computed(
 )
 const inheritedPlanningModelLabel = computed(() => activeInheritedModelLabel())
 const requiresPlanModelOverride = computed(() => !inheritedPlanningModelIsActive.value)
-const hasPlanModelOverride = computed(() => planCreationForm.planningModelId.trim().length > 0)
+const hasPlanModelOverride = computed(() => planCreationForm.planningModelUse.modelId.trim().length > 0)
 const hasRequiredPlanningModel = computed(() => !requiresPlanModelOverride.value || hasPlanModelOverride.value)
 const canCreatePlan = computed(() =>
 	[planCreationForm.valid, hasActiveModels.value, hasRequiredPlanningModel.value, !isCreatingPlan.value].every(Boolean),

@@ -4,8 +4,10 @@ type ListedModelProvider = Awaited<ReturnType<ServerApi['listModelProviders']>>[
 
 export type ModelSelectOption = { value: string; label: string }
 export type ModelSelectOptionGroup = { label: string; options: ModelSelectOption[] }
+type ThinkingLevelOption = { value: ModelThinkingLevel; label: string }
+type ListedModel = ListedModelProvider['models'][number]
 
-export const thinkingLevelOptions: Array<{ value: ModelThinkingLevel; label: string }> = [
+export const thinkingLevelOptions: ThinkingLevelOption[] = [
 	{ value: 'off', label: 'Off' },
 	{ value: 'minimal', label: 'Minimal' },
 	{ value: 'low', label: 'Low' },
@@ -30,6 +32,19 @@ export function modelOptionLabel(groups: readonly ModelSelectOptionGroup[], mode
 	return groups.flatMap((group) => group.options).find((option) => option.value === modelId)?.label ?? modelId
 }
 
+export function thinkingLevelOptionsForModel(providers: readonly ListedModelProvider[], modelId: string): ThinkingLevelOption[] {
+	const model = activeModelFromProviders(providers, modelId)
+	return model === null ? [] : thinkingLevelOptions.filter((option) => model.availableThinkingLevels.includes(option.value))
+}
+
+export function modelHasThinkingLevel(
+	providers: readonly ListedModelProvider[],
+	modelId: string,
+	thinkingLevel: ModelThinkingLevel,
+): boolean {
+	return thinkingLevelOptionsForModel(providers, modelId).some((option) => option.value === thinkingLevel)
+}
+
 function activeModelOptionGroup(provider: ListedModelProvider): ModelSelectOptionGroup {
 	return {
 		label: `${provider.name} · ${provider.protocol.type}`,
@@ -37,10 +52,86 @@ function activeModelOptionGroup(provider: ListedModelProvider): ModelSelectOptio
 	}
 }
 
-function modelOption(model: ListedModelProvider['models'][number]): ModelSelectOption {
+function activeModelFromProviders(providers: readonly ListedModelProvider[], modelId: string): ListedModel | null {
+	const trimmedModelId = modelId.trim()
+	if (trimmedModelId.length === 0) return null
+
+	return (
+		providers
+			.filter((provider) => !provider.archived)
+			.flatMap((provider) => provider.models)
+			.find((model) => !model.archived && model.id === trimmedModelId) ?? null
+	)
+}
+
+function modelOption(model: ListedModel): ModelSelectOption {
 	return { value: model.id, label: `${model.name} (${model.providerModelId})` }
 }
 
 function hasModelOptions(group: ModelSelectOptionGroup): boolean {
 	return group.options.length > 0
+}
+
+if (import.meta.vitest) {
+	const { describe, expect, it } = import.meta.vitest
+
+	describe('model-provider-options', () => {
+		it('filters thinking levels to the selected active Model capabilities', () => {
+			const providers = [
+				provider({
+					id: 'provider-1',
+					models: [
+						model({ id: 'model-1', availableThinkingLevels: ['off', 'high'] }),
+						model({ id: 'model-archived', availableThinkingLevels: ['off', 'low'], archived: true }),
+					],
+				}),
+				provider({
+					id: 'provider-archived',
+					archived: true,
+					models: [model({ id: 'model-2', availableThinkingLevels: ['medium'] })],
+				}),
+			] satisfies ListedModelProvider[]
+
+			expect(thinkingLevelOptionsForModel(providers, 'model-1')).toEqual([
+				{ value: 'off', label: 'Off' },
+				{ value: 'high', label: 'High' },
+			])
+			expect(thinkingLevelOptionsForModel(providers, 'model-archived')).toEqual([])
+			expect(thinkingLevelOptionsForModel(providers, 'model-2')).toEqual([])
+		})
+	})
+
+	function provider(input: { id: string; archived?: boolean; models: ListedModelProvider['models'] }): ListedModelProvider {
+		return {
+			id: input.id,
+			name: input.id,
+			protocol: { type: 'openai-responses' },
+			baseUrl: 'https://api.example.com',
+			auth: null,
+			headers: [],
+			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
+			updated: null,
+			archived: input.archived ?? false,
+			models: input.models,
+		}
+	}
+
+	function model(input: {
+		id: string
+		availableThinkingLevels: ModelThinkingLevel[]
+		archived?: boolean
+	}): ListedModelProvider['models'][number] {
+		return {
+			id: input.id,
+			providerId: 'provider-1',
+			name: input.id,
+			providerModelId: input.id,
+			capabilities: { inputs: ['text'], contextWindowTokens: 128000, maxOutputTokens: 16384, reasoning: null },
+			pricing: null,
+			availableThinkingLevels: input.availableThinkingLevels,
+			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
+			updated: null,
+			archived: input.archived ?? false,
+		}
+	}
 }

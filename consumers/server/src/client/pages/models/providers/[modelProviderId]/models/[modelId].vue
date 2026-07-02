@@ -77,18 +77,16 @@
 							<UiFormGroup label="Context window tokens" for-id="context-window-tokens">
 								<UiInput
 									id="context-window-tokens"
+									v-model="modelUpdateForm.capabilities.contextWindowTokens"
 									type="number"
-									:min="1"
-									:model-value="modelUpdateForm.capabilities.contextWindowTokens"
-									@update:model-value="setModelCapability('contextWindowTokens', numberFieldValue($event))" />
+									:min="1" />
 							</UiFormGroup>
 							<UiFormGroup label="Max output tokens" for-id="max-output-tokens">
 								<UiInput
 									id="max-output-tokens"
+									v-model="modelUpdateForm.capabilities.maxOutputTokens"
 									type="number"
-									:min="1"
-									:model-value="modelUpdateForm.capabilities.maxOutputTokens"
-									@update:model-value="setModelCapability('maxOutputTokens', numberFieldValue($event))" />
+									:min="1" />
 							</UiFormGroup>
 						</div>
 					</section>
@@ -363,14 +361,6 @@ function invalidateModelQueries(): void {
 	invalidate(queryKeys.portfolio.modelReferences(portfolio.value.id, modelProviderId.value, modelId.value), { exact: true })
 	invalidate(queryKeys.portfolio.modelProvider(portfolio.value.id, modelProviderId.value), { exact: true })
 	invalidate(queryKeys.portfolio.modelProviders(portfolio.value.id), { exact: true })
-}
-
-function numberFieldValue(value: string | number): number {
-	return typeof value === 'number' ? value : Number(value)
-}
-
-function setModelCapability(field: 'contextWindowTokens' | 'maxOutputTokens', value: number): void {
-	modelUpdateForm.capabilities = { ...modelUpdateForm.capabilities, [field]: value }
 }
 
 function isReasoningLevelEnabled(level: ModelThinkingLevel): boolean {

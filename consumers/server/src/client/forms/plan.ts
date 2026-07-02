@@ -1,13 +1,13 @@
-import { FormDraft } from '@gorchestra/form-draft'
+import { FormDraft, formDraftPipe } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
-import type { ModelThinkingLevel, ModelUseConfig, PlanConfigInput } from '../composables/useServerApi'
+import { ModelUseFormDraft } from './model-use'
+import type { PlanConfigInput } from '../composables/useServerApi'
 
 type PlanCreationFormFields = {
 	title: string
 	initialMessage: string
-	planningModelId: string
-	planningThinkingLevel: ModelThinkingLevel
+	planningModelUse: ModelUseFormDraft
 }
 
 type PlanCreationFormModel = {
@@ -18,45 +18,29 @@ type PlanCreationFormModel = {
 
 const planTitlePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter a Plan title'))
 const initialMessagePipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Enter an initial planning message'))
-const optionalModelIdPipe = v.string().pipe(v.asTrimmed())
-const thinkingLevelPipe = v.in(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const)
 
 export class PlanCreationFormDraft extends FormDraft<PlanCreationFormModel, PlanCreationFormModel, PlanCreationFormFields> {
 	protected readonly rules = {
 		title: planTitlePipe,
 		initialMessage: initialMessagePipe,
-		planningModelId: optionalModelIdPipe,
-		planningThinkingLevel: thinkingLevelPipe,
+		planningModelUse: formDraftPipe<ModelUseFormDraft>(),
 	}
 
 	constructor() {
-		super({ title: '', initialMessage: '', planningModelId: '', planningThinkingLevel: 'off' })
+		super({ title: '', initialMessage: '', planningModelUse: new ModelUseFormDraft() })
 	}
 
 	protected model = (): PlanCreationFormModel => ({
 		title: this.title,
 		initialMessage: this.initialMessage,
-		config: { model: { planning: optionalModelUse(this.planningModelId, this.planningThinkingLevel) } },
+		config: { model: { planning: this.planningModelUse.toModel() } },
 	})
 
 	protected load = (entity: PlanCreationFormModel): void => {
-		const planning = planningModelUseFields(entity.config)
-
 		this.title = entity.title
 		this.initialMessage = entity.initialMessage
-		this.planningModelId = planning.modelId
-		this.planningThinkingLevel = planning.thinkingLevel
+		this.planningModelUse.loadEntity(entity.config.model?.planning ?? null)
 	}
-}
-
-function planningModelUseFields(config: PlanConfigInput): { modelId: string; thinkingLevel: ModelThinkingLevel } {
-	if (config.model === null || config.model.planning === null) return { modelId: '', thinkingLevel: 'off' }
-	return config.model.planning
-}
-
-function optionalModelUse(modelId: string, thinkingLevel: ModelThinkingLevel): ModelUseConfig | null {
-	const trimmed = modelId.trim()
-	return trimmed.length === 0 ? null : { modelId: trimmed, thinkingLevel }
 }
 
 if (import.meta.vitest) {
@@ -82,7 +66,7 @@ if (import.meta.vitest) {
 
 			factory.title = 'Plan'
 			factory.initialMessage = 'Plan this.'
-			factory.planningModelId = ' model-1 '
+			factory.planningModelUse.modelId = ' model-1 '
 
 			expect(factory.toModel()).toEqual({
 				title: 'Plan',
