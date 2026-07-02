@@ -639,6 +639,7 @@ if (import.meta.vitest) {
 			modelProvider: openAIResponsesModelProvider(),
 			messages: [],
 			tools: [],
+			thinking: null,
 			signal: new AbortController().signal,
 			onDelta: () => undefined,
 		}

@@ -1,6 +1,7 @@
 import type { AgentRunModelDelta, AgentRunToolUpdate } from './live-events'
 import type { AgentRunModelMessageOutcome, AgentRunToolOutput } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
+import type { ModelThinkingLevel } from '../../domain/model'
 
 export interface AgentRunModelContext {
 	messages: AgentRunProviderMessage[]
@@ -18,9 +19,12 @@ export interface AgentRunProviderTool {
 	parameters: unknown
 }
 
+export type ModelAgentTurnThinking = { level: ModelThinkingLevel; providerValue: string } | null
+
 export interface ModelAgentTurnInput {
 	messages: AgentRunProviderMessage[]
 	tools: AgentRunProviderTool[]
+	thinking: ModelAgentTurnThinking
 	signal: AbortSignal
 	onDelta(delta: AgentRunModelDelta): void
 }

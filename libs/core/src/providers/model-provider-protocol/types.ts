@@ -4,7 +4,7 @@ import type { Model } from '../../domain/model'
 import type { ModelProvider, ModelProviderProtocolType } from '../../domain/model-provider'
 import type { InvalidCoreServiceOutputError, StorageOperationFailedError } from '../../errors'
 import type { AgentRunModelDelta } from '../../runtime/agent-runs/live-events'
-import type { AgentRunProviderMessage, AgentRunProviderTool } from '../../runtime/agent-runs/types'
+import type { AgentRunProviderMessage, AgentRunProviderTool, ModelAgentTurnThinking } from '../../runtime/agent-runs/types'
 import type { ResolvableSecretValue } from '../../services'
 import type { Result } from '../../utils/types'
 
@@ -39,6 +39,7 @@ export interface ModelAgentTurnInput {
 	modelProvider: ModelProvider
 	messages: AgentRunProviderMessage[]
 	tools: AgentRunProviderTool[]
+	thinking: ModelAgentTurnThinking
 	signal: AbortSignal
 	onDelta(delta: AgentRunModelDelta): void
 }

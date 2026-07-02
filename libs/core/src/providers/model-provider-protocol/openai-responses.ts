@@ -9,7 +9,14 @@ import type {
 	ModelProviderProtocolProviderModelAgentTurnInput,
 	ModelProviderProtocolProviderPreflightModelInput,
 } from './types'
-import type { AgentRunModelContent, AgentRunModelMessage, AgentRunModelMessageOutcome, AgentRunModelUsage } from '../../domain/agent-run'
+import type {
+	AgentRunModelContent,
+	AgentRunModelCost,
+	AgentRunModelMessage,
+	AgentRunModelMessageOutcome,
+	AgentRunModelUsage,
+} from '../../domain/agent-run'
+import type { ModelTokenPricing } from '../../domain/model'
 import type { AgentRunProviderMessage, AgentRunProviderTool } from '../../runtime/agent-runs/types'
 
 export type OpenAIResponsesModelProviderProtocolProvider = ModelProviderProtocolProvider<'openai-responses'>
@@ -33,6 +40,8 @@ type OpenAIResponsesRequest = {
 	input: unknown[]
 	stream: true
 	store: false
+	max_output_tokens: number
+	reasoning?: { effort: string }
 	tools?: unknown[]
 }
 
@@ -178,6 +187,8 @@ function openAIResponsesRequest(input: OpenAIResponsesTurnInput): OpenAIResponse
 		input: input.messages.map(openAIResponsesMessage),
 		stream: true,
 		store: false,
+		max_output_tokens: input.model.capabilities.maxOutputTokens,
+		...(input.thinking === null ? {} : { reasoning: { effort: input.thinking.providerValue } }),
 		...(tools === undefined ? {} : { tools }),
 	}
 }
@@ -250,11 +261,11 @@ function responseStreamEventProcessors(state: StreamState, input: OpenAIResponse
 		'response.output_item.done': (event: Extract<OpenAIResponsesStreamEvent, { type: 'response.output_item.done' }>) =>
 			finishOutputItem(event.item, state, input),
 		'response.completed': (event: Extract<OpenAIResponsesStreamEvent, { type: 'response.completed' }>) =>
-			finishTerminalResponse(state, event.response, 'completed'),
+			finishTerminalResponse(state, event.response, 'completed', input),
 		'response.incomplete': (event: Extract<OpenAIResponsesStreamEvent, { type: 'response.incomplete' }>) =>
-			finishTerminalResponse(state, event.response, 'incomplete'),
+			finishTerminalResponse(state, event.response, 'incomplete', input),
 		'response.failed': (event: Extract<OpenAIResponsesStreamEvent, { type: 'response.failed' }>) => {
-			finishTerminalResponse(state, event.response ?? {}, 'failed')
+			finishTerminalResponse(state, event.response ?? {}, 'failed', input)
 			throw new Error(responseFailedSummary(event.response))
 		},
 		error: (event: Extract<OpenAIResponsesStreamEvent, { type: 'error' }>) => {
@@ -414,9 +425,14 @@ function trailingDelta(previous: string, current: string): string | null {
 	return current.startsWith(previous) && current.length > previous.length ? current.slice(previous.length) : null
 }
 
-function finishTerminalResponse(state: StreamState, response: OpenAIResponsesTerminalResponse, fallback: TerminalStatus): void {
+function finishTerminalResponse(
+	state: StreamState,
+	response: OpenAIResponsesTerminalResponse,
+	fallback: TerminalStatus,
+	input: OpenAIResponsesTurnInput,
+): void {
 	state.providerResponseRef = response.id ?? state.providerResponseRef
-	state.usage = usageFromOpenAIResponse(response.usage)
+	state.usage = usageFromOpenAIResponse(response.usage, input.model.pricing)
 	state.terminalStatus = terminalStatus(response.status) ?? fallback
 }
 
@@ -523,19 +539,35 @@ function stringifyJson(value: unknown): string | null {
 	}
 }
 
-function usageFromOpenAIResponse(usage: OpenAIResponsesUsage | undefined): AgentRunModelUsage | null {
-	return usage === undefined ? null : usageFromPresentOpenAIResponse(usage)
+function usageFromOpenAIResponse(usage: OpenAIResponsesUsage | undefined, pricing: ModelTokenPricing | null): AgentRunModelUsage | null {
+	return usage === undefined ? null : usageFromPresentOpenAIResponse(usage, pricing)
 }
 
-function usageFromPresentOpenAIResponse(usage: OpenAIResponsesUsage): AgentRunModelUsage {
-	return {
+function usageFromPresentOpenAIResponse(usage: OpenAIResponsesUsage, pricing: ModelTokenPricing | null): AgentRunModelUsage {
+	const tokenUsage = {
 		inputTokens: inputTokens(usage),
 		outputTokens: outputTokens(usage),
 		cacheReadTokens: cacheReadTokens(usage),
 		cacheWriteTokens: 0,
 		totalTokens: totalTokens(usage),
-		cost: null,
 	}
+	return { ...tokenUsage, cost: pricing === null ? null : costFromUsage(tokenUsage, pricing) }
+}
+
+function costFromUsage(
+	usage: Pick<AgentRunModelUsage, 'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheWriteTokens'>,
+	pricing: ModelTokenPricing,
+): AgentRunModelCost {
+	const input = tokenCost(usage.inputTokens, pricing.input)
+	const output = tokenCost(usage.outputTokens, pricing.output)
+	const cacheRead = tokenCost(usage.cacheReadTokens, pricing.cacheRead)
+	const cacheWrite = tokenCost(usage.cacheWriteTokens, pricing.cacheWrite)
+	return { unit: 'micro-usd', input, output, cacheRead, cacheWrite, total: input + output + cacheRead + cacheWrite }
+}
+
+function tokenCost(tokens: number, priceMicroUsdPerMillion: number): number {
+	if (tokens === 0 || priceMicroUsdPerMillion === 0) return 0
+	return Math.round((tokens * priceMicroUsdPerMillion) / 1_000_000)
 }
 
 function inputTokens(usage: OpenAIResponsesUsage): number {
@@ -629,7 +661,7 @@ if (import.meta.vitest) {
 
 			const result = await provider.runModelAgentTurn!(turnInput({ onDelta: (delta) => deltas.push(delta) }))
 
-			expect(request).toMatchObject({ model: 'gpt-5', stream: true, store: false })
+			expect(request).toMatchObject({ model: 'gpt-5', stream: true, store: false, max_output_tokens: 16384 })
 			expect(result).toEqual({
 				outcome: {
 					type: 'stop',
@@ -654,6 +686,21 @@ if (import.meta.vitest) {
 				{ type: 'text-ended', contentIndex: 0, text: 'Hello' },
 				{ type: 'model-output-ended' },
 			])
+		})
+
+		it('passes configured thinking provider values', async () => {
+			let request: OpenAIResponsesRequest | null = null
+			const provider = createOpenAIResponsesModelProviderProtocolProvider(() =>
+				client((params) => {
+					request = params
+					return withResponse([{ type: 'response.completed', response: { id: 'resp-1', status: 'completed' } }])
+				}),
+			)
+
+			const result = await provider.runModelAgentTurn!(turnInput({ thinking: { level: 'high', providerValue: 'high' } }))
+
+			expect(request).toMatchObject({ reasoning: { effort: 'high' } })
+			expect(result.outcome.type).toBe('stop')
 		})
 
 		it('streams function calls into a tool-use outcome', async () => {
@@ -706,6 +753,42 @@ if (import.meta.vitest) {
 				toolCallId: 'call-1|fc-1',
 				toolName: 'propose-plan-output',
 				input: toolInput,
+			})
+		})
+
+		it('computes integer micro-USD costs when pricing is configured', async () => {
+			const provider = createOpenAIResponsesModelProviderProtocolProvider(() =>
+				client(() =>
+					withResponse([
+						{
+							type: 'response.completed',
+							response: {
+								id: 'resp-1',
+								status: 'completed',
+								usage: { input_tokens: 10, output_tokens: 3, total_tokens: 13, input_tokens_details: { cached_tokens: 2 } },
+							},
+						},
+					]),
+				),
+			)
+
+			const result = await provider.runModelAgentTurn!(
+				turnInput({
+					model: {
+						...turnInput().model,
+						pricing: {
+							unit: 'micro-usd-per-million-tokens',
+							input: 2_000_000,
+							output: 8_000_000,
+							cacheRead: 500_000,
+							cacheWrite: 0,
+						},
+					},
+				}),
+			)
+
+			expect(result.outcome).toMatchObject({
+				message: { usage: { cost: { unit: 'micro-usd', input: 16, output: 24, cacheRead: 1, cacheWrite: 0, total: 41 } } },
 			})
 		})
 
@@ -785,6 +868,7 @@ if (import.meta.vitest) {
 			messages: [{ role: 'user', content: 'Hello' }],
 			tools: [{ name: 'propose-plan-output', description: 'Propose.', executionMode: 'exclusive', parameters: { type: 'object' } }],
 			signal: new AbortController().signal,
+			thinking: null,
 			onDelta: () => undefined,
 			access: { auth: null, headers: [] },
 			...overrides,

@@ -1,13 +1,15 @@
 import { buildAgentRunModelContext } from './context'
 import type { AgentRunLiveEvent } from './live-events'
 import { providerTool, toolOutput, toolsForAgentRunPurpose, validateToolInput, type CoreAgentRunTool } from './tools'
+import type { ModelAgentTurnThinking } from './types'
 import type { AgentRun, AgentRunEvent, AgentRunModelMessageOutcome, AgentRunToolOutput } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
-import type { Model } from '../../domain/model'
+import type { Model, ModelThinkingLevel } from '../../domain/model'
 import type { ModelProvider } from '../../domain/model-provider'
 import type {
 	InvalidCoreServiceOutputError,
 	InvariantViolationError,
+	ModelThinkingLevelUnavailableError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../../errors'
@@ -38,9 +40,6 @@ export interface ModelAgentRunRuntime {
 interface AgentRunLoopState {
 	agentRun: AgentRun
 	events: AgentRunEvent[]
-	modelSelection: Extract<AgentRunEvent['body'], { type: 'agent-run-model-selected' }>
-	model: Model
-	modelProvider: ModelProvider
 	tools: CoreAgentRunTool[]
 }
 
@@ -90,17 +89,6 @@ async function runClaimedTurn(
 }
 
 async function loadLoopState(storage: CoreStorage, agentRunId: Id): Promise<Result<AgentRunLoopState, AgentRunRuntimeError>> {
-	const base = await loadLoopStateBase(storage, agentRunId)
-	return base.ok ? loadLoopStateModel(storage, base.value) : base
-}
-
-interface AgentRunLoopStateBase {
-	agentRun: AgentRun
-	events: AgentRunEvent[]
-	modelSelection: Extract<AgentRunEvent['body'], { type: 'agent-run-model-selected' }>
-}
-
-async function loadLoopStateBase(storage: CoreStorage, agentRunId: Id): Promise<Result<AgentRunLoopStateBase, AgentRunRuntimeError>> {
 	const agentRun = await getRequired('agent-run', storage, agentRunId)
 	if (!agentRun.ok) return agentRun
 
@@ -110,40 +98,20 @@ async function loadLoopStateBase(storage: CoreStorage, agentRunId: Id): Promise<
 	})
 	if (!events.ok) return events
 
-	const modelSelection = latestModelSelection(events.value)
-	return modelSelection.ok
-		? { ok: true, value: { agentRun: agentRun.value, events: events.value, modelSelection: modelSelection.value } }
-		: modelSelection
-}
-
-async function loadLoopStateModel(
-	storage: CoreStorage,
-	base: AgentRunLoopStateBase,
-): Promise<Result<AgentRunLoopState, AgentRunRuntimeError>> {
-	const model = await getRequired('model', storage, base.modelSelection.modelId)
-	if (!model.ok) return model
-
-	const provider = await getRequired('model-provider', storage, model.value.providerId)
-	return provider.ok
-		? {
-				ok: true,
-				value: {
-					...base,
-					model: model.value,
-					modelProvider: provider.value,
-					tools: toolsForAgentRunPurpose(base.agentRun.purpose),
-				},
-			}
-		: provider
+	return { ok: true, value: { agentRun: agentRun.value, events: events.value, tools: toolsForAgentRunPurpose(agentRun.value.purpose) } }
 }
 
 function latestModelSelection(
 	events: AgentRunEvent[],
+	contextThroughSequence: number,
 ): Result<Extract<AgentRunEvent['body'], { type: 'agent-run-model-selected' }>, InvariantViolationError> {
-	const selection = [...events].reverse().find((event) => event.body.type === 'agent-run-model-selected')?.body
+	const selection = [...events]
+		.filter((event) => event.sequence <= contextThroughSequence)
+		.reverse()
+		.find((event) => event.body.type === 'agent-run-model-selected')?.body
 	return selection?.type === 'agent-run-model-selected'
 		? { ok: true, value: selection }
-		: invariant('Model Agent Run has no selected Model event.')
+		: invariant('Model Agent Run has no selected Model event before the turn context boundary.')
 }
 
 function nextTurnClaim(events: AgentRunEvent[], followUpReason: TurnReasonClaim['reason'] | null): TurnReasonClaim | null {
@@ -281,18 +249,116 @@ async function runProviderTurn(
 	modelMessageStartedEventId: Id,
 	options: RunModelAgentRunOptions,
 ): Promise<Result<AgentRunModelMessageOutcome, AgentRunRuntimeError>> {
+	const turnModelUse = await loadTurnModelUse(runtime.services.storage, state.events, contextThroughSequence)
+	return turnModelUse.ok
+		? runResolvedProviderTurn(runtime, state, contextThroughSequence, modelMessageStartedEventId, options, turnModelUse.value)
+		: turnModelUseErrorOutcome(turnModelUse.error)
+}
+
+async function runResolvedProviderTurn(
+	runtime: ModelAgentRunRuntime,
+	state: AgentRunLoopState,
+	contextThroughSequence: number,
+	modelMessageStartedEventId: Id,
+	options: RunModelAgentRunOptions,
+	turnModelUse: TurnModelUse,
+): Promise<Result<AgentRunModelMessageOutcome, AgentRunRuntimeError>> {
 	const modelContext = buildAgentRunModelContext(state.events, contextThroughSequence)
 	const result = await runtime.providers.modelProviderProtocols.runModelAgentTurn({
-		model: state.model,
-		modelProvider: state.modelProvider,
+		model: turnModelUse.model,
+		modelProvider: turnModelUse.modelProvider,
 		messages: modelContext.messages,
 		tools: state.tools.map(providerTool),
+		thinking: turnModelUse.thinking,
 		signal: options.signal ?? new AbortController().signal,
 		onDelta(delta) {
 			void emit(options, { type: 'model-message-updated', modelMessageStartedEventId, delta })
 		},
 	})
 	return result.ok ? { ok: true, value: result.value.outcome } : result
+}
+
+function turnModelUseErrorOutcome(
+	error: AgentRunRuntimeError | ModelThinkingLevelUnavailableError,
+): Result<AgentRunModelMessageOutcome, AgentRunRuntimeError> {
+	return error.type === 'model-thinking-level-unavailable' ? staleThinkingOutcome(error) : { ok: false, error }
+}
+
+type TurnModelUse = {
+	selection: Extract<AgentRunEvent['body'], { type: 'agent-run-model-selected' }>
+	model: Model
+	modelProvider: ModelProvider
+	thinking: ModelAgentTurnThinking
+}
+
+async function loadTurnModelUse(
+	storage: CoreStorage,
+	events: AgentRunEvent[],
+	contextThroughSequence: number,
+): Promise<Result<TurnModelUse, AgentRunRuntimeError | ModelThinkingLevelUnavailableError>> {
+	const selection = latestModelSelection(events, contextThroughSequence)
+	return selection.ok ? loadTurnModelUseSelection(storage, selection.value) : selection
+}
+
+async function loadTurnModelUseSelection(
+	storage: CoreStorage,
+	selection: Extract<AgentRunEvent['body'], { type: 'agent-run-model-selected' }>,
+): Promise<Result<TurnModelUse, AgentRunRuntimeError | ModelThinkingLevelUnavailableError>> {
+	const model = await getRequired('model', storage, selection.modelId)
+	return model.ok ? loadTurnModelUseModel(storage, selection, model.value) : model
+}
+
+async function loadTurnModelUseModel(
+	storage: CoreStorage,
+	selection: Extract<AgentRunEvent['body'], { type: 'agent-run-model-selected' }>,
+	model: Model,
+): Promise<Result<TurnModelUse, AgentRunRuntimeError | ModelThinkingLevelUnavailableError>> {
+	const provider = await getRequired('model-provider', storage, model.providerId)
+	return provider.ok ? turnModelUseForProvider(selection, model, provider.value) : provider
+}
+
+function turnModelUseForProvider(
+	selection: Extract<AgentRunEvent['body'], { type: 'agent-run-model-selected' }>,
+	model: Model,
+	modelProvider: ModelProvider,
+): Result<TurnModelUse, ModelThinkingLevelUnavailableError> {
+	const thinking = resolveProviderTurnThinking(model, selection.thinkingLevel)
+	return thinking.ok ? { ok: true, value: { selection, model, modelProvider, thinking: thinking.value } } : thinking
+}
+
+function resolveProviderTurnThinking(
+	model: Model,
+	thinkingLevel: ModelThinkingLevel,
+): Result<ModelAgentTurnThinking, ModelThinkingLevelUnavailableError> {
+	if (model.capabilities.reasoning === null) {
+		return thinkingLevel === 'off'
+			? { ok: true, value: null }
+			: modelThinkingLevelUnavailable(model.id, thinkingLevel, 'model-reasoning-unconfigured')
+	}
+
+	const entry = model.capabilities.reasoning[thinkingLevel]
+	return entry === null
+		? modelThinkingLevelUnavailable(model.id, thinkingLevel, 'thinking-level-unconfigured')
+		: { ok: true, value: { level: thinkingLevel, providerValue: entry.value } }
+}
+
+function modelThinkingLevelUnavailable(
+	modelId: Id,
+	thinkingLevel: ModelThinkingLevel,
+	reason: ModelThinkingLevelUnavailableError['reason']['type'],
+): Result<never, ModelThinkingLevelUnavailableError> {
+	return { ok: false, error: { type: 'model-thinking-level-unavailable', modelId, thinkingLevel, reason: { type: reason } } }
+}
+
+function staleThinkingOutcome(error: ModelThinkingLevelUnavailableError): Result<AgentRunModelMessageOutcome, never> {
+	return {
+		ok: true,
+		value: {
+			type: 'error',
+			message: null,
+			summary: `Selected thinking level ${error.thinkingLevel} is unavailable for Model ${error.modelId}.`,
+		},
+	}
 }
 
 type PostModelOutcome = { type: 'complete' } | { type: 'waiting' } | { type: 'tool-results'; eventIds: Id[] }
