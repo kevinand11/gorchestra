@@ -2,7 +2,7 @@ import { FormDraft, formDraftPipe } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
 import { ModelUseFormDraft } from './model-use'
-import type { ModelUseConfig, PortfolioConfigInput } from '../composables/useServerApi'
+import type { ModelUseConfig, PortfolioConfigInput } from '../composables/core/server-api'
 
 export type PortfolioConfigFormModel = { config: PortfolioConfigInput }
 

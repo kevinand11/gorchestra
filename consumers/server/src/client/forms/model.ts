@@ -8,7 +8,7 @@ import type {
 	ModelThinkingLevelMap,
 	ModelTokenPricing,
 	UpdateModelInput,
-} from '../composables/useServerApi'
+} from '../composables/core/server-api'
 
 export type ModelCreationFormModel = CreateModelInput
 export type ModelUpdateFormModel = UpdateModelInput

@@ -20,9 +20,9 @@
 		<template #topbar-right>
 			<slot name="topbar-right">
 				<div class="flex items-center justify-end gap-2">
-					<UiButton type="button" variant="secondary" :loading="isLoggingOut" @click="logout()">Sign out</UiButton>
+					<UiButton type="button" variant="secondary" :loading="isSigningOut" @click="signOut()">Sign out</UiButton>
 				</div>
-				<p v-if="logoutError" class="mt-1 text-right text-sz-helper text-error">{{ logoutError }}</p>
+				<p v-if="signOutError" class="mt-1 text-right text-sz-helper text-error">{{ signOutError }}</p>
 			</slot>
 		</template>
 
@@ -75,8 +75,7 @@
 <script setup lang="ts">
 import GorchestraMark from '../components/layout/GorchestraMark.vue'
 import UiButton from '../components/ui/UiButton.vue'
-import { useLogoutAction } from '../composables/auth/selection'
-import { useSelectedPortfolio } from '../composables/selected-portfolio'
+import { useSelectedPortfolio, useSignout } from '../composables/auth/session'
 import DefaultLayout from './default.vue'
 
 withDefaults(defineProps<{ topbarSearchLabel?: string }>(), {
@@ -93,7 +92,7 @@ const primaryNavItems = [
 	{ label: 'Models', to: '/models/providers' },
 ]
 
-const { isLoggingOut, logoutError, logout } = useLogoutAction()
+const { isSigningOut, signOutError, signOut } = useSignout()
 
 function navItemClass(path: string): string {
 	return route.path.startsWith(path) ? 'bg-secondary text-body' : 'text-dim hover:bg-secondary hover:text-body'

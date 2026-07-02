@@ -1,4 +1,4 @@
-import type { ModelThinkingLevel, ServerApi } from './useServerApi'
+import type { ModelThinkingLevel, ServerApi } from './core/server-api'
 import type { UiSelectOption, UiSelectOptionGroup } from '../components/ui/select-options'
 
 type ListedModelProvider = Awaited<ReturnType<ServerApi['listModelProviders']>>[number]

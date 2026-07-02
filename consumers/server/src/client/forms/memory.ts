@@ -1,7 +1,7 @@
 import { FormDraft } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
-import type { CreateMemoryInput, CreateMemoryRevisionInput } from '../composables/useServerApi'
+import type { CreateMemoryInput, CreateMemoryRevisionInput } from '../composables/core/server-api'
 
 type MemoryCreationFormFields = {
 	parentId: string | null

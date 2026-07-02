@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import { createRouteContractAxiosClient } from '../utils/server-api-route-client'
+import { createRouteContractAxiosClient } from '../../utils/server-api-route-client'
 
 export type ServerApiOptions = {
 	baseURL?: string

@@ -1,11 +1,11 @@
 import { computed, type Ref } from 'vue'
 
 import { ProjectCreationFormDraft } from '../../forms/project'
-import { useApiAction, useFetchAction } from '../action-state'
-import { useQueryCache } from '../query-cache'
-import { useSelectedPortfolio } from '../selected-portfolio'
-import { useToasts } from '../toasts'
-import { useServerApi, type ServerApi } from '../useServerApi'
+import { useSelectedPortfolio } from '../auth/session'
+import { useApiAction, useFetchAction } from '../core/action-state'
+import { useQueryCache } from '../core/query-cache'
+import { useServerApi, type ServerApi } from '../core/server-api'
+import { useToasts } from '../core/toasts'
 
 export type ListedProject = Awaited<ReturnType<ServerApi['listProjects']>>[number]
 type ProjectDetails = Awaited<ReturnType<ServerApi['getProject']>>

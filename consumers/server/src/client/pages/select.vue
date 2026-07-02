@@ -2,8 +2,8 @@
 	<NuxtLayout name="default" topbar-subtitle="Choose the Workspace and Portfolio context for this browser.">
 		<template #topbar-right>
 			<div class="grid justify-items-end gap-1">
-				<UiButton type="button" variant="secondary" :loading="isLoggingOut" @click="logout()">Sign out</UiButton>
-				<UiText v-if="logoutError" tone="error" size="helper">{{ logoutError }}</UiText>
+				<UiButton type="button" variant="secondary" :loading="isSigningOut" @click="signOut()">Sign out</UiButton>
+				<UiText v-if="signOutError" tone="error" size="helper">{{ signOutError }}</UiText>
 			</div>
 		</template>
 
@@ -123,18 +123,11 @@ import UiForm from '../components/ui/UiForm.vue'
 import UiFormGroup from '../components/ui/UiFormGroup.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import UiText from '../components/ui/UiText.vue'
-import {
-	useCurrentSelection,
-	useDefaultWorkspaceProvision,
-	useLogoutAction,
-	usePortfolioSelection,
-	useSelectionClear,
-	useWorkspacePortfoliosList,
-} from '../composables/auth/selection'
+import { useSelectionClear, useSession, useSignout } from '../composables/auth/session'
+import { useDefaultWorkspaceProvision, usePortfolioSelection, useWorkspacePortfoliosList } from '../composables/auth/workspaces'
 
 definePageMeta({ middleware: ['is-authenticated'] })
 
-const { selection } = useCurrentSelection()
 const {
 	workspacePortfolios,
 	isLoadingWorkspacePortfolios,
@@ -152,8 +145,10 @@ const { isSelectingPortfolio, selectPortfolio, isSelectingThisPortfolio, portfol
 		await navigateTo('/projects')
 	},
 })
+
+const { selection } = useSession()
 const { isClearingSelection, clearSelectionError, clearSelection } = useSelectionClear()
-const { isLoggingOut, logoutError, logout } = useLogoutAction()
+const { isSigningOut, signOutError, signOut } = useSignout()
 
 function isCurrentSelection(workspaceId: string, portfolioId: string): boolean {
 	return (

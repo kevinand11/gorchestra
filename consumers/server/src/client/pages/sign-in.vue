@@ -123,17 +123,8 @@ import UiInput from '../components/ui/UiInput.vue'
 import UiLabel from '../components/ui/UiLabel.vue'
 import UiText from '../components/ui/UiText.vue'
 import { useEmailOtpSignIn } from '../composables/auth/sign-in'
-import { isAuthenticatedSession, useAuthState } from '../composables/auth-state'
 
-definePageMeta({
-	middleware: [
-		async () => {
-			const authState = useAuthState()
-			const session = await authState.getSession().catch(() => null)
-			if (session !== null && isAuthenticatedSession(session)) return await authState.getHomePath()
-		},
-	],
-})
+definePageMeta({ middleware: ['is-not-authenticated'] })
 
 const {
 	emailOtpChallengeForm,
@@ -148,7 +139,7 @@ const {
 	changeEmail,
 } = useEmailOtpSignIn({
 	onSuccess: async () => {
-		await navigateTo(await useAuthState().getHomePath())
+		await navigateTo('/')
 	},
 })
 </script>

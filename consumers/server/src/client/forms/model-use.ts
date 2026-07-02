@@ -1,7 +1,7 @@
 import { FormDraft } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
-import type { ModelThinkingLevel, ModelUseConfig } from '../composables/useServerApi'
+import type { ModelThinkingLevel, ModelUseConfig } from '../composables/core/server-api'
 
 export type ModelUseFormModel = ModelUseConfig | null
 

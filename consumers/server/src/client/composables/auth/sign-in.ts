@@ -1,16 +1,19 @@
 import { ref, watch } from 'vue'
 
 import { EmailOtpChallengeFormDraft, EmailOtpVerificationFormDraft } from '../../forms/auth'
-import { useApiAction } from '../action-state'
-import { useAuthState } from '../auth-state'
-import { useToasts } from '../toasts'
+import { useApiAction } from '../core/action-state'
+import { useQueryCache } from '../core/query-cache'
+import { useServerApi } from '../core/server-api'
+import { useToasts } from '../core/toasts'
 
 type EmailOtpSignInOptions = {
 	onSuccess?: () => void | Promise<void>
 }
 
 export function useEmailOtpSignIn(options: EmailOtpSignInOptions = {}) {
-	const authState = useAuthState()
+	const serverApi = useServerApi()
+	const queryCache = useQueryCache()
+	const { queryKeys } = queryCache
 	const toasts = useToasts()
 	const emailOtpChallengeForm = new EmailOtpChallengeFormDraft()
 	const emailOtpVerificationForm = new EmailOtpVerificationFormDraft()
@@ -30,11 +33,10 @@ export function useEmailOtpSignIn(options: EmailOtpSignInOptions = {}) {
 		reset: resetRequestEmailOtp,
 	} = useApiAction(async () => {
 		const input = emailOtpChallengeForm.toModel()
-		const response = await authState.requestEmailOtp(input.email)
+		await serverApi.requestEmailOtp(input.email)
 		emailOtpVerificationForm.loadEntity({ email: input.email, code: '' })
 		challengeRequested.value = true
 		toasts.success({ title: 'Sign-in code sent.', body: 'Check your email for the six-digit code.' })
-		return response
 	})
 
 	const {
@@ -44,7 +46,10 @@ export function useEmailOtpSignIn(options: EmailOtpSignInOptions = {}) {
 		reset: resetVerifyEmailOtp,
 	} = useApiAction(async () => {
 		const input = emailOtpVerificationForm.toModel()
-		const response = await authState.verifyEmailOtpSignIn(input.email, input.code)
+		const response = await serverApi.verifyEmailOtpSignIn(input.email, input.code)
+		queryCache.clear([])
+		queryCache.set(queryKeys.session(), { authenticated: true, session: response.session, refreshRecommended: false })
+		queryCache.set(queryKeys.selection(), { selected: false, reason: 'missing-token' })
 		emailOtpVerificationForm.code = ''
 		challengeRequested.value = false
 		await options.onSuccess?.()

@@ -273,15 +273,15 @@ import UiForm from '../../../../../components/ui/UiForm.vue'
 import UiFormGroup from '../../../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../../../components/ui/UiInput.vue'
 import UiText from '../../../../../components/ui/UiText.vue'
+import type { ServerApi } from '../../../../../composables/core/server-api'
 import { thinkingLevelLabel, thinkingLevelOptions } from '../../../../../composables/model-provider-options'
 import {
-	useModelDetail,
-	useModelLifecycle,
-	useModelPreflight,
-	useModelReferences,
-	useModelUpdate,
+    useModelDetail,
+    useModelLifecycle,
+    useModelPreflight,
+    useModelReferences,
+    useModelUpdate,
 } from '../../../../../composables/portfolio/models/providers'
-import type { ServerApi } from '../../../../../composables/useServerApi'
 import { formatDate } from '../../../../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })

@@ -1,5 +1,5 @@
-import { useQueryCache } from '../composables/query-cache'
-import { setAuthenticationLostHandler, setPreconditionRequiredHandler, setServerApiOptionsResolver } from '../composables/useServerApi'
+import { useQueryCache } from '../composables/core/query-cache'
+import { setAuthenticationLostHandler, setPreconditionRequiredHandler, setServerApiOptionsResolver } from '../composables/core/server-api'
 
 export default defineNuxtPlugin((nuxtApp) => {
 	setAuthenticationLostHandler(() => {

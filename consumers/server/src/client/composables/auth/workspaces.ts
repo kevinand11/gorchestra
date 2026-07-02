@@ -1,11 +1,10 @@
 import { computed, ref } from 'vue'
 
 import { ProvisionWorkspaceFormDraft } from '../../forms/workspace'
-import { useApiAction, useFetchAction } from '../action-state'
-import { useAuthState, useSelectionAccess } from '../auth-state'
-import { useQueryCache } from '../query-cache'
-import { useToasts } from '../toasts'
-import { useServerApi, type ServerApi } from '../useServerApi'
+import { useApiAction, useFetchAction } from '../core/action-state'
+import { useQueryCache } from '../core/query-cache'
+import { useServerApi, type ServerApi } from '../core/server-api'
+import { useToasts } from '../core/toasts'
 
 type WorkspacePortfolios = Awaited<ReturnType<ServerApi['listWorkspacePortfolios']>>
 type ProvisionDefaultWorkspaceResponse = Awaited<ReturnType<ServerApi['provisionDefaultWorkspace']>>
@@ -17,20 +16,6 @@ type DefaultWorkspaceProvisionOptions = {
 
 type PortfolioSelectionOptions = {
 	onSuccess?: (selection: SelectionAccess) => void | Promise<void>
-}
-
-export function useCurrentSelection() {
-	const {
-		data: selection,
-		isLoading: isLoadingSelection,
-		error: selectionError,
-		hasExecuted: hasLoadedSelection,
-		execute: refreshSelection,
-		reset: resetSelection,
-	} = useSelectionAccess({ immediate: true })
-	const isRefreshingSelection = computed(() => isLoadingSelection.value && hasLoadedSelection.value)
-
-	return { selection, isLoadingSelection, selectionError, hasLoadedSelection, isRefreshingSelection, refreshSelection, resetSelection }
 }
 
 export function useWorkspacePortfoliosList() {
@@ -61,7 +46,9 @@ export function useWorkspacePortfoliosList() {
 }
 
 export function useDefaultWorkspaceProvision(options: DefaultWorkspaceProvisionOptions = {}) {
-	const authState = useAuthState()
+	const serverApi = useServerApi()
+	const queryCache = useQueryCache()
+	const { queryKeys } = queryCache
 	const toasts = useToasts()
 	const provisionWorkspaceForm = new ProvisionWorkspaceFormDraft()
 	const {
@@ -70,7 +57,17 @@ export function useDefaultWorkspaceProvision(options: DefaultWorkspaceProvisionO
 		execute: provisionWorkspace,
 		reset: resetProvisionWorkspace,
 	} = useApiAction(async () => {
-		const response = await authState.provisionDefaultWorkspace(provisionWorkspaceForm.toModel())
+		const response = await serverApi.provisionDefaultWorkspace(provisionWorkspaceForm.toModel())
+		queryCache.clear(['portfolio'])
+		queryCache.invalidate(queryKeys.workspacePortfolios())
+		queryCache.set(queryKeys.selection(), {
+			selected: true,
+			selection: response.selection,
+			workspace: response.workspace,
+			workspaceMember: response.workspaceMember,
+			portfolio: response.portfolio,
+			activeWorkspaceOwnerRole: response.workspaceOwnerRole,
+		})
 		toasts.success({ title: 'Workspace created and Portfolio selected.' })
 		await options.onSuccess?.(response)
 		return response
@@ -80,7 +77,9 @@ export function useDefaultWorkspaceProvision(options: DefaultWorkspaceProvisionO
 }
 
 export function usePortfolioSelection(options: PortfolioSelectionOptions = {}) {
-	const authState = useAuthState()
+	const serverApi = useServerApi()
+	const queryCache = useQueryCache()
+	const { queryKeys } = queryCache
 	const toasts = useToasts()
 	const selectingPortfolioKey = ref('')
 	const {
@@ -89,7 +88,9 @@ export function usePortfolioSelection(options: PortfolioSelectionOptions = {}) {
 		execute: executeSelectPortfolio,
 		reset: resetSelectPortfolio,
 	} = useApiAction(async (workspaceId: string, portfolioId: string) => {
-		const selection = await authState.setSelection(workspaceId, portfolioId)
+		const selection = await serverApi.setSelection(workspaceId, portfolioId)
+		queryCache.clear(['portfolio'])
+		queryCache.set(queryKeys.selection(), selection)
 		toasts.success({ title: 'Portfolio selected.' })
 		await options.onSuccess?.(selection)
 		return selection
@@ -117,36 +118,6 @@ export function usePortfolioSelection(options: PortfolioSelectionOptions = {}) {
 		isSelectingThisPortfolio,
 		portfolioSelectionError,
 	}
-}
-
-export function useSelectionClear() {
-	const authState = useAuthState()
-	const toasts = useToasts()
-	const {
-		isLoading: isClearingSelection,
-		error: clearSelectionError,
-		execute: clearSelection,
-		reset: resetClearSelection,
-	} = useApiAction(async () => {
-		await authState.clearSelection()
-		toasts.info({ title: 'Selection cleared.' })
-	})
-
-	return { isClearingSelection, clearSelectionError, clearSelection, resetClearSelection }
-}
-
-export function useLogoutAction() {
-	const authState = useAuthState()
-	const {
-		isLoading: isLoggingOut,
-		error: logoutError,
-		execute: logout,
-		reset: resetLogout,
-	} = useApiAction(async () => {
-		await authState.logout()
-	})
-
-	return { isLoggingOut, logoutError, logout, resetLogout }
 }
 
 function portfolioActionKey(workspaceId: string, portfolioId: string): string {

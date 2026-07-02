@@ -139,9 +139,9 @@ import UiFormGroup from '../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../components/ui/UiInput.vue'
 import UiSelect from '../../../components/ui/UiSelect.vue'
 import UiText from '../../../components/ui/UiText.vue'
+import type { ModelProviderProtocolType } from '../../../composables/core/server-api'
 import { useModelProviderCreate } from '../../../composables/portfolio/models/providers'
 import { useActiveSecretSelectOptions } from '../../../composables/portfolio/secrets'
-import type { ModelProviderProtocolType } from '../../../composables/useServerApi'
 
 definePageMeta({ middleware: ['has-selection'] })
 

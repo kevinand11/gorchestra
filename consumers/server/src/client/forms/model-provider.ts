@@ -1,7 +1,7 @@
 import { FormDraft, formDraftPipe, type FormDraftArray } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
-import type { CreateModelProviderInput, ModelProviderHeader, ModelProviderProtocolType } from '../composables/useServerApi'
+import type { CreateModelProviderInput, ModelProviderHeader, ModelProviderProtocolType } from '../composables/core/server-api'
 
 export type ModelProviderFormModel = CreateModelProviderInput
 

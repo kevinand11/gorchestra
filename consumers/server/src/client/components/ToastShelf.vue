@@ -30,10 +30,10 @@
 </template>
 
 <script setup lang="ts">
+import { useToasts, type ToastKind } from '../composables/core/toasts'
 import UiButton from './ui/UiButton.vue'
 import UiHeading from './ui/UiHeading.vue'
 import UiText from './ui/UiText.vue'
-import { useToasts, type ToastKind } from '../composables/toasts'
 
 const { toasts: toastMessages, dismiss } = useToasts()
 

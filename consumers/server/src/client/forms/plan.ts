@@ -2,7 +2,7 @@ import { FormDraft, formDraftPipe } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
 import { ModelUseFormDraft } from './model-use'
-import type { PlanConfigInput } from '../composables/useServerApi'
+import type { PlanConfigInput } from '../composables/core/server-api'
 
 type PlanCreationFormFields = {
 	title: string

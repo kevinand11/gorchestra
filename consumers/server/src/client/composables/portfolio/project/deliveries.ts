@@ -1,9 +1,9 @@
 import { computed, type Ref } from 'vue'
 
-import { useFetchAction } from '../../action-state'
-import { useQueryCache } from '../../query-cache'
-import { useSelectedPortfolio } from '../../selected-portfolio'
-import { useServerApi, type ServerApi } from '../../useServerApi'
+import { useSelectedPortfolio } from '../../auth/session'
+import { useFetchAction } from '../../core/action-state'
+import { useQueryCache } from '../../core/query-cache'
+import { useServerApi, type ServerApi } from '../../core/server-api'
 
 export type ListedDelivery = Awaited<ReturnType<ServerApi['listDeliveries']>>[number]
 type DeliveryDetails = Awaited<ReturnType<ServerApi['getDelivery']>>

@@ -51,8 +51,8 @@ import UiForm from '../../components/ui/UiForm.vue'
 import UiFormGroup from '../../components/ui/UiFormGroup.vue'
 import UiInput from '../../components/ui/UiInput.vue'
 import UiText from '../../components/ui/UiText.vue'
+import { useSelectedPortfolio } from '../../composables/auth/session'
 import { useProjectsCreate } from '../../composables/portfolio/projects'
-import { useSelectedPortfolio } from '../../composables/selected-portfolio'
 
 definePageMeta({ middleware: ['has-selection'] })
 

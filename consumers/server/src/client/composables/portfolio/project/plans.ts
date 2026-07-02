@@ -1,11 +1,11 @@
 import { computed, type Ref } from 'vue'
 
 import { PlanCreationFormDraft } from '../../../forms/plan'
-import { useApiAction, useFetchAction } from '../../action-state'
-import { useQueryCache } from '../../query-cache'
-import { useSelectedPortfolio } from '../../selected-portfolio'
-import { useToasts } from '../../toasts'
-import { useServerApi, type ServerApi } from '../../useServerApi'
+import { useSelectedPortfolio } from '../../auth/session'
+import { useApiAction, useFetchAction } from '../../core/action-state'
+import { useQueryCache } from '../../core/query-cache'
+import { useServerApi, type ServerApi } from '../../core/server-api'
+import { useToasts } from '../../core/toasts'
 
 export type ListedPlan = Awaited<ReturnType<ServerApi['listPlans']>>[number]
 type PlanDetails = Awaited<ReturnType<ServerApi['getPlan']>>

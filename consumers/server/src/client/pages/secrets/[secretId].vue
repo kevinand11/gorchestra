@@ -75,8 +75,8 @@
 </template>
 
 <script setup lang="ts">
+import type { ServerApi } from '../../composables/core/server-api'
 import { useSecretDetail } from '../../composables/portfolio/secrets'
-import type { ServerApi } from '../../composables/useServerApi'
 import { formatDate } from '../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
