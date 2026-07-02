@@ -67,10 +67,9 @@
 								v-for="level in thinkingLevels"
 								:key="level"
 								class="grid gap-2 border-b border-dimmer py-2 last:border-b-0 md:grid-cols-[160px_minmax(0,1fr)] md:items-center">
-								<label class="flex items-center gap-2 text-sz-helper font-semibold">
-									<input v-model="modelUpdateForm.capabilities.reasoning[level].enabled" type="checkbox" />
+								<UiCheckbox v-model="modelUpdateForm.capabilities.reasoning[level].enabled" class="font-semibold">
 									{{ thinkingLevelLabel(level) }}
-								</label>
+								</UiCheckbox>
 								<UiInput
 									v-model="modelUpdateForm.capabilities.reasoning[level].providerValue"
 									:disabled="!modelUpdateForm.capabilities.reasoning[level].enabled"
@@ -260,6 +259,7 @@ import { computed } from 'vue'
 
 import UiButton from '../../../../../components/ui/UiButton.vue'
 import UiCallout from '../../../../../components/ui/UiCallout.vue'
+import UiCheckbox from '../../../../../components/ui/UiCheckbox.vue'
 import UiForm from '../../../../../components/ui/UiForm.vue'
 import UiFormGroup from '../../../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../../../components/ui/UiInput.vue'
