@@ -13,7 +13,11 @@ type AgentRunMessageSendOptions = {
 	hasLoadedAgentRunEvents: Readonly<Ref<boolean>>
 }
 
-export function useAgentRunEvents(agentRunId: Ref<string | null>) {
+type AgentRunEventsOptions = {
+	immediate?: boolean
+}
+
+export function useAgentRunEvents(agentRunId: Ref<string | null>, options: AgentRunEventsOptions = {}) {
 	const serverApi = useServerApi()
 	const { portfolio } = useSelectedPortfolio()
 	const { queryKeys } = useQueryCache()
@@ -27,7 +31,7 @@ export function useAgentRunEvents(agentRunId: Ref<string | null>) {
 	} = useFetchAction(() => serverApi.getAgentRunEvents(requireAgentRunId(agentRunId.value)), {
 		queryKey: () => queryKeys.portfolio.agentRunEvents(portfolio.value.id, requireAgentRunId(agentRunId.value)),
 		initialData: [] as AgentRunEvent[],
-		immediate: false,
+		immediate: options.immediate === true,
 	})
 	const isRefreshingAgentRunEvents = computed(() => isLoadingAgentRunEvents.value && hasLoadedAgentRunEvents.value)
 
