@@ -1,7 +1,7 @@
 import type { Action } from '../../domain/action'
 import type { AgentRun } from '../../domain/agent-run'
 import type { DeliveryArtifact, SliceArtifact } from '../../domain/artifact'
-import type { ArchivePeriod, Id } from '../../domain/commons'
+import type { Id } from '../../domain/commons'
 import type { PortfolioConfigRecord, ProjectConfigRecord } from '../../domain/config'
 import type { Delivery } from '../../domain/delivery'
 import type { Link } from '../../domain/graph'
@@ -124,7 +124,18 @@ async function readDeliveryContextRecords(
 	})
 	if (!slices.ok) return slices
 
-	const links = await listRecords('link', storage, { where: (filter, fields) => filter.eq(fields.type, 'depends-on') })
+	const links = await listRecords('link', storage, {
+		where: (filter, fields) => {
+			const def = fields.def
+			const from = def.nested('from', 'object')
+			return filter
+				.eq(def.nested('type', 'string'), 'depends-on')
+				.or([
+					(group) => group.eq(from.nested('type', 'string'), 'delivery').eq(from.nested('id', 'string'), delivery.id),
+					(group) => group.eq(from.nested('type', 'string'), 'slice').eq(from.nested('deliveryId', 'string'), delivery.id),
+				])
+		},
+	})
 	if (!links.ok) return links
 
 	const [actions, agentRuns, deliveries, deliveryArtifacts, sliceArtifacts, reviewSurfaces] = await Promise.all([
@@ -158,7 +169,7 @@ function listDependencyDeliveries(
 	delivery: Delivery,
 	links: Link[],
 ): Promise<Result<Delivery[], DeliveryContextError>> {
-	const dependencyIds = uniqueIds(deliveryDependencyLinks(delivery, links).map((link) => link.to.id))
+	const dependencyIds = uniqueIds(deliveryDependencyLinks(delivery, links).map((link) => link.def.to.id))
 	return dependencyIds.length === 0
 		? Promise.resolve(successful<Delivery[]>([]))
 		: listRecords('delivery', storage, { where: (filter, fields) => filter.in(fields.id, dependencyIds) })
@@ -248,22 +259,18 @@ function sliceDependencyLinks(sliceId: Id, links: Link[]): SliceDependencyLink[]
 }
 
 function isContextSliceDependencyLink(link: Link, sliceId: Id): link is SliceDependencyLink {
-	return isActiveDependsOnLink(link) && isSliceDependencyEndpointLink(link) && link.from.id === sliceId
+	return link.def.type === 'depends-on' && isSliceDependencyEndpointLink(link) && link.def.from.id === sliceId
 }
 
 function isSliceDependencyEndpointLink(link: Link): link is SliceDependencyLink {
-	return link.from.type === 'slice' && link.to.type === 'slice'
+	return link.def.from.type === 'slice' && link.def.to.type === 'slice'
 }
 
 function compareDependencyLinks(
 	left: DeliveryDependencyLink | SliceDependencyLink,
 	right: DeliveryDependencyLink | SliceDependencyLink,
 ): number {
-	return left.created.at.localeCompare(right.created.at) || left.to.id.localeCompare(right.to.id)
-}
-
-function isArchived(archivePeriods: ArchivePeriod[]): boolean {
-	return archivePeriods.at(-1)?.unarchived === null
+	return left.created.at.localeCompare(right.created.at) || left.def.to.id.localeCompare(right.def.to.id)
 }
 
 function deliveryDependencies(
@@ -272,7 +279,7 @@ function deliveryDependencies(
 ): Result<DeliveryDependencySummary[], DeliveryContextError> {
 	const summaries: DeliveryDependencySummary[] = []
 	for (const link of deliveryDependencyLinks(delivery, records.links)) {
-		const summary = deliveryDependencySummary(delivery, link, records)
+		const summary = deliveryDependencySummary(link, records)
 		if (!summary.ok) return summary
 		summaries.push(summary.value)
 	}
@@ -287,30 +294,30 @@ function deliveryDependencyLinks(delivery: Delivery, links: Link[]): DeliveryDep
 }
 
 function isContextDeliveryDependencyLink(link: Link, delivery: Delivery): link is DeliveryDependencyLink {
-	return isActiveDependsOnLink(link) && isDeliveryDependencyEndpointLink(link) && link.from.id === delivery.id
-}
-
-function isActiveDependsOnLink(link: Link): boolean {
-	return link.type === 'depends-on' && !isArchived(link.archivePeriods)
+	return (
+		link.def.type === 'depends-on' &&
+		isDeliveryDependencyEndpointLink(link) &&
+		link.def.from.id === delivery.id &&
+		link.def.from.projectId === delivery.projectId
+	)
 }
 
 function isDeliveryDependencyEndpointLink(link: Link): link is DeliveryDependencyLink {
-	return link.from.type === 'delivery' && link.to.type === 'delivery'
+	return link.def.from.type === 'delivery' && link.def.to.type === 'delivery'
 }
 
 function deliveryDependencySummary(
-	delivery: Delivery,
 	link: DeliveryDependencyLink,
 	records: DeliveryContextRecords,
 ): Result<DeliveryDependencySummary, DeliveryContextError> {
-	const dependency = records.deliveries.find((candidate) => candidate.id === link.to.id)
-	if (dependency === undefined) return notFound('delivery', link.to.id)
-	if (dependency.projectId !== delivery.projectId) {
+	const dependency = records.deliveries.find((candidate) => candidate.id === link.def.to.id)
+	if (dependency === undefined) return notFound('delivery', link.def.to.id)
+	if (dependency.projectId !== link.def.to.projectId) {
 		return {
 			ok: false,
 			error: {
 				type: 'invariant-violation',
-				message: `Delivery dependency ${dependency.id} is outside Project ${delivery.projectId}.`,
+				message: `Delivery dependency ${dependency.id} does not match Link target Project ${link.def.to.projectId}.`,
 			},
 		}
 	}
@@ -405,11 +412,12 @@ if (import.meta.vitest) {
 			})
 			options.tx.links.records.set('link-1', {
 				id: 'link-1',
-				type: 'depends-on',
-				from: { type: 'slice', id: 'slice-1' },
-				to: { type: 'slice', id: 'slice-2' },
+				def: {
+					type: 'depends-on',
+					from: { type: 'slice', projectId: 'project-1', deliveryId: 'delivery-1', id: 'slice-1' },
+					to: { type: 'slice', projectId: 'project-1', deliveryId: 'delivery-1', id: 'slice-2' },
+				},
 				created: localStamp(),
-				archivePeriods: [],
 			})
 			options.tx.actions.records.set('action-later', {
 				id: 'action-later',

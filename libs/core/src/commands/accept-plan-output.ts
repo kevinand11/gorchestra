@@ -4,7 +4,7 @@ import type { CommandContext } from './types'
 import type { AgentRun, AgentRunEvent } from '../domain/agent-run'
 import { idPipe, type AuditStamp, type Id } from '../domain/commons'
 import type { Delivery } from '../domain/delivery'
-import type { Link } from '../domain/graph'
+import type { Link, LinkDef } from '../domain/graph'
 import type { Memory, MemoryRevision } from '../domain/memory'
 import type {
 	PlanOutputProposal,
@@ -107,6 +107,7 @@ interface PlanProposalContext {
 	planId: Id
 	projectId: Id
 	output: PlanOutputProposal
+	existingDeliveryDependencies: Map<Id, Delivery>
 	memoryRevisionTargets: Map<Id, Memory>
 }
 
@@ -124,32 +125,41 @@ async function planProposalContext(
 
 async function validatePlanOutputStorage(
 	storage: CoreStorage,
-	context: Omit<PlanProposalContext, 'memoryRevisionTargets'>,
+	context: Omit<PlanProposalContext, 'existingDeliveryDependencies' | 'memoryRevisionTargets'>,
 ): Promise<CoreResult<PlanProposalContext, Exclude<Error, InvalidInputError>>> {
-	const deliveries = await validateDeliveryStorage(storage, context)
-	if (!deliveries.ok) return deliveries
+	const existingDeliveryDependencies = await validateDeliveryStorage(storage, context)
+	if (!existingDeliveryDependencies.ok) return existingDeliveryDependencies
 
 	const memoryParents = await validateMemoryCreationParents(storage, context.output.proposedMemoryCreations)
 	if (!memoryParents.ok) return memoryParents
 
 	const memoryRevisionTargets = await validateMemoryRevisionTargets(storage, context.output.proposedMemoryRevisions)
 	return memoryRevisionTargets.ok
-		? { ok: true, value: { ...context, memoryRevisionTargets: memoryRevisionTargets.value } }
+		? {
+				ok: true,
+				value: {
+					...context,
+					existingDeliveryDependencies: existingDeliveryDependencies.value,
+					memoryRevisionTargets: memoryRevisionTargets.value,
+				},
+			}
 		: memoryRevisionTargets
 }
 
 async function validateDeliveryStorage(
 	storage: CoreStorage,
-	context: Omit<PlanProposalContext, 'memoryRevisionTargets'>,
-): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
+	context: Omit<PlanProposalContext, 'existingDeliveryDependencies' | 'memoryRevisionTargets'>,
+): Promise<CoreResult<Map<Id, Delivery>, Exclude<Error, InvalidInputError>>> {
+	const existingDeliveryDependencies = new Map<Id, Delivery>()
 	for (const [deliveryKey, delivery] of sortedEntries(context.output.proposedDeliveries)) {
 		const target = await validateDeliveryTarget(storage, context.projectId, deliveryKey, delivery)
 		if (!target.ok) return target
 
-		const dependencies = await validateExistingDeliveryDependencies(storage, context.projectId, delivery)
+		const dependencies = await validateExistingDeliveryDependencies(storage, delivery)
 		if (!dependencies.ok) return dependencies
+		for (const dependency of dependencies.value.values()) existingDeliveryDependencies.set(dependency.id, dependency)
 	}
-	return { ok: true, value: undefined }
+	return { ok: true, value: existingDeliveryDependencies }
 }
 
 async function validateDeliveryTarget(
@@ -168,16 +178,15 @@ async function validateDeliveryTarget(
 
 async function validateExistingDeliveryDependencies(
 	storage: CoreStorage,
-	projectId: Id,
 	delivery: ProposedDelivery,
-): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
+): Promise<CoreResult<Map<Id, Delivery>, Exclude<Error, InvalidInputError>>> {
+	const dependencies = new Map<Id, Delivery>()
 	for (const deliveryId of sortedKeys(delivery.dependsOnDeliveryIds)) {
 		const dependency = await getRequired('delivery', storage, deliveryId)
 		if (!dependency.ok) return dependency
-		if (dependency.value.projectId !== projectId)
-			return invalidPlanOutput({ reason: 'project-boundary-mismatch', ref: { type: 'delivery', id: deliveryId } })
+		dependencies.set(dependency.value.id, dependency.value)
 	}
-	return { ok: true, value: undefined }
+	return { ok: true, value: dependencies }
 }
 
 async function validateMemoryCreationParents(
@@ -272,7 +281,7 @@ function materializedPlanOutput(
 	runtime: CoreRuntime,
 	context: PlanProposalContext,
 	stamp: AuditStamp,
-): CoreResult<MaterializedPlanOutput, InvalidCoreServiceOutputError> {
+): CoreResult<MaterializedPlanOutput, InvalidCoreServiceOutputError | InvalidPlanOutputError> {
 	const builder = new PlanOutputBuilder(runtime, context, stamp)
 	return builder.build()
 }
@@ -296,7 +305,7 @@ class PlanOutputBuilder {
 		private readonly stamp: AuditStamp,
 	) {}
 
-	build(): CoreResult<MaterializedPlanOutput, InvalidCoreServiceOutputError> {
+	build(): CoreResult<MaterializedPlanOutput, InvalidCoreServiceOutputError | InvalidPlanOutputError> {
 		const deliveries = this.buildDeliveries()
 		if (!deliveries.ok) return deliveries
 
@@ -394,7 +403,7 @@ class PlanOutputBuilder {
 		return { ok: true, value: undefined }
 	}
 
-	private buildLinks(): CoreResult<void, InvalidCoreServiceOutputError> {
+	private buildLinks(): CoreResult<void, InvalidCoreServiceOutputError | InvalidPlanOutputError> {
 		const delivery = this.buildDeliveryDependencyLinks()
 		if (!delivery.ok) return delivery
 		const slice = this.buildSliceDependencyLinks()
@@ -404,23 +413,28 @@ class PlanOutputBuilder {
 		return this.buildMemoryRevisionProducedLinks()
 	}
 
-	private buildDeliveryDependencyLinks(): CoreResult<void, InvalidCoreServiceOutputError> {
+	private buildDeliveryDependencyLinks(): CoreResult<void, InvalidCoreServiceOutputError | InvalidPlanOutputError> {
 		for (const [deliveryKey, delivery] of sortedEntries(this.context.output.proposedDeliveries)) {
 			const from = this.#deliveryIds.get(deliveryKey)!
 			for (const dependency of sortedKeys(delivery.dependsOnDeliveryIds)) {
-				const link = this.pushLink(
-					this.#deliveryDependencyLinks,
-					{ type: 'delivery', id: from },
-					{ type: 'delivery', id: dependency },
-				)
+				const dependencyDelivery = this.context.existingDeliveryDependencies.get(dependency)!
+				const def = {
+					type: 'depends-on',
+					from: { type: 'delivery', projectId: this.context.projectId, id: from },
+					to: { type: 'delivery', projectId: dependencyDelivery.projectId, id: dependency },
+				} satisfies LinkDef
+				if (dependencyDelivery.projectId !== this.context.projectId)
+					return invalidPlanOutput({ reason: 'project-boundary-mismatch', def })
+				const link = this.pushLink(this.#deliveryDependencyLinks, def)
 				if (!link.ok) return link
 			}
 			for (const dependency of sortedKeys(delivery.dependsOnProposedDeliveryKeys)) {
-				const link = this.pushLink(
-					this.#deliveryDependencyLinks,
-					{ type: 'delivery', id: from },
-					{ type: 'delivery', id: this.#deliveryIds.get(dependency)! },
-				)
+				const def = {
+					type: 'depends-on',
+					from: { type: 'delivery', projectId: this.context.projectId, id: from },
+					to: { type: 'delivery', projectId: this.context.projectId, id: this.#deliveryIds.get(dependency)! },
+				} satisfies LinkDef
+				const link = this.pushLink(this.#deliveryDependencyLinks, def)
 				if (!link.ok) return link
 			}
 		}
@@ -429,14 +443,16 @@ class PlanOutputBuilder {
 
 	private buildSliceDependencyLinks(): CoreResult<void, InvalidCoreServiceOutputError> {
 		for (const [deliveryKey, delivery] of sortedEntries(this.context.output.proposedDeliveries)) {
+			const deliveryId = this.#deliveryIds.get(deliveryKey)!
 			const sliceIds = this.#sliceIds.get(deliveryKey)!
 			for (const [sliceKey, slice] of sortedSlices(delivery.slices)) {
 				for (const dependency of sortedKeys(slice.dependsOnProposedSliceKeys)) {
-					const link = this.pushLink(
-						this.#sliceDependencyLinks,
-						{ type: 'slice', id: sliceIds.get(sliceKey)! },
-						{ type: 'slice', id: sliceIds.get(dependency)! },
-					)
+					const def = {
+						type: 'depends-on',
+						from: { type: 'slice', projectId: this.context.projectId, deliveryId, id: sliceIds.get(sliceKey)! },
+						to: { type: 'slice', projectId: this.context.projectId, deliveryId, id: sliceIds.get(dependency)! },
+					} satisfies LinkDef
+					const link = this.pushLink(this.#sliceDependencyLinks, def)
 					if (!link.ok) return link
 				}
 			}
@@ -446,11 +462,12 @@ class PlanOutputBuilder {
 
 	private buildMemoryProducedLinks(): CoreResult<void, InvalidCoreServiceOutputError> {
 		for (const memory of this.#memories) {
-			const link = this.pushLink(
-				this.#memoryProducedLinks,
-				{ type: 'plan', id: this.context.planId },
-				{ type: 'memory', id: memory.id },
-			)
+			const def = {
+				type: 'produced',
+				from: { type: 'plan', projectId: this.context.projectId, id: this.context.planId },
+				to: { type: 'memory', id: memory.id },
+			} satisfies LinkDef
+			const link = this.pushLink(this.#memoryProducedLinks, def)
 			if (!link.ok) return link
 		}
 		return { ok: true, value: undefined }
@@ -458,20 +475,21 @@ class PlanOutputBuilder {
 
 	private buildMemoryRevisionProducedLinks(): CoreResult<void, InvalidCoreServiceOutputError> {
 		for (const revision of this.#memoryRevisions) {
-			const link = this.pushLink(
-				this.#memoryRevisionProducedLinks,
-				{ type: 'plan', id: this.context.planId },
-				{ type: 'memory-revision', id: revision.id },
-			)
+			const def = {
+				type: 'produced',
+				from: { type: 'plan', projectId: this.context.projectId, id: this.context.planId },
+				to: { type: 'memory-revision', memoryId: revision.memoryId, id: revision.id },
+			} satisfies LinkDef
+			const link = this.pushLink(this.#memoryRevisionProducedLinks, def)
 			if (!link.ok) return link
 		}
 		return { ok: true, value: undefined }
 	}
 
-	private pushLink(links: Link[], from: Link['from'], to: Link['to']): CoreResult<void, InvalidCoreServiceOutputError> {
+	private pushLink(links: Link[], def: LinkDef): CoreResult<void, InvalidCoreServiceOutputError> {
 		const id = nextId(this.runtime.values, 'link')
 		if (!id.ok) return id
-		links.push({ id: id.value, type: 'produced', from, to, created: this.stamp, archivePeriods: [] })
+		links.push({ id: id.value, def, created: this.stamp })
 		return { ok: true, value: undefined }
 	}
 
@@ -483,17 +501,13 @@ class PlanOutputBuilder {
 			memoryRevisions: this.#memoryRevisions,
 			memoryUpdates: this.#memoryUpdates,
 			links: [
-				...this.#deliveryDependencyLinks.map(asDependsOnLink),
-				...this.#sliceDependencyLinks.map(asDependsOnLink),
+				...this.#deliveryDependencyLinks,
+				...this.#sliceDependencyLinks,
 				...this.#memoryProducedLinks,
 				...this.#memoryRevisionProducedLinks,
 			],
 		}
 	}
-}
-
-function asDependsOnLink(link: Link): Link {
-	return { ...link, type: 'depends-on' }
 }
 
 function memoryRevision(id: Id, memoryId: Id, title: string, body: string, stamp: AuditStamp): MemoryRevision {
@@ -639,25 +653,45 @@ if (import.meta.vitest) {
 			})
 			expect(options.tx.memories.records.get('existing-memory')?.currentRevision).toMatchObject({ id: 'memory-revision-3' })
 			expect(result.ok ? result.value.links : []).toMatchObject([
-				{ id: 'link-1', type: 'produced', from: { type: 'plan', id: 'plan-1' }, to: { type: 'memory', id: 'memory-1' } },
-				{ id: 'link-2', type: 'produced', from: { type: 'plan', id: 'plan-1' }, to: { type: 'memory', id: 'memory-2' } },
+				{
+					id: 'link-1',
+					def: {
+						type: 'produced',
+						from: { type: 'plan', projectId: 'project-1', id: 'plan-1' },
+						to: { type: 'memory', id: 'memory-1' },
+					},
+				},
+				{
+					id: 'link-2',
+					def: {
+						type: 'produced',
+						from: { type: 'plan', projectId: 'project-1', id: 'plan-1' },
+						to: { type: 'memory', id: 'memory-2' },
+					},
+				},
 				{
 					id: 'link-3',
-					type: 'produced',
-					from: { type: 'plan', id: 'plan-1' },
-					to: { type: 'memory-revision', id: 'memory-revision-1' },
+					def: {
+						type: 'produced',
+						from: { type: 'plan', projectId: 'project-1', id: 'plan-1' },
+						to: { type: 'memory-revision', memoryId: 'memory-1', id: 'memory-revision-1' },
+					},
 				},
 				{
 					id: 'link-4',
-					type: 'produced',
-					from: { type: 'plan', id: 'plan-1' },
-					to: { type: 'memory-revision', id: 'memory-revision-2' },
+					def: {
+						type: 'produced',
+						from: { type: 'plan', projectId: 'project-1', id: 'plan-1' },
+						to: { type: 'memory-revision', memoryId: 'memory-2', id: 'memory-revision-2' },
+					},
 				},
 				{
 					id: 'link-5',
-					type: 'produced',
-					from: { type: 'plan', id: 'plan-1' },
-					to: { type: 'memory-revision', id: 'memory-revision-3' },
+					def: {
+						type: 'produced',
+						from: { type: 'plan', projectId: 'project-1', id: 'plan-1' },
+						to: { type: 'memory-revision', memoryId: 'existing-memory', id: 'memory-revision-3' },
+					},
 				},
 			])
 		})
@@ -744,7 +778,11 @@ if (import.meta.vitest) {
 				error: {
 					type: 'invalid-plan-output',
 					reason: 'project-boundary-mismatch',
-					ref: { type: 'delivery', id: 'other-delivery' },
+					def: {
+						type: 'depends-on',
+						from: { type: 'delivery', projectId: 'project-1', id: 'delivery-1' },
+						to: { type: 'delivery', projectId: 'other-project', id: 'other-delivery' },
+					},
 				},
 			})
 		})

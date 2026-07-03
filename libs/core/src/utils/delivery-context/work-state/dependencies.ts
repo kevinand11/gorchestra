@@ -1,6 +1,6 @@
 import { ok } from './result'
 import type { DependencyNode, WorkStateResult } from './types'
-import type { ArchivePeriod, Id } from '../../../domain/commons'
+import type { Id } from '../../../domain/commons'
 import type { Link } from '../../../domain/graph'
 
 export function compareAcceptedThenId(left: DependencyNode, right: DependencyNode): number {
@@ -16,21 +16,11 @@ export async function blockedDependencyIds<TNode extends DependencyNode, TLink e
 	loadDependency: (link: TLink) => Promise<WorkStateResult<TNode | null>>,
 ): Promise<WorkStateResult<Id[]>> {
 	const prerequisites: TNode[] = []
-	for (const link of activeLinks(links).filter(isDependencyLink)) {
+	for (const link of links.filter(isDependencyLink)) {
 		const prerequisite = await loadDependency(link)
 		if (!prerequisite.ok) return prerequisite
 		if (prerequisite.value !== null) prerequisites.push(prerequisite.value)
 	}
 
 	return ok(prerequisites.sort(compareAcceptedThenId).map((blocked) => blocked.id))
-}
-
-function activeLinks(links: Link[]): Link[] {
-	return links.filter((link) => !isArchived(link.archivePeriods))
-}
-
-function isArchived(archivePeriods: ArchivePeriod[]): boolean {
-	const latestPeriod = archivePeriods.at(-1)
-
-	return latestPeriod !== undefined && latestPeriod.unarchived === null
 }

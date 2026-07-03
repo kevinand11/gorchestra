@@ -23,7 +23,7 @@ import {
 	type PortfolioConfigRecord,
 } from '../domain/config'
 import { deliveryClosedPipe, deliveryTargetPipe, type Delivery } from '../domain/delivery'
-import { graphNodeRefPipe, linkTypePipe, type Link } from '../domain/graph'
+import { linkDefPipe, type Link } from '../domain/graph'
 import { currentMemoryRevisionPipe, memoryBodyPipe, memoryTitlePipe, type Memory, type MemoryRevision } from '../domain/memory'
 import { modelCapabilitiesPipe, modelTokenPricingPipe, type Model } from '../domain/model'
 import { modelProviderAuthPipe, modelProviderHeaderPipe, modelProviderProtocolPipe, type ModelProvider } from '../domain/model-provider'
@@ -122,11 +122,8 @@ export const sliceSchema = Schema.from('slices')
 
 export const linkSchema = Schema.from('links')
 	.pk('id', idPipe, explicitCoreIdRequired)
-	.field('type', linkTypePipe)
-	.field('from', graphNodeRefPipe)
-	.field('to', graphNodeRefPipe)
+	.field('def', linkDefPipe)
 	.field('created', auditStampPipe)
-	.field('archivePeriods', archivePeriodsPipe)
 	.build()
 
 export const memorySchema = Schema.from('memories')

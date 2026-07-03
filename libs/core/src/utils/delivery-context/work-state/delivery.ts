@@ -6,7 +6,6 @@ import { getSliceState } from './slice'
 import type { WorkStateDerivationError, WorkStateResult } from './types'
 import type { Action } from '../../../domain/action'
 import type { DeliveryArtifact } from '../../../domain/artifact'
-import type { ArchivePeriod } from '../../../domain/commons'
 import type { Delivery, DeliveryIntegration, DeliveryWorkState } from '../../../domain/delivery'
 import { type ReviewSurface, type ReviewSurfaceClosed } from '../../../domain/review-surface'
 import type { Slice } from '../../../domain/slice'
@@ -76,14 +75,10 @@ function deliveryDependencyState(context: DeliveryContext): WorkStateResult<Deli
 
 function blockedDeliveryIds(context: DeliveryContext): Delivery['id'][] {
 	return context.deliveryDependencies
-		.filter((dependency) => dependency.delivery.closed === null && !isArchived(dependency.link.archivePeriods))
+		.filter((dependency) => dependency.delivery.closed === null)
 		.map((dependency) => dependency.delivery)
 		.sort(compareAcceptedThenId)
 		.map((delivery) => delivery.id)
-}
-
-function isArchived(archivePeriods: ArchivePeriod[]): boolean {
-	return archivePeriods.at(-1)?.unarchived === null
 }
 
 function deliveryPreflightState(deliveryActions: Action[]): WorkStateResult<DeliveryWorkState | null> {
@@ -285,11 +280,12 @@ if (import.meta.vitest) {
 			seedDelivery(tx, 'delivery-prerequisite')
 			tx.links.records.set('delivery-dependency', {
 				id: 'delivery-dependency',
-				type: 'depends-on',
-				from: { type: 'delivery', id: 'delivery-1' },
-				to: { type: 'delivery', id: 'delivery-prerequisite' },
+				def: {
+					type: 'depends-on',
+					from: { type: 'delivery', projectId: 'project-1', id: 'delivery-1' },
+					to: { type: 'delivery', projectId: 'project-1', id: 'delivery-prerequisite' },
+				},
 				created: stamp,
-				archivePeriods: [],
 			})
 
 			expect(deliveryState(tx, 'delivery-1')).toEqual({
@@ -529,18 +525,22 @@ if (import.meta.vitest) {
 			slice,
 			artifact: [...tx.sliceArtifacts.records.values()].find((artifact) => artifact.sliceId === slice.id) ?? null,
 			dependencyLinks: links.filter(
-				(link) => link.type === 'depends-on' && link.from.type === 'slice' && link.from.id === slice.id && link.to.type === 'slice',
+				(link) =>
+					link.def.type === 'depends-on' &&
+					link.def.from.type === 'slice' &&
+					link.def.from.id === slice.id &&
+					link.def.to.type === 'slice',
 			) as DeliveryContext['slices'][number]['dependencyLinks'],
 		}))
 		const deliveryDependencies = links
 			.filter(
 				(link) =>
-					link.type === 'depends-on' &&
-					link.from.type === 'delivery' &&
-					link.from.id === delivery.id &&
-					link.to.type === 'delivery',
+					link.def.type === 'depends-on' &&
+					link.def.from.type === 'delivery' &&
+					link.def.from.id === delivery.id &&
+					link.def.to.type === 'delivery',
 			)
-			.map((link) => ({ link, delivery: tx.deliveries.records.get(link.to.id)! }))
+			.map((link) => ({ link, delivery: tx.deliveries.records.get(link.def.to.id)! }))
 
 		return getDeliveryState({
 			delivery,

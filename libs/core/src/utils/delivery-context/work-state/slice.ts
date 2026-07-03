@@ -194,8 +194,8 @@ function blockedSliceIds(context: DeliveryContext, slice: DeliveryContextSlice):
 }
 
 function incompleteSliceDependency(context: DeliveryContext, link: SliceDependencyLink): WorkStateResult<Slice | null> {
-	const prerequisite = context.slices.find((candidate) => candidate.slice.id === link.to.id)
-	if (prerequisite === undefined) return notFound('slice', link.to.id)
+	const prerequisite = context.slices.find((candidate) => candidate.slice.id === link.def.to.id)
+	if (prerequisite === undefined) return notFound('slice', link.def.to.id)
 
 	return validSliceDependency(context, prerequisite.slice).ok && isSliceComplete(prerequisite.slice.id, context.actions)
 		? ok(null)
@@ -294,11 +294,12 @@ if (import.meta.vitest) {
 			seedSlice(tx, 'slice-prerequisite', 'delivery-1')
 			tx.links.records.set('slice-dependency', {
 				id: 'slice-dependency',
-				type: 'depends-on',
-				from: { type: 'slice', id: 'slice-1' },
-				to: { type: 'slice', id: 'slice-prerequisite' },
+				def: {
+					type: 'depends-on',
+					from: { type: 'slice', projectId: 'project-1', deliveryId: 'delivery-1', id: 'slice-1' },
+					to: { type: 'slice', projectId: 'project-1', deliveryId: 'delivery-1', id: 'slice-prerequisite' },
+				},
 				created: stamp,
-				archivePeriods: [],
 			})
 
 			expect(sliceState(tx, 'slice-1')).toEqual({
@@ -543,7 +544,10 @@ if (import.meta.vitest) {
 				artifact: [...tx.sliceArtifacts.records.values()].find((artifact) => artifact.sliceId === slice.id) ?? null,
 				dependencyLinks: links.filter(
 					(link): link is DeliveryContext['slices'][number]['dependencyLinks'][number] =>
-						link.type === 'depends-on' && link.from.type === 'slice' && link.from.id === slice.id && link.to.type === 'slice',
+						link.def.type === 'depends-on' &&
+						link.def.from.type === 'slice' &&
+						link.def.from.id === slice.id &&
+						link.def.to.type === 'slice',
 				),
 			})
 			return entries

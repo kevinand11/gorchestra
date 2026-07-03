@@ -1,5 +1,4 @@
 import type { Action, ActionResult } from '../../../domain/action'
-import type { Id } from '../../../domain/commons'
 import type { Delivery } from '../../../domain/delivery'
 import type { Link } from '../../../domain/graph'
 import type { ReviewSurface, ReviewSurfaceReplaced } from '../../../domain/review-surface'
@@ -24,7 +23,11 @@ export type MaybeStateStep<T> = () => MaybeStateResult<T> | Promise<MaybeStateRe
 
 export type ActionOfType<TType extends ActionResult['type']> = Action & { result: Extract<ActionResult, { type: TType }> }
 export type SliceDeliveryValidationAction = ActionOfType<'validate-slice-delivery-artifact'>
-export type DeliveryDependencyLink = Link & { type: 'depends-on'; from: { type: 'delivery'; id: Id }; to: { type: 'delivery'; id: Id } }
-export type SliceDependencyLink = Link & { type: 'depends-on'; from: { type: 'slice'; id: Id }; to: { type: 'slice'; id: Id } }
+export type DeliveryDependencyLink = Link & {
+	def: Extract<Link['def'], { type: 'depends-on'; from: { type: 'delivery' }; to: { type: 'delivery' } }>
+}
+export type SliceDependencyLink = Link & {
+	def: Extract<Link['def'], { type: 'depends-on'; from: { type: 'slice' }; to: { type: 'slice' } }>
+}
 export type ReplacedReviewSurface = ReviewSurface & { closed: ReviewSurfaceReplaced }
 export type DependencyNode = Delivery | Slice

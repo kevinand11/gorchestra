@@ -4,7 +4,7 @@ import type { AgentRunPurpose } from './domain/agent-run'
 import type { Id } from './domain/commons'
 import type { DeliveryClosedOutcome, DeliveryWorkState } from './domain/delivery'
 import type { ExternalOperationEvidence, ValidationEvidence } from './domain/evidence'
-import type { GraphNodeRef, LinkType } from './domain/graph'
+import type { LinkDef } from './domain/graph'
 import type { ModelThinkingLevel } from './domain/model'
 import type { SecretBindingScope } from './domain/secret'
 
@@ -62,7 +62,7 @@ export type CoreIdResource =
 
 export type CoreResource = CoreSingletonResource | CoreIdResource
 
-export type ArchivableCoreResource = Extract<CoreIdResource, 'model-provider' | 'model' | 'link' | 'secret' | 'secret-binding'>
+export type ArchivableCoreResource = Extract<CoreIdResource, 'model-provider' | 'model' | 'secret' | 'secret-binding'>
 
 export interface ResourceNotFoundError {
 	type: 'not-found'
@@ -155,19 +155,7 @@ export interface DuplicateRepositoryTargetError {
 
 export interface DuplicateLinkError {
 	type: 'duplicate-link'
-	linkType: LinkType
-	from: GraphNodeRef
-	to: GraphNodeRef
-}
-
-export interface InvalidLinkError {
-	type: 'invalid-link'
-	reason: 'self-link'
-}
-
-export interface LinkNotArchivableError {
-	type: 'link-not-archivable'
-	linkType: LinkType
+	def: LinkDef
 }
 
 export interface ProjectSourceTypeMismatchError {
@@ -198,11 +186,11 @@ export type InvalidPlanOutputError =
 	| { type: 'invalid-plan-output'; reason: 'unknown-proposed-delivery-key'; proposedDeliveryKey: string }
 	| { type: 'invalid-plan-output'; reason: 'unknown-proposed-slice-key'; proposedSliceKey: string }
 	| { type: 'invalid-plan-output'; reason: 'unknown-proposed-memory-key'; proposedMemoryKey: string }
-	| { type: 'invalid-plan-output'; reason: 'unknown-existing-ref'; ref: GraphNodeRef }
+	| { type: 'invalid-plan-output'; reason: 'unknown-link-def-ref'; def: LinkDef }
 	| { type: 'invalid-plan-output'; reason: 'repository-project-mismatch'; proposedDeliveryKey: string; repositoryId: Id }
-	| { type: 'invalid-plan-output'; reason: 'project-boundary-mismatch'; ref: GraphNodeRef }
-	| { type: 'invalid-plan-output'; reason: 'invalid-depends-on-scope'; from: GraphNodeRef; to: GraphNodeRef }
-	| { type: 'invalid-plan-output'; reason: 'duplicate-link'; linkType: LinkType; from: GraphNodeRef; to: GraphNodeRef }
+	| { type: 'invalid-plan-output'; reason: 'project-boundary-mismatch'; def: LinkDef }
+	| { type: 'invalid-plan-output'; reason: 'invalid-link-def'; def: LinkDef }
+	| { type: 'invalid-plan-output'; reason: 'duplicate-link'; def: LinkDef }
 	| { type: 'invalid-plan-output'; reason: 'delivery-dependency-cycle' }
 	| { type: 'invalid-plan-output'; reason: 'slice-dependency-cycle'; proposedDeliveryKey: string }
 	| {
@@ -308,8 +296,6 @@ export type CoreError =
 	| StorageOperationFailedError
 	| DuplicateSecretBindingError
 	| DuplicateLinkError
-	| InvalidLinkError
-	| LinkNotArchivableError
 	| ArchivedSecretReferenceError
 	| ArchivedModelReferenceError
 	| ArchivedModelProviderReferenceError
