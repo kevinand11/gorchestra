@@ -805,7 +805,11 @@ if (import.meta.vitest) {
 
 		it('streams function calls into a tool-use outcome', async () => {
 			const deltas: unknown[] = []
-			const toolInput = { proposedDeliveries: [], proposedMemories: [] }
+			const toolInput = {
+				proposedDeliveries: {},
+				proposedMemoryCreations: { memory: { parentId: null, title: 'Memory', body: '', children: {} } },
+				proposedMemoryRevisions: {},
+			}
 			const provider = createOpenAIResponsesModelProviderProtocolProvider(() =>
 				client(() =>
 					withResponse([
@@ -817,14 +821,14 @@ if (import.meta.vitest) {
 						},
 						{
 							type: 'response.function_call_arguments.delta',
-							delta: '{"proposedDeliveries":[]',
+							delta: '{"proposedDeliveries":{}',
 							item_id: 'fc-1',
 							output_index: 0,
 							sequence_number: 2,
 						},
 						{
 							type: 'response.function_call_arguments.delta',
-							delta: ',"proposedMemories":[]}',
+							delta: ',"proposedMemoryCreations":{"memory":{"parentId":null,"title":"Memory","body":"","children":{}}},"proposedMemoryRevisions":{}}',
 							item_id: 'fc-1',
 							output_index: 0,
 							sequence_number: 3,

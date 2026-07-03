@@ -497,7 +497,15 @@ if (import.meta.vitest) {
 			body:
 				type === 'proposed-revision-output'
 					? { type, toolCallScheduledEventId: 'tool-call-1', output: revisionOutput() }
-					: { type, toolCallScheduledEventId: 'tool-call-1', output: { proposedDeliveries: [], proposedMemories: [] } },
+					: {
+							type,
+							toolCallScheduledEventId: 'tool-call-1',
+							output: {
+								proposedDeliveries: {},
+								proposedMemoryCreations: { memory: { parentId: null, title: 'Memory', body: '', children: {} } },
+								proposedMemoryRevisions: {},
+							},
+						},
 		}
 	}
 

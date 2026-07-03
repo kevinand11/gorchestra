@@ -150,7 +150,11 @@ if (import.meta.vitest) {
 			body: {
 				type: 'proposed-plan-output',
 				toolCallScheduledEventId: 'tool-call-1',
-				output: { proposedDeliveries: [], proposedMemories: [] },
+				output: {
+					proposedDeliveries: {},
+					proposedMemoryCreations: { memory: { parentId: null, title: 'Memory', body: '', children: {} } },
+					proposedMemoryRevisions: {},
+				},
 			},
 		})
 		return options

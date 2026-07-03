@@ -1,7 +1,10 @@
-import { v, type PipeOutput } from 'valleyed'
+import { v, type Pipe, type PipeOutput } from 'valleyed'
 
-import { freeFormStringPipe, idPipe, nonEmptyTrimmedStringPipe } from './commons'
-import { graphNodeRefPipe } from './graph'
+import { freeFormStringPipe, idPipe, nonEmptyTrimmedStringPipe, nonNegativeIntegerPipe } from './commons'
+
+const proposedKeyPipe = nonEmptyTrimmedStringPipe
+const dependencySetPipe = v.record(proposedKeyPipe, v.eq(true))
+const existingIdSetPipe = v.record(idPipe, v.eq(true))
 
 export const instructionSourcePipe = v.object({ body: freeFormStringPipe })
 export type InstructionSource = PipeOutput<typeof instructionSourcePipe>
@@ -17,54 +20,71 @@ export type ProposedDeliveryTarget = PipeOutput<typeof proposedDeliveryTargetPip
 export type ProposedSourceControlDeliveryTarget = Extract<ProposedDeliveryTarget, { type: 'source-control' }>
 
 export const proposedSlicePipe = v.object({
-	proposedSliceKey: nonEmptyTrimmedStringPipe,
+	order: nonNegativeIntegerPipe,
 	title: nonEmptyTrimmedStringPipe,
 	instruction: instructionSourcePipe,
-	dependsOnProposedSliceKeys: v.array(nonEmptyTrimmedStringPipe),
+	dependsOnProposedSliceKeys: dependencySetPipe,
 })
 export type ProposedSlice = PipeOutput<typeof proposedSlicePipe>
 
 export const proposedDeliveryPipe = v.object({
-	proposedDeliveryKey: nonEmptyTrimmedStringPipe,
 	title: nonEmptyTrimmedStringPipe,
 	target: proposedDeliveryTargetPipe,
-	slices: v.array(proposedSlicePipe),
-	dependsOnDeliveryIds: v.array(idPipe),
-	dependsOnProposedDeliveryKeys: v.array(nonEmptyTrimmedStringPipe),
+	slices: v.record(proposedKeyPipe, proposedSlicePipe),
+	dependsOnDeliveryIds: existingIdSetPipe,
+	dependsOnProposedDeliveryKeys: dependencySetPipe,
 })
 export type ProposedDelivery = PipeOutput<typeof proposedDeliveryPipe>
 
-export const proposedGraphRefPipe = v.discriminate((value) => value.type, {
-	existing: v.object({ type: v.eq('existing'), node: graphNodeRefPipe }),
-	'proposed-delivery': v.object({ type: v.eq('proposed-delivery'), proposedDeliveryKey: nonEmptyTrimmedStringPipe }),
-	'proposed-slice': v.object({ type: v.eq('proposed-slice'), proposedSliceKey: nonEmptyTrimmedStringPipe }),
-	'proposed-memory': v.object({ type: v.eq('proposed-memory'), proposedMemoryKey: nonEmptyTrimmedStringPipe }),
-})
-export type ProposedGraphRef = PipeOutput<typeof proposedGraphRefPipe>
+export interface ProposedChildMemoryCreationShape {
+	title: string
+	body: string
+	children: Record<string, ProposedChildMemoryCreationShape>
+}
 
-export const proposedMemoryLinkPipe = v.discriminate((value) => value.type, {
-	references: v.object({ type: v.eq('references'), to: proposedGraphRefPipe }),
-	supports: v.object({ type: v.eq('supports'), to: proposedGraphRefPipe }),
-	contradicts: v.object({ type: v.eq('contradicts'), to: proposedGraphRefPipe }),
-	supersedes: v.object({
-		type: v.eq('supersedes'),
-		to: v.object({ type: v.eq('existing'), node: v.object({ type: v.eq('memory'), id: idPipe }) }),
-	}),
-})
-export type ProposedMemoryLink = PipeOutput<typeof proposedMemoryLinkPipe>
+export interface ProposedMemoryCreationShape {
+	parentId: string | null
+	title: string
+	body: string
+	children: Record<string, ProposedChildMemoryCreationShape>
+}
 
-export const proposedMemoryPipe = v.object({
-	proposedMemoryKey: nonEmptyTrimmedStringPipe,
+export const proposedChildMemoryCreationPipe: Pipe<unknown, ProposedChildMemoryCreationShape> = v.recursive(
+	() =>
+		v.object({
+			title: nonEmptyTrimmedStringPipe,
+			body: freeFormStringPipe,
+			children: v.record(proposedKeyPipe, proposedChildMemoryCreationPipe),
+		}),
+	'ProposedChildMemoryCreation',
+)
+export type ProposedChildMemoryCreation = PipeOutput<typeof proposedChildMemoryCreationPipe>
+
+export const proposedMemoryCreationPipe: Pipe<unknown, ProposedMemoryCreationShape> = v.object({
+	parentId: v.nullable(idPipe),
 	title: nonEmptyTrimmedStringPipe,
 	body: freeFormStringPipe,
-	links: v.array(proposedMemoryLinkPipe),
+	children: v.record(proposedKeyPipe, proposedChildMemoryCreationPipe),
 })
-export type ProposedMemory = PipeOutput<typeof proposedMemoryPipe>
+export type ProposedMemoryCreation = PipeOutput<typeof proposedMemoryCreationPipe>
 
-export const planOutputProposalPipe = v.object({
-	proposedDeliveries: v.array(proposedDeliveryPipe),
-	proposedMemories: v.array(proposedMemoryPipe),
+export const proposedMemoryRevisionPipe = v.object({
+	expectedCurrentRevisionId: idPipe,
+	title: nonEmptyTrimmedStringPipe,
+	body: freeFormStringPipe,
 })
+export type ProposedMemoryRevision = PipeOutput<typeof proposedMemoryRevisionPipe>
+
+export const rawPlanOutputProposalPipe = v.object({
+	proposedDeliveries: v.record(proposedKeyPipe, proposedDeliveryPipe),
+	proposedMemoryCreations: v.record(proposedKeyPipe, proposedMemoryCreationPipe),
+	proposedMemoryRevisions: v.record(idPipe, proposedMemoryRevisionPipe),
+})
+type RawPlanOutputProposal = PipeOutput<typeof rawPlanOutputProposalPipe>
+
+export const planOutputProposalPipe = rawPlanOutputProposalPipe.pipe(
+	v.custom<RawPlanOutputProposal>(isStructurallyValidPlanOutputProposal, 'Expected a structurally valid non-empty Plan Output proposal.'),
+)
 export type PlanOutputProposal = PipeOutput<typeof planOutputProposalPipe>
 
 export const revisionDispositionPipe = v.object({ body: freeFormStringPipe })
@@ -75,3 +95,227 @@ export const revisionOutputProposalPipe = v.object({
 	disposition: revisionDispositionPipe,
 })
 export type RevisionOutputProposal = PipeOutput<typeof revisionOutputProposalPipe>
+
+function isStructurallyValidPlanOutputProposal(output: RawPlanOutputProposal): boolean {
+	return (
+		hasAnyOutput(output) &&
+		proposedDeliveriesAreStructurallyValid(output.proposedDeliveries) &&
+		proposedMemoryCreationKeysAreGloballyUnique(output.proposedMemoryCreations)
+	)
+}
+
+function hasAnyOutput(output: RawPlanOutputProposal): boolean {
+	return [output.proposedDeliveries, output.proposedMemoryCreations, output.proposedMemoryRevisions].some(hasKeys)
+}
+
+function hasKeys(record: Record<string, unknown>): boolean {
+	return Object.keys(record).length > 0
+}
+
+function proposedDeliveriesAreStructurallyValid(deliveries: Record<string, ProposedDelivery>): boolean {
+	return (
+		deliveryDependenciesAreKnownAndAcyclic(deliveries) &&
+		Object.entries(deliveries).every(([deliveryKey, delivery]) => proposedDeliveryIsStructurallyValid(deliveryKey, delivery))
+	)
+}
+
+function proposedDeliveryIsStructurallyValid(deliveryKey: string, delivery: ProposedDelivery): boolean {
+	return (
+		hasKeys(delivery.slices) &&
+		deliveryDependsOnNoSelf(deliveryKey, delivery) &&
+		sliceOrdersAreContiguous(delivery.slices) &&
+		sliceDependenciesAreKnownAndAcyclic(delivery.slices)
+	)
+}
+
+function deliveryDependsOnNoSelf(deliveryKey: string, delivery: ProposedDelivery): boolean {
+	return delivery.dependsOnProposedDeliveryKeys[deliveryKey] === undefined
+}
+
+function deliveryDependenciesAreKnownAndAcyclic(deliveries: Record<string, ProposedDelivery>): boolean {
+	const keys = new Set(Object.keys(deliveries))
+	return (
+		Object.entries(deliveries).every(([deliveryKey, delivery]) =>
+			Object.keys(delivery.dependsOnProposedDeliveryKeys).every((dependency) => dependency !== deliveryKey && keys.has(dependency)),
+		) &&
+		!hasCycle(
+			Object.fromEntries(
+				Object.entries(deliveries).map(([key, delivery]) => [key, Object.keys(delivery.dependsOnProposedDeliveryKeys)]),
+			),
+		)
+	)
+}
+
+function sliceOrdersAreContiguous(slices: Record<string, ProposedSlice>): boolean {
+	const orders = Object.values(slices)
+		.map((slice) => slice.order)
+		.sort((left, right) => left - right)
+	return orders.every((order, index) => order === index)
+}
+
+function sliceDependenciesAreKnownAndAcyclic(slices: Record<string, ProposedSlice>): boolean {
+	const keys = new Set(Object.keys(slices))
+	return (
+		Object.entries(slices).every(([sliceKey, slice]) =>
+			Object.keys(slice.dependsOnProposedSliceKeys).every((dependency) => dependency !== sliceKey && keys.has(dependency)),
+		) &&
+		!hasCycle(Object.fromEntries(Object.entries(slices).map(([key, slice]) => [key, Object.keys(slice.dependsOnProposedSliceKeys)])))
+	)
+}
+
+function hasCycle(graph: Record<string, string[]>): boolean {
+	const visiting = new Set<string>()
+	const visited = new Set<string>()
+	return Object.keys(graph).some((node) => visitsCycle(node, graph, visiting, visited))
+}
+
+function visitsCycle(node: string, graph: Record<string, string[]>, visiting: Set<string>, visited: Set<string>): boolean {
+	if (visited.has(node)) return false
+	if (visiting.has(node)) return true
+
+	visiting.add(node)
+	for (const dependency of graph[node] ?? []) {
+		if (visitsCycle(dependency, graph, visiting, visited)) return true
+	}
+	visiting.delete(node)
+	visited.add(node)
+	return false
+}
+
+function proposedMemoryCreationKeysAreGloballyUnique(memories: Record<string, ProposedMemoryCreation>): boolean {
+	const keys = new Set<string>()
+	return Object.entries(memories).every(([key, memory]) => collectUniqueMemoryCreationKeys(key, memory.children, keys))
+}
+
+function collectUniqueMemoryCreationKeys(key: string, children: Record<string, ProposedChildMemoryCreation>, keys: Set<string>): boolean {
+	if (keys.has(key)) return false
+	keys.add(key)
+	return Object.entries(children).every(([childKey, child]) => collectUniqueMemoryCreationKeys(childKey, child.children, keys))
+}
+
+if (import.meta.vitest) {
+	const { describe, expect, it } = import.meta.vitest
+
+	describe('Plan Output proposal pipe', () => {
+		it('accepts keyed delivery, memory creation, and memory revision proposals', () => {
+			expect(v.validate(planOutputProposalPipe, validOutput())).toMatchObject({ valid: true })
+		})
+
+		it('rejects empty outputs before a proposal event can be recorded', () => {
+			expect(v.validate(planOutputProposalPipe, emptyOutput())).toMatchObject({ valid: false })
+		})
+
+		it('rejects non-contiguous slice orders and unknown same-delivery slice dependencies', () => {
+			expect(v.validate(planOutputProposalPipe, outputWithSliceOrderGap())).toMatchObject({ valid: false })
+			expect(v.validate(planOutputProposalPipe, outputWithUnknownSliceDependency())).toMatchObject({ valid: false })
+		})
+
+		it('rejects proposed dependency cycles', () => {
+			expect(v.validate(planOutputProposalPipe, outputWithDeliveryCycle())).toMatchObject({ valid: false })
+			expect(v.validate(planOutputProposalPipe, outputWithSliceCycle())).toMatchObject({ valid: false })
+		})
+
+		it('rejects duplicate proposed Memory keys across the creation tree', () => {
+			expect(v.validate(planOutputProposalPipe, outputWithDuplicateNestedMemoryKey())).toMatchObject({ valid: false })
+		})
+	})
+
+	function emptyOutput(): RawPlanOutputProposal {
+		return { proposedDeliveries: {}, proposedMemoryCreations: {}, proposedMemoryRevisions: {} }
+	}
+
+	function validOutput(): RawPlanOutputProposal {
+		return {
+			proposedDeliveries: {
+				'delivery-a': {
+					title: 'Delivery A',
+					target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
+					slices: {
+						'slice-a': {
+							order: 0,
+							title: 'Slice A',
+							instruction: { body: 'Do A.' },
+							dependsOnProposedSliceKeys: {},
+						},
+						'slice-b': {
+							order: 1,
+							title: 'Slice B',
+							instruction: { body: 'Do B.' },
+							dependsOnProposedSliceKeys: { 'slice-a': true },
+						},
+					},
+					dependsOnDeliveryIds: { 'delivery-existing': true },
+					dependsOnProposedDeliveryKeys: {},
+				},
+			},
+			proposedMemoryCreations: {
+				'memory-a': {
+					parentId: null,
+					title: 'Memory A',
+					body: 'Remember A.',
+					children: {
+						'memory-b': { title: 'Memory B', body: 'Remember B.', children: {} },
+					},
+				},
+			},
+			proposedMemoryRevisions: {
+				'memory-existing': { expectedCurrentRevisionId: 'memory-revision-current', title: 'Memory', body: 'Updated.' },
+			},
+		}
+	}
+
+	function outputWithSliceOrderGap(): RawPlanOutputProposal {
+		return {
+			...emptyOutput(),
+			proposedDeliveries: {
+				'delivery-a': {
+					title: 'Delivery A',
+					target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
+					slices: {
+						'slice-a': { order: 0, title: 'Slice A', instruction: { body: 'Do A.' }, dependsOnProposedSliceKeys: {} },
+						'slice-b': { order: 2, title: 'Slice B', instruction: { body: 'Do B.' }, dependsOnProposedSliceKeys: {} },
+					},
+					dependsOnDeliveryIds: {},
+					dependsOnProposedDeliveryKeys: {},
+				},
+			},
+		}
+	}
+
+	function outputWithUnknownSliceDependency(): RawPlanOutputProposal {
+		const output = validOutput()
+		output.proposedDeliveries['delivery-a']!.slices['slice-a']!.dependsOnProposedSliceKeys = { missing: true }
+		return output
+	}
+
+	function outputWithDeliveryCycle(): RawPlanOutputProposal {
+		const output = validOutput()
+		output.proposedDeliveries['delivery-b'] = {
+			title: 'Delivery B',
+			target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
+			slices: { 'slice-c': { order: 0, title: 'Slice C', instruction: { body: 'Do C.' }, dependsOnProposedSliceKeys: {} } },
+			dependsOnDeliveryIds: {},
+			dependsOnProposedDeliveryKeys: { 'delivery-a': true },
+		}
+		output.proposedDeliveries['delivery-a']!.dependsOnProposedDeliveryKeys = { 'delivery-b': true }
+		return output
+	}
+
+	function outputWithSliceCycle(): RawPlanOutputProposal {
+		const output = validOutput()
+		output.proposedDeliveries['delivery-a']!.slices['slice-a']!.dependsOnProposedSliceKeys = { 'slice-b': true }
+		output.proposedDeliveries['delivery-a']!.slices['slice-b']!.dependsOnProposedSliceKeys = { 'slice-a': true }
+		return output
+	}
+
+	function outputWithDuplicateNestedMemoryKey(): RawPlanOutputProposal {
+		const output = validOutput()
+		output.proposedMemoryCreations['memory-c'] = {
+			parentId: null,
+			title: 'Memory C',
+			body: 'Remember C.',
+			children: { 'memory-a': { title: 'Duplicate', body: '', children: {} } },
+		}
+		return output
+	}
+}

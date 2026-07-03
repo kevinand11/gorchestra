@@ -733,7 +733,11 @@ if (import.meta.vitest) {
 						type: 'tool-call',
 						toolCallId: 'tool-call-1',
 						toolName: 'propose-plan-output',
-						input: { proposedDeliveries: [], proposedMemories: [{ proposedMemoryKey: 'm', title: 'M', body: 'B', links: [] }] },
+						input: {
+							proposedDeliveries: {},
+							proposedMemoryCreations: { m: { parentId: null, title: 'M', body: 'B', children: {} } },
+							proposedMemoryRevisions: {},
+						},
 					},
 				],
 				usage: null,

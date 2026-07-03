@@ -8,10 +8,11 @@ export const graphNodeRefPipe = v.discriminate((value) => value.type, {
 	delivery: v.object({ type: v.eq('delivery'), id: idPipe }),
 	slice: v.object({ type: v.eq('slice'), id: idPipe }),
 	memory: v.object({ type: v.eq('memory'), id: idPipe }),
+	'memory-revision': v.object({ type: v.eq('memory-revision'), id: idPipe }),
 })
 export type GraphNodeRef = PipeOutput<typeof graphNodeRefPipe>
 
-export const linkTypePipe = v.in(['produced', 'references', 'supersedes', 'supports', 'contradicts', 'depends-on'])
+export const linkTypePipe = v.in(['produced', 'depends-on'])
 export type LinkType = PipeOutput<typeof linkTypePipe>
 
 export const linkPipe = v.object({

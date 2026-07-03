@@ -1,7 +1,7 @@
 import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
-import type { AgentRun } from '../domain/agent-run'
+import type { AgentRun, AgentRunInstruction } from '../domain/agent-run'
 import { idPipe, nonEmptyTrimmedStringPipe, type AuditStamp, type Id, type RuntimeRecord } from '../domain/commons'
 import type { ModelUseConfig, PortfolioConfigRecord } from '../domain/config'
 import { planConfigPipe } from '../domain/config'
@@ -9,6 +9,7 @@ import type { Plan, PlanWithPlanningAgentRun } from '../domain/plan'
 import type { Project } from '../domain/project'
 import type { AgentRunModelUseUnresolvedError, InvalidInputError } from '../errors'
 import type { CoreRuntime } from '../runtime'
+import { planningInstructionForProject } from '../runtime/agent-runs/instructions'
 import type { CoreDispatchRequest, CoreStorage } from '../services'
 import { appendAgentRunEvent, createModelAgentRunWithInitialModel } from '../utils/agent-run-events'
 import type { CoreRuntimeValues } from '../utils/runtime-values'
@@ -62,6 +63,7 @@ type PlanCreationFacts = {
 	agentRunId: Id
 	started: RuntimeRecord
 	modelUse: ModelUseConfig
+	instruction: AgentRunInstruction
 	initialMessage: string
 	stamp: AuditStamp
 	runtimeValues: CoreRuntimeValues
@@ -164,9 +166,12 @@ async function validatedPlanCreationFacts(
 	if (!facts.ok) return facts
 
 	const modelUseValidation = validateModelUseConfigs(facts.value, [modelUse])
-	return modelUseValidation.ok
-		? { ok: true, value: planCreationFactsValue(input, values, project, config, modelUse) }
-		: modelUseValidation
+	if (!modelUseValidation.ok) return modelUseValidation
+
+	const instruction = planningInstructionForProject(project)
+	return instruction.ok
+		? { ok: true, value: planCreationFactsValue(input, values, project, config, modelUse, instruction.value) }
+		: instruction
 }
 
 function planCreationFactsValue(
@@ -175,12 +180,14 @@ function planCreationFactsValue(
 	project: Project,
 	config: ReturnType<typeof normalizePlanConfigRecord>,
 	modelUse: ModelUseConfig,
+	instruction: AgentRunInstruction,
 ): PlanCreationFacts {
 	return {
 		plan: { id: values.planId, projectId: project.id, title: input.title, config, created: values.stamp, closed: null },
 		agentRunId: values.agentRunId,
 		started: values.started,
 		modelUse,
+		instruction,
 		initialMessage: input.initialMessage,
 		stamp: values.stamp,
 		runtimeValues: values.runtimeValues,
@@ -209,7 +216,21 @@ async function writePlanningAgentRun(
 		modelId: facts.modelUse.modelId,
 		thinkingLevel: facts.modelUse.thinkingLevel,
 	})
-	return storedAgentRun.ok ? writeInitialPlanningInput(runtime, storage, plan, storedAgentRun.value, facts) : storedAgentRun
+	return storedAgentRun.ok ? writePlanningInstruction(runtime, storage, plan, storedAgentRun.value, facts) : storedAgentRun
+}
+
+async function writePlanningInstruction(
+	runtime: CoreRuntime,
+	storage: CoreStorage,
+	plan: Plan,
+	agentRun: PlanWithPlanningAgentRun['agentRun'],
+	facts: PlanCreationFacts,
+): Promise<CoreResult<DispatchedPlanCreation, Exclude<Error, InvalidInputError>>> {
+	const instruction = await appendAgentRunEvent({ values: facts.runtimeValues }, storage, agentRun.id, {
+		type: 'instruction-snapshot',
+		instruction: facts.instruction,
+	})
+	return instruction.ok ? writeInitialPlanningInput(runtime, storage, plan, agentRun, facts) : instruction
 }
 
 async function writeInitialPlanningInput(
@@ -331,7 +352,11 @@ if (import.meta.vitest) {
 				thinkingLevel: 'off',
 				authorized: null,
 			})
-			expect(options.tx.agentRunEvents.records.get('agent-run-event-2')?.body).toEqual({
+			expect(options.tx.agentRunEvents.records.get('agent-run-event-2')?.body).toMatchObject({
+				type: 'instruction-snapshot',
+				instruction: { type: 'source-control-planning', version: 1 },
+			})
+			expect(options.tx.agentRunEvents.records.get('agent-run-event-3')?.body).toEqual({
 				type: 'input-message',
 				source: { type: 'operator', authorized: localStamp() },
 				content: [{ type: 'text', text: 'Please plan repository onboarding.' }],
@@ -365,10 +390,10 @@ if (import.meta.vitest) {
 
 			expect(result).toMatchObject({ ok: true })
 			expect(dispatches).toEqual([
-				{ type: 'agent-run', agentRunId: 'agent-run-1', reason: { type: 'input-appended', inputEventId: 'agent-run-event-2' } },
+				{ type: 'agent-run', agentRunId: 'agent-run-1', reason: { type: 'input-appended', inputEventId: 'agent-run-event-3' } },
 			])
 			expect(readyMarkers).toEqual(['marker-1'])
-			expect(options.tx.agentRunEvents.records.get('agent-run-event-2')?.body.type).toBe('input-message')
+			expect(options.tx.agentRunEvents.records.get('agent-run-event-3')?.body.type).toBe('input-message')
 		})
 
 		it('rolls back Plan creation when dispatch request throws', async () => {

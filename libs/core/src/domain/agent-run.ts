@@ -51,6 +51,15 @@ const unknownPipe = v.any<unknown>()
 export const agentRunTextContentPipe = v.object({ type: v.eq('text'), text: freeFormStringPipe })
 export type AgentRunTextContent = PipeOutput<typeof agentRunTextContentPipe>
 
+export const agentRunInstructionPipe = v.discriminate((value) => value.type, {
+	'source-control-planning': v.object({
+		type: v.eq('source-control-planning'),
+		version: v.eq(1),
+		content: v.array(agentRunTextContentPipe),
+	}),
+})
+export type AgentRunInstruction = PipeOutput<typeof agentRunInstructionPipe>
+
 export const agentRunModelCostPipe = v.object({
 	unit: v.eq('micro-usd'),
 	input: nonNegativeIntegerPipe,
@@ -195,6 +204,7 @@ export const agentRunProposalMaterializationPipe = v.discriminate((value) => val
 		deliveryIds: v.array(idPipe),
 		sliceIds: v.array(idPipe),
 		memoryIds: v.array(idPipe),
+		memoryRevisionIds: v.array(idPipe),
 		linkIds: v.array(idPipe),
 	}),
 	'revision-output': v.object({ type: v.eq('revision-output'), revisionId: idPipe }),
@@ -208,6 +218,7 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 		thinkingLevel: modelThinkingLevelPipe,
 		authorized: v.nullable(auditStampPipe),
 	}),
+	'instruction-snapshot': v.object({ type: v.eq('instruction-snapshot'), instruction: agentRunInstructionPipe }),
 	'input-message': v.object({ type: v.eq('input-message'), source: agentRunInputSourcePipe, content: v.array(agentRunTextContentPipe) }),
 	'turn-started': v.object({
 		type: v.eq('turn-started'),
