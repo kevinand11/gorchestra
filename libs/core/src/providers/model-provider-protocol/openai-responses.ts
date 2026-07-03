@@ -1,4 +1,13 @@
 import OpenAI from 'openai'
+import type {
+	Response,
+	ResponseFunctionToolCall,
+	ResponseOutputItem,
+	ResponseOutputMessage,
+	ResponseReasoningItem,
+	ResponseStreamEvent,
+	ResponseUsage,
+} from 'openai/resources/responses/responses'
 import { v } from 'valleyed'
 
 import { providerFailurePreflight } from './provider-failures'
@@ -50,65 +59,27 @@ type OpenAIResponsesWithResponse = {
 	response: { status: number; headers?: unknown }
 }
 
-type OpenAIResponsesStreamEvent =
-	| { type: 'response.created'; response: { id?: string } }
-	| { type: 'response.output_item.added'; item: OpenAIResponsesOutputItem }
-	| { type: 'response.reasoning_summary_part.added'; part: OpenAIResponsesReasoningTextPart }
-	| { type: 'response.reasoning_summary_text.delta'; delta: string }
-	| { type: 'response.reasoning_summary_part.done' }
-	| { type: 'response.reasoning_text.delta'; delta: string }
-	| { type: 'response.content_part.added'; part: OpenAIResponsesMessageContent }
-	| { type: 'response.output_text.delta'; delta: string }
-	| { type: 'response.refusal.delta'; delta: string }
-	| { type: 'response.function_call_arguments.delta'; delta: string }
-	| { type: 'response.function_call_arguments.done'; arguments: string }
-	| { type: 'response.output_item.done'; item: OpenAIResponsesOutputItem }
-	| { type: 'response.completed'; response: OpenAIResponsesTerminalResponse }
-	| { type: 'response.incomplete'; response: OpenAIResponsesTerminalResponse }
-	| { type: 'response.failed'; response?: OpenAIResponsesTerminalResponse & { error?: { code?: string; message?: string } } }
-	| { type: 'error'; code?: string; message?: string }
+type OpenAIResponsesStreamEvent = ResponseStreamEvent
 
-type OpenAIResponsesOutputItem = OpenAIResponsesReasoningItem | OpenAIResponsesMessageItem | OpenAIResponsesFunctionCallItem
+type OpenAIResponsesOutputItem = ResponseOutputItem
 
-type OpenAIResponsesReasoningTextPart = { type?: string; text: string }
+type OpenAIResponsesReasoningItem = ResponseReasoningItem
 
-type OpenAIResponsesReasoningItem = {
-	type: 'reasoning'
-	id?: string
-	summary?: OpenAIResponsesReasoningTextPart[]
-	content?: OpenAIResponsesReasoningTextPart[]
-}
+type OpenAIResponsesMessageItem = ResponseOutputMessage
 
-type OpenAIResponsesMessageContent = { type: 'output_text'; text: string; annotations?: unknown[] } | { type: 'refusal'; refusal: string }
+type OpenAIResponsesFunctionCallItem = ResponseFunctionToolCall
 
-type OpenAIResponsesMessageItem = {
-	type: 'message'
-	id?: string
-	content?: OpenAIResponsesMessageContent[]
-	phase?: 'commentary' | 'final_answer'
-}
+type OpenAIResponsesTerminalResponse = Response
 
-type OpenAIResponsesFunctionCallItem = {
-	type: 'function_call'
-	id?: string
-	call_id?: string
-	name?: string
-	arguments?: string
-}
+type OpenAIResponsesUsage = ResponseUsage
 
-type OpenAIResponsesTerminalResponse = {
-	id?: string
-	status?: 'completed' | 'incomplete' | 'failed' | 'cancelled' | 'in_progress' | 'queued'
-	usage?: OpenAIResponsesUsage
-	incomplete_details?: { reason?: string }
-}
+type OpenAIResponsesMessageContent = OpenAIResponsesMessageItem['content'][number]
 
-type OpenAIResponsesUsage = {
-	input_tokens?: number
-	output_tokens?: number
-	total_tokens?: number
-	input_tokens_details?: { cached_tokens?: number }
-}
+type OpenAIResponsesReasoningSummaryPart = Extract<OpenAIResponsesStreamEvent, { type: 'response.reasoning_summary_part.added' }>['part']
+
+type OpenAIResponsesReasoningTextPart =
+	| OpenAIResponsesReasoningItem['summary'][number]
+	| NonNullable<OpenAIResponsesReasoningItem['content']>[number]
 
 type TerminalStatus = 'completed' | 'incomplete' | 'failed'
 
@@ -195,13 +166,18 @@ function openAIResponsesRequest(input: OpenAIResponsesTurnInput): OpenAIResponse
 
 function openAIResponsesMessage(message: AgentRunProviderMessage): unknown {
 	const inputText = { type: 'input_text', text: message.content }
-	const roleMessages = {
-		system: () => ({ role: 'system', content: message.content }),
-		user: () => ({ role: 'user', content: [inputText] }),
-		tool: () => ({ role: 'user', content: [{ type: 'input_text', text: `Tool result:\n${message.content}` }] }),
-		assistant: () => ({ type: 'message', role: 'assistant', content: [outputText(message.content)], status: 'completed' }),
-	} satisfies Record<AgentRunProviderMessage['role'], () => unknown>
-	return roleMessages[message.role]()
+	switch (message.role) {
+		case 'system':
+			return { role: 'system', content: message.content }
+		case 'user':
+			return { role: 'user', content: [inputText] }
+		case 'tool':
+			return { role: 'user', content: [{ type: 'input_text', text: `Tool result:\n${message.content}` }] }
+		case 'assistant':
+			return { type: 'message', role: 'assistant', content: [outputText(message.content)], status: 'completed' }
+		default:
+			throw new Error(`Unexpected Agent Run provider message role: ${String(message.role satisfies never)}`)
+	}
 }
 
 function outputText(text: string): unknown {
@@ -227,60 +203,170 @@ async function processResponsesStream(
 }
 
 function processResponsesStreamEvent(event: OpenAIResponsesStreamEvent, state: StreamState, input: OpenAIResponsesTurnInput): void {
-	const processors = responseStreamEventProcessors(state, input)
-	processors[event.type](event as never)
-}
-
-function responseStreamEventProcessors(state: StreamState, input: OpenAIResponsesTurnInput) {
-	return {
-		'response.created': (event: Extract<OpenAIResponsesStreamEvent, { type: 'response.created' }>) => {
+	switch (event.type) {
+		case 'response.created':
 			state.providerResponseRef = event.response.id ?? state.providerResponseRef
-		},
-		'response.output_item.added': (event: Extract<OpenAIResponsesStreamEvent, { type: 'response.output_item.added' }>) =>
-			startOutputItem(event.item, state, input),
-		'response.reasoning_summary_part.added': (
-			event: Extract<OpenAIResponsesStreamEvent, { type: 'response.reasoning_summary_part.added' }>,
-		) => addReasoningSummaryPart(state, event.part),
-		'response.reasoning_summary_text.delta': (
-			event: Extract<OpenAIResponsesStreamEvent, { type: 'response.reasoning_summary_text.delta' }>,
-		) => appendThinkingDelta(state, input, event.delta),
-		'response.reasoning_summary_part.done': () => appendThinkingDelta(state, input, '\n\n'),
-		'response.reasoning_text.delta': (event: Extract<OpenAIResponsesStreamEvent, { type: 'response.reasoning_text.delta' }>) =>
-			appendThinkingDelta(state, input, event.delta),
-		'response.content_part.added': () => undefined,
-		'response.output_text.delta': (event: Extract<OpenAIResponsesStreamEvent, { type: 'response.output_text.delta' }>) =>
-			appendTextDelta(state, input, event.delta),
-		'response.refusal.delta': (event: Extract<OpenAIResponsesStreamEvent, { type: 'response.refusal.delta' }>) =>
-			appendTextDelta(state, input, event.delta),
-		'response.function_call_arguments.delta': (
-			event: Extract<OpenAIResponsesStreamEvent, { type: 'response.function_call_arguments.delta' }>,
-		) => appendToolCallDelta(state, input, event.delta),
-		'response.function_call_arguments.done': (
-			event: Extract<OpenAIResponsesStreamEvent, { type: 'response.function_call_arguments.done' }>,
-		) => finishToolCallArguments(state, input, event.arguments),
-		'response.output_item.done': (event: Extract<OpenAIResponsesStreamEvent, { type: 'response.output_item.done' }>) =>
-			finishOutputItem(event.item, state, input),
-		'response.completed': (event: Extract<OpenAIResponsesStreamEvent, { type: 'response.completed' }>) =>
-			finishTerminalResponse(state, event.response, 'completed', input),
-		'response.incomplete': (event: Extract<OpenAIResponsesStreamEvent, { type: 'response.incomplete' }>) =>
-			finishTerminalResponse(state, event.response, 'incomplete', input),
-		'response.failed': (event: Extract<OpenAIResponsesStreamEvent, { type: 'response.failed' }>) => {
-			finishTerminalResponse(state, event.response ?? {}, 'failed', input)
+			return
+		case 'response.queued':
+		case 'response.in_progress':
+		case 'response.content_part.added':
+		case 'response.content_part.done':
+		case 'response.output_text.done':
+		case 'response.reasoning_summary_text.done':
+		case 'response.reasoning_text.done':
+		case 'response.refusal.done':
+			return
+		case 'response.output_item.added':
+			startOutputItem(event.item, state, input)
+			return
+		case 'response.output_item.done':
+			finishOutputItem(event.item, state, input)
+			return
+		case 'response.reasoning_summary_part.added':
+			addReasoningSummaryPart(state, event.part)
+			return
+		case 'response.reasoning_summary_text.delta':
+		case 'response.reasoning_text.delta':
+			appendThinkingDelta(state, input, event.delta)
+			return
+		case 'response.reasoning_summary_part.done':
+			appendThinkingDelta(state, input, '\n\n')
+			return
+		case 'response.output_text.delta':
+		case 'response.refusal.delta':
+			appendTextDelta(state, input, event.delta)
+			return
+		case 'response.function_call_arguments.delta':
+			appendToolCallDelta(state, input, event.delta)
+			return
+		case 'response.function_call_arguments.done':
+			finishToolCallArguments(state, input, event.arguments)
+			return
+		case 'response.completed':
+			finishTerminalResponse(state, event.response, 'completed', input)
+			return
+		case 'response.incomplete':
+			finishTerminalResponse(state, event.response, 'incomplete', input)
+			return
+		case 'response.failed':
+			finishTerminalResponse(state, event.response, 'failed', input)
 			throw new Error(responseFailedSummary(event.response))
-		},
-		error: (event: Extract<OpenAIResponsesStreamEvent, { type: 'error' }>) => {
+		case 'error':
 			throw new Error(event.message ?? event.code ?? 'OpenAI Responses stream error.')
-		},
-	} satisfies Record<OpenAIResponsesStreamEvent['type'], (event: never) => void>
+		case 'response.audio.delta':
+		case 'response.audio.done':
+		case 'response.audio.transcript.delta':
+		case 'response.audio.transcript.done':
+		case 'response.code_interpreter_call_code.delta':
+		case 'response.code_interpreter_call_code.done':
+		case 'response.code_interpreter_call.completed':
+		case 'response.code_interpreter_call.in_progress':
+		case 'response.code_interpreter_call.interpreting':
+		case 'response.custom_tool_call_input.delta':
+		case 'response.custom_tool_call_input.done':
+		case 'response.file_search_call.completed':
+		case 'response.file_search_call.in_progress':
+		case 'response.file_search_call.searching':
+		case 'response.image_generation_call.completed':
+		case 'response.image_generation_call.generating':
+		case 'response.image_generation_call.in_progress':
+		case 'response.image_generation_call.partial_image':
+		case 'response.mcp_call_arguments.delta':
+		case 'response.mcp_call_arguments.done':
+		case 'response.mcp_call.completed':
+		case 'response.mcp_call.failed':
+		case 'response.mcp_call.in_progress':
+		case 'response.mcp_list_tools.completed':
+		case 'response.mcp_list_tools.failed':
+		case 'response.mcp_list_tools.in_progress':
+		case 'response.output_text.annotation.added':
+		case 'response.web_search_call.completed':
+		case 'response.web_search_call.in_progress':
+		case 'response.web_search_call.searching':
+			throw unsupportedOpenAIResponsesStreamEvent(event.type)
+		default:
+			throw new Error(`Unexpected OpenAI Responses stream event: ${String(event satisfies never)}`)
+	}
 }
 
 function startOutputItem(item: OpenAIResponsesOutputItem, state: StreamState, input: OpenAIResponsesTurnInput): void {
-	const starters = {
-		reasoning: () => startThinkingItem(item as OpenAIResponsesReasoningItem, state, input),
-		message: () => startTextItem(state, input),
-		function_call: () => startToolCallItem(item as OpenAIResponsesFunctionCallItem, state, input),
-	} satisfies Record<OpenAIResponsesOutputItem['type'], () => void>
-	starters[item.type]()
+	switch (item.type) {
+		case 'reasoning':
+			startThinkingItem(item, state, input)
+			return
+		case 'message':
+			startTextItem(state, input)
+			return
+		case 'function_call':
+			startToolCallItem(item, state, input)
+			return
+		case 'additional_tools':
+		case 'apply_patch_call':
+		case 'apply_patch_call_output':
+		case 'code_interpreter_call':
+		case 'compaction':
+		case 'computer_call':
+		case 'computer_call_output':
+		case 'custom_tool_call':
+		case 'custom_tool_call_output':
+		case 'file_search_call':
+		case 'function_call_output':
+		case 'image_generation_call':
+		case 'local_shell_call':
+		case 'local_shell_call_output':
+		case 'mcp_approval_request':
+		case 'mcp_approval_response':
+		case 'mcp_call':
+		case 'mcp_list_tools':
+		case 'shell_call':
+		case 'shell_call_output':
+		case 'tool_search_call':
+		case 'tool_search_output':
+		case 'web_search_call':
+			throw unsupportedOpenAIResponsesOutputItem(item.type)
+		default:
+			throw new Error(`Unexpected OpenAI Responses output item type: ${String(item satisfies never)}`)
+	}
+}
+
+function finishOutputItem(item: OpenAIResponsesOutputItem, state: StreamState, input: OpenAIResponsesTurnInput): void {
+	switch (item.type) {
+		case 'reasoning':
+			finishThinkingItem(item, state, input)
+			return
+		case 'message':
+			finishTextItem(item, state, input)
+			return
+		case 'function_call':
+			finishToolCallItem(item, state, input)
+			return
+		case 'additional_tools':
+		case 'apply_patch_call':
+		case 'apply_patch_call_output':
+		case 'code_interpreter_call':
+		case 'compaction':
+		case 'computer_call':
+		case 'computer_call_output':
+		case 'custom_tool_call':
+		case 'custom_tool_call_output':
+		case 'file_search_call':
+		case 'function_call_output':
+		case 'image_generation_call':
+		case 'local_shell_call':
+		case 'local_shell_call_output':
+		case 'mcp_approval_request':
+		case 'mcp_approval_response':
+		case 'mcp_call':
+		case 'mcp_list_tools':
+		case 'shell_call':
+		case 'shell_call_output':
+		case 'tool_search_call':
+		case 'tool_search_output':
+		case 'web_search_call':
+			throw unsupportedOpenAIResponsesOutputItem(item.type)
+		default:
+			throw new Error(`Unexpected OpenAI Responses output item type: ${String(item satisfies never)}`)
+	}
 }
 
 function startThinkingItem(item: OpenAIResponsesReasoningItem, state: StreamState, input: OpenAIResponsesTurnInput): void {
@@ -302,15 +388,6 @@ function startToolCallItem(item: OpenAIResponsesFunctionCallItem, state: StreamS
 	const contentIndex = pushContent(state, { type: 'tool-call', toolCallId, toolName, input: parseToolInput(partialJson) })
 	state.currentBlock = { type: 'tool-call', contentIndex, partialJson }
 	input.onDelta({ type: 'tool-call-arguments-started', contentIndex, toolCallId, toolName })
-}
-
-function finishOutputItem(item: OpenAIResponsesOutputItem, state: StreamState, input: OpenAIResponsesTurnInput): void {
-	const finishers = {
-		reasoning: () => finishThinkingItem(item as OpenAIResponsesReasoningItem, state, input),
-		message: () => finishTextItem(item as OpenAIResponsesMessageItem, state, input),
-		function_call: () => finishToolCallItem(item as OpenAIResponsesFunctionCallItem, state, input),
-	} satisfies Record<OpenAIResponsesOutputItem['type'], () => void>
-	finishers[item.type]()
 }
 
 function finishThinkingItem(item: OpenAIResponsesReasoningItem, state: StreamState, input: OpenAIResponsesTurnInput): void {
@@ -362,7 +439,7 @@ function emitToolCallArgumentsEnded(
 	})
 }
 
-function addReasoningSummaryPart(state: StreamState, part: OpenAIResponsesReasoningTextPart): void {
+function addReasoningSummaryPart(state: StreamState, part: OpenAIResponsesReasoningSummaryPart): void {
 	if (state.currentBlock?.type !== 'thinking') return
 	state.currentBlock.item.summary = [...(state.currentBlock.item.summary ?? []), part]
 }
@@ -591,28 +668,27 @@ function numberOrZero(value: number | undefined): number {
 }
 
 function terminalStatus(status: OpenAIResponsesTerminalResponse['status'] | undefined): TerminalStatus | null {
-	const statuses = {
-		completed: 'completed',
-		incomplete: 'incomplete',
-		failed: 'failed',
-		cancelled: 'failed',
-		in_progress: 'completed',
-		queued: 'completed',
-	} satisfies Record<NonNullable<OpenAIResponsesTerminalResponse['status']>, TerminalStatus>
-	return status === undefined ? null : statuses[status]
+	if (status === undefined) return null
+	switch (status) {
+		case 'completed':
+		case 'in_progress':
+		case 'queued':
+			return 'completed'
+		case 'incomplete':
+			return 'incomplete'
+		case 'failed':
+		case 'cancelled':
+			return 'failed'
+		default:
+			throw new Error(`Unexpected OpenAI Responses terminal status: ${String(status satisfies never)}`)
+	}
 }
 
-function responseFailedSummary(
-	response: (OpenAIResponsesTerminalResponse & { error?: { code?: string; message?: string } }) | undefined,
-): string {
-	return response === undefined ? 'OpenAI Responses request failed.' : presentResponseFailedSummary(response)
+function responseFailedSummary(response: OpenAIResponsesTerminalResponse): string {
+	return response.error === null ? responseIncompleteSummary(response) : responseErrorSummary(response.error)
 }
 
-function presentResponseFailedSummary(response: OpenAIResponsesTerminalResponse & { error?: { code?: string; message?: string } }): string {
-	return response.error === undefined ? responseIncompleteSummary(response) : responseErrorSummary(response.error)
-}
-
-function responseErrorSummary(error: { code?: string; message?: string }): string {
+function responseErrorSummary(error: NonNullable<OpenAIResponsesTerminalResponse['error']>): string {
 	return `${error.code ?? 'unknown'}: ${error.message ?? 'no message'}`
 }
 
@@ -620,6 +696,14 @@ function responseIncompleteSummary(response: OpenAIResponsesTerminalResponse): s
 	return response.incomplete_details?.reason === undefined
 		? 'OpenAI Responses request failed.'
 		: `incomplete: ${response.incomplete_details.reason}`
+}
+
+function unsupportedOpenAIResponsesStreamEvent(type: string): Error {
+	return new Error(`Unsupported OpenAI Responses stream event: ${type}`)
+}
+
+function unsupportedOpenAIResponsesOutputItem(type: string): Error {
+	return new Error(`Unsupported OpenAI Responses output item: ${type}`)
 }
 
 function errorSummary(error: unknown): string {
@@ -639,21 +723,35 @@ if (import.meta.vitest) {
 				client((params) => {
 					request = params
 					return withResponse([
-						{ type: 'response.created', response: { id: 'resp-1' } },
-						{ type: 'response.output_item.added', item: { type: 'message', id: 'msg-1', content: [] } },
-						{ type: 'response.content_part.added', part: { type: 'output_text', text: '', annotations: [] } },
-						{ type: 'response.output_text.delta', delta: 'Hello' },
+						{ type: 'response.created', response: response({ id: 'resp-1' }), sequence_number: 1 },
+						{ type: 'response.output_item.added', item: outputMessage('msg-1', []), output_index: 0, sequence_number: 2 },
+						{
+							type: 'response.content_part.added',
+							part: { type: 'output_text', text: '', annotations: [] },
+							content_index: 0,
+							item_id: 'msg-1',
+							output_index: 0,
+							sequence_number: 3,
+						},
+						{
+							type: 'response.output_text.delta',
+							delta: 'Hello',
+							content_index: 0,
+							item_id: 'msg-1',
+							logprobs: [],
+							output_index: 0,
+							sequence_number: 4,
+						},
 						{
 							type: 'response.output_item.done',
-							item: { type: 'message', id: 'msg-1', content: [{ type: 'output_text', text: 'Hello', annotations: [] }] },
+							item: outputMessage('msg-1', [{ type: 'output_text', text: 'Hello', annotations: [] }]),
+							output_index: 0,
+							sequence_number: 5,
 						},
 						{
 							type: 'response.completed',
-							response: {
-								id: 'resp-1',
-								status: 'completed',
-								usage: { input_tokens: 12, output_tokens: 3, total_tokens: 15, input_tokens_details: { cached_tokens: 2 } },
-							},
+							response: response({ id: 'resp-1', status: 'completed', usage: usage(12, 3, 15, 2) }),
+							sequence_number: 6,
 						},
 					])
 				}),
@@ -693,7 +791,9 @@ if (import.meta.vitest) {
 			const provider = createOpenAIResponsesModelProviderProtocolProvider(() =>
 				client((params) => {
 					request = params
-					return withResponse([{ type: 'response.completed', response: { id: 'resp-1', status: 'completed' } }])
+					return withResponse([
+						{ type: 'response.completed', response: response({ id: 'resp-1', status: 'completed' }), sequence_number: 1 },
+					])
 				}),
 			)
 
@@ -711,22 +811,39 @@ if (import.meta.vitest) {
 					withResponse([
 						{
 							type: 'response.output_item.added',
-							item: { type: 'function_call', id: 'fc-1', call_id: 'call-1', name: 'propose-plan-output', arguments: '' },
+							item: functionCallItem(''),
+							output_index: 0,
+							sequence_number: 1,
 						},
-						{ type: 'response.function_call_arguments.delta', delta: '{"proposedDeliveries":[]' },
-						{ type: 'response.function_call_arguments.delta', delta: ',"proposedMemories":[]}' },
-						{ type: 'response.function_call_arguments.done', arguments: JSON.stringify(toolInput) },
+						{
+							type: 'response.function_call_arguments.delta',
+							delta: '{"proposedDeliveries":[]',
+							item_id: 'fc-1',
+							output_index: 0,
+							sequence_number: 2,
+						},
+						{
+							type: 'response.function_call_arguments.delta',
+							delta: ',"proposedMemories":[]}',
+							item_id: 'fc-1',
+							output_index: 0,
+							sequence_number: 3,
+						},
+						{
+							type: 'response.function_call_arguments.done',
+							arguments: JSON.stringify(toolInput),
+							item_id: 'fc-1',
+							name: 'propose-plan-output',
+							output_index: 0,
+							sequence_number: 4,
+						},
 						{
 							type: 'response.output_item.done',
-							item: {
-								type: 'function_call',
-								id: 'fc-1',
-								call_id: 'call-1',
-								name: 'propose-plan-output',
-								arguments: JSON.stringify(toolInput),
-							},
+							item: functionCallItem(JSON.stringify(toolInput)),
+							output_index: 0,
+							sequence_number: 5,
 						},
-						{ type: 'response.completed', response: { id: 'resp-1', status: 'completed' } },
+						{ type: 'response.completed', response: response({ id: 'resp-1', status: 'completed' }), sequence_number: 6 },
 					]),
 				),
 			)
@@ -762,11 +879,8 @@ if (import.meta.vitest) {
 					withResponse([
 						{
 							type: 'response.completed',
-							response: {
-								id: 'resp-1',
-								status: 'completed',
-								usage: { input_tokens: 10, output_tokens: 3, total_tokens: 13, input_tokens_details: { cached_tokens: 2 } },
-							},
+							response: response({ id: 'resp-1', status: 'completed', usage: usage(10, 3, 13, 2) }),
+							sequence_number: 1,
 						},
 					]),
 				),
@@ -793,15 +907,38 @@ if (import.meta.vitest) {
 		})
 
 		it('preserves reasoning replay metadata', async () => {
-			const reasoningItem: OpenAIResponsesReasoningItem = { type: 'reasoning', id: 'rs-1', summary: [{ text: 'Think' }] }
+			const reasoningItem: OpenAIResponsesReasoningItem = {
+				type: 'reasoning',
+				id: 'rs-1',
+				summary: [{ text: 'Think', type: 'summary_text' }],
+			}
 			const provider = createOpenAIResponsesModelProviderProtocolProvider(() =>
 				client(() =>
 					withResponse([
-						{ type: 'response.output_item.added', item: { type: 'reasoning', id: 'rs-1', summary: [] } },
-						{ type: 'response.reasoning_summary_part.added', part: { text: '' } },
-						{ type: 'response.reasoning_summary_text.delta', delta: 'Think' },
-						{ type: 'response.output_item.done', item: reasoningItem },
-						{ type: 'response.completed', response: { id: 'resp-1', status: 'completed' } },
+						{
+							type: 'response.output_item.added',
+							item: { type: 'reasoning', id: 'rs-1', summary: [] },
+							output_index: 0,
+							sequence_number: 1,
+						},
+						{
+							type: 'response.reasoning_summary_part.added',
+							part: { text: '', type: 'summary_text' },
+							item_id: 'rs-1',
+							output_index: 0,
+							sequence_number: 2,
+							summary_index: 0,
+						},
+						{
+							type: 'response.reasoning_summary_text.delta',
+							delta: 'Think',
+							item_id: 'rs-1',
+							output_index: 0,
+							sequence_number: 3,
+							summary_index: 0,
+						},
+						{ type: 'response.output_item.done', item: reasoningItem, output_index: 0, sequence_number: 4 },
+						{ type: 'response.completed', response: response({ id: 'resp-1', status: 'completed' }), sequence_number: 5 },
 					]),
 				),
 			)
@@ -828,6 +965,45 @@ if (import.meta.vitest) {
 				},
 			},
 		}
+	}
+
+	function response(overrides: Partial<OpenAIResponsesTerminalResponse> = {}): OpenAIResponsesTerminalResponse {
+		return {
+			id: 'resp-1',
+			created_at: 0,
+			output_text: '',
+			error: null,
+			incomplete_details: null,
+			instructions: null,
+			metadata: null,
+			model: 'gpt-5',
+			object: 'response',
+			output: [],
+			parallel_tool_calls: false,
+			temperature: null,
+			tool_choice: 'auto',
+			tools: [],
+			top_p: null,
+			...overrides,
+		}
+	}
+
+	function usage(inputTokens: number, outputTokens: number, totalTokens: number, cachedTokens: number): OpenAIResponsesUsage {
+		return {
+			input_tokens: inputTokens,
+			output_tokens: outputTokens,
+			total_tokens: totalTokens,
+			input_tokens_details: { cached_tokens: cachedTokens },
+			output_tokens_details: { reasoning_tokens: 0 },
+		}
+	}
+
+	function outputMessage(id: string, content: OpenAIResponsesMessageItem['content']): OpenAIResponsesMessageItem {
+		return { type: 'message', id, role: 'assistant', status: 'completed', content }
+	}
+
+	function functionCallItem(args: string): OpenAIResponsesFunctionCallItem {
+		return { type: 'function_call', id: 'fc-1', call_id: 'call-1', name: 'propose-plan-output', arguments: args }
 	}
 
 	function withResponse(events: OpenAIResponsesStreamEvent[]): OpenAIResponsesWithResponse {

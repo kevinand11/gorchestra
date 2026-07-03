@@ -6,5 +6,9 @@
 		"minTokens": 90,
 		"minLines": 8,
 		"ignoreImports": true
+	},
+	"health": {
+		"maxCyclomatic": 80,
+		"maxCrap": 4000
 	}
 }
