@@ -63,7 +63,7 @@ async function rejectPlanOutput(
 	return proposal.ok
 		? appendAgentRunEvent(runtime, storage, proposal.value.agentRunId, {
 				type: 'proposal-rejected',
-				proposalEventId: proposal.value.id,
+				proposalCursor: proposal.value.cursor,
 				authorized: stamp,
 				reason: input.reason,
 			})
@@ -111,11 +111,11 @@ if (import.meta.vitest) {
 				value: {
 					id: 'agent-run-event-1',
 					agentRunId: 'agent-run-1',
-					sequence: 2,
+					cursor: '01J00000000000000000000001',
 					occurred: { at: '2026-06-10T12:00:00.000Z' },
 					body: {
 						type: 'proposal-rejected',
-						proposalEventId: 'proposal-event',
+						proposalCursor: '01J00000000000000000000000',
 						authorized: localStamp(),
 						reason: 'Needs changes.',
 					},
@@ -145,11 +145,11 @@ if (import.meta.vitest) {
 		options.tx.agentRunEvents.records.set('proposal-event', {
 			id: 'proposal-event',
 			agentRunId: 'agent-run-1',
-			sequence: 1,
+			cursor: '01J00000000000000000000000',
 			occurred: { at: stamp.at },
 			body: {
 				type: 'proposed-plan-output',
-				toolCallScheduledEventId: 'tool-call-1',
+				toolCallStartedCursor: '01J00000000000000000000000',
 				output: {
 					proposedDeliveries: {},
 					proposedMemoryCreations: { memory: { parentId: null, title: 'Memory', body: '', children: {} } },

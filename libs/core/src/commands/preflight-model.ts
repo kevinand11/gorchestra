@@ -240,7 +240,6 @@ function secretValueRef(secret: { id: string; valueRef: string }): ResolvableSec
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createModelProviderProtocolProviders } = await import('../providers/model-provider-protocol')
 	const { context, createTestCoreRuntime, createTestCoreServices, seedSecret, stamp } = await import('../utils/test-helpers')
 
 	describe('preflightModel command', () => {
@@ -323,14 +322,16 @@ if (import.meta.vitest) {
 			let providerTransactionCalls: number | null = null
 			const providers = {
 				sourceControl: createTestCoreRuntime(options).providers.sourceControl,
-				modelProviderProtocols: createModelProviderProtocolProviders(options, {
-					openAIResponses: {
-						preflightModel() {
-							providerTransactionCalls = options.transactionCalls()
-							return Promise.resolve({ type: 'passed' })
-						},
+				modelProviderProtocols: {
+					preflightModel() {
+						providerTransactionCalls = options.transactionCalls()
+						return Promise.resolve({
+							ok: true as const,
+							value: { type: 'passed' as const, summary: 'OpenAI Responses model preflight passed.' },
+						})
 					},
-				}),
+					resolveLanguageModel: () => Promise.reject(new Error('unused')),
+				},
 			}
 			const command = createPreflightModelCommand(createTestCoreRuntime(options, { providers }))
 
@@ -347,11 +348,18 @@ if (import.meta.vitest) {
 			options.secrets.resolveSecretValues = () => Promise.resolve({ 'secret-1': 'token', 'secret-2': 'org-1' })
 			const providers = {
 				sourceControl: createTestCoreRuntime(options).providers.sourceControl,
-				modelProviderProtocols: createModelProviderProtocolProviders(options, {
-					openAIResponses: {
-						preflightModel: () => Promise.resolve({ type: 'failed', reason: { type: 'provider-model-not-found' } }),
-					},
-				}),
+				modelProviderProtocols: {
+					preflightModel: () =>
+						Promise.resolve({
+							ok: true as const,
+							value: {
+								type: 'failed' as const,
+								reason: { type: 'provider-model-not-found' as const },
+								summary: 'OpenAI Responses model was not found.',
+							},
+						}),
+					resolveLanguageModel: () => Promise.reject(new Error('unused')),
+				},
 			}
 			const command = createPreflightModelCommand(createTestCoreRuntime(options, { providers }))
 
@@ -414,17 +422,14 @@ if (import.meta.vitest) {
 	function neverCalledProviders(options: ReturnType<typeof createTestCoreServices>) {
 		return {
 			sourceControl: createTestCoreRuntime(options).providers.sourceControl,
-			modelProviderProtocols: createModelProviderProtocolProviders(options, {
-				openAIResponses: neverCalledOpenAIResponsesProvider(),
-			}),
+			modelProviderProtocols: {
+				preflightModel: neverCalledOpenAIResponsesProvider,
+				resolveLanguageModel: () => Promise.reject(new Error('unused')),
+			},
 		}
 	}
 
 	function neverCalledOpenAIResponsesProvider() {
-		return {
-			preflightModel() {
-				throw new Error('OpenAI Responses provider should not be called.')
-			},
-		}
+		return Promise.reject(new Error('OpenAI Responses provider should not be called.'))
 	}
 }

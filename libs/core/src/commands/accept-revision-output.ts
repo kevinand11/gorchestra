@@ -299,7 +299,7 @@ async function appendRevisionProposalAcceptance(
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const acceptedEvent = await appendAgentRunEvent(runtime, storage, context.proposal.agentRunId, {
 		type: 'proposal-accepted',
-		proposalEventId: context.proposal.id,
+		proposalCursor: context.proposal.cursor,
 		authorized: stamp,
 		materialized: { type: 'revision-output', revisionId: revision.id },
 	})
@@ -380,7 +380,7 @@ if (import.meta.vitest) {
 				value: {
 					revision: expectedRevision,
 					revisionGate: { closed: { type: 'consumed-by-revision', revisionId: 'revision-1' } },
-					acceptedEvent: { body: { type: 'proposal-accepted', proposalEventId: 'proposal-event' } },
+					acceptedEvent: { body: { type: 'proposal-accepted', proposalCursor: '01J00000000000000000000000' } },
 				},
 			})
 			expect(options.tx.revisions.records.get('revision-1')).toEqual(expectedRevision)
@@ -413,9 +413,9 @@ if (import.meta.vitest) {
 			reviewed.tx.agentRunEvents.records.set('review-event', {
 				id: 'review-event',
 				agentRunId: 'agent-run-1',
-				sequence: 2,
+				cursor: '01J00000000000000000000001',
 				occurred: { at: stamp.at },
-				body: { type: 'proposal-rejected', proposalEventId: 'proposal-event', authorized: stamp, reason: null },
+				body: { type: 'proposal-rejected', proposalCursor: '01J00000000000000000000000', authorized: stamp, reason: null },
 			})
 			await expect(
 				createAcceptRevisionOutputCommand(createTestCoreRuntime(reviewed))({ proposalEventId: 'proposal-event' }, context),
@@ -492,14 +492,14 @@ if (import.meta.vitest) {
 		return {
 			id: 'proposal-event',
 			agentRunId: 'agent-run-1',
-			sequence: 1,
+			cursor: '01J00000000000000000000000',
 			occurred: { at: stamp.at },
 			body:
 				type === 'proposed-revision-output'
-					? { type, toolCallScheduledEventId: 'tool-call-1', output: revisionOutput() }
+					? { type, toolCallStartedCursor: '01J00000000000000000000000', output: revisionOutput() }
 					: {
 							type,
-							toolCallScheduledEventId: 'tool-call-1',
+							toolCallStartedCursor: '01J00000000000000000000000',
 							output: {
 								proposedDeliveries: {},
 								proposedMemoryCreations: { memory: { parentId: null, title: 'Memory', body: '', children: {} } },

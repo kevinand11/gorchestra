@@ -442,7 +442,7 @@ if (import.meta.vitest) {
 			options.tx.agentRunEvents.records.set('agent-run-event-1', {
 				id: 'agent-run-event-1',
 				agentRunId: 'agent-run-1',
-				sequence: 1,
+				cursor: '01J00000000000000000000001',
 				occurred: { at: stamp.at },
 				body: { type: 'agent-run-model-selected', modelId: 'model-1', thinkingLevel: 'off', authorized: null },
 			})

@@ -1,10 +1,36 @@
+import {
+	isStepCount,
+	jsonSchema,
+	streamText,
+	tool as aiTool,
+	type ContentPart,
+	type JSONValue,
+	type LanguageModel,
+	type LanguageModelCallEndEvent,
+	type LanguageModelUsage,
+	type ModelMessage,
+	type TextStreamPart,
+	type ToolExecutionOptions,
+	type ToolSet,
+} from 'ai'
+
 import { buildAgentRunModelContext } from './context'
 import type { AgentRunLiveEvent } from './live-events'
 import { providerTool, toolOutput, toolsForAgentRunPurpose, validateToolInput, type CoreAgentRunTool } from './tools'
 import type { ModelAgentTurnThinking } from './types'
-import type { AgentRun, AgentRunEvent, AgentRunModelMessageOutcome, AgentRunToolOutput } from '../../domain/agent-run'
+import {
+	type AgentRun,
+	type AgentRunEvent,
+	type AgentRunEventCursor,
+	type AgentRunModelContent,
+	type AgentRunModelCost,
+	type AgentRunModelMessage,
+	type AgentRunModelMessageOutcome,
+	type AgentRunToolCallOutcome,
+	type AgentRunToolOutput,
+} from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
-import type { Model, ModelThinkingLevel } from '../../domain/model'
+import type { Model, ModelThinkingLevel, ModelTokenPricing } from '../../domain/model'
 import type { ModelProvider } from '../../domain/model-provider'
 import type {
 	InvalidCoreServiceOutputError,
@@ -14,10 +40,11 @@ import type {
 	StorageOperationFailedError,
 } from '../../errors'
 import type { CoreProviders } from '../../providers'
+import { providerFailureReason, safeProviderErrorSummary } from '../../providers/model-provider-protocol/provider-failures'
 import type { CoreServices, CoreStorage } from '../../services'
 import { getRequired, listRecords, updateRecord, withTransaction } from '../../storage/helpers'
 import { appendAgentRunEvent } from '../../utils/agent-run-events'
-import type { CoreRuntimeValues } from '../../utils/runtime-values'
+import { runtimeRecord, type CoreRuntimeValues } from '../../utils/runtime-values'
 import type { Result } from '../../utils/types'
 
 export type AgentRunRuntimeError =
@@ -45,48 +72,26 @@ interface AgentRunLoopState {
 
 interface TurnReasonClaim {
 	reason: Extract<AgentRunEvent['body'], { type: 'turn-started' }>['reason']
-	contextThroughSequence: number
+	contextThroughCursor: AgentRunEventCursor | null
 }
 
-const maxTurnsPerRun = 5
+const maxModelStepsPerTurn = 5
 
-export function runModelAgentRun(
+export async function runModelAgentRun(
 	runtime: ModelAgentRunRuntime,
 	agentRunId: Id,
 	options: RunModelAgentRunOptions = {},
 ): Promise<Result<void, AgentRunRuntimeError>> {
-	return runModelAgentRunStep(runtime, agentRunId, options, null, 0)
-}
-
-async function runModelAgentRunStep(
-	runtime: ModelAgentRunRuntime,
-	agentRunId: Id,
-	options: RunModelAgentRunOptions,
-	followUpReason: TurnReasonClaim['reason'] | null,
-	turn: number,
-): Promise<Result<void, AgentRunRuntimeError>> {
-	if (turn >= maxTurnsPerRun) return invariant(`Agent Run ${agentRunId} exceeded ${maxTurnsPerRun} model turns.`)
-
 	const state = await loadLoopState(runtime.services.storage, agentRunId)
 	if (!state.ok) return state
 	if (state.value.agentRun.completed !== null) return { ok: true, value: undefined }
 
-	const claim = nextTurnClaim(state.value.events, followUpReason)
-	return claim === null ? { ok: true, value: undefined } : runClaimedTurn(runtime, state.value, claim, options, turn)
-}
+	const claim = nextTurnClaim(state.value.events)
+	if (claim === null) return { ok: true, value: undefined }
 
-async function runClaimedTurn(
-	runtime: ModelAgentRunRuntime,
-	state: AgentRunLoopState,
-	claim: TurnReasonClaim,
-	options: RunModelAgentRunOptions,
-	turn: number,
-): Promise<Result<void, AgentRunRuntimeError>> {
-	const result = await runTurn(runtime, state, claim, options)
-	if (!result.ok) return result
-	return result.value.type === 'complete'
-		? { ok: true, value: undefined }
-		: runModelAgentRunStep(runtime, state.agentRun.id, options, result.value.nextReason, turn + 1)
+	const turn = await runTurn(runtime, state.value, claim, options)
+	if (!turn.ok) return turn
+	return turn.value.type === 'completed' ? completeAutonomousRunIfNeeded(runtime, state.value.agentRun) : { ok: true, value: undefined }
 }
 
 async function loadLoopState(storage: CoreStorage, agentRunId: Id): Promise<Result<AgentRunLoopState, AgentRunRuntimeError>> {
@@ -95,7 +100,7 @@ async function loadLoopState(storage: CoreStorage, agentRunId: Id): Promise<Resu
 
 	const events = await listRecords('agent-run-event', storage, {
 		where: (filter, fields) => filter.eq(fields.agentRunId, agentRunId),
-		orderBy: [{ field: 'sequence', direction: 'asc' }],
+		orderBy: [{ field: 'cursor', direction: 'asc' }],
 	})
 	if (!events.ok) return events
 
@@ -104,10 +109,10 @@ async function loadLoopState(storage: CoreStorage, agentRunId: Id): Promise<Resu
 
 function latestModelSelection(
 	events: AgentRunEvent[],
-	contextThroughSequence: number,
+	contextThroughCursor: AgentRunEventCursor | null,
 ): Result<Extract<AgentRunEvent['body'], { type: 'agent-run-model-selected' }>, InvariantViolationError> {
 	const selection = [...events]
-		.filter((event) => event.sequence <= contextThroughSequence)
+		.filter((event) => contextThroughCursor !== null && event.cursor <= contextThroughCursor)
 		.reverse()
 		.find((event) => event.body.type === 'agent-run-model-selected')?.body
 	return selection?.type === 'agent-run-model-selected'
@@ -115,44 +120,47 @@ function latestModelSelection(
 		: invariant('Model Agent Run has no selected Model event before the turn context boundary.')
 }
 
-function nextTurnClaim(events: AgentRunEvent[], followUpReason: TurnReasonClaim['reason'] | null): TurnReasonClaim | null {
-	return turnClaimForReason(nextTurnReason(events, followUpReason), events.at(-1)?.sequence ?? 0)
+function nextTurnClaim(events: AgentRunEvent[]): TurnReasonClaim | null {
+	return turnClaimForReason(nextInputTurnReason(events), events.at(-1)?.cursor ?? null)
 }
 
-function nextTurnReason(events: AgentRunEvent[], followUpReason: TurnReasonClaim['reason'] | null): TurnReasonClaim['reason'] | null {
-	return followUpReason === null ? nextInputTurnReason(events) : followUpReason
-}
-
-function turnClaimForReason(reason: TurnReasonClaim['reason'] | null, contextThroughSequence: number): TurnReasonClaim | null {
-	return reason === null ? null : { reason, contextThroughSequence }
+function turnClaimForReason(
+	reason: TurnReasonClaim['reason'] | null,
+	contextThroughCursor: AgentRunEventCursor | null,
+): TurnReasonClaim | null {
+	return reason === null ? null : { reason, contextThroughCursor }
 }
 
 function nextInputTurnReason(events: AgentRunEvent[]): TurnReasonClaim['reason'] | null {
 	if (hasBlockingOperatorInterrupt(events)) return null
 
-	const inputEventIds = unprocessedInputEventIds(events)
-	return inputEventIds.length === 0 ? null : { type: 'input', inputEventIds }
+	const inputEventCursors = unprocessedInputEventCursors(events)
+	return inputEventCursors.length === 0 ? null : { type: 'input', inputEventCursors }
 }
 
 function hasBlockingOperatorInterrupt(events: AgentRunEvent[]): boolean {
-	const latestInput = latestSequence(events, (event) => event.body.type === 'input-message')
-	const latestOperatorInterrupt = latestSequence(
+	const latestInput = latestCursor(events, (event) => event.body.type === 'input-message')
+	const latestOperatorInterrupt = latestCursor(
 		events,
 		(event) => event.body.type === 'interrupt-requested' && event.body.source.type === 'operator',
 	)
-	return latestOperatorInterrupt > latestInput
+	return latestInput === null
+		? latestOperatorInterrupt !== null
+		: latestOperatorInterrupt !== null && latestOperatorInterrupt > latestInput
 }
 
-function unprocessedInputEventIds(events: AgentRunEvent[]): Id[] {
-	const latestTurnStarted = latestSequence(events, (event) => event.body.type === 'turn-started')
-	return events.filter((event) => event.sequence > latestTurnStarted && event.body.type === 'input-message').map((event) => event.id)
+function unprocessedInputEventCursors(events: AgentRunEvent[]): AgentRunEventCursor[] {
+	const latestTurnStarted = latestCursor(events, (event) => event.body.type === 'turn-started')
+	return events
+		.filter((event) => (latestTurnStarted === null || event.cursor > latestTurnStarted) && event.body.type === 'input-message')
+		.map((event) => event.cursor)
 }
 
-function latestSequence(events: AgentRunEvent[], predicate: (event: AgentRunEvent) => boolean): number {
-	return events.filter(predicate).at(-1)?.sequence ?? 0
+function latestCursor(events: AgentRunEvent[], predicate: (event: AgentRunEvent) => boolean): AgentRunEventCursor | null {
+	return events.filter(predicate).at(-1)?.cursor ?? null
 }
 
-type TurnResult = { type: 'complete' } | { type: 'continue'; nextReason: TurnReasonClaim['reason'] }
+type TurnResult = { type: 'completed' } | { type: 'failed' }
 
 async function runTurn(
 	runtime: ModelAgentRunRuntime,
@@ -160,129 +168,99 @@ async function runTurn(
 	claim: TurnReasonClaim,
 	options: RunModelAgentRunOptions,
 ): Promise<Result<TurnResult, AgentRunRuntimeError>> {
-	const started = await startTurn(runtime, state.agentRun.id, claim, options)
-	return started.ok ? runStartedTurn(runtime, state, claim, started.value, options) : started
-}
-
-interface StartedTurn {
-	turnStarted: AgentRunEvent
-	modelStarted: AgentRunEvent
-}
-
-async function startTurn(
-	runtime: ModelAgentRunRuntime,
-	agentRunId: Id,
-	claim: TurnReasonClaim,
-	options: RunModelAgentRunOptions,
-): Promise<Result<StartedTurn, AgentRunRuntimeError>> {
-	const turnStarted = await appendAndEmit(runtime, agentRunId, turnStartedBody(claim), options)
-	if (!turnStarted.ok) return turnStarted
-
-	const modelStarted = await appendAndEmit(
-		runtime,
-		agentRunId,
-		{ type: 'model-message-started', turnStartedEventId: turnStarted.value.id },
-		options,
-	)
-	return modelStarted.ok ? { ok: true, value: { turnStarted: turnStarted.value, modelStarted: modelStarted.value } } : modelStarted
+	const turnStarted = await appendAndEmit(runtime, state.agentRun.id, turnStartedBody(claim), options)
+	return turnStarted.ok ? runStartedTurn(runtime, state, claim, turnStarted.value, options) : turnStarted
 }
 
 function turnStartedBody(claim: TurnReasonClaim): AgentRunEvent['body'] {
-	return { type: 'turn-started', contextThroughSequence: claim.contextThroughSequence, reason: claim.reason }
+	return { type: 'turn-started', contextThroughCursor: claim.contextThroughCursor, reason: claim.reason }
 }
 
 async function runStartedTurn(
 	runtime: ModelAgentRunRuntime,
 	state: AgentRunLoopState,
 	claim: TurnReasonClaim,
-	started: StartedTurn,
+	turnStarted: AgentRunEvent,
 	options: RunModelAgentRunOptions,
 ): Promise<Result<TurnResult, AgentRunRuntimeError>> {
-	const outcome = await runProviderTurn(runtime, state, claim.contextThroughSequence, started.modelStarted.id, options)
-	return outcome.ok ? finishProviderTurn(runtime, state, started, outcome.value, options) : outcome
-}
+	const turnModelUse = await loadTurnModelUse(runtime.services.storage, state.events, claim.contextThroughCursor)
+	if (!turnModelUse.ok) return handleTurnModelUseError(runtime, state.agentRun.id, turnStarted, turnModelUse.error, options)
 
-async function finishProviderTurn(
-	runtime: ModelAgentRunRuntime,
-	state: AgentRunLoopState,
-	started: StartedTurn,
-	outcome: AgentRunModelMessageOutcome,
-	options: RunModelAgentRunOptions,
-): Promise<Result<TurnResult, AgentRunRuntimeError>> {
-	const modelEnded = await appendAndEmit(
+	const resolution = await runtime.providers.modelProviderProtocols.resolveLanguageModel({
+		mode: 'agent-run',
+		model: turnModelUse.value.model,
+		modelProvider: turnModelUse.value.modelProvider,
+		thinking: turnModelUse.value.thinking,
+	})
+	if (!resolution.ok) return handleTurnModelUseError(runtime, state.agentRun.id, turnStarted, resolution.error, options)
+	if (!('languageModel' in resolution.value)) {
+		return recordSyntheticModelOutcome(runtime, state.agentRun.id, turnStarted, resolution.value, options)
+	}
+
+	const modelContext = buildAgentRunModelContext(state.events, claim.contextThroughCursor)
+	const aiTurn = await runAISDKTurn(
 		runtime,
-		state.agentRun.id,
-		{ type: 'model-message-ended', modelMessageStartedEventId: started.modelStarted.id, outcome },
+		state,
+		turnStarted,
+		turnModelUse.value.model,
+		modelContext.messages,
+		resolution.value,
 		options,
 	)
-	return modelEnded.ok ? finishModelOutcomeTurn(runtime, state, started.turnStarted.id, modelEnded.value, outcome, options) : modelEnded
+	if (!aiTurn.ok) return aiTurn
+
+	const ended = await appendAndEmit(
+		runtime,
+		state.agentRun.id,
+		{ type: 'turn-ended', turnStartedCursor: turnStarted.cursor, outcome: aiTurn.value.turnOutcome },
+		options,
+	)
+	if (!ended.ok) return ended
+
+	return { ok: true, value: aiTurn.value.turnOutcome.type === 'completed' ? { type: 'completed' } : { type: 'failed' } }
 }
 
-async function finishModelOutcomeTurn(
+async function handleTurnModelUseError(
 	runtime: ModelAgentRunRuntime,
-	state: AgentRunLoopState,
-	turnStartedEventId: Id,
-	modelEnded: AgentRunEvent,
+	agentRunId: Id,
+	turnStarted: AgentRunEvent,
+	error: AgentRunRuntimeError | ModelThinkingLevelUnavailableError,
+	options: RunModelAgentRunOptions,
+): Promise<Result<TurnResult, AgentRunRuntimeError>> {
+	if (error.type !== 'model-thinking-level-unavailable') return { ok: false, error }
+	return recordSyntheticModelOutcome(runtime, agentRunId, turnStarted, staleThinkingOutcome(error), options)
+}
+
+async function recordSyntheticModelOutcome(
+	runtime: ModelAgentRunRuntime,
+	agentRunId: Id,
+	turnStarted: AgentRunEvent,
 	outcome: AgentRunModelMessageOutcome,
 	options: RunModelAgentRunOptions,
 ): Promise<Result<TurnResult, AgentRunRuntimeError>> {
-	const postModel = await processModelOutcome(runtime, state, modelEnded, outcome, options)
-	if (!postModel.ok) return postModel
+	const modelStarted = await appendAndEmit(
+		runtime,
+		agentRunId,
+		{ type: 'model-message-started', turnStartedCursor: turnStarted.cursor, aiSdkCallId: null },
+		options,
+	)
+	if (!modelStarted.ok) return modelStarted
 
-	const turnEnded = await appendAndEmit(runtime, state.agentRun.id, { type: 'turn-ended', turnStartedEventId }, options)
-	return turnEnded.ok ? turnResultAfterPostModel(runtime, state.agentRun, postModel.value) : turnEnded
-}
+	const modelEnded = await appendAndEmit(
+		runtime,
+		agentRunId,
+		{ type: 'model-message-ended', modelMessageStartedCursor: modelStarted.value.cursor, outcome },
+		options,
+	)
+	if (!modelEnded.ok) return modelEnded
 
-function turnResultAfterPostModel(
-	runtime: ModelAgentRunRuntime,
-	agentRun: AgentRun,
-	postModel: PostModelOutcome,
-): Promise<Result<TurnResult, AgentRunRuntimeError>> | Result<TurnResult, never> {
-	if (postModel.type === 'tool-results')
-		return { ok: true, value: { type: 'continue', nextReason: { type: 'tool-results', toolResolutionEventIds: postModel.eventIds } } }
-	return postModel.type === 'complete' ? completeAutonomousRunIfNeeded(runtime, agentRun) : { ok: true, value: { type: 'complete' } }
-}
-
-async function runProviderTurn(
-	runtime: ModelAgentRunRuntime,
-	state: AgentRunLoopState,
-	contextThroughSequence: number,
-	modelMessageStartedEventId: Id,
-	options: RunModelAgentRunOptions,
-): Promise<Result<AgentRunModelMessageOutcome, AgentRunRuntimeError>> {
-	const turnModelUse = await loadTurnModelUse(runtime.services.storage, state.events, contextThroughSequence)
-	return turnModelUse.ok
-		? runResolvedProviderTurn(runtime, state, contextThroughSequence, modelMessageStartedEventId, options, turnModelUse.value)
-		: turnModelUseErrorOutcome(turnModelUse.error)
-}
-
-async function runResolvedProviderTurn(
-	runtime: ModelAgentRunRuntime,
-	state: AgentRunLoopState,
-	contextThroughSequence: number,
-	modelMessageStartedEventId: Id,
-	options: RunModelAgentRunOptions,
-	turnModelUse: TurnModelUse,
-): Promise<Result<AgentRunModelMessageOutcome, AgentRunRuntimeError>> {
-	const modelContext = buildAgentRunModelContext(state.events, contextThroughSequence)
-	const result = await runtime.providers.modelProviderProtocols.runModelAgentTurn({
-		model: turnModelUse.model,
-		modelProvider: turnModelUse.modelProvider,
-		messages: modelContext.messages,
-		tools: state.tools.map(providerTool),
-		thinking: turnModelUse.thinking,
-		signal: options.signal ?? new AbortController().signal,
-		onDelta(delta) {
-			void emit(options, { type: 'model-message-updated', modelMessageStartedEventId, delta })
-		},
-	})
-	return result.ok ? { ok: true, value: result.value.outcome } : result
-}
-
-function turnModelUseErrorOutcome(
-	error: AgentRunRuntimeError | ModelThinkingLevelUnavailableError,
-): Result<AgentRunModelMessageOutcome, AgentRunRuntimeError> {
-	return error.type === 'model-thinking-level-unavailable' ? staleThinkingOutcome(error) : { ok: false, error }
+	const turnEnded = await appendAndEmit(
+		runtime,
+		agentRunId,
+		{ type: 'turn-ended', turnStartedCursor: turnStarted.cursor, outcome: { type: 'completed' } },
+		options,
+	)
+	return turnEnded.ok ? { ok: true, value: { type: 'completed' } } : turnEnded
 }
 
 type TurnModelUse = {
@@ -295,9 +273,9 @@ type TurnModelUse = {
 async function loadTurnModelUse(
 	storage: CoreStorage,
 	events: AgentRunEvent[],
-	contextThroughSequence: number,
+	contextThroughCursor: AgentRunEventCursor | null,
 ): Promise<Result<TurnModelUse, AgentRunRuntimeError | ModelThinkingLevelUnavailableError>> {
-	const selection = latestModelSelection(events, contextThroughSequence)
+	const selection = latestModelSelection(events, contextThroughCursor)
 	return selection.ok ? loadTurnModelUseSelection(storage, selection.value) : selection
 }
 
@@ -331,16 +309,12 @@ function resolveProviderTurnThinking(
 	model: Model,
 	thinkingLevel: ModelThinkingLevel,
 ): Result<ModelAgentTurnThinking, ModelThinkingLevelUnavailableError> {
-	if (model.capabilities.reasoning === null) {
-		return thinkingLevel === 'off'
-			? { ok: true, value: null }
-			: modelThinkingLevelUnavailable(model.id, thinkingLevel, 'model-reasoning-unconfigured')
-	}
+	if (thinkingLevel === 'off') return { ok: true, value: { level: 'off' } }
+	if (model.capabilities.reasoning === null) return modelThinkingLevelUnavailable(model.id, thinkingLevel, 'model-reasoning-unconfigured')
 
-	const entry = model.capabilities.reasoning[thinkingLevel]
-	return entry === null
+	return model.capabilities.reasoning[thinkingLevel] === null
 		? modelThinkingLevelUnavailable(model.id, thinkingLevel, 'thinking-level-unconfigured')
-		: { ok: true, value: { level: thinkingLevel, providerValue: entry.value } }
+		: { ok: true, value: { level: thinkingLevel } }
 }
 
 function modelThinkingLevelUnavailable(
@@ -351,173 +325,474 @@ function modelThinkingLevelUnavailable(
 	return { ok: false, error: { type: 'model-thinking-level-unavailable', modelId, thinkingLevel, reason: { type: reason } } }
 }
 
-function staleThinkingOutcome(error: ModelThinkingLevelUnavailableError): Result<AgentRunModelMessageOutcome, never> {
+function staleThinkingOutcome(error: ModelThinkingLevelUnavailableError): AgentRunModelMessageOutcome {
 	return {
-		ok: true,
-		value: {
-			type: 'error',
-			message: null,
-			summary: `Selected thinking level ${error.thinkingLevel} is unavailable for Model ${error.modelId}.`,
-		},
+		type: 'error',
+		reason: { type: 'runtime-error' },
+		message: null,
+		summary: `Selected thinking level ${error.thinkingLevel} is unavailable for Model ${error.modelId}.`,
 	}
 }
 
-type PostModelOutcome = { type: 'complete' } | { type: 'waiting' } | { type: 'tool-results'; eventIds: Id[] }
+type AISDKTurnOutput = {
+	turnOutcome: Extract<AgentRunEvent['body'], { type: 'turn-ended' }>['outcome']
+}
 
-async function processModelOutcome(
+async function runAISDKTurn(
 	runtime: ModelAgentRunRuntime,
 	state: AgentRunLoopState,
-	modelEnded: AgentRunEvent,
-	outcome: AgentRunModelMessageOutcome,
+	turnStarted: AgentRunEvent,
+	model: Model,
+	messages: ModelMessage[],
+	resolution: { languageModel: LanguageModel; providerOptions: Record<string, Record<string, JSONValue>> | undefined },
 	options: RunModelAgentRunOptions,
-): Promise<Result<PostModelOutcome, AgentRunRuntimeError>> {
-	if (outcome.type === 'tool-use')
-		return processToolCalls(
-			runtime,
-			state,
-			modelEnded.id,
-			outcome.message.content.filter((content) => content.type === 'tool-call'),
-			options,
+): Promise<Result<AISDKTurnOutput, AgentRunRuntimeError>> {
+	const recorder = new AISDKTurnRecorder(runtime, state, turnStarted, model, options)
+	try {
+		const streamOptions = {
+			model: resolution.languageModel,
+			messages,
+			tools: recorder.tools(),
+			stopWhen: isStepCount(maxModelStepsPerTurn),
+			maxOutputTokens: model.capabilities.maxOutputTokens,
+			maxRetries: 0,
+			...(resolution.providerOptions === undefined ? {} : { providerOptions: resolution.providerOptions }),
+			onLanguageModelCallStart: (
+				event: Parameters<NonNullable<Parameters<typeof streamText<ToolSet>>[0]['onLanguageModelCallStart']>>[0],
+			) => recorder.onLanguageModelCallStart(event.callId),
+			onLanguageModelCallEnd: (event: LanguageModelCallEndEvent<ToolSet>) => recorder.onLanguageModelCallEnd(event),
+			onChunk: ({ chunk }: { chunk: TextStreamPart<ToolSet> }) => recorder.onChunk(chunk),
+			...(options.signal === undefined ? {} : { abortSignal: options.signal }),
+		}
+		const result = streamText<ToolSet>(streamOptions)
+
+		for await (const part of result.stream) {
+			if (part.type === 'error') throw part.error
+		}
+		const recorded = recorder.operationError()
+		return recorded === null ? { ok: true, value: { turnOutcome: { type: 'completed' } } } : { ok: false, error: recorded }
+	} catch (error) {
+		const recorded = recorder.operationError()
+		if (recorded !== null) return { ok: false, error: recorded }
+
+		const failure = await recorder.recordUnclosedModelFailure(error, options.signal)
+		if (!failure.ok) return failure
+		return {
+			ok: true,
+			value: { turnOutcome: turnFailureOutcome(error, options.signal) },
+		}
+	}
+}
+
+class AISDKTurnRecorder {
+	readonly #modelStartedByCallId = new Map<string, AgentRunEvent>()
+	readonly #modelEndedCallIds = new Set<string>()
+	readonly #contentIndexByPartId = new Map<string, number>()
+	readonly #textByPartId = new Map<string, string>()
+	readonly #toolNameByPartId = new Map<string, string>()
+	#currentCallId: string | null = null
+	#latestModelEndedCursor: AgentRunEventCursor | null = null
+	#error: AgentRunRuntimeError | null = null
+	#nextContentIndex = 0
+
+	constructor(
+		private readonly runtime: ModelAgentRunRuntime,
+		private readonly state: AgentRunLoopState,
+		private readonly turnStarted: AgentRunEvent,
+		private readonly model: Model,
+		private readonly options: RunModelAgentRunOptions,
+	) {}
+
+	operationError(): AgentRunRuntimeError | null {
+		return this.#error
+	}
+
+	tools(): ToolSet {
+		return Object.fromEntries(this.state.tools.map((coreTool) => [coreTool.name, this.aiTool(coreTool)]))
+	}
+
+	async onLanguageModelCallStart(callId: string): Promise<void> {
+		const event = await appendAndEmit(
+			this.runtime,
+			this.state.agentRun.id,
+			{ type: 'model-message-started', turnStartedCursor: this.turnStarted.cursor, aiSdkCallId: callId },
+			this.options,
 		)
-	return { ok: true, value: outcome.type === 'stop' ? { type: 'complete' } : { type: 'waiting' } }
-}
+		if (!event.ok) return this.fail(event.error)
 
-async function processToolCalls(
-	runtime: ModelAgentRunRuntime,
-	state: AgentRunLoopState,
-	modelMessageEventId: Id,
-	toolCalls: Extract<AgentRunModelMessageOutcome, { type: 'tool-use' }>['message']['content'],
-	options: RunModelAgentRunOptions,
-): Promise<Result<PostModelOutcome, AgentRunRuntimeError>> {
-	const eventIds: Id[] = []
-	for (const toolCall of toolCalls) {
-		if (toolCall.type !== 'tool-call') continue
-		const result = await processToolCall(runtime, state, modelMessageEventId, toolCall, options)
-		if (!result.ok) return result
-		eventIds.push(result.value)
+		this.#currentCallId = callId
+		this.#modelStartedByCallId.set(callId, event.value)
+		this.#contentIndexByPartId.clear()
+		this.#textByPartId.clear()
+		this.#toolNameByPartId.clear()
+		this.#nextContentIndex = 0
+		await emit(this.options, {
+			type: 'model-message-updated',
+			modelMessageStartedCursor: event.value.cursor,
+			delta: { type: 'model-output-started' },
+		})
 	}
-	return { ok: true, value: { type: 'tool-results', eventIds } }
+
+	async onLanguageModelCallEnd(event: LanguageModelCallEndEvent<ToolSet>): Promise<void> {
+		const started = this.#modelStartedByCallId.get(event.callId)
+		if (started === undefined) return
+
+		const ended = await appendAndEmit(
+			this.runtime,
+			this.state.agentRun.id,
+			{
+				type: 'model-message-ended',
+				modelMessageStartedCursor: started.cursor,
+				outcome: outcomeFromLanguageModelCall(event, this.model),
+			},
+			this.options,
+		)
+		if (!ended.ok) return this.fail(ended.error)
+
+		this.#latestModelEndedCursor = ended.value.cursor
+		this.#modelEndedCallIds.add(event.callId)
+		await emit(this.options, {
+			type: 'model-message-updated',
+			modelMessageStartedCursor: started.cursor,
+			delta: { type: 'model-output-ended' },
+		})
+	}
+
+	async onChunk(chunk: TextStreamPart<ToolSet>): Promise<void> {
+		const started = this.currentModelStarted()
+		if (started === null) return
+
+		switch (chunk.type) {
+			case 'text-start':
+				this.startPart(chunk.id)
+				await emit(this.options, {
+					type: 'model-message-updated',
+					modelMessageStartedCursor: started.cursor,
+					delta: { type: 'text-started', contentIndex: this.indexForPart(chunk.id) },
+				})
+				return
+			case 'text-delta':
+				this.appendPartText(chunk.id, chunk.text)
+				await emit(this.options, {
+					type: 'model-message-updated',
+					modelMessageStartedCursor: started.cursor,
+					delta: { type: 'text-delta', contentIndex: this.indexForPart(chunk.id), delta: chunk.text },
+				})
+				return
+			case 'text-end':
+				await emit(this.options, {
+					type: 'model-message-updated',
+					modelMessageStartedCursor: started.cursor,
+					delta: { type: 'text-ended', contentIndex: this.indexForPart(chunk.id), text: this.#textByPartId.get(chunk.id) ?? '' },
+				})
+				return
+			case 'reasoning-start':
+				this.startPart(chunk.id)
+				await emit(this.options, {
+					type: 'model-message-updated',
+					modelMessageStartedCursor: started.cursor,
+					delta: { type: 'thinking-started', contentIndex: this.indexForPart(chunk.id) },
+				})
+				return
+			case 'reasoning-delta':
+				this.appendPartText(chunk.id, chunk.text)
+				await emit(this.options, {
+					type: 'model-message-updated',
+					modelMessageStartedCursor: started.cursor,
+					delta: { type: 'thinking-delta', contentIndex: this.indexForPart(chunk.id), delta: chunk.text },
+				})
+				return
+			case 'reasoning-end':
+				await emit(this.options, {
+					type: 'model-message-updated',
+					modelMessageStartedCursor: started.cursor,
+					delta: {
+						type: 'thinking-ended',
+						contentIndex: this.indexForPart(chunk.id),
+						text: this.#textByPartId.get(chunk.id) ?? '',
+					},
+				})
+				return
+			case 'tool-input-start':
+				this.#toolNameByPartId.set(chunk.id, chunk.toolName)
+				this.startPart(chunk.id)
+				await emit(this.options, {
+					type: 'model-message-updated',
+					modelMessageStartedCursor: started.cursor,
+					delta: {
+						type: 'tool-call-arguments-started',
+						contentIndex: this.indexForPart(chunk.id),
+						toolCallId: chunk.id,
+						toolName: chunk.toolName,
+					},
+				})
+				return
+			case 'tool-input-delta':
+				await emit(this.options, {
+					type: 'model-message-updated',
+					modelMessageStartedCursor: started.cursor,
+					delta: {
+						type: 'tool-call-arguments-delta',
+						contentIndex: this.indexForPart(chunk.id),
+						toolCallId: chunk.id,
+						delta: chunk.delta,
+					},
+				})
+				return
+			case 'tool-call':
+				await emit(this.options, {
+					type: 'model-message-updated',
+					modelMessageStartedCursor: started.cursor,
+					delta: {
+						type: 'tool-call-arguments-ended',
+						contentIndex: this.indexForPart(chunk.toolCallId),
+						toolCallId: chunk.toolCallId,
+						toolName: chunk.toolName,
+						input: chunk.input,
+					},
+				})
+				return
+			default:
+				return
+		}
+	}
+
+	async recordUnclosedModelFailure(error: unknown, signal: AbortSignal | undefined): Promise<Result<void, AgentRunRuntimeError>> {
+		const started = this.currentModelStarted()
+		if (started === null || (this.#currentCallId !== null && this.#modelEndedCallIds.has(this.#currentCallId))) {
+			return { ok: true, value: undefined }
+		}
+
+		const ended = await appendAndEmit(
+			this.runtime,
+			this.state.agentRun.id,
+			{
+				type: 'model-message-ended',
+				modelMessageStartedCursor: started.cursor,
+				outcome: modelFailureOutcome(error, signal),
+			},
+			this.options,
+		)
+		return ended.ok ? { ok: true, value: undefined } : ended
+	}
+
+	private aiTool(coreTool: CoreAgentRunTool) {
+		const exposed = providerTool(coreTool)
+		return aiTool<unknown, AgentRunToolOutput, Record<string, unknown>>({
+			description: exposed.description,
+			inputSchema: jsonSchema<unknown>(exposed.parameters as never),
+			execute: (input, execution) => this.executeTool(coreTool, input, execution),
+			toModelOutput: ({ output }) => ({ type: 'text', value: toolOutputText(output) }),
+		})
+	}
+
+	private async executeTool(
+		coreTool: CoreAgentRunTool,
+		input: unknown,
+		execution: ToolExecutionOptions<Record<string, unknown>>,
+	): Promise<AgentRunToolOutput> {
+		const modelMessageCursor = this.#latestModelEndedCursor
+		if (modelMessageCursor === null) return toolOutput('Tool call could not be recorded because model message context is missing.')
+
+		const started = await appendAndEmit(
+			this.runtime,
+			this.state.agentRun.id,
+			{ type: 'tool-call-started', modelMessageCursor, toolCallId: execution.toolCallId, toolName: coreTool.name, input },
+			this.options,
+		)
+		if (!started.ok) return this.failTool(started.error)
+
+		const validated = validateToolInput(coreTool, input)
+		if (!validated.ok) return this.endTool(started.value, invalidToolInputOutcome())
+
+		try {
+			const output = await coreTool.execute(validated.value, {
+				agentRunId: this.state.agentRun.id,
+				toolCallStartedCursor: started.value.cursor,
+				signal: execution.abortSignal ?? this.options.signal ?? new AbortController().signal,
+				onUpdate: (update) => {
+					void emit(this.options, { type: 'tool-call-updated', toolCallStartedCursor: started.value.cursor, update })
+				},
+				recordProposal: (body) => recordToolProposal(this.runtime, this.state.agentRun.id, started.value.cursor, body),
+			})
+			return this.endTool(started.value, { type: 'success', output })
+		} catch {
+			return this.endTool(started.value, {
+				type: 'error',
+				reason: { type: 'tool-runtime-error' },
+				output: toolOutput('Tool execution failed.'),
+			})
+		}
+	}
+
+	private async endTool(started: AgentRunEvent, outcome: AgentRunToolCallOutcome): Promise<AgentRunToolOutput> {
+		const ended = await appendAndEmit(
+			this.runtime,
+			this.state.agentRun.id,
+			{ type: 'tool-call-ended', toolCallStartedCursor: started.cursor, outcome },
+			this.options,
+		)
+		if (!ended.ok) return this.failTool(ended.error)
+
+		return outcome.output ?? toolOutput(`Tool ${outcome.type}.`)
+	}
+
+	private fail(error: AgentRunRuntimeError): never {
+		this.#error = error
+		throw new Error(`Agent Run transcript persistence failed: ${error.type}`)
+	}
+
+	private failTool(error: AgentRunRuntimeError): AgentRunToolOutput {
+		this.#error = error
+		throw new Error(`Agent Run tool transcript persistence failed: ${error.type}`)
+	}
+
+	private currentModelStarted(): AgentRunEvent | null {
+		return this.#currentCallId === null ? null : (this.#modelStartedByCallId.get(this.#currentCallId) ?? null)
+	}
+
+	private startPart(partId: string): void {
+		if (!this.#contentIndexByPartId.has(partId)) {
+			this.#contentIndexByPartId.set(partId, this.#nextContentIndex)
+			this.#nextContentIndex += 1
+		}
+	}
+
+	private indexForPart(partId: string): number {
+		this.startPart(partId)
+		return this.#contentIndexByPartId.get(partId)!
+	}
+
+	private appendPartText(partId: string, delta: string): void {
+		this.#textByPartId.set(partId, `${this.#textByPartId.get(partId) ?? ''}${delta}`)
+	}
 }
 
-async function processToolCall(
-	runtime: ModelAgentRunRuntime,
-	state: AgentRunLoopState,
-	modelMessageEventId: Id,
-	toolCall: Extract<AgentRunModelMessageOutcome, { type: 'tool-use' }>['message']['content'][number] & { type: 'tool-call' },
-	options: RunModelAgentRunOptions,
-): Promise<Result<Id, AgentRunRuntimeError>> {
-	const tool = state.tools.find((candidate) => candidate.name === toolCall.toolName)
-	if (tool === undefined) return refuseToolCall(runtime, state.agentRun.id, modelMessageEventId, toolCall, 'unknown-tool', options)
-
-	const input = validateToolInput(tool, toolCall.input)
-	if (!input.ok) return refuseToolCall(runtime, state.agentRun.id, modelMessageEventId, toolCall, 'invalid-input', options)
-
-	return executeToolCall(runtime, state.agentRun.id, modelMessageEventId, toolCall, tool, input.value, options)
+function outcomeFromLanguageModelCall(event: LanguageModelCallEndEvent<ToolSet>, model: Model): AgentRunModelMessageOutcome {
+	const message = modelMessageFromAIContent(event.content, event.usage, event.responseId, model.pricing)
+	switch (event.finishReason) {
+		case 'stop':
+		case 'other':
+			return message.content.some((content) => content.type === 'tool-call')
+				? { type: 'tool-calls', message }
+				: { type: 'stop', message }
+		case 'tool-calls':
+			return { type: 'tool-calls', message }
+		case 'length':
+			return { type: 'length', message, summary: null }
+		case 'content-filter':
+			return {
+				type: 'error',
+				reason: { type: 'provider-content-filtered' },
+				message: modelMessageOrNull(message),
+				summary: 'Provider content filter blocked generation.',
+			}
+		case 'error':
+			return {
+				type: 'error',
+				reason: { type: 'provider-generation-failed' },
+				message: modelMessageOrNull(message),
+				summary: 'Provider generation failed.',
+			}
+		default:
+			throw new Error(`Unexpected AI SDK finish reason: ${String(event.finishReason satisfies never)}`)
+	}
 }
 
-async function refuseToolCall(
-	runtime: ModelAgentRunRuntime,
-	agentRunId: Id,
-	modelMessageEventId: Id,
-	toolCall: { toolCallId: Id; toolName: string; input: unknown },
-	reason: 'unknown-tool' | 'invalid-input',
-	options: RunModelAgentRunOptions,
-): Promise<Result<Id, AgentRunRuntimeError>> {
-	const scheduled = await appendAndEmit(
-		runtime,
-		agentRunId,
-		{
-			type: 'tool-call-scheduled',
-			modelMessageEventId,
-			toolCallId: toolCall.toolCallId,
-			toolName: toolCall.toolName,
-			input: toolCall.input,
-			scheduling: { type: 'refused', reason: { type: reason }, output: toolOutput(`Tool call refused: ${reason}.`) },
-		},
-		options,
-	)
-	return scheduled.ok ? { ok: true, value: scheduled.value.id } : scheduled
+function modelFailureOutcome(error: unknown, signal: AbortSignal | undefined): AgentRunModelMessageOutcome {
+	if (signal?.aborted === true) return { type: 'aborted', reason: { type: 'abort-signal' }, message: null, summary: null }
+	const reason = providerFailureReason(error)
+	return { type: 'error', reason, message: null, summary: safeProviderErrorSummary(reason) }
 }
 
-async function executeToolCall(
-	runtime: ModelAgentRunRuntime,
-	agentRunId: Id,
-	modelMessageEventId: Id,
-	toolCall: { toolCallId: Id; toolName: string; input: unknown },
-	tool: CoreAgentRunTool,
-	input: unknown,
-	options: RunModelAgentRunOptions,
-): Promise<Result<Id, AgentRunRuntimeError>> {
-	const scheduled = await appendAndEmit(
-		runtime,
-		agentRunId,
-		{
-			type: 'tool-call-scheduled',
-			modelMessageEventId,
-			toolCallId: toolCall.toolCallId,
-			toolName: toolCall.toolName,
-			input: toolCall.input,
-			scheduling: { type: 'accepted', executionMode: tool.executionMode },
-		},
-		options,
-	)
-	if (!scheduled.ok) return scheduled
-
-	const started = await appendAndEmit(
-		runtime,
-		agentRunId,
-		{ type: 'tool-call-started', toolCallScheduledEventId: scheduled.value.id, toolCallId: toolCall.toolCallId },
-		options,
-	)
-	if (!started.ok) return started
-
-	const output = await executeTool(runtime, agentRunId, scheduled.value.id, started.value.id, tool, input, options)
-	const ended = await appendAndEmit(
-		runtime,
-		agentRunId,
-		{
-			type: 'tool-call-ended',
-			toolCallScheduledEventId: scheduled.value.id,
-			toolCallId: toolCall.toolCallId,
-			outcome: { type: 'success', output },
-		},
-		options,
-	)
-	return ended.ok ? { ok: true, value: ended.value.id } : ended
+function turnFailureOutcome(
+	error: unknown,
+	signal: AbortSignal | undefined,
+): Extract<AgentRunEvent['body'], { type: 'turn-ended' }>['outcome'] {
+	if (signal?.aborted === true) return { type: 'aborted', reason: { type: 'abort-signal' }, summary: null }
+	const reason = providerFailureReason(error)
+	return { type: 'error', reason, summary: safeProviderErrorSummary(reason) }
 }
 
-async function executeTool(
-	runtime: ModelAgentRunRuntime,
-	agentRunId: Id,
-	toolCallScheduledEventId: Id,
-	toolCallStartedEventId: Id,
-	tool: CoreAgentRunTool,
-	input: unknown,
-	options: RunModelAgentRunOptions,
-): Promise<AgentRunToolOutput> {
-	return tool.execute(input, {
-		agentRunId,
-		toolCallScheduledEventId,
-		signal: options.signal ?? new AbortController().signal,
-		onUpdate(update) {
-			void emit(options, { type: 'tool-call-updated', toolCallStartedEventId, update })
-		},
-		recordProposal(body) {
-			return recordToolProposal(runtime, agentRunId, toolCallScheduledEventId, body)
-		},
-	})
+function modelMessageFromAIContent(
+	content: ReadonlyArray<ContentPart<ToolSet>>,
+	usage: LanguageModelUsage,
+	providerResponseRef: string,
+	pricing: ModelTokenPricing | null,
+): AgentRunModelMessage {
+	return {
+		content: content.flatMap(coreModelContent),
+		usage: usageFromAIUsage(usage, pricing),
+		providerResponseRef: providerResponseRef.length === 0 ? null : providerResponseRef,
+	}
+}
+
+function coreModelContent(content: ContentPart<ToolSet>): AgentRunModelContent[] {
+	switch (content.type) {
+		case 'text':
+			return [{ type: 'text', text: content.text }]
+		case 'reasoning':
+			return [{ type: 'thinking', text: content.text, providerReplay: null }]
+		case 'tool-call':
+			return [{ type: 'tool-call', toolCallId: content.toolCallId, toolName: content.toolName, input: content.input }]
+		case 'custom':
+		case 'source':
+		case 'file':
+		case 'reasoning-file':
+		case 'tool-result':
+		case 'tool-error':
+		case 'tool-approval-request':
+		case 'tool-approval-response':
+			return []
+		default:
+			throw new Error(`Unexpected AI SDK content part: ${String(content satisfies never)}`)
+	}
+}
+
+function modelMessageOrNull(message: AgentRunModelMessage): AgentRunModelMessage | null {
+	return message.content.length === 0 && message.usage === null && message.providerResponseRef === null ? null : message
+}
+
+function usageFromAIUsage(usage: LanguageModelUsage, pricing: ModelTokenPricing | null): AgentRunModelMessage['usage'] {
+	const cacheReadTokens = usage.inputTokenDetails.cacheReadTokens ?? 0
+	const cacheWriteTokens = usage.inputTokenDetails.cacheWriteTokens ?? 0
+	const inputTokens = usage.inputTokenDetails.noCacheTokens ?? Math.max((usage.inputTokens ?? 0) - cacheReadTokens - cacheWriteTokens, 0)
+	const outputTokens = usage.outputTokens ?? 0
+	const totalTokens = usage.totalTokens ?? inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens
+	const tokenUsage = { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens }
+	return { ...tokenUsage, cost: pricing === null ? null : costFromUsage(tokenUsage, pricing) }
+}
+
+function costFromUsage(
+	usage: Pick<NonNullable<AgentRunModelMessage['usage']>, 'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheWriteTokens'>,
+	pricing: ModelTokenPricing,
+): AgentRunModelCost {
+	const input = tokenCost(usage.inputTokens, pricing.input)
+	const output = tokenCost(usage.outputTokens, pricing.output)
+	const cacheRead = tokenCost(usage.cacheReadTokens, pricing.cacheRead)
+	const cacheWrite = tokenCost(usage.cacheWriteTokens, pricing.cacheWrite)
+	return { unit: 'micro-usd', input, output, cacheRead, cacheWrite, total: input + output + cacheRead + cacheWrite }
+}
+
+function tokenCost(tokens: number, priceMicroUsdPerMillion: number): number {
+	if (tokens === 0 || priceMicroUsdPerMillion === 0) return 0
+	return Math.round((tokens * priceMicroUsdPerMillion) / 1_000_000)
+}
+
+function invalidToolInputOutcome(): AgentRunToolCallOutcome {
+	return { type: 'error', reason: { type: 'invalid-input' }, output: toolOutput('Tool call input failed validation.') }
 }
 
 async function recordToolProposal(
 	runtime: ModelAgentRunRuntime,
 	agentRunId: Id,
-	toolCallScheduledEventId: Id,
+	toolCallStartedCursor: AgentRunEventCursor,
 	body: { type: 'proposed-plan-output' | 'proposed-revision-output'; output: unknown },
 ): Promise<AgentRunToolOutput> {
 	const eventBody =
 		body.type === 'proposed-plan-output'
-			? { type: body.type, toolCallScheduledEventId, output: body.output as never }
-			: { type: body.type, toolCallScheduledEventId, output: body.output as never }
+			? { type: body.type, toolCallStartedCursor, output: body.output as never }
+			: { type: body.type, toolCallStartedCursor, output: body.output as never }
 	const event = await appendAgentRunEvent(runtime, runtime.services.storage, agentRunId, eventBody)
 	return event.ok
 		? toolOutput(`${body.type} recorded for human review as event ${event.value.id}.`)
@@ -527,16 +802,19 @@ async function recordToolProposal(
 function completeAutonomousRunIfNeeded(
 	runtime: ModelAgentRunRuntime,
 	agentRun: AgentRun,
-): Promise<Result<TurnResult, AgentRunRuntimeError>> | Result<TurnResult, never> {
+): Promise<Result<void, AgentRunRuntimeError>> | Result<void, never> {
 	return agentRun.purpose.type === 'execution' || agentRun.purpose.type === 'revision-execution'
 		? completeAgentRun(runtime, agentRun)
-		: { ok: true, value: { type: 'complete' } }
+		: { ok: true, value: undefined }
 }
 
-async function completeAgentRun(runtime: ModelAgentRunRuntime, agentRun: AgentRun): Promise<Result<TurnResult, AgentRunRuntimeError>> {
-	const completed = { at: runtime.values.now().toISOString() }
-	const updated = await withTransaction(runtime.services, (storage) => updateRecord('agent-run', storage, agentRun.id, { completed }))
-	return updated.ok ? { ok: true, value: { type: 'complete' } } : updated
+async function completeAgentRun(runtime: ModelAgentRunRuntime, agentRun: AgentRun): Promise<Result<void, AgentRunRuntimeError>> {
+	const completed = runtimeRecord(runtime.values)
+	if (!completed.ok) return completed
+	const updated = await withTransaction(runtime.services, (storage) =>
+		updateRecord('agent-run', storage, agentRun.id, { completed: completed.value }),
+	)
+	return updated.ok ? { ok: true, value: undefined } : updated
 }
 
 async function appendAndEmit(
@@ -558,6 +836,10 @@ async function emit(options: RunModelAgentRunOptions, event: AgentRunLiveEvent):
 	}
 }
 
+function toolOutputText(output: AgentRunToolOutput): string {
+	return output.content.map((part) => part.text).join('\n')
+}
+
 function invariant(message: string): Result<never, InvariantViolationError> {
 	return { ok: false, error: { type: 'invariant-violation', message } }
 }
@@ -567,22 +849,11 @@ if (import.meta.vitest) {
 	const { createTestCoreServices, seedSelectableModel } = await import('../../utils/test-helpers')
 
 	describe('runModelAgentRun', () => {
-		it('runs input to stop and completes autonomous Agent Runs', async () => {
-			const services = executionFixture()
-			const runtime = modelLoopRuntime(services, modelProviders([stopOutcome('Done.')]))
-
-			const result = await runModelAgentRun(runtime, 'agent-run-1')
-
-			expect(result).toEqual({ ok: true, value: undefined })
-			expect(services.tx.agentRuns.records.get('agent-run-1')?.completed).toEqual({ at: '2026-06-10T12:00:00.000Z' })
-			expect([...services.tx.agentRunEvents.records.values()].map((event) => event.body.type)).toContain('model-message-ended')
-		})
-
 		it('no-ops completed Agent Runs without processing queued input', async () => {
 			const services = planningFixture()
 			services.tx.agentRuns.records.get('agent-run-1')!.completed = { at: '2026-06-10T12:05:00.000Z' }
 			const initialEventCount = services.tx.agentRunEvents.records.size
-			const runtime = modelLoopRuntime(services, modelProviders([stopOutcome('Should not run.')]))
+			const runtime = modelLoopRuntime(services)
 
 			const result = await runModelAgentRun(runtime, 'agent-run-1')
 
@@ -590,37 +861,12 @@ if (import.meta.vitest) {
 			expect(services.tx.agentRunEvents.records.size).toBe(initialEventCount)
 		})
 
-		it('records proposal tool calls and continues to a tool-results stop turn', async () => {
-			const services = planningFixture()
-			const runtime = modelLoopRuntime(services, modelProviders([toolUseOutcome(), stopOutcome('Recorded.')]))
-
-			const result = await runModelAgentRun(runtime, 'agent-run-1')
-
-			expect(result).toEqual({ ok: true, value: undefined })
-			expect([...services.tx.agentRunEvents.records.values()].map((event) => event.body.type)).toEqual([
-				'agent-run-model-selected',
-				'input-message',
-				'turn-started',
-				'model-message-started',
-				'model-message-ended',
-				'tool-call-scheduled',
-				'tool-call-started',
-				'proposed-plan-output',
-				'tool-call-ended',
-				'turn-ended',
-				'turn-started',
-				'model-message-started',
-				'model-message-ended',
-				'turn-ended',
-			])
-		})
-
-		it('refuses unknown tool calls and blocks after operator interrupts until new input', async () => {
+		it('blocks after operator interrupts until new input', async () => {
 			const services = planningFixture()
 			services.tx.agentRunEvents.records.set('interrupt', {
 				id: 'interrupt',
 				agentRunId: 'agent-run-1',
-				sequence: 3,
+				cursor: cursor(3),
 				occurred: { at: '2026-06-10T12:00:00.000Z' },
 				body: {
 					type: 'interrupt-requested',
@@ -628,38 +874,22 @@ if (import.meta.vitest) {
 					reason: null,
 				},
 			})
-			const runtime = modelLoopRuntime(services, modelProviders([unknownToolUseOutcome()]))
+			const runtime = modelLoopRuntime(services)
 
 			await expect(runModelAgentRun(runtime, 'agent-run-1')).resolves.toEqual({ ok: true, value: undefined })
-			expect([...services.tx.agentRunEvents.records.values()].some((event) => event.body.type === 'model-message-ended')).toBe(false)
+			expect([...services.tx.agentRunEvents.records.values()].some((event) => event.body.type === 'turn-started')).toBe(false)
 
 			services.tx.agentRunEvents.records.set('input-2', {
 				id: 'input-2',
 				agentRunId: 'agent-run-1',
-				sequence: 4,
+				cursor: cursor(4),
 				occurred: { at: '2026-06-10T12:00:00.000Z' },
 				body: { type: 'input-message', source: { type: 'runtime' }, content: [{ type: 'text', text: 'continue' }] },
 			})
-			await expect(runModelAgentRun(runtime, 'agent-run-1')).resolves.toEqual({ ok: true, value: undefined })
-			expect(
-				[...services.tx.agentRunEvents.records.values()].find((event) => event.body.type === 'tool-call-scheduled')?.body,
-			).toMatchObject({ scheduling: { type: 'refused' } })
+			await expect(runModelAgentRun(runtime, 'agent-run-1')).resolves.toMatchObject({ ok: true })
+			expect([...services.tx.agentRunEvents.records.values()].some((event) => event.body.type === 'turn-started')).toBe(true)
 		})
 	})
-
-	function executionFixture() {
-		const services = createTestCoreServices()
-		seedSelectableModel(services.tx, 'model-1')
-		services.tx.agentRuns.records.set('agent-run-1', {
-			id: 'agent-run-1',
-			agent: { type: 'model' },
-			purpose: { type: 'execution', deliveryId: 'delivery-1', sliceId: 'slice-1', mode: { type: 'initial' } },
-			started: { at: '2026-06-10T12:00:00.000Z' },
-			completed: null,
-		})
-		seedInitialEvents(services)
-		return services
-	}
 
 	function planningFixture() {
 		const services = createTestCoreServices()
@@ -679,7 +909,7 @@ if (import.meta.vitest) {
 		services.tx.agentRunEvents.records.set('model-selection', {
 			id: 'model-selection',
 			agentRunId: 'agent-run-1',
-			sequence: 1,
+			cursor: cursor(1),
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
 			body: {
 				type: 'agent-run-model-selected',
@@ -691,21 +921,17 @@ if (import.meta.vitest) {
 		services.tx.agentRunEvents.records.set('input-1', {
 			id: 'input-1',
 			agentRunId: 'agent-run-1',
-			sequence: 2,
+			cursor: cursor(2),
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
 			body: { type: 'input-message', source: { type: 'runtime' }, content: [{ type: 'text', text: 'start' }] },
 		})
 	}
 
-	function modelLoopRuntime(
-		services: ReturnType<typeof createTestCoreServices>,
-		providers: ReturnType<typeof modelProviders>,
-	): ModelAgentRunRuntime {
-		return { services, providers, values: services.values }
+	function modelLoopRuntime(services: ReturnType<typeof createTestCoreServices>): ModelAgentRunRuntime {
+		return { services, providers: { ...createTestProviders() }, values: services.values }
 	}
 
-	function modelProviders(outcomes: AgentRunModelMessageOutcome[]) {
-		let index = 0
+	function createTestProviders(): CoreProviders {
 		return {
 			sourceControl: {
 				preflightRepository: () => Promise.reject(new Error('unused')),
@@ -714,46 +940,21 @@ if (import.meta.vitest) {
 			},
 			modelProviderProtocols: {
 				preflightModel: () => Promise.reject(new Error('unused')),
-				runModelAgentTurn: () =>
-					Promise.resolve({ ok: true as const, value: { outcome: outcomes[index++] ?? stopOutcome('fallback') } }),
-			},
-		}
-	}
-
-	function stopOutcome(text: string): AgentRunModelMessageOutcome {
-		return { type: 'stop', message: { content: [{ type: 'text', text }], usage: null, providerResponseRef: null } }
-	}
-
-	function toolUseOutcome(): AgentRunModelMessageOutcome {
-		return {
-			type: 'tool-use',
-			message: {
-				content: [
-					{
-						type: 'tool-call',
-						toolCallId: 'tool-call-1',
-						toolName: 'propose-plan-output',
-						input: {
-							proposedDeliveries: {},
-							proposedMemoryCreations: { m: { parentId: null, title: 'M', body: 'B', children: {} } },
-							proposedMemoryRevisions: {},
+				resolveLanguageModel: () =>
+					Promise.resolve({
+						ok: true,
+						value: {
+							type: 'error',
+							reason: { type: 'runtime-error' },
+							message: null,
+							summary: 'Synthetic test provider.',
 						},
-					},
-				],
-				usage: null,
-				providerResponseRef: null,
+					}),
 			},
 		}
 	}
 
-	function unknownToolUseOutcome(): AgentRunModelMessageOutcome {
-		return {
-			type: 'tool-use',
-			message: {
-				content: [{ type: 'tool-call', toolCallId: 'tool-call-1', toolName: 'unknown', input: {} }],
-				usage: null,
-				providerResponseRef: null,
-			},
-		}
+	function cursor(index: number): string {
+		return `01J000000000000000000${index.toString().padStart(5, '0')}`
 	}
 }

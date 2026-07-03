@@ -38,7 +38,7 @@
 							:key="event.id"
 							class="wrap-break-word border-b border-dimmer px-3 py-2 last:border-b-0">
 							<span class="font-mono text-sz-micro text-dim"
-								>#{{ event.sequence }} · {{ event.body.type }} · {{ event.id }}</span
+								>{{ event.cursor }} · {{ event.body.type }} · {{ event.id }}</span
 							>
 							<pre class="m-0 mt-1 max-h-36 overflow-auto whitespace-pre-wrap font-mono text-sz-micro text-card-contrast">{{
 								eventSummary(event)

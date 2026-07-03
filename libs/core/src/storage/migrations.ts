@@ -79,7 +79,7 @@ export const coreStorageMigrations = [
 			]),
 			createTable('agent_run_events', [
 				stringField('agentRunId'),
-				numberField('sequence'),
+				stringField('cursor'),
 				objectField('occurred'),
 				objectField('body'),
 			]),

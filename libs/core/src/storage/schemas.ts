@@ -4,7 +4,14 @@ import { Schema, type AnySchema } from 'equipped/orm'
 import { v } from 'valleyed'
 
 import { actionResultPipe, type Action } from '../domain/action'
-import { agentPipe, agentRunEventBodyPipe, agentRunPurposePipe, type AgentRun, type AgentRunEvent } from '../domain/agent-run'
+import {
+	agentPipe,
+	agentRunEventBodyPipe,
+	agentRunEventCursorPipe,
+	agentRunPurposePipe,
+	type AgentRun,
+	type AgentRunEvent,
+} from '../domain/agent-run'
 import { deliveryArtifactConfigPipe, sliceArtifactConfigPipe, type DeliveryArtifact, type SliceArtifact } from '../domain/artifact'
 import {
 	archivePeriodPipe,
@@ -174,7 +181,7 @@ export const agentRunSchema = Schema.from('agent_runs')
 export const agentRunEventSchema = Schema.from('agent_run_events')
 	.pk('id', idPipe, explicitCoreIdRequired)
 	.field('agentRunId', idPipe)
-	.field('sequence', nonNegativeIntegerPipe)
+	.field('cursor', agentRunEventCursorPipe)
 	.field('occurred', runtimeRecordPipe)
 	.field('body', agentRunEventBodyPipe)
 	.build()

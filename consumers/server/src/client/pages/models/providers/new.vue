@@ -148,7 +148,6 @@ definePageMeta({ middleware: ['has-selection'] })
 const protocolOptions: Array<{ value: ModelProviderProtocolType; label: string }> = [
 	{ value: 'openai-responses', label: 'OpenAI Responses' },
 	{ value: 'anthropic-messages', label: 'Anthropic Messages' },
-	{ value: 'openai-completions', label: 'OpenAI Completions' },
 	{ value: 'google-generative-ai', label: 'Google Generative AI' },
 ]
 

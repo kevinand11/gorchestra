@@ -182,15 +182,15 @@ if (import.meta.vitest) {
 			options.tx.agentRunEvents.records.set('agent-run-event-1', {
 				id: 'agent-run-event-1',
 				agentRunId: 'agent-run-1',
-				sequence: 1,
+				cursor: '01J00000000000000000000000',
 				occurred: { at: '2026-06-10T12:00:00.000Z' },
-				body: { type: 'turn-started', contextThroughSequence: 0, reason: { type: 'input', inputEventIds: [] } },
+				body: { type: 'turn-started', contextThroughCursor: null, reason: { type: 'input', inputEventCursors: [] } },
 			})
 			const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
 
 			const result = await command({ agentRunId: 'agent-run-1', content: [{ type: 'text', text: 'Next turn.' }] }, context)
 
-			expect(result).toMatchObject({ ok: true, value: { sequence: 2 } })
+			expect(result).toMatchObject({ ok: true, value: { cursor: '01J00000000000000000000001' } })
 		})
 
 		it('rejects Autonomous Agent Runs as non-interactive', async () => {
@@ -241,7 +241,7 @@ if (import.meta.vitest) {
 		return {
 			id,
 			agentRunId: 'agent-run-1',
-			sequence,
+			cursor: `01J000000000000000000${sequence.toString().padStart(5, '0')}`,
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
 			body: {
 				type: 'input-message',

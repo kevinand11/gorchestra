@@ -1,10 +1,11 @@
-import type { AgentRunModelMessageOutcome } from '../../domain/agent-run'
+import type { JSONValue, LanguageModel } from 'ai'
+
+import type { AgentRunModelMessageOutcome, ModelProviderGenerationFailureReason } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
 import type { Model } from '../../domain/model'
 import type { ModelProvider, ModelProviderProtocolType } from '../../domain/model-provider'
-import type { InvalidCoreServiceOutputError, StorageOperationFailedError } from '../../errors'
-import type { AgentRunModelDelta } from '../../runtime/agent-runs/live-events'
-import type { AgentRunProviderMessage, AgentRunProviderTool, ModelAgentTurnThinking } from '../../runtime/agent-runs/types'
+import type { InvalidCoreServiceOutputError, ModelThinkingLevelUnavailableError, StorageOperationFailedError } from '../../errors'
+import type { ModelAgentTurnThinking } from '../../runtime/agent-runs/types'
 import type { ResolvableSecretValue } from '../../services'
 import type { Result } from '../../utils/types'
 
@@ -22,11 +23,8 @@ export type ModelProviderProtocolPreflightFailureReason =
 	| { type: 'model-provider-header-secret-missing'; secretId: Id; headerName: string }
 	| { type: 'model-provider-header-secret-inactive'; secretId: Id; headerName: string }
 	| { type: 'model-provider-secret-unresolved'; secretId: Id }
-	| { type: 'provider-authentication-failed' }
-	| { type: 'provider-access-denied' }
-	| { type: 'provider-model-not-found' }
-	| { type: 'provider-unavailable' }
-	| { type: 'provider-preflight-not-implemented' }
+	| ModelThinkingLevelUnavailableError
+	| ModelProviderGenerationFailureReason
 
 export type ModelProviderProtocolPreflight =
 	| { type: 'passed'; summary: string }
@@ -34,60 +32,52 @@ export type ModelProviderProtocolPreflight =
 
 export type ModelProviderProtocolPreflightError = InvalidCoreServiceOutputError
 
-export interface ModelAgentTurnInput {
-	model: Model
-	modelProvider: ModelProvider
-	messages: AgentRunProviderMessage[]
-	tools: AgentRunProviderTool[]
-	thinking: ModelAgentTurnThinking
-	signal: AbortSignal
-	onDelta(delta: AgentRunModelDelta): void
-}
-
-export interface ModelAgentTurnOutput {
-	outcome: AgentRunModelMessageOutcome
-}
-
-export type ModelAgentTurnError = InvalidCoreServiceOutputError | StorageOperationFailedError
-
-export interface ModelProviderProtocolProviders {
-	preflightModel(
-		input: ModelProviderProtocolPreflightModelInput,
-	): Promise<Result<ModelProviderProtocolPreflight, ModelProviderProtocolPreflightError>>
-	runModelAgentTurn(input: ModelAgentTurnInput): Promise<Result<ModelAgentTurnOutput, ModelAgentTurnError>>
-}
-
 export interface ModelProviderProtocolAccess {
 	auth: { type: 'apiKey'; plaintext: string } | null
 	headers: Array<{ name: string; plaintext: string }>
 }
 
-export interface ModelProviderProtocolProviderPreflightModelInput<Protocol extends ModelProviderProtocolType> {
-	model: Model
-	modelProvider: ModelProvider & { protocol: { type: Protocol } }
-	access: ModelProviderProtocolAccess
-}
-
-export interface ModelProviderProtocolProviderModelAgentTurnInput<Protocol extends ModelProviderProtocolType> extends ModelAgentTurnInput {
-	modelProvider: ModelProvider & { protocol: { type: Protocol } }
-	access: ModelProviderProtocolAccess
-}
-
-export type ModelProviderProtocolProviderPreflight =
-	| { type: 'passed' }
+export type AISDKLanguageModelResolutionInput =
 	| {
-			type: 'failed'
-			reason: Extract<
-				ModelProviderProtocolPreflightFailureReason,
-				| { type: 'provider-authentication-failed' }
-				| { type: 'provider-access-denied' }
-				| { type: 'provider-model-not-found' }
-				| { type: 'provider-unavailable' }
-				| { type: 'provider-preflight-not-implemented' }
-			>
+			mode: 'preflight'
+			model: Model
+			modelProvider: ModelProvider
+			access: ModelProviderProtocolAccess
+	  }
+	| {
+			mode: 'agent-run'
+			model: Model
+			modelProvider: ModelProvider
+			access: ModelProviderProtocolAccess
+			thinking: ModelAgentTurnThinking
 	  }
 
+export interface AISDKLanguageModelResolution {
+	languageModel: LanguageModel
+	providerOptions: Record<string, Record<string, JSONValue>> | undefined
+}
+
+export type ResolveAISDKLanguageModelError = ModelThinkingLevelUnavailableError
+
+export type ModelAgentTurnAccessError = InvalidCoreServiceOutputError | StorageOperationFailedError
+
+export interface ModelProviderProtocolProviders {
+	preflightModel(
+		input: ModelProviderProtocolPreflightModelInput,
+	): Promise<Result<ModelProviderProtocolPreflight, ModelProviderProtocolPreflightError>>
+	resolveLanguageModel(
+		input: Omit<Extract<AISDKLanguageModelResolutionInput, { mode: 'agent-run' }>, 'access'>,
+	): Promise<
+		Result<AISDKLanguageModelResolution | AgentRunModelMessageOutcome, ResolveAISDKLanguageModelError | ModelAgentTurnAccessError>
+	>
+}
+
+export type ModelProviderProtocolProviderResolveInput<Protocol extends ModelProviderProtocolType> = AISDKLanguageModelResolutionInput & {
+	modelProvider: ModelProvider & { protocol: { type: Protocol } }
+}
+
 export interface ModelProviderProtocolProvider<Protocol extends ModelProviderProtocolType> {
-	preflightModel(input: ModelProviderProtocolProviderPreflightModelInput<Protocol>): Promise<ModelProviderProtocolProviderPreflight>
-	runModelAgentTurn?(input: ModelProviderProtocolProviderModelAgentTurnInput<Protocol>): Promise<ModelAgentTurnOutput>
+	resolveLanguageModel(
+		input: ModelProviderProtocolProviderResolveInput<Protocol>,
+	): Result<AISDKLanguageModelResolution, ResolveAISDKLanguageModelError>
 }

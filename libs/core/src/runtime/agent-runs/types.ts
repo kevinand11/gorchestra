@@ -1,32 +1,26 @@
-import type { AgentRunModelDelta, AgentRunToolUpdate } from './live-events'
-import type { AgentRunModelMessageOutcome, AgentRunToolOutput } from '../../domain/agent-run'
+import type { ModelMessage } from 'ai'
+
+import type { AgentRunModelMessageOutcome, AgentRunToolOutput, AgentRunEventCursor } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
 import type { ModelThinkingLevel } from '../../domain/model'
 
 export interface AgentRunModelContext {
-	messages: AgentRunProviderMessage[]
-}
-
-export interface AgentRunProviderMessage {
-	role: 'user' | 'assistant' | 'tool' | 'system'
-	content: string
+	messages: ModelMessage[]
 }
 
 export interface AgentRunProviderTool {
 	name: string
 	description: string
-	executionMode: 'parallel-safe' | 'exclusive'
 	parameters: unknown
 }
 
-export type ModelAgentTurnThinking = { level: ModelThinkingLevel; providerValue: string } | null
+export type ModelAgentTurnThinking = { level: ModelThinkingLevel } | null
 
 export interface ModelAgentTurnInput {
-	messages: AgentRunProviderMessage[]
+	messages: ModelMessage[]
 	tools: AgentRunProviderTool[]
 	thinking: ModelAgentTurnThinking
 	signal: AbortSignal
-	onDelta(delta: AgentRunModelDelta): void
 }
 
 export interface ModelAgentTurnOutput {
@@ -35,8 +29,13 @@ export interface ModelAgentTurnOutput {
 
 export interface CoreAgentRunToolContext {
 	agentRunId: Id
-	toolCallScheduledEventId: Id
-	onUpdate(update: AgentRunToolUpdate): void
+	toolCallStartedCursor: AgentRunEventCursor
+	onUpdate(
+		update:
+			| { type: 'text-delta'; delta: string }
+			| { type: 'progress'; label: string; current: number | null; total: number | null }
+			| { type: 'structured'; value: unknown },
+	): void
 	signal: AbortSignal
 	recordProposal(body: { type: 'proposed-plan-output' | 'proposed-revision-output'; output: unknown }): Promise<AgentRunToolOutput>
 }

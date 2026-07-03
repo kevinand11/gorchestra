@@ -6,7 +6,6 @@ import { listedModelPipe } from './model'
 export const modelProviderProtocolPipe = v.discriminate((value) => value.type, {
 	'anthropic-messages': v.object({ type: v.eq('anthropic-messages') }),
 	'openai-responses': v.object({ type: v.eq('openai-responses') }),
-	'openai-completions': v.object({ type: v.eq('openai-completions') }),
 	'google-generative-ai': v.object({ type: v.eq('google-generative-ai') }),
 })
 export type ModelProviderProtocol = PipeOutput<typeof modelProviderProtocolPipe>

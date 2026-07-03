@@ -91,7 +91,7 @@ async function requireAgentRunIdle(
 ): Promise<CoreResult<void, InvalidCoreServiceOutputError | StorageOperationFailedError | AgentRunTurnActiveError>> {
 	const events = await listRecords('agent-run-event', storage, {
 		where: (filter, fields) => filter.eq(fields.agentRunId, agentRunId),
-		orderBy: [{ field: 'sequence', direction: 'asc' }],
+		orderBy: [{ field: 'cursor', direction: 'asc' }],
 	})
 	return events.ok ? activeTurn(events.value) : events
 }
@@ -101,7 +101,7 @@ function activeTurn(events: AgentRunEvent[]): CoreResult<void, AgentRunTurnActiv
 	if (started === undefined || started.body.type !== 'turn-started') return { ok: true, value: undefined }
 
 	const ended = events.some(
-		(event) => event.sequence > started.sequence && event.body.type === 'turn-ended' && event.body.turnStartedEventId === started.id,
+		(event) => event.cursor > started.cursor && event.body.type === 'turn-ended' && event.body.turnStartedCursor === started.cursor,
 	)
 	return ended ? { ok: true, value: undefined } : agentRunTurnActive(started.agentRunId, started.id)
 }
@@ -183,9 +183,9 @@ if (import.meta.vitest) {
 			options.tx.agentRunEvents.records.set('turn-started', {
 				id: 'turn-started',
 				agentRunId: 'agent-run-1',
-				sequence: 1,
+				cursor: '01J00000000000000000000001',
 				occurred: { at: '2026-06-10T12:00:00.000Z' },
-				body: { type: 'turn-started', contextThroughSequence: 0, reason: { type: 'input', inputEventIds: [] } },
+				body: { type: 'turn-started', contextThroughCursor: null, reason: { type: 'input', inputEventCursors: [] } },
 			})
 			const command = createClosePlanCommand(createTestCoreRuntime(options))
 

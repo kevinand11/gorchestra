@@ -146,7 +146,7 @@ function proposalReviewState(proposal: AgentRunEvent, events: AgentRunEvent[]): 
 }
 
 function isReviewForProposal(proposal: AgentRunEvent, event: AgentRunEvent): boolean {
-	return event.sequence > proposal.sequence && isProposalReviewBody(event.body) && event.body.proposalEventId === proposal.id
+	return event.cursor > proposal.cursor && isProposalReviewBody(event.body) && event.body.proposalCursor === proposal.cursor
 }
 
 function isProposalReviewBody(body: AgentRunEvent['body']): body is Extract<AgentRunEvent['body'], { type: ProposalReviewBodyType }> {
@@ -222,11 +222,11 @@ if (import.meta.vitest) {
 		return {
 			id: 'agent-run-event-1',
 			agentRunId: 'agent-run-1',
-			sequence: 1,
+			cursor: '01J00000000000000000000001',
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
 			body: {
 				type: 'proposed-plan-output',
-				toolCallScheduledEventId: 'tool-call-1',
+				toolCallStartedCursor: '01J00000000000000000000000',
 				output: {
 					proposedDeliveries: {},
 					proposedMemoryCreations: { memory: { parentId: null, title: 'Memory', body: '', children: {} } },
@@ -240,13 +240,13 @@ if (import.meta.vitest) {
 		return {
 			id,
 			agentRunId: 'agent-run-1',
-			sequence,
+			cursor: `01J000000000000000000${sequence.toString().padStart(5, '0')}`,
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
 			body:
 				type === 'proposal-accepted'
 					? {
 							type,
-							proposalEventId: 'agent-run-event-1',
+							proposalCursor: '01J00000000000000000000001',
 							authorized: localStamp(),
 							materialized: {
 								type: 'plan-output',
@@ -257,7 +257,7 @@ if (import.meta.vitest) {
 								linkIds: [],
 							},
 						}
-					: { type, proposalEventId: 'agent-run-event-1', authorized: localStamp(), reason: null },
+					: { type, proposalCursor: '01J00000000000000000000001', authorized: localStamp(), reason: null },
 		}
 	}
 }

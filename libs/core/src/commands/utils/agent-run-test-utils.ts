@@ -38,7 +38,7 @@ export function inputEvent(id: string, agentRunId: string, sequence: number): Ag
 	return {
 		id,
 		agentRunId,
-		sequence,
+		cursor: `01J000000000000000000${sequence.toString().padStart(5, '0')}`,
 		occurred: { at: '2026-06-10T12:00:00.000Z' },
 		body: {
 			type: 'input-message',

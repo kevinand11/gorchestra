@@ -1,20 +1,20 @@
 import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
-import { agentRunEventPipe } from '../domain/agent-run'
-import { idPipe, nonNegativeIntegerPipe, positiveIntegerPipe } from '../domain/commons'
+import { agentRunEventCursorPipe, agentRunEventPipe } from '../domain/agent-run'
+import { idPipe, positiveIntegerPipe } from '../domain/commons'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
 import { getRequired, listRecords, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
-const DEFAULT_AFTER_SEQUENCE = 0
+const DEFAULT_AFTER_CURSOR = null
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 500
 
 export const inputPipe = v.object({
 	agentRunId: idPipe,
-	afterSequence: v.defaults(nonNegativeIntegerPipe, DEFAULT_AFTER_SEQUENCE),
+	afterCursor: v.defaults(v.nullable(agentRunEventCursorPipe), DEFAULT_AFTER_CURSOR),
 	limit: v.defaults(positiveIntegerPipe, DEFAULT_LIMIT),
 })
 type ParsedInput = PipeOutput<typeof inputPipe>
@@ -32,14 +32,17 @@ export function createGetAgentRunEventsQuery(options: CoreServices): Operation {
 			if (!agentRun.ok) return agentRun
 
 			return listRecords('agent-run-event', storage, {
-				where: (filter, fields) => filter.eq(fields.agentRunId, input.agentRunId).gt(fields.sequence, input.afterSequence),
-				orderBy: [{ field: 'sequence', direction: 'asc' }],
+				where: (filter, fields) =>
+					input.afterCursor === null
+						? filter.eq(fields.agentRunId, input.agentRunId)
+						: filter.eq(fields.agentRunId, input.agentRunId).gt(fields.cursor, input.afterCursor),
+				orderBy: [{ field: 'cursor', direction: 'asc' }],
 				limit: Math.min(input.limit, MAX_LIMIT),
 			})
 		}),
 	)
 
-	return (input) => query({ afterSequence: undefined, limit: undefined, ...input })
+	return (input) => query({ afterCursor: undefined, limit: undefined, ...input })
 }
 
 if (import.meta.vitest) {
@@ -52,7 +55,7 @@ if (import.meta.vitest) {
 			options.tx.agentRuns.fail.get = true
 			const query = createGetAgentRunEventsQuery(options)
 
-			const result = await query({ agentRunId: '', afterSequence: 0, limit: 1 })
+			const result = await query({ agentRunId: '', afterCursor: null, limit: 1 })
 
 			expect(result).toMatchObject({
 				ok: false,
@@ -69,7 +72,7 @@ if (import.meta.vitest) {
 			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'agent-run', id: 'agent-run-1' } })
 		})
 
-		it('returns Agent Run Events ordered by sequence after the exclusive cursor', async () => {
+		it('returns Agent Run Events ordered by cursor after the exclusive cursor', async () => {
 			const options = createTestCoreServices()
 			seedAgentRun(options)
 			const second = agentRunEvent('agent-run-event-2', 2)
@@ -83,7 +86,7 @@ if (import.meta.vitest) {
 			options.tx.agentRunEvents.records.set('agent-run-event-1', agentRunEvent('agent-run-event-1', 1))
 			const query = createGetAgentRunEventsQuery(options)
 
-			const result = await query({ agentRunId: 'agent-run-1', afterSequence: 1, limit: 10 })
+			const result = await query({ agentRunId: 'agent-run-1', afterCursor: cursor(1), limit: 10 })
 
 			expect(result).toEqual({ ok: true, value: [second, third] })
 		})
@@ -94,7 +97,7 @@ if (import.meta.vitest) {
 			seedAgentRunEvents(defaultOptions, 101)
 			const defaultResult = await createGetAgentRunEventsQuery(defaultOptions)({ agentRunId: 'agent-run-1' })
 			expect(defaultResult).toMatchObject({ ok: true })
-			expect(defaultResult.ok ? defaultResult.value.map((event) => event.sequence) : []).toEqual(range(1, 100))
+			expect(defaultResult.ok ? defaultResult.value.map((event) => event.cursor) : []).toEqual(range(1, 100).map(cursor))
 
 			const maxOptions = createTestCoreServices()
 			seedAgentRun(maxOptions)
@@ -131,7 +134,7 @@ if (import.meta.vitest) {
 		return {
 			id,
 			agentRunId: 'agent-run-1',
-			sequence,
+			cursor: cursor(sequence),
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
 			body: {
 				type: 'input-message' as const,
@@ -139,5 +142,9 @@ if (import.meta.vitest) {
 				content: [{ type: 'text' as const, text: `event ${sequence}` }],
 			},
 		}
+	}
+
+	function cursor(sequence: number): string {
+		return `01J000000000000000000${sequence.toString().padStart(5, '0')}`
 	}
 }

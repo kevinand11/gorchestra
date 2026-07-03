@@ -98,10 +98,10 @@ export function passingProviderBackedPreflightProviders(): CoreRuntime['provider
 		modelProviderProtocols: {
 			preflightModel: () =>
 				Promise.resolve({ ok: true, value: { type: 'passed', summary: 'Anthropic Messages model preflight passed.' } }),
-			runModelAgentTurn: () =>
+			resolveLanguageModel: () =>
 				Promise.resolve({
 					ok: true,
-					value: { outcome: { type: 'stop', message: { content: [], usage: null, providerResponseRef: null } } },
+					value: { type: 'stop', message: { content: [], usage: null, providerResponseRef: null } },
 				}),
 		},
 	}
@@ -133,10 +133,15 @@ export function failingProviderBackedPreflightProviders(): CoreRuntime['provider
 						summary: 'Anthropic Messages model was not found.',
 					},
 				}),
-			runModelAgentTurn: () =>
+			resolveLanguageModel: () =>
 				Promise.resolve({
 					ok: true,
-					value: { outcome: { type: 'error', message: null, summary: 'Model provider failed.' } },
+					value: {
+						type: 'error',
+						reason: { type: 'provider-generation-failed' },
+						message: null,
+						summary: 'Model provider failed.',
+					},
 				}),
 		},
 	}
@@ -151,7 +156,7 @@ export function neverCalledProviderBackedPreflightProviders(): CoreRuntime['prov
 		},
 		modelProviderProtocols: {
 			preflightModel: () => Promise.reject(new Error('Model provider should not be called.')),
-			runModelAgentTurn: () => Promise.reject(new Error('Model provider should not be called.')),
+			resolveLanguageModel: () => Promise.reject(new Error('Model provider should not be called.')),
 		},
 	}
 }
@@ -285,12 +290,18 @@ export function seedSecret(tx: TestStorageTransaction, id: string, archived = fa
 
 function deterministicRuntimeValues(): CoreRuntimeValues {
 	const idCounters = new Map<string, number>()
+	const cursorCounters = new Map<string, number>()
 	return {
 		now: () => new Date('2026-06-10T12:00:00.000Z'),
 		nextId: (scope = 'id') => {
 			const next = (idCounters.get(scope) ?? 0) + 1
 			idCounters.set(scope, next)
 			return `${scope}-${next}`
+		},
+		nextCursor: (scope = 'cursor') => {
+			const next = (cursorCounters.get(scope) ?? 0) + 1
+			cursorCounters.set(scope, next)
+			return `01J000000000000000000${next.toString().padStart(5, '0')}`
 		},
 	}
 }

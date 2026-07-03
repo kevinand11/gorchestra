@@ -307,8 +307,6 @@ function protocolDisplayName(modelProvider: ModelProvider): string {
 			return 'Anthropic Messages'
 		case 'openai-responses':
 			return 'OpenAI Responses'
-		case 'openai-completions':
-			return 'OpenAI Completions'
 		case 'google-generative-ai':
 			return 'Google Generative AI'
 		default:

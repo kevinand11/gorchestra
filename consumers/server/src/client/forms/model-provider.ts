@@ -20,7 +20,7 @@ type ModelProviderFormFields = {
 
 const modelProviderNamePipe = v.string().pipe(v.min<string>(1, 'Enter a Model Provider name'))
 const modelProviderBaseUrlPipe = v.string().pipe(v.min<string>(1, 'Enter a base URL'))
-const modelProviderProtocolPipe = v.in(['anthropic-messages', 'openai-responses', 'openai-completions', 'google-generative-ai'])
+const modelProviderProtocolPipe = v.in(['anthropic-messages', 'openai-responses', 'google-generative-ai'])
 const modelProviderAuthSecretIdPipe = v.nullable(v.string().pipe(v.min<string>(1, 'Select an auth Secret')))
 const modelProviderHeaderNamePipe = v.string().pipe(v.min<string>(1, 'Enter a header name'))
 const modelProviderHeaderSecretIdPipe = v.string().pipe(v.min<string>(1, 'Select a header Secret'))

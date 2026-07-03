@@ -92,7 +92,6 @@ const { secret, isLoadingSecret, secretError, hasLoadedSecret, isRefreshingSecre
 const modelProviderProtocolLabels: Record<string, string> = {
 	'anthropic-messages': 'Anthropic Messages',
 	'openai-responses': 'OpenAI Responses',
-	'openai-completions': 'OpenAI Completions',
 	'google-generative-ai': 'Google Generative AI',
 }
 

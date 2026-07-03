@@ -19,11 +19,7 @@ export type CreateMemoryRevisionInput = {
 	body: string
 }
 
-export type ModelProviderProtocol =
-	| { type: 'anthropic-messages' }
-	| { type: 'openai-responses' }
-	| { type: 'openai-completions' }
-	| { type: 'google-generative-ai' }
+export type ModelProviderProtocol = { type: 'anthropic-messages' } | { type: 'openai-responses' } | { type: 'google-generative-ai' }
 export type ModelProviderProtocolType = ModelProviderProtocol['type']
 export type ModelProviderAuth = { type: 'apiKey'; secretId: string }
 export type ModelProviderHeader = { name: string; valueSecretId: string }
@@ -179,10 +175,10 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async closePlan(projectId: string, planId: string) {
 			return routes.request('post', '/api/portfolio/projects/:projectId/plans/:planId/close', { params: { projectId, planId } })
 		},
-		async getAgentRunEvents(agentRunId: string, input: { afterSequence?: number; limit?: number } = {}) {
+		async getAgentRunEvents(agentRunId: string, input: { afterCursor?: string; limit?: number } = {}) {
 			return routes.request('get', '/api/portfolio/agent-runs/:agentRunId/events', {
 				params: { agentRunId },
-				query: { afterSequence: input.afterSequence, limit: input.limit },
+				query: { afterCursor: input.afterCursor, limit: input.limit },
 			})
 		},
 		async sendAgentRunMessage(agentRunId: string, input: SendAgentRunMessageInput) {

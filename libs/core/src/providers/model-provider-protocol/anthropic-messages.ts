@@ -1,102 +1,100 @@
-import Anthropic from '@anthropic-ai/sdk'
+import { createAnthropic } from '@ai-sdk/anthropic'
 
-import { providerFailurePreflight } from './provider-failures'
-import type { ModelProviderProtocolProvider, ModelProviderProtocolProviderPreflightModelInput } from './types'
-
-type AnthropicMessagesPreflightInput = ModelProviderProtocolProviderPreflightModelInput<'anthropic-messages'>
-
-type AnthropicMessagesClient = {
-	models: {
-		retrieve(modelID: string): Promise<unknown>
-	}
-}
-
-type AnthropicMessagesClientFactory = (input: AnthropicMessagesPreflightInput) => AnthropicMessagesClient
+import type { AISDKLanguageModelResolution, ModelProviderProtocolAccess, ModelProviderProtocolProvider } from './types'
+import type { ModelThinkingLevel } from '../../domain/model'
+import type { ModelProvider } from '../../domain/model-provider'
+import type { ModelAgentTurnThinking } from '../../runtime/agent-runs/types'
 
 export type AnthropicMessagesModelProviderProtocolProvider = ModelProviderProtocolProvider<'anthropic-messages'>
 
+type AnthropicMessagesInput = Parameters<AnthropicMessagesModelProviderProtocolProvider['resolveLanguageModel']>[0]
+type AnthropicProviderFactory = (input: { modelProvider: ModelProvider; access: ModelProviderProtocolAccess }) => {
+	messages(modelId: string): AISDKLanguageModelResolution['languageModel']
+}
+
 export function createAnthropicMessagesModelProviderProtocolProvider(
-	clientFactory: AnthropicMessagesClientFactory = createAnthropicMessagesClient,
+	providerFactory: AnthropicProviderFactory = createAnthropicMessagesProvider,
 ): AnthropicMessagesModelProviderProtocolProvider {
 	return {
-		async preflightModel(input) {
-			try {
-				await clientFactory(input).models.retrieve(input.model.providerModelId)
-				return { type: 'passed' }
-			} catch (error) {
-				return providerFailurePreflight(error)
+		resolveLanguageModel(input) {
+			return {
+				ok: true,
+				value: {
+					languageModel: providerFactory(input).messages(input.model.providerModelId),
+					providerOptions: anthropicProviderOptions(input),
+				},
 			}
 		},
 	}
 }
 
-function createAnthropicMessagesClient(input: AnthropicMessagesPreflightInput): AnthropicMessagesClient {
-	return new Anthropic({
+function createAnthropicMessagesProvider(input: { modelProvider: ModelProvider; access: ModelProviderProtocolAccess }) {
+	return createAnthropic({
 		apiKey: input.access.auth?.plaintext ?? '',
 		baseURL: input.modelProvider.baseUrl,
-		defaultHeaders: Object.fromEntries(input.access.headers.map((header) => [header.name, header.plaintext])),
+		headers: Object.fromEntries(input.access.headers.map((header) => [header.name, header.plaintext])),
 	})
+}
+
+function anthropicProviderOptions(input: AnthropicMessagesInput): AISDKLanguageModelResolution['providerOptions'] {
+	const thinking = input.mode === 'agent-run' ? input.thinking : null
+	return thinking === null ? undefined : { anthropic: anthropicThinkingOptions(thinking) }
+}
+
+function anthropicThinkingOptions(
+	thinking: ModelAgentTurnThinking,
+): Record<string, NonNullable<AISDKLanguageModelResolution['providerOptions']>[string][string]> {
+	if (thinking === null) return {}
+	if (thinking.level === 'off') return { thinking: { type: 'disabled' } }
+	return { thinking: { type: 'adaptive', display: 'summarized' }, effort: anthropicEffort(thinking.level) }
+}
+
+function anthropicEffort(level: Exclude<ModelThinkingLevel, 'off'>): string {
+	switch (level) {
+		case 'minimal':
+		case 'low':
+			return 'low'
+		case 'medium':
+			return 'medium'
+		case 'high':
+			return 'high'
+		case 'xhigh':
+			return 'max'
+		default:
+			throw new Error(`Unexpected Model Thinking Level: ${String(level satisfies never)}`)
+	}
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { defaultModelCapabilities } = await import('../../domain/model')
 
-	describe('Anthropic Messages Model Provider Protocol provider', () => {
-		it('retrieves provider model metadata with configured access', async () => {
-			let observed: AnthropicMessagesPreflightInput | null = null
-			let retrievedModel: string | null = null
-			const provider = createAnthropicMessagesModelProviderProtocolProvider((input) => {
-				observed = input
-				return {
-					models: {
-						retrieve(model) {
-							retrievedModel = model
-							return Promise.resolve({ id: model })
-						},
-					},
-				}
-			})
-
-			const result = await provider.preflightModel(anthropicMessagesInput())
-
-			expect(result).toEqual({ type: 'passed' })
-			expect(retrievedModel).toBe('claude-sonnet-4-5')
-			expect(observed).toMatchObject({
-				access: {
-					auth: { type: 'apiKey', plaintext: 'token' },
-					headers: [{ name: 'anthropic-beta', plaintext: 'beta-flag' }],
-				},
-				modelProvider: { baseUrl: 'https://api.anthropic.com' },
-			})
-		})
-
-		it.each([
-			[401, 'provider-authentication-failed'],
-			[403, 'provider-access-denied'],
-			[404, 'provider-model-not-found'],
-			[500, 'provider-unavailable'],
-		])('maps status %s to %s', async (status, reason) => {
+	describe('Anthropic Messages AI SDK resolver', () => {
+		it('resolves a messages model with summarized adaptive thinking', () => {
+			let modelId: string | null = null
 			const provider = createAnthropicMessagesModelProviderProtocolProvider(() => ({
-				models: {
-					retrieve() {
-						return Promise.reject(errorWithStatus(status))
-					},
+				messages(id) {
+					modelId = id
+					return 'language-model'
 				},
 			}))
 
-			const result = await provider.preflightModel(anthropicMessagesInput())
+			const result = provider.resolveLanguageModel({ ...input(), thinking: { level: 'xhigh' } })
 
-			expect(result).toEqual({ type: 'failed', reason: { type: reason } })
+			expect(result).toEqual({
+				ok: true,
+				value: {
+					languageModel: 'language-model',
+					providerOptions: { anthropic: { thinking: { type: 'adaptive', display: 'summarized' }, effort: 'max' } },
+				},
+			})
+			expect(modelId).toBe('claude-sonnet-4-5')
 		})
 	})
 
-	function errorWithStatus(status: number): Error {
-		return Object.assign(new Error('Anthropic request failed.'), { status })
-	}
-
-	function anthropicMessagesInput(): AnthropicMessagesPreflightInput {
+	function input(): Extract<AnthropicMessagesInput, { mode: 'agent-run' }> {
 		return {
+			mode: 'agent-run',
 			model: {
 				id: 'model-1',
 				providerId: 'model-provider-1',
@@ -113,16 +111,14 @@ if (import.meta.vitest) {
 				name: 'Anthropic',
 				protocol: { type: 'anthropic-messages' },
 				baseUrl: 'https://api.anthropic.com',
-				auth: { type: 'apiKey', secretId: 'secret-1' },
-				headers: [{ name: 'anthropic-beta', valueSecretId: 'secret-2' }],
+				auth: null,
+				headers: [],
 				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				updated: null,
 				archivePeriods: [],
 			},
-			access: {
-				auth: { type: 'apiKey', plaintext: 'token' },
-				headers: [{ name: 'anthropic-beta', plaintext: 'beta-flag' }],
-			},
+			access: { auth: null, headers: [] },
+			thinking: { level: 'xhigh' },
 		}
 	}
 }

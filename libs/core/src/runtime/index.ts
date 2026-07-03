@@ -85,10 +85,11 @@ if (import.meta.vitest) {
 				'createArtifactBranch',
 				'createReviewSurface',
 			])
-			expect(Object.keys(runtime.providers.modelProviderProtocols)).toEqual(['preflightModel', 'runModelAgentTurn'])
+			expect(Object.keys(runtime.providers.modelProviderProtocols)).toEqual(['preflightModel', 'resolveLanguageModel'])
 			expect(typeof runtime.agentRuns.runExecutionAgentRun).toBe('function')
 			expect(typeof runtime.agentRuns.runModelAgentRun).toBe('function')
 			expect(typeof runtime.values.nextId).toBe('function')
+			expect(typeof runtime.values.nextCursor).toBe('function')
 			expect(typeof runtime.values.now).toBe('function')
 		})
 	})

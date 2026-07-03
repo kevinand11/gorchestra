@@ -7,7 +7,6 @@ import { planOutputProposalPipe, revisionOutputProposalPipe } from '../../domain
 export interface CoreAgentRunTool<TInput = unknown> {
 	name: string
 	description: string
-	executionMode: 'parallel-safe' | 'exclusive'
 	inputPipe: Pipe<unknown, TInput>
 	execute(input: TInput, context: CoreAgentRunToolContext): Promise<AgentRunToolOutput>
 }
@@ -27,14 +26,13 @@ export function toolsForAgentRunPurpose(purpose: AgentRunPurpose): CoreAgentRunT
 }
 
 export function providerTool(tool: CoreAgentRunTool): AgentRunProviderTool {
-	return { name: tool.name, description: tool.description, executionMode: tool.executionMode, parameters: v.schema(tool.inputPipe) }
+	return { name: tool.name, description: tool.description, parameters: v.schema(tool.inputPipe) }
 }
 
 function proposePlanOutputTool(): CoreAgentRunTool {
 	return {
 		name: 'propose-plan-output',
 		description: 'Record a Plan Output proposal for human review.',
-		executionMode: 'exclusive',
 		inputPipe: planOutputProposalPipe,
 		execute(input, context) {
 			return context.recordProposal({ type: 'proposed-plan-output', output: input })
@@ -46,7 +44,6 @@ function proposeRevisionOutputTool(): CoreAgentRunTool {
 	return {
 		name: 'propose-revision-output',
 		description: 'Record a Revision Output proposal for human review.',
-		executionMode: 'exclusive',
 		inputPipe: revisionOutputProposalPipe,
 		execute(input, context) {
 			return context.recordProposal({ type: 'proposed-revision-output', output: input })

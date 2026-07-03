@@ -76,7 +76,7 @@ export function useAgentRunMessageSend(agentRunId: Ref<string | null>, options: 
 function appendedEvent(events: readonly AgentRunEvent[], event: AgentRunEvent): AgentRunEvent[] {
 	return events.some((candidate) => candidate.id === event.id)
 		? [...events]
-		: [...events, event].sort((left, right) => left.sequence - right.sequence)
+		: [...events, event].sort((left, right) => left.cursor.localeCompare(right.cursor))
 }
 
 function requireAgentRunId(agentRunId: string | null): string {

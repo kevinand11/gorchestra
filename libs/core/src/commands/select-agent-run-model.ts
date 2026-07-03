@@ -105,7 +105,7 @@ if (import.meta.vitest) {
 				value: {
 					id: 'agent-run-event-1',
 					agentRunId: 'agent-run-1',
-					sequence: 1,
+					cursor: '01J00000000000000000000001',
 					occurred: { at: '2026-06-10T12:00:00.000Z' },
 					body: {
 						type: 'agent-run-model-selected',

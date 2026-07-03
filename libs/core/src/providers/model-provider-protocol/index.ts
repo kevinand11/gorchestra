@@ -1,3 +1,5 @@
+import { streamText } from 'ai'
+
 import {
 	createAnthropicMessagesModelProviderProtocolProvider,
 	type AnthropicMessagesModelProviderProtocolProvider,
@@ -6,23 +8,22 @@ import {
 	createGoogleGenerativeAIModelProviderProtocolProvider,
 	type GoogleGenerativeAIModelProviderProtocolProvider,
 } from './google-generative-ai'
-import {
-	createOpenAICompletionsModelProviderProtocolProvider,
-	type OpenAICompletionsModelProviderProtocolProvider,
-} from './openai-completions'
 import { createOpenAIResponsesModelProviderProtocolProvider, type OpenAIResponsesModelProviderProtocolProvider } from './openai-responses'
+import { providerFailureReason } from './provider-failures'
 import type {
-	ModelAgentTurnError,
-	ModelAgentTurnInput,
-	ModelAgentTurnOutput,
+	AISDKLanguageModelResolution,
+	AISDKLanguageModelResolutionInput,
+	ModelAgentTurnAccessError,
 	ModelProviderProtocolAccess,
 	ModelProviderProtocolPreflight,
 	ModelProviderProtocolPreflightError,
 	ModelProviderProtocolPreflightFailureReason,
 	ModelProviderProtocolPreflightModelInput,
-	ModelProviderProtocolProviderPreflightModelInput,
+	ModelProviderProtocolProviderResolveInput,
 	ModelProviderProtocolProviders,
+	ResolveAISDKLanguageModelError,
 } from './types'
+import type { AgentRunModelMessageOutcome } from '../../domain/agent-run'
 import type { ArchivePeriod, Id } from '../../domain/commons'
 import type { ModelProvider, ModelProviderHeader, ModelProviderProtocol, ModelProviderProtocolType } from '../../domain/model-provider'
 import type { Secret } from '../../domain/secret'
@@ -42,7 +43,6 @@ import { validateCoreServiceOutput } from '../../validation'
 export interface ModelProviderProtocolProviderImplementations {
 	anthropicMessages?: AnthropicMessagesModelProviderProtocolProvider
 	openAIResponses?: OpenAIResponsesModelProviderProtocolProvider
-	openAICompletions?: OpenAICompletionsModelProviderProtocolProvider
 	googleGenerativeAI?: GoogleGenerativeAIModelProviderProtocolProvider
 }
 
@@ -56,8 +56,8 @@ export function createModelProviderProtocolProviders(
 		preflightModel(input) {
 			return preflightModelWithConcreteProviders(services, concrete, input)
 		},
-		runModelAgentTurn(input) {
-			return runModelAgentTurnWithConcreteProviders(services, concrete, input)
+		resolveLanguageModel(input) {
+			return resolveLanguageModelWithConcreteProviders(services, concrete, input)
 		},
 	}
 }
@@ -68,7 +68,6 @@ function createConcreteProviders(
 	return {
 		anthropicMessages: createAnthropicMessagesModelProviderProtocolProvider(),
 		openAIResponses: createOpenAIResponsesModelProviderProtocolProvider(),
-		openAICompletions: createOpenAICompletionsModelProviderProtocolProvider(),
 		googleGenerativeAI: createGoogleGenerativeAIModelProviderProtocolProvider(),
 		...implementations,
 	}
@@ -83,72 +82,73 @@ async function preflightModelWithConcreteProviders(
 	if (!access.ok) return access
 	if (!isProtocolAccess(access.value)) return { ok: true, value: access.value }
 
-	const preflight = await concretePreflight(concrete, input, access.value)
+	const resolution = concreteResolveLanguageModel(concrete, { ...input, mode: 'preflight', access: access.value })
+	if (!resolution.ok)
+		return {
+			ok: true,
+			value: modelProviderProtocolPreflight(input.modelProvider.protocol, { type: 'failed', reason: resolution.error }),
+		}
+
+	const preflight = await runGenerationPreflight(resolution.value)
 	return { ok: true, value: modelProviderProtocolPreflight(input.modelProvider.protocol, preflight) }
 }
 
-async function runModelAgentTurnWithConcreteProviders(
-	services: CoreServices,
-	concrete: Required<ModelProviderProtocolProviderImplementations>,
-	input: ModelAgentTurnInput,
-): Promise<Result<ModelAgentTurnOutput, ModelAgentTurnError>> {
-	const access = await resolveModelProviderProtocolAccessFromStorage(services, input.modelProvider)
-	if (!access.ok) return access
-	if (!isProtocolAccess(access.value)) return { ok: true, value: modelAccessFailureOutput(access.value) }
-
-	const concreteProvider = concreteProviderForProtocol(concrete, input.modelProvider.protocol)
-	return concreteProvider.runModelAgentTurn === undefined
-		? { ok: true, value: agentTurnNotImplementedOutput(input.modelProvider.protocol) }
-		: {
-				ok: true,
-				value: await concreteProvider.runModelAgentTurn({
-					...input,
-					modelProvider: input.modelProvider as never,
-					access: access.value,
-				}),
-			}
-}
-
-function modelAccessFailureOutput(preflight: ModelProviderProtocolPreflight): ModelAgentTurnOutput {
-	return { outcome: { type: 'error', message: null, summary: preflight.summary } }
-}
-
-function agentTurnNotImplementedOutput(protocol: ModelProviderProtocol): ModelAgentTurnOutput {
-	return { outcome: { type: 'error', message: null, summary: `${protocol.type} agent turns are not implemented.` } }
-}
-
-function concreteProviderForProtocol(concrete: Required<ModelProviderProtocolProviderImplementations>, protocol: ModelProviderProtocol) {
-	switch (protocol.type) {
-		case 'anthropic-messages':
-			return concrete.anthropicMessages
-		case 'openai-responses':
-			return concrete.openAIResponses
-		case 'openai-completions':
-			return concrete.openAICompletions
-		case 'google-generative-ai':
-			return concrete.googleGenerativeAI
-		default:
-			throw new Error(`Unexpected Model Provider Protocol: ${String(protocol satisfies never)}`)
+async function runGenerationPreflight(
+	resolution: AISDKLanguageModelResolution,
+): Promise<{ type: 'passed' } | { type: 'failed'; reason: ModelProviderProtocolPreflightFailureReason }> {
+	try {
+		const result = streamText({
+			model: resolution.languageModel,
+			messages: [{ role: 'user', content: 'Reply with OK.' }],
+			maxOutputTokens: 4,
+			maxRetries: 0,
+			...(resolution.providerOptions === undefined ? {} : { providerOptions: resolution.providerOptions }),
+		})
+		for await (const part of result.stream) {
+			if (part.type === 'error') throw part.error
+		}
+		const finishReason = await result.finishReason
+		return finishReason === 'content-filter'
+			? { type: 'failed', reason: { type: 'provider-content-filtered' } }
+			: finishReason === 'error'
+				? { type: 'failed', reason: { type: 'provider-generation-failed' } }
+				: { type: 'passed' }
+	} catch (error) {
+		return { type: 'failed', reason: providerFailureReason(error) }
 	}
 }
 
-function concretePreflight(
+async function resolveLanguageModelWithConcreteProviders(
+	services: CoreServices,
 	concrete: Required<ModelProviderProtocolProviderImplementations>,
-	input: ModelProviderProtocolPreflightModelInput,
-	access: ModelProviderProtocolAccess,
-) {
+	input: Omit<Extract<AISDKLanguageModelResolutionInput, { mode: 'agent-run' }>, 'access'>,
+): Promise<Result<AISDKLanguageModelResolution | AgentRunModelMessageOutcome, ResolveAISDKLanguageModelError | ModelAgentTurnAccessError>> {
+	const access = await resolveModelProviderProtocolAccessFromStorage(services, input.modelProvider)
+	if (!access.ok) return access
+	if (!isProtocolAccess(access.value)) return { ok: true, value: modelAccessFailureOutcome(access.value) }
+
+	const resolution = concreteResolveLanguageModel(concrete, { ...input, access: access.value })
+	return resolution.ok ? resolution : resolution
+}
+
+function concreteResolveLanguageModel(
+	concrete: Required<ModelProviderProtocolProviderImplementations>,
+	input: AISDKLanguageModelResolutionInput,
+): Result<AISDKLanguageModelResolution, ResolveAISDKLanguageModelError> {
 	switch (input.modelProvider.protocol.type) {
 		case 'anthropic-messages':
-			return concrete.anthropicMessages.preflightModel(protocolProviderInput(input, access, 'anthropic-messages'))
+			return concrete.anthropicMessages.resolveLanguageModel(protocolProviderInput(input, 'anthropic-messages'))
 		case 'openai-responses':
-			return concrete.openAIResponses.preflightModel(protocolProviderInput(input, access, 'openai-responses'))
-		case 'openai-completions':
-			return concrete.openAICompletions.preflightModel(protocolProviderInput(input, access, 'openai-completions'))
+			return concrete.openAIResponses.resolveLanguageModel(protocolProviderInput(input, 'openai-responses'))
 		case 'google-generative-ai':
-			return concrete.googleGenerativeAI.preflightModel(protocolProviderInput(input, access, 'google-generative-ai'))
+			return concrete.googleGenerativeAI.resolveLanguageModel(protocolProviderInput(input, 'google-generative-ai'))
 		default:
 			throw new Error(`Unexpected Model Provider Protocol: ${String(input.modelProvider.protocol satisfies never)}`)
 	}
+}
+
+function modelAccessFailureOutcome(preflight: ModelProviderProtocolPreflight): AgentRunModelMessageOutcome {
+	return { type: 'error', reason: { type: 'runtime-error' }, message: null, summary: preflight.summary }
 }
 
 export function modelProviderProtocolPreflight(
@@ -165,12 +165,12 @@ type ModelProviderSecretReadiness =
 	| { type: 'passed'; secrets: ResolvableSecretValue[] }
 	| { type: 'failed'; preflight: ModelProviderProtocolPreflight }
 
-type ModelProviderSecretReadinessError = ModelAgentTurnError
+type ModelProviderSecretReadinessError = ModelAgentTurnAccessError
 
 async function resolveModelProviderProtocolAccessFromStorage(
 	services: CoreServices,
 	modelProvider: ModelProvider,
-): Promise<Result<ModelProviderProtocolAccess | ModelProviderProtocolPreflight, ModelAgentTurnError>> {
+): Promise<Result<ModelProviderProtocolAccess | ModelProviderProtocolPreflight, ModelAgentTurnAccessError>> {
 	const secrets = await readModelProviderSecretReadiness(services, modelProvider)
 	if (!secrets.ok) return secrets
 	return secrets.value.type === 'failed'
@@ -376,15 +376,13 @@ function unresolvedSecretPreflight(protocol: ModelProviderProtocol, secretId: Id
 }
 
 function protocolProviderInput<Protocol extends ModelProviderProtocolType>(
-	input: ModelProviderProtocolPreflightModelInput,
-	access: ModelProviderProtocolAccess,
+	input: AISDKLanguageModelResolutionInput,
 	protocol: Protocol,
-): ModelProviderProtocolProviderPreflightModelInput<Protocol> {
+): ModelProviderProtocolProviderResolveInput<Protocol> {
 	return {
 		...input,
 		modelProvider: { ...input.modelProvider, protocol: { type: protocol } },
-		access,
-	} as ModelProviderProtocolProviderPreflightModelInput<Protocol>
+	} as ModelProviderProtocolProviderResolveInput<Protocol>
 }
 
 function isProtocolAccess(value: ModelProviderProtocolAccess | ModelProviderProtocolPreflight): value is ModelProviderProtocolAccess {
@@ -411,16 +409,22 @@ export function modelProviderProtocolFailureSummary(
 			return `${name} model provider header Secret is not active.`
 		case 'model-provider-secret-unresolved':
 			return `${name} model provider Secret value could not be resolved.`
+		case 'model-thinking-level-unavailable':
+			return `${name} Model thinking level ${reason.thinkingLevel} is unavailable.`
 		case 'provider-authentication-failed':
 			return `${name} authentication failed.`
 		case 'provider-access-denied':
 			return `${name} access was denied.`
 		case 'provider-model-not-found':
 			return `${name} model was not found.`
+		case 'provider-rate-limited':
+			return `${name} rate limit was reached.`
+		case 'provider-content-filtered':
+			return `${name} content filter blocked generation.`
 		case 'provider-unavailable':
-			return `${name} model preflight failed.`
-		case 'provider-preflight-not-implemented':
-			return `${name} model preflight is not implemented.`
+			return `${name} model preflight failed because the provider was unavailable.`
+		case 'provider-generation-failed':
+			return `${name} model preflight generation failed.`
 		default:
 			throw new Error(`Unexpected Model Provider Protocol preflight failure reason: ${String(reason satisfies never)}`)
 	}
@@ -432,8 +436,6 @@ function protocolDisplayName(protocol: ModelProviderProtocol): string {
 			return 'Anthropic Messages'
 		case 'openai-responses':
 			return 'OpenAI Responses'
-		case 'openai-completions':
-			return 'OpenAI Completions'
 		case 'google-generative-ai':
 			return 'Google Generative AI'
 		default:
@@ -443,19 +445,17 @@ function protocolDisplayName(protocol: ModelProviderProtocol): string {
 
 export type { AnthropicMessagesModelProviderProtocolProvider } from './anthropic-messages'
 export type { GoogleGenerativeAIModelProviderProtocolProvider } from './google-generative-ai'
-export type { OpenAICompletionsModelProviderProtocolProvider } from './openai-completions'
 export type { OpenAIResponsesModelProviderProtocolProvider } from './openai-responses'
 export type {
-	ModelAgentTurnInput,
-	ModelAgentTurnOutput,
+	AISDKLanguageModelResolution,
+	AISDKLanguageModelResolutionInput,
 	ModelProviderProtocolAccess,
 	ModelProviderProtocolPreflight,
 	ModelProviderProtocolPreflightError,
 	ModelProviderProtocolPreflightFailureReason,
 	ModelProviderProtocolProvider,
-	ModelProviderProtocolProviderPreflight,
-	ModelProviderProtocolProviderPreflightModelInput,
 	ModelProviderProtocolProviders,
+	ResolveAISDKLanguageModelError,
 } from './types'
 
 if (import.meta.vitest) {
@@ -468,41 +468,20 @@ if (import.meta.vitest) {
 			let observedAccess: ModelProviderProtocolAccess | null = null
 			const providers = createModelProviderProtocolProviders(services, {
 				openAIResponses: {
-					preflightModel(input) {
+					resolveLanguageModel(input) {
 						observedAccess = input.access
-						return Promise.resolve({ type: 'passed' })
+						return { ok: true, value: { languageModel: 'language-model', providerOptions: undefined } }
 					},
 				},
 			})
 
 			const result = await providers.preflightModel(openAIResponsesPreflightInput())
 
-			expect(result).toEqual({ ok: true, value: { type: 'passed', summary: 'OpenAI Responses model preflight passed.' } })
+			expect(result).toMatchObject({ ok: true })
 			expect(observedAccess).toEqual({
 				auth: { type: 'apiKey', plaintext: 'token' },
 				headers: [{ name: 'OpenAI-Organization', plaintext: 'org-1' }],
 			})
-		})
-
-		it('dispatches OpenAI Completions preflight', async () => {
-			const services = coreServices(() => Promise.resolve({ 'secret-1': 'token', 'secret-2': 'org-1' }))
-			let observedProviderModelId: string | null = null
-			const providers = createModelProviderProtocolProviders(services, {
-				openAICompletions: {
-					preflightModel(input) {
-						observedProviderModelId = input.model.providerModelId
-						return Promise.resolve({ type: 'passed' })
-					},
-				},
-			})
-
-			const result = await providers.preflightModel({
-				...openAIResponsesPreflightInput(),
-				modelProvider: openAICompletionsModelProvider(),
-			})
-
-			expect(result).toEqual({ ok: true, value: { type: 'passed', summary: 'OpenAI Completions model preflight passed.' } })
-			expect(observedProviderModelId).toBe('gpt-5')
 		})
 
 		it('returns failed preflight when a requested Secret value is missing', async () => {
@@ -530,112 +509,20 @@ if (import.meta.vitest) {
 			let observedAccess: ModelProviderProtocolAccess | null = null
 			const providers = createModelProviderProtocolProviders(services, {
 				openAIResponses: {
-					preflightModel: () => Promise.resolve({ type: 'passed' }),
-					runModelAgentTurn(input) {
+					resolveLanguageModel(input) {
 						observedAccess = input.access
-						return Promise.resolve(stopTurnOutput())
+						return { ok: true, value: { languageModel: 'language-model', providerOptions: undefined } }
 					},
 				},
 			})
 
-			const result = await providers.runModelAgentTurn(openAIResponsesTurnInput())
+			const result = await providers.resolveLanguageModel(openAIResponsesResolutionInput())
 
-			expect(result).toEqual({ ok: true, value: stopTurnOutput() })
+			expect(result).toEqual({ ok: true, value: { languageModel: 'language-model', providerOptions: undefined } })
 			expect(observedAccess).toEqual({
 				auth: { type: 'apiKey', plaintext: 'auth-ref-plaintext' },
 				headers: [{ name: 'OpenAI-Organization', plaintext: 'org-ref-plaintext' }],
 			})
-		})
-
-		it('returns model error outcomes for missing model Agent turn Secrets', async () => {
-			const providers = createModelProviderProtocolProviders(coreServicesWithSecrets([]), {
-				openAIResponses: neverCalledOpenAIResponsesProvider(),
-			})
-
-			const result = await providers.runModelAgentTurn(openAIResponsesTurnInput())
-
-			expect(result).toEqual({
-				ok: true,
-				value: {
-					outcome: {
-						type: 'error',
-						message: null,
-						summary: 'OpenAI Responses model provider auth Secret is missing.',
-					},
-				},
-			})
-		})
-
-		it('returns model error outcomes for archived model Agent turn Secrets', async () => {
-			const services = coreServicesWithSecrets([secretRecord('secret-1'), secretRecord('secret-2', 'protected-ref', true)])
-			const providers = createModelProviderProtocolProviders(services, { openAIResponses: neverCalledOpenAIResponsesProvider() })
-
-			const result = await providers.runModelAgentTurn(openAIResponsesTurnInput())
-
-			expect(result).toEqual({
-				ok: true,
-				value: {
-					outcome: {
-						type: 'error',
-						message: null,
-						summary: 'OpenAI Responses model provider header Secret is not active.',
-					},
-				},
-			})
-		})
-
-		it('returns invalid Core Service output for malformed resolved Secret values during model Agent turns', async () => {
-			const services = coreServicesWithSecrets([secretRecord('secret-1'), secretRecord('secret-2')], () =>
-				Promise.resolve({ 'secret-1': 123 } as never),
-			)
-			const providers = createModelProviderProtocolProviders(services, { openAIResponses: neverCalledOpenAIResponsesProvider() })
-
-			const result = await providers.runModelAgentTurn(openAIResponsesTurnInput())
-
-			expect(result).toMatchObject({
-				ok: false,
-				error: { type: 'invalid-core-service-output', service: 'secrets', operation: 'resolveSecretValues' },
-			})
-		})
-
-		it('dispatches Anthropic Messages preflight', async () => {
-			const providers = createModelProviderProtocolProviders(
-				coreServices(() => Promise.resolve({})),
-				{
-					anthropicMessages: {
-						preflightModel: () => Promise.resolve({ type: 'failed', reason: { type: 'provider-model-not-found' } }),
-					},
-				},
-			)
-
-			const result = await providers.preflightModel({ ...openAIResponsesPreflightInput(), modelProvider: anthropicModelProvider() })
-
-			expect(result).toEqual({
-				ok: true,
-				value: {
-					type: 'failed',
-					reason: { type: 'provider-model-not-found' },
-					summary: 'Anthropic Messages model was not found.',
-				},
-			})
-		})
-
-		it('dispatches Google Generative AI preflight', async () => {
-			const providers = createModelProviderProtocolProviders(
-				coreServices(() => Promise.resolve({})),
-				{
-					googleGenerativeAI: {
-						preflightModel: () => Promise.resolve({ type: 'passed' }),
-					},
-				},
-			)
-
-			const result = await providers.preflightModel({
-				...openAIResponsesPreflightInput(),
-				modelProvider: googleGenerativeAIModelProvider(),
-			})
-
-			expect(result).toEqual({ ok: true, value: { type: 'passed', summary: 'Google Generative AI model preflight passed.' } })
 		})
 	})
 
@@ -650,15 +537,12 @@ if (import.meta.vitest) {
 		}
 	}
 
-	function openAIResponsesTurnInput(): ModelAgentTurnInput {
+	function openAIResponsesResolutionInput(): Omit<Extract<AISDKLanguageModelResolutionInput, { mode: 'agent-run' }>, 'access'> {
 		return {
+			mode: 'agent-run',
 			model: openAIResponsesModel(),
 			modelProvider: openAIResponsesModelProvider(),
-			messages: [],
-			tools: [],
 			thinking: null,
-			signal: new AbortController().signal,
-			onDelta: () => undefined,
 		}
 	}
 
@@ -676,10 +560,6 @@ if (import.meta.vitest) {
 		}
 	}
 
-	function stopTurnOutput(): ModelAgentTurnOutput {
-		return { outcome: { type: 'stop', message: { content: [], usage: null, providerResponseRef: null } } }
-	}
-
 	function openAIResponsesModelProvider(): ModelProvider {
 		return {
 			id: 'model-provider-1',
@@ -694,21 +574,9 @@ if (import.meta.vitest) {
 		}
 	}
 
-	function openAICompletionsModelProvider(): ModelProvider {
-		return { ...openAIResponsesModelProvider(), protocol: { type: 'openai-completions' } }
-	}
-
-	function anthropicModelProvider(): ModelProvider {
-		return { ...openAIResponsesModelProvider(), protocol: { type: 'anthropic-messages' }, auth: null, headers: [] }
-	}
-
-	function googleGenerativeAIModelProvider(): ModelProvider {
-		return { ...openAIResponsesModelProvider(), protocol: { type: 'google-generative-ai' }, auth: null, headers: [] }
-	}
-
 	function neverCalledOpenAIResponsesProvider(): OpenAIResponsesModelProviderProtocolProvider {
 		return {
-			preflightModel() {
+			resolveLanguageModel() {
 				throw new Error('OpenAI Responses provider should not be called.')
 			},
 		}

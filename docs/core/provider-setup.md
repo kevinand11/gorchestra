@@ -1,6 +1,6 @@
 # Core Provider Setup
 
-Core owns provider behavior for Source Control Providers and Model Provider Protocols. Consumers configure provider records and provide Core Services for Secret-at-rest protection and plaintext Secret resolution; concrete Core providers receive resolved values and perform the external SDK call.
+Core owns provider behavior for Source Control Providers and Model Provider Protocols. Consumers configure provider records and provide Core Services for Secret-at-rest protection and plaintext Secret resolution; concrete Core providers receive resolved values and perform the external SDK or AI SDK call.
 
 See also:
 
@@ -28,14 +28,13 @@ Model Providers define a stable protocol, base URL, optional API-key auth Secret
 
 Supported Model Provider Protocols:
 
-| Protocol               | Typical base URL                            | Access                                                                 | Reachability check                    |
-| ---------------------- | ------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------- |
-| `openai-responses`     | `https://api.openai.com/v1`                 | API key Secret, optional header Secrets such as `OpenAI-Organization`  | OpenAI model metadata retrieval       |
-| `openai-completions`   | `https://api.openai.com/v1`                 | API key Secret, optional header Secrets such as `OpenAI-Organization`  | OpenAI model metadata retrieval       |
-| `anthropic-messages`   | `https://api.anthropic.com`                 | API key Secret, optional header Secrets such as Anthropic beta headers | Anthropic model metadata retrieval    |
-| `google-generative-ai` | `https://generativelanguage.googleapis.com` | API key Secret, optional Google header Secrets                         | Google GenAI model metadata retrieval |
+| Protocol               | Typical base URL                            | Access                                                                 | Reachability check                          |
+| ---------------------- | ------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------- |
+| `openai-responses`     | `https://api.openai.com/v1`                 | API key Secret, optional header Secrets such as `OpenAI-Organization`  | Tiny bounded AI SDK `streamText` generation |
+| `anthropic-messages`   | `https://api.anthropic.com`                 | API key Secret, optional header Secrets such as Anthropic beta headers | Tiny bounded AI SDK `streamText` generation |
+| `google-generative-ai` | `https://generativelanguage.googleapis.com` | API key Secret, optional Google header Secrets                         | Tiny bounded AI SDK `streamText` generation |
 
-Model Preflight is observational. It checks stored Model and Model Provider facts, archived state, active provider access Secret references, plaintext Secret resolution, and provider model reachability. It returns safe Validation Evidence and does not perform text generation or write Portfolio lifecycle facts.
+Model Preflight is observational. It checks stored Model and Model Provider facts, archived state, active provider access Secret references, plaintext Secret resolution, and AI SDK-backed provider generation reachability with a tiny bounded no-tool `streamText` probe. It returns safe Validation Evidence and does not write Agent Run Events, Portfolio lifecycle facts, readiness state, or history. The generation output is ignored. Model Preflight currently sends no thinking options; future work should verify configured thinking behavior.
 
 ### Example provider records
 
@@ -94,7 +93,7 @@ A provider verification test should arrange Core the same way a Consumer would:
 5. Make the Secret Core Service resolve requested Secret value refs to plaintext values only inside the test process.
 6. Call the relevant preflight operation and assert on safe Validation Evidence.
 
-For Model Provider Protocol tests, assert that success returns Model Preflight Validation Evidence with `passed: true`; for expected provider failures, assert on the safe summary/reason rather than raw SDK exceptions. Avoid tests that depend on generation output, token usage, or mutable provider-side state. Prefer model or repository metadata endpoints because preflight should prove reachability with minimal side effects.
+For Model Provider Protocol tests, assert that success returns Model Preflight Validation Evidence with `passed: true`; for expected provider failures, assert on the safe summary/reason rather than raw SDK exceptions. Avoid tests that depend on generation output text, token usage, or mutable provider-side state. Model Preflight should use the minimal AI SDK generation probe because AI SDK does not expose a provider-agnostic model metadata existence check.
 
 Minimal Model Preflight test shape:
 

@@ -1,6 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { auditStampPipe, freeFormStringPipe, idPipe, nonNegativeIntegerPipe, runtimeRecordPipe } from './commons'
+import { auditStampPipe, freeFormStringPipe, idPipe, nonEmptyTrimmedStringPipe, nonNegativeIntegerPipe, runtimeRecordPipe } from './commons'
 import { modelThinkingLevelPipe } from './model'
 import { planOutputProposalPipe, revisionOutputProposalPipe } from './proposals'
 
@@ -47,6 +47,12 @@ export type PlanningAgentRun = PipeOutput<typeof planningAgentRunPipe>
 
 const nullableFreeFormStringPipe = v.nullable(freeFormStringPipe)
 const unknownPipe = v.any<unknown>()
+const toolCallIdPipe = nonEmptyTrimmedStringPipe
+
+export const agentRunEventCursorPipe = nonEmptyTrimmedStringPipe
+	.pipe((value) => value.toUpperCase())
+	.pipe(v.custom((value) => /^[0-9A-HJKMNP-TV-Z]{26}$/.test(value), 'Expected an Agent Run Event cursor.'))
+export type AgentRunEventCursor = PipeOutput<typeof agentRunEventCursorPipe>
 
 export const agentRunTextContentPipe = v.object({ type: v.eq('text'), text: freeFormStringPipe })
 export type AgentRunTextContent = PipeOutput<typeof agentRunTextContentPipe>
@@ -83,7 +89,7 @@ export type AgentRunModelUsage = PipeOutput<typeof agentRunModelUsagePipe>
 export const agentRunModelContentPipe = v.discriminate((value) => value.type, {
 	text: agentRunTextContentPipe,
 	thinking: v.object({ type: v.eq('thinking'), text: freeFormStringPipe, providerReplay: v.nullable(freeFormStringPipe) }),
-	'tool-call': v.object({ type: v.eq('tool-call'), toolCallId: idPipe, toolName: freeFormStringPipe, input: unknownPipe }),
+	'tool-call': v.object({ type: v.eq('tool-call'), toolCallId: toolCallIdPipe, toolName: freeFormStringPipe, input: unknownPipe }),
 })
 export type AgentRunModelContent = PipeOutput<typeof agentRunModelContentPipe>
 
@@ -94,18 +100,56 @@ export const agentRunModelMessagePipe = v.object({
 })
 export type AgentRunModelMessage = PipeOutput<typeof agentRunModelMessagePipe>
 
-export const agentRunModelAbortReasonPipe = v.discriminate((value) => value.type, {
-	'operator-interrupt': v.object({ type: v.eq('operator-interrupt'), interruptEventId: idPipe }),
-	'runtime-interrupt': v.object({ type: v.eq('runtime-interrupt'), interruptEventId: idPipe }),
+const providerGenerationFailureReasonPipes = {
+	'provider-authentication-failed': v.object({ type: v.eq('provider-authentication-failed') }),
+	'provider-access-denied': v.object({ type: v.eq('provider-access-denied') }),
+	'provider-model-not-found': v.object({ type: v.eq('provider-model-not-found') }),
+	'provider-rate-limited': v.object({ type: v.eq('provider-rate-limited') }),
+	'provider-content-filtered': v.object({ type: v.eq('provider-content-filtered') }),
+	'provider-unavailable': v.object({ type: v.eq('provider-unavailable') }),
+	'provider-generation-failed': v.object({ type: v.eq('provider-generation-failed') }),
+}
+
+export const modelProviderGenerationFailureReasonPipe = v.discriminate((value) => value.type, providerGenerationFailureReasonPipes)
+export type ModelProviderGenerationFailureReason = PipeOutput<typeof modelProviderGenerationFailureReasonPipe>
+
+const runtimeErrorReasonPipes = {
+	...providerGenerationFailureReasonPipes,
+	'runtime-error': v.object({ type: v.eq('runtime-error') }),
+}
+
+export const turnErrorReasonPipe = v.discriminate((value) => value.type, runtimeErrorReasonPipes)
+export type TurnErrorReason = PipeOutput<typeof turnErrorReasonPipe>
+
+export const turnAbortReasonPipe = v.discriminate((value) => value.type, {
+	'operator-interrupt': v.object({ type: v.eq('operator-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
+	'runtime-interrupt': v.object({ type: v.eq('runtime-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
 	timeout: v.object({ type: v.eq('timeout') }),
+	'abort-signal': v.object({ type: v.eq('abort-signal') }),
+})
+export type TurnAbortReason = PipeOutput<typeof turnAbortReasonPipe>
+
+export const modelMessageErrorReasonPipe = v.discriminate((value) => value.type, runtimeErrorReasonPipes)
+export type ModelMessageErrorReason = PipeOutput<typeof modelMessageErrorReasonPipe>
+
+export const agentRunModelAbortReasonPipe = v.discriminate((value) => value.type, {
+	'operator-interrupt': v.object({ type: v.eq('operator-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
+	'runtime-interrupt': v.object({ type: v.eq('runtime-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
+	timeout: v.object({ type: v.eq('timeout') }),
+	'abort-signal': v.object({ type: v.eq('abort-signal') }),
 })
 export type AgentRunModelAbortReason = PipeOutput<typeof agentRunModelAbortReasonPipe>
 
 export const agentRunModelMessageOutcomePipe = v.discriminate((value) => value.type, {
 	stop: v.object({ type: v.eq('stop'), message: agentRunModelMessagePipe }),
-	'tool-use': v.object({ type: v.eq('tool-use'), message: agentRunModelMessagePipe }),
+	'tool-calls': v.object({ type: v.eq('tool-calls'), message: agentRunModelMessagePipe }),
 	length: v.object({ type: v.eq('length'), message: agentRunModelMessagePipe, summary: nullableFreeFormStringPipe }),
-	error: v.object({ type: v.eq('error'), message: v.nullable(agentRunModelMessagePipe), summary: freeFormStringPipe }),
+	error: v.object({
+		type: v.eq('error'),
+		reason: modelMessageErrorReasonPipe,
+		message: v.nullable(agentRunModelMessagePipe),
+		summary: freeFormStringPipe,
+	}),
 	aborted: v.object({
 		type: v.eq('aborted'),
 		reason: agentRunModelAbortReasonPipe,
@@ -131,44 +175,32 @@ export const agentRunToolOutputPipe = v.object({
 })
 export type AgentRunToolOutput = PipeOutput<typeof agentRunToolOutputPipe>
 
-export const agentRunToolExecutionModePipe = v.in(['parallel-safe', 'exclusive'])
-export type AgentRunToolExecutionMode = PipeOutput<typeof agentRunToolExecutionModePipe>
-
-export const agentRunToolRefusalReasonPipe = v.discriminate((value) => value.type, {
+export const agentRunToolCallErrorReasonPipe = v.discriminate((value) => value.type, {
 	'unknown-tool': v.object({ type: v.eq('unknown-tool') }),
 	'tool-disabled': v.object({ type: v.eq('tool-disabled') }),
 	'invalid-input': v.object({ type: v.eq('invalid-input') }),
 	'not-allowed-for-agent-run': v.object({ type: v.eq('not-allowed-for-agent-run') }),
 	'target-closed': v.object({ type: v.eq('target-closed') }),
 	'runtime-policy': v.object({ type: v.eq('runtime-policy') }),
-})
-export type AgentRunToolRefusalReason = PipeOutput<typeof agentRunToolRefusalReasonPipe>
-
-export const agentRunToolCallSchedulingPipe = v.discriminate((value) => value.type, {
-	accepted: v.object({ type: v.eq('accepted'), executionMode: agentRunToolExecutionModePipe }),
-	refused: v.object({ type: v.eq('refused'), reason: agentRunToolRefusalReasonPipe, output: agentRunToolOutputPipe }),
-})
-export type AgentRunToolCallScheduling = PipeOutput<typeof agentRunToolCallSchedulingPipe>
-
-export const agentRunToolErrorReasonPipe = v.discriminate((value) => value.type, {
 	'tool-runtime-error': v.object({ type: v.eq('tool-runtime-error') }),
 	'tool-timeout': v.object({ type: v.eq('tool-timeout') }),
 	'sandbox-error': v.object({ type: v.eq('sandbox-error') }),
 	'external-dependency-error': v.object({ type: v.eq('external-dependency-error') }),
 })
-export type AgentRunToolErrorReason = PipeOutput<typeof agentRunToolErrorReasonPipe>
+export type AgentRunToolCallErrorReason = PipeOutput<typeof agentRunToolCallErrorReasonPipe>
 
 export const agentRunToolAbortReasonPipe = v.discriminate((value) => value.type, {
-	'operator-interrupt': v.object({ type: v.eq('operator-interrupt'), interruptEventId: idPipe }),
-	'runtime-interrupt': v.object({ type: v.eq('runtime-interrupt'), interruptEventId: idPipe }),
+	'operator-interrupt': v.object({ type: v.eq('operator-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
+	'runtime-interrupt': v.object({ type: v.eq('runtime-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
 	timeout: v.object({ type: v.eq('timeout') }),
+	'abort-signal': v.object({ type: v.eq('abort-signal') }),
 	'interrupted-before-execution': v.object({ type: v.eq('interrupted-before-execution') }),
 })
 export type AgentRunToolAbortReason = PipeOutput<typeof agentRunToolAbortReasonPipe>
 
 export const agentRunToolCallOutcomePipe = v.discriminate((value) => value.type, {
 	success: v.object({ type: v.eq('success'), output: agentRunToolOutputPipe }),
-	error: v.object({ type: v.eq('error'), reason: agentRunToolErrorReasonPipe, output: agentRunToolOutputPipe }),
+	error: v.object({ type: v.eq('error'), reason: agentRunToolCallErrorReasonPipe, output: agentRunToolOutputPipe }),
 	aborted: v.object({ type: v.eq('aborted'), reason: agentRunToolAbortReasonPipe, output: v.nullable(agentRunToolOutputPipe) }),
 })
 export type AgentRunToolCallOutcome = PipeOutput<typeof agentRunToolCallOutcomePipe>
@@ -192,9 +224,8 @@ export const agentRunCompactionSourcePipe = v.discriminate((value) => value.type
 export type AgentRunCompactionSource = PipeOutput<typeof agentRunCompactionSourcePipe>
 
 export const agentRunTurnStartReasonPipe = v.discriminate((value) => value.type, {
-	input: v.object({ type: v.eq('input'), inputEventIds: v.array(idPipe) }),
-	'tool-results': v.object({ type: v.eq('tool-results'), toolResolutionEventIds: v.array(idPipe) }),
-	retry: v.object({ type: v.eq('retry'), previousTurnStartedEventId: idPipe }),
+	input: v.object({ type: v.eq('input'), inputEventCursors: v.array(agentRunEventCursorPipe) }),
+	retry: v.object({ type: v.eq('retry'), previousTurnStartedCursor: agentRunEventCursorPipe }),
 })
 export type AgentRunTurnStartReason = PipeOutput<typeof agentRunTurnStartReasonPipe>
 
@@ -222,29 +253,38 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 	'input-message': v.object({ type: v.eq('input-message'), source: agentRunInputSourcePipe, content: v.array(agentRunTextContentPipe) }),
 	'turn-started': v.object({
 		type: v.eq('turn-started'),
-		contextThroughSequence: nonNegativeIntegerPipe,
+		contextThroughCursor: v.nullable(agentRunEventCursorPipe),
 		reason: agentRunTurnStartReasonPipe,
 	}),
-	'turn-ended': v.object({ type: v.eq('turn-ended'), turnStartedEventId: idPipe }),
-	'model-message-started': v.object({ type: v.eq('model-message-started'), turnStartedEventId: idPipe }),
+	'turn-ended': v.object({
+		type: v.eq('turn-ended'),
+		turnStartedCursor: agentRunEventCursorPipe,
+		outcome: v.discriminate((outcome) => outcome.type, {
+			completed: v.object({ type: v.eq('completed') }),
+			error: v.object({ type: v.eq('error'), reason: turnErrorReasonPipe, summary: freeFormStringPipe }),
+			aborted: v.object({ type: v.eq('aborted'), reason: turnAbortReasonPipe, summary: nullableFreeFormStringPipe }),
+		}),
+	}),
+	'model-message-started': v.object({
+		type: v.eq('model-message-started'),
+		turnStartedCursor: agentRunEventCursorPipe,
+		aiSdkCallId: v.nullable(freeFormStringPipe),
+	}),
 	'model-message-ended': v.object({
 		type: v.eq('model-message-ended'),
-		modelMessageStartedEventId: idPipe,
+		modelMessageStartedCursor: agentRunEventCursorPipe,
 		outcome: agentRunModelMessageOutcomePipe,
 	}),
-	'tool-call-scheduled': v.object({
-		type: v.eq('tool-call-scheduled'),
-		modelMessageEventId: idPipe,
-		toolCallId: idPipe,
+	'tool-call-started': v.object({
+		type: v.eq('tool-call-started'),
+		modelMessageCursor: agentRunEventCursorPipe,
+		toolCallId: toolCallIdPipe,
 		toolName: freeFormStringPipe,
 		input: unknownPipe,
-		scheduling: agentRunToolCallSchedulingPipe,
 	}),
-	'tool-call-started': v.object({ type: v.eq('tool-call-started'), toolCallScheduledEventId: idPipe, toolCallId: idPipe }),
 	'tool-call-ended': v.object({
 		type: v.eq('tool-call-ended'),
-		toolCallScheduledEventId: idPipe,
-		toolCallId: idPipe,
+		toolCallStartedCursor: agentRunEventCursorPipe,
 		outcome: agentRunToolCallOutcomePipe,
 	}),
 	'interrupt-requested': v.object({
@@ -254,23 +294,23 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 	}),
 	'proposed-plan-output': v.object({
 		type: v.eq('proposed-plan-output'),
-		toolCallScheduledEventId: idPipe,
+		toolCallStartedCursor: agentRunEventCursorPipe,
 		output: planOutputProposalPipe,
 	}),
 	'proposed-revision-output': v.object({
 		type: v.eq('proposed-revision-output'),
-		toolCallScheduledEventId: idPipe,
+		toolCallStartedCursor: agentRunEventCursorPipe,
 		output: revisionOutputProposalPipe,
 	}),
 	'proposal-accepted': v.object({
 		type: v.eq('proposal-accepted'),
-		proposalEventId: idPipe,
+		proposalCursor: agentRunEventCursorPipe,
 		authorized: auditStampPipe,
 		materialized: agentRunProposalMaterializationPipe,
 	}),
 	'proposal-rejected': v.object({
 		type: v.eq('proposal-rejected'),
-		proposalEventId: idPipe,
+		proposalCursor: agentRunEventCursorPipe,
 		authorized: auditStampPipe,
 		reason: nullableFreeFormStringPipe,
 	}),
@@ -278,8 +318,7 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 		type: v.eq('context-compacted'),
 		source: agentRunCompactionSourcePipe,
 		summary: freeFormStringPipe,
-		firstKeptEventId: idPipe,
-		firstKeptSequence: nonNegativeIntegerPipe,
+		firstKeptCursor: agentRunEventCursorPipe,
 	}),
 })
 export type AgentRunEventBody = PipeOutput<typeof agentRunEventBodyPipe>
@@ -287,7 +326,7 @@ export type AgentRunEventBody = PipeOutput<typeof agentRunEventBodyPipe>
 export const agentRunEventPipe = v.object({
 	id: idPipe,
 	agentRunId: idPipe,
-	sequence: nonNegativeIntegerPipe,
+	cursor: agentRunEventCursorPipe,
 	occurred: runtimeRecordPipe,
 	body: agentRunEventBodyPipe,
 })
@@ -309,10 +348,14 @@ if (import.meta.vitest) {
 			expect(
 				v.validate(agentRunEventBodyPipe, {
 					type: 'turn-started',
-					contextThroughSequence: 2,
-					reason: { type: 'input', inputEventIds: ['event-1'] },
+					contextThroughCursor: '01J00000000000000000000001',
+					reason: { type: 'input', inputEventCursors: ['01J00000000000000000000002'] },
 				}),
 			).toMatchObject({ valid: true })
+		})
+
+		it('normalizes cursors to uppercase ULIDs', () => {
+			expect(v.assert(agentRunEventCursorPipe, '01j00000000000000000000001')).toBe('01J00000000000000000000001')
 		})
 	})
 }

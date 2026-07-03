@@ -225,11 +225,11 @@ The kind of Agent recorded on an Agent Run. Agent Type describes how the work is
 _Avoid_: Mission type, purpose, interaction mode
 
 **Model Provider**:
-A Portfolio-owned configured source of selectable language Models. A Model Provider has an explicit endpoint, immutable Model Provider Protocol, optional standard auth backed by Secrets, and a list of custom headers backed by Secrets that defaults to empty. Core owns Model Provider Protocol behavior so Model Agent execution is consistent across consumers. Editable Model Provider fields record when they were last updated. Model Providers may be archived, which makes their Models unavailable for new work while retaining them for historical references; this availability is derived rather than cascaded to child Models. Archived Model Providers may be updated before being unarchived.
+A Portfolio-owned configured source of selectable language Models. A Model Provider has an explicit endpoint, immutable Model Provider Protocol, optional standard auth backed by Secrets, and a list of custom headers backed by Secrets that defaults to empty. Core owns Model Provider Protocol behavior and maps supported protocols to AI SDK language models so Model Agent execution is consistent across consumers. Editable Model Provider fields record when they were last updated. Model Providers may be archived, which makes their Models unavailable for new work while retaining them for historical references; this availability is derived rather than cascaded to child Models. Archived Model Providers may be updated before being unarchived.
 _Avoid_: model source, LLM provider, consumer model adapter
 
 **Model Provider Protocol**:
-The stable Core-owned wire/API protocol variant Gorchestra uses to call a Model Provider. A Model Provider Protocol may carry protocol-specific behavior options, and Consumers do not provide Model Provider Protocol implementations.
+The stable Core-owned wire/API protocol variant Gorchestra uses to call a Model Provider through AI SDK-backed Core adapters. V1 supported Model Provider Protocols are `openai-responses`, `anthropic-messages`, and `google-generative-ai`; `openai-completions` is not supported. A Model Provider Protocol may carry protocol-specific behavior options, and Consumers do not provide Model Provider Protocol implementations.
 _Avoid_: provider brand, model type, API key type
 
 **Model**:
@@ -237,15 +237,15 @@ A named Portfolio-owned selectable language model under a Model Provider, with a
 _Avoid_: provider/model string, model slug, runtime model policy
 
 **Model Preflight**:
-An observational validation operation that checks whether a stored Model is ready for Model Provider Protocol access. Model Preflight returns Validation Evidence and does not record lifecycle facts. Expected readiness failures, including archived Models or Model Providers, missing, inactive, or unresolved provider access Secrets, and provider access or model availability failures, are reported as failed Validation Evidence; missing target Model records, missing referenced Model Provider records, storage failures, and invalid Core Service Outputs remain operation errors. Provider setup guidance lives in `provider-setup.md`.
+An observational validation operation that checks whether a stored Model is ready for Model Provider Protocol access. Model Preflight returns Validation Evidence and does not record lifecycle facts or Agent Run Events. Expected readiness failures, including archived Models or Model Providers, missing, inactive, or unresolved provider access Secrets, unsupported configured thinking, provider authentication or authorization failures, model availability failures, provider rate limits, content filtering, provider unavailability, and generation failures are reported as failed Validation Evidence; missing target Model records, missing referenced Model Provider records, storage failures, and invalid Core Service Outputs remain operation errors. Model Preflight uses a tiny bounded no-tool AI SDK `streamText` generation probe because AI SDK does not expose a provider-agnostic model metadata existence check. Provider setup guidance lives in `provider-setup.md`.
 _Avoid_: Model status, Model health state, access lifecycle event
 
 **Model Thinking Level**:
-A Core canonical level for requesting or disabling provider reasoning behavior during a Model Agent turn. Model Thinking Levels are recorded with Agent Run model selection transcript state and validated against the selected Model's reasoning capability metadata before provider execution.
+A Core canonical level for requesting or explicitly disabling provider reasoning behavior during a Model Agent turn. `off` means the user or configuration explicitly disabled thinking for that Agent Run, while missing runtime thinking means Core sends no provider thinking options. Model Thinking Levels are recorded with Agent Run model selection transcript state and validated against the selected Model's reasoning capability metadata before provider execution. During the AI SDK migration, existing provider-value entries in Model reasoning metadata are treated as availability markers and Core-owned provider-family mappings choose concrete AI SDK options.
 _Avoid_: reasoning effort, thinking budget, provider reasoning value
 
 **Model Agent**:
-An Agent Type where Gorchestra's Core-owned agent loop uses selected Models to perform goal-directed work consistently across consumers. Model selection is Agent Run transcript state rather than part of the Agent value itself.
+An Agent Type where Gorchestra's Core-owned agent loop uses selected Models to perform goal-directed work consistently across consumers. Core uses AI SDK `streamText` for model-backed turns while preserving Core-owned tool contracts and transcript events. Model selection is Agent Run transcript state rather than part of the Agent value itself.
 _Avoid_: LLM Loop Agent, Pi Agent, Codex Agent, external harness, consumer agent adapter
 
 **Agent Run**:
@@ -253,8 +253,12 @@ One concrete application-managed session where an agent carries out goal-directe
 _Avoid_: Mission, Turn, AgentAttempt, Agent Run Session, Agent Run Checkpoint, actor
 
 **Agent Run Event**:
-An ordered event in an Agent Run transcript. Agent Run Events record input messages, turn context boundaries, model and tool call boundaries with final or aborted content, interrupt requests, proposed outputs, and compaction summaries so an Agent Run can be reconstructed without a separate session model. Live model or tool update deltas may stream to subscribers without becoming durable Agent Run Events. Aborted model and tool call content may contribute explicitly marked partial context to later model calls.
+An ordered event in an Agent Run transcript. Agent Run Events record input messages, turn context boundaries, per-model-call and tool-call boundaries with final or aborted content, interrupt requests, proposed outputs, proposal review, and compaction summaries so an Agent Run can be reconstructed without a separate session model. Each Agent Run Event has a Core storage id and a Core-generated Agent Run Event Cursor; stored event bodies reference other Agent Run Events by cursor while public commands use event ids. One Core turn encloses one AI SDK `streamText` multi-step operation, and each AI SDK language-model call inside that turn becomes its own model-message start/end pair. Live model or tool update deltas may stream to subscribers without becoming durable Agent Run Events. Aborted model and tool call content may contribute explicitly marked partial context to later model calls.
 _Avoid_: Session Entry, transcript row, checkpoint
+
+**Agent Run Event Cursor**:
+A Core-generated monotonic ULID-format ordering handle for one Agent Run Event. The cursor is unique within the Agent Run transcript, sorts lexicographically in event order, powers event pagination and context boundaries, and is used by Agent Run Event bodies when they reference other transcript events. Agent Run Event Cursor is not a storage identity; public commands still address Agent Run Events by event id.
+_Avoid_: sequence number, event id, AI SDK call id, provider response id
 
 **Agent Run Dispatch Request**:
 A Core-originated request for a Consumer to arrange runtime execution for a runnable Agent Run. An Agent Run Dispatch Request records that execution should be arranged; it is not proof that execution has started or completed. In the v1 in-memory Server Consumer, dispatch request acceptance and dispatch processing are separate: Core may accept a request transactionally while the Consumer starts processing only after the write transaction succeeds.

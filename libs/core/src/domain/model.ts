@@ -151,7 +151,7 @@ export type ModelReference = PipeOutput<typeof modelReferencePipe>
 
 export function availableThinkingLevels(capabilities: Pick<ModelCapabilities, 'reasoning'>): ModelThinkingLevel[] {
 	if (capabilities.reasoning === null) return ['off']
-	return modelThinkingLevels.filter((level) => capabilities.reasoning?.[level] !== null)
+	return modelThinkingLevels.filter((level) => level === 'off' || capabilities.reasoning?.[level] !== null)
 }
 
 function normalizeReasoning(value: ModelThinkingLevelMap | null): ModelThinkingLevelMap | null {

@@ -14,7 +14,7 @@ import { withSelectedPortfolioCore } from '../../portfolio-context'
 import { idPipe } from '../../schemas'
 
 const agentRunEventsQuerySchema = v.object({
-	afterSequence: v.optional(v.fromJson(v.number())),
+	afterCursor: v.optional(Domain.AgentRun.agentRunEventCursorPipe),
 	limit: v.optional(v.fromJson(v.number())),
 })
 type AgentRunEventsQuery = PipeOutput<typeof agentRunEventsQuerySchema>
@@ -46,7 +46,7 @@ function getSelectedPortfolioAgentRunEvents(
 	query: AgentRunEventsQuery,
 ): Promise<Queries.GetAgentRunEvents.Result> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
-		const events = await core.queries.getAgentRunEvents({ agentRunId, afterSequence: query.afterSequence, limit: query.limit })
+		const events = await core.queries.getAgentRunEvents({ agentRunId, afterCursor: query.afterCursor, limit: query.limit })
 		return events.ok ? events.value : throwCoreOperationError(events.error)
 	})
 }

@@ -286,7 +286,7 @@ if (import.meta.vitest) {
 
 			const result = await listRecords('agent-run-event', options.storage, {
 				where: (filter, fields) => filter.eq(fields.agentRunId, 'agent-run-1'),
-				orderBy: [{ field: 'sequence', direction: 'asc' }],
+				orderBy: [{ field: 'cursor', direction: 'asc' }],
 				limit: 2,
 			})
 
@@ -298,7 +298,7 @@ if (import.meta.vitest) {
 		return {
 			id,
 			agentRunId: 'agent-run-1',
-			sequence,
+			cursor: `01J000000000000000000${sequence.toString().padStart(5, '0')}`,
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
 			body: {
 				type: 'input-message' as const,

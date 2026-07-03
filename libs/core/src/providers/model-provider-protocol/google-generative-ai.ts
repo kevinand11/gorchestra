@@ -1,104 +1,120 @@
-import { GoogleGenAI } from '@google/genai'
+import { createGoogle } from '@ai-sdk/google'
 
-import { providerFailurePreflight } from './provider-failures'
-import type { ModelProviderProtocolProvider, ModelProviderProtocolProviderPreflightModelInput } from './types'
-
-type GoogleGenerativeAIPreflightInput = ModelProviderProtocolProviderPreflightModelInput<'google-generative-ai'>
-
-type GoogleGenerativeAIClient = {
-	models: {
-		get(input: { model: string }): Promise<unknown>
-	}
-}
-
-type GoogleGenerativeAIClientFactory = (input: GoogleGenerativeAIPreflightInput) => GoogleGenerativeAIClient
+import type { AISDKLanguageModelResolution, ModelProviderProtocolAccess, ModelProviderProtocolProvider } from './types'
+import type { ModelProvider } from '../../domain/model-provider'
+import type { ModelThinkingLevelUnavailableError } from '../../errors'
+import type { ModelAgentTurnThinking } from '../../runtime/agent-runs/types'
+import type { Result } from '../../utils/types'
 
 export type GoogleGenerativeAIModelProviderProtocolProvider = ModelProviderProtocolProvider<'google-generative-ai'>
 
+type GoogleGenerativeAIInput = Parameters<GoogleGenerativeAIModelProviderProtocolProvider['resolveLanguageModel']>[0]
+type GoogleProviderFactory = (input: { modelProvider: ModelProvider; access: ModelProviderProtocolAccess }) => {
+	languageModel(modelId: string): AISDKLanguageModelResolution['languageModel']
+}
+
 export function createGoogleGenerativeAIModelProviderProtocolProvider(
-	clientFactory: GoogleGenerativeAIClientFactory = createGoogleGenerativeAIClient,
+	providerFactory: GoogleProviderFactory = createGoogleGenerativeAIProvider,
 ): GoogleGenerativeAIModelProviderProtocolProvider {
 	return {
-		async preflightModel(input) {
-			try {
-				await clientFactory(input).models.get({ model: input.model.providerModelId })
-				return { type: 'passed' }
-			} catch (error) {
-				return providerFailurePreflight(error)
-			}
+		resolveLanguageModel(input) {
+			const providerOptions = googleProviderOptions(input)
+			return providerOptions.ok
+				? {
+						ok: true,
+						value: {
+							languageModel: providerFactory(input).languageModel(input.model.providerModelId),
+							providerOptions: providerOptions.value,
+						},
+					}
+				: providerOptions
 		},
 	}
 }
 
-function createGoogleGenerativeAIClient(input: GoogleGenerativeAIPreflightInput): GoogleGenerativeAIClient {
-	return new GoogleGenAI({
+function createGoogleGenerativeAIProvider(input: { modelProvider: ModelProvider; access: ModelProviderProtocolAccess }) {
+	return createGoogle({
 		apiKey: input.access.auth?.plaintext ?? '',
-		httpOptions: {
-			baseUrl: input.modelProvider.baseUrl,
-			headers: Object.fromEntries(input.access.headers.map((header) => [header.name, header.plaintext])),
-		},
+		baseURL: googleBaseURL(input.modelProvider.baseUrl),
+		headers: Object.fromEntries(input.access.headers.map((header) => [header.name, header.plaintext])),
 	})
+}
+
+function googleBaseURL(baseUrl: string): string {
+	return baseUrl.endsWith('/v1beta') ? baseUrl : `${baseUrl}/v1beta`
+}
+
+function googleProviderOptions(
+	input: GoogleGenerativeAIInput,
+): Result<AISDKLanguageModelResolution['providerOptions'], ModelThinkingLevelUnavailableError> {
+	const thinking = input.mode === 'agent-run' ? input.thinking : null
+	if (thinking?.level === 'xhigh') {
+		return {
+			ok: false,
+			error: {
+				type: 'model-thinking-level-unavailable',
+				modelId: input.model.id,
+				thinkingLevel: 'xhigh',
+				reason: { type: 'thinking-level-unconfigured' },
+			},
+		}
+	}
+	return { ok: true, value: thinking === null ? undefined : { google: googleThinkingOptions(thinking) } }
+}
+
+function googleThinkingOptions(
+	thinking: Exclude<ModelAgentTurnThinking, null>,
+): Record<string, NonNullable<AISDKLanguageModelResolution['providerOptions']>[string][string]> {
+	switch (thinking.level) {
+		case 'off':
+			return { thinkingConfig: { thinkingBudget: 0, includeThoughts: false } }
+		case 'minimal':
+		case 'low':
+		case 'medium':
+		case 'high':
+			return { thinkingConfig: { thinkingLevel: thinking.level, includeThoughts: true } }
+		case 'xhigh':
+			throw new Error('Google Generative AI does not support xhigh thinking.')
+		default:
+			throw new Error(`Unexpected Model Thinking Level: ${String(thinking.level satisfies never)}`)
+	}
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { defaultModelCapabilities } = await import('../../domain/model')
 
-	describe('Google Generative AI Model Provider Protocol provider', () => {
-		it('gets provider model metadata with configured access', async () => {
-			let observed: GoogleGenerativeAIPreflightInput | null = null
-			let retrievedModel: string | null = null
+	describe('Google Generative AI SDK resolver', () => {
+		it('resolves language models with thinking config and v1beta base URL', () => {
+			let modelId: string | null = null
+			let observedBaseUrl: string | null = null
 			const provider = createGoogleGenerativeAIModelProviderProtocolProvider((input) => {
-				observed = input
+				observedBaseUrl = googleBaseURL(input.modelProvider.baseUrl)
 				return {
-					models: {
-						get({ model }) {
-							retrievedModel = model
-							return Promise.resolve({ name: model })
-						},
+					languageModel(id) {
+						modelId = id
+						return 'language-model'
 					},
 				}
 			})
 
-			const result = await provider.preflightModel(googleGenerativeAIInput())
+			const result = provider.resolveLanguageModel({ ...input(), thinking: { level: 'low' } })
 
-			expect(result).toEqual({ type: 'passed' })
-			expect(retrievedModel).toBe('gemini-2.5-pro')
-			expect(observed).toMatchObject({
-				access: {
-					auth: { type: 'apiKey', plaintext: 'token' },
-					headers: [{ name: 'X-Goog-User-Project', plaintext: 'project-1' }],
+			expect(result).toEqual({
+				ok: true,
+				value: {
+					languageModel: 'language-model',
+					providerOptions: { google: { thinkingConfig: { thinkingLevel: 'low', includeThoughts: true } } },
 				},
-				modelProvider: { baseUrl: 'https://generativelanguage.googleapis.com' },
 			})
-		})
-
-		it.each([
-			[401, 'provider-authentication-failed'],
-			[403, 'provider-access-denied'],
-			[404, 'provider-model-not-found'],
-			[500, 'provider-unavailable'],
-		])('maps status %s to %s', async (status, reason) => {
-			const provider = createGoogleGenerativeAIModelProviderProtocolProvider(() => ({
-				models: {
-					get() {
-						return Promise.reject(errorWithStatus(status))
-					},
-				},
-			}))
-
-			const result = await provider.preflightModel(googleGenerativeAIInput())
-
-			expect(result).toEqual({ type: 'failed', reason: { type: reason } })
+			expect(modelId).toBe('gemini-2.5-pro')
+			expect(observedBaseUrl).toBe('https://generativelanguage.googleapis.com/v1beta')
 		})
 	})
 
-	function errorWithStatus(status: number): Error {
-		return Object.assign(new Error('Google Generative AI request failed.'), { status })
-	}
-
-	function googleGenerativeAIInput(): GoogleGenerativeAIPreflightInput {
+	function input(): Extract<GoogleGenerativeAIInput, { mode: 'agent-run' }> {
 		return {
+			mode: 'agent-run',
 			model: {
 				id: 'model-1',
 				providerId: 'model-provider-1',
@@ -115,16 +131,14 @@ if (import.meta.vitest) {
 				name: 'Google',
 				protocol: { type: 'google-generative-ai' },
 				baseUrl: 'https://generativelanguage.googleapis.com',
-				auth: { type: 'apiKey', secretId: 'secret-1' },
-				headers: [{ name: 'X-Goog-User-Project', valueSecretId: 'secret-2' }],
+				auth: null,
+				headers: [],
 				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				updated: null,
 				archivePeriods: [],
 			},
-			access: {
-				auth: { type: 'apiKey', plaintext: 'token' },
-				headers: [{ name: 'X-Goog-User-Project', plaintext: 'project-1' }],
-			},
+			access: { auth: null, headers: [] },
+			thinking: { level: 'low' },
 		}
 	}
 }

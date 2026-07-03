@@ -261,7 +261,7 @@ async function materializeAcceptedPlanProposal(
 
 	const acceptedEvent = await appendAgentRunEvent(runtime, storage, proposal.agentRunId, {
 		type: 'proposal-accepted',
-		proposalEventId: proposal.id,
+		proposalCursor: proposal.cursor,
 		authorized: stamp,
 		materialized: {
 			type: 'plan-output',
@@ -638,7 +638,7 @@ if (import.meta.vitest) {
 					acceptedEvent: {
 						body: {
 							type: 'proposal-accepted',
-							proposalEventId: 'proposal-event',
+							proposalCursor: '01J00000000000000000000000',
 							materialized: {
 								type: 'plan-output',
 								deliveryIds: ['delivery-1'],
@@ -825,9 +825,9 @@ if (import.meta.vitest) {
 		return {
 			id: 'proposal-event',
 			agentRunId: 'agent-run-1',
-			sequence: 1,
+			cursor: '01J00000000000000000000000',
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
-			body: { type: 'proposed-plan-output', toolCallScheduledEventId: 'tool-call-1', output },
+			body: { type: 'proposed-plan-output', toolCallStartedCursor: '01J00000000000000000000000', output },
 		}
 	}
 
