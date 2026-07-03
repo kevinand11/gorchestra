@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 
-import { useAuth } from './session'
+import { useSetAuth } from './session'
 import { ProvisionWorkspaceFormDraft } from '../../forms/workspace'
 import { useApiAction, useFetchAction } from '../core/action-state'
 import { useOverlay } from '../core/overlay'
@@ -48,7 +48,7 @@ export function useWorkspacePortfoliosList() {
 
 export function useDefaultWorkspaceProvision(options: DefaultWorkspaceProvisionOptions = {}) {
 	const serverApi = useServerApi()
-	const { setSelection } = useAuth()
+	const { setSelection } = useSetAuth()
 	const queryCache = useQueryCache()
 	const { queryKeys } = queryCache
 	const { toast } = useOverlay()
@@ -79,7 +79,7 @@ export function useDefaultWorkspaceProvision(options: DefaultWorkspaceProvisionO
 
 export function usePortfolioSelection(options: PortfolioSelectionOptions = {}) {
 	const serverApi = useServerApi()
-	const { setSelection } = useAuth()
+	const { setSelection } = useSetAuth()
 	const { toast } = useOverlay()
 	const selectingPortfolioKey = ref('')
 	const {

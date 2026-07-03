@@ -18,6 +18,12 @@ export function useAuth() {
 		initialData: null as Selection | null,
 	})
 
+	return { session, selection }
+}
+
+export function useSetAuth() {
+	const queryCache = useQueryCache()
+
 	const setSession = (session: Session | null) => {
 		queryCache.clear([])
 		if (session !== null) queryCache.set(queryCache.queryKeys.session(), session)
@@ -29,7 +35,7 @@ export function useAuth() {
 		if (selection !== null) queryCache.set(queryCache.queryKeys.selection(), selection)
 	}
 
-	return { session, selection, setSession, setSelection }
+	return { setSession, setSelection }
 }
 
 export function useSessionLoaders() {
@@ -44,7 +50,7 @@ export function useSessionLoaders() {
 
 export function useSelectionClear() {
 	const serverApi = useServerApi()
-	const { setSelection } = useAuth()
+	const { setSelection } = useSetAuth()
 	const { toast } = useOverlay()
 
 	const {

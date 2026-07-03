@@ -1,7 +1,7 @@
 import { ref, watch } from 'vue'
 
+import { useSetAuth } from './session'
 import { EmailOtpChallengeFormDraft, EmailOtpVerificationFormDraft } from '../../forms/auth'
-import { useAuth } from '../auth/session'
 import { useApiAction } from '../core/action-state'
 import { useOverlay } from '../core/overlay'
 import { useServerApi } from '../core/server-api'
@@ -12,7 +12,7 @@ type EmailOtpSignInOptions = {
 
 export function useEmailOtpSignIn(options: EmailOtpSignInOptions = {}) {
 	const serverApi = useServerApi()
-	const { setSession } = useAuth()
+	const { setSession } = useSetAuth()
 	const { toast } = useOverlay()
 	const emailOtpChallengeForm = new EmailOtpChallengeFormDraft()
 	const emailOtpVerificationForm = new EmailOtpVerificationFormDraft()
