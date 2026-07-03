@@ -9,7 +9,15 @@ export function buildAgentRunModelContext(events: AgentRunEvent[], contextThroug
 function eventsForContext(events: AgentRunEvent[], contextThroughSequence: number): AgentRunEvent[] {
 	const bounded = sortEvents(events.filter((event) => event.sequence <= contextThroughSequence))
 	const compaction = latestCompaction(bounded)
-	return compaction === null ? bounded : [compaction, ...bounded.filter((event) => event.sequence >= compaction.body.firstKeptSequence)]
+	return compaction === null ? bounded : compactedEventsForContext(bounded, compaction)
+}
+
+function compactedEventsForContext(events: AgentRunEvent[], compaction: AgentRunEventWithBody<'context-compacted'>): AgentRunEvent[] {
+	const kept = events.filter((event) => event.sequence >= compaction.body.firstKeptSequence)
+	const instruction = latestInstructionSnapshot(events)
+	return instruction === null || kept.some((event) => event.id === instruction.id)
+		? [compaction, ...kept]
+		: [instruction, compaction, ...kept]
 }
 
 type AgentRunEventWithBody<TType extends AgentRunEvent['body']['type']> = AgentRunEvent & {
@@ -21,6 +29,13 @@ function latestCompaction(events: AgentRunEvent[]): AgentRunEventWithBody<'conte
 		(event): event is AgentRunEventWithBody<'context-compacted'> => event.body.type === 'context-compacted',
 	)
 	return compactions.at(-1) ?? null
+}
+
+function latestInstructionSnapshot(events: AgentRunEvent[]): AgentRunEventWithBody<'instruction-snapshot'> | null {
+	const instructions = events.filter(
+		(event): event is AgentRunEventWithBody<'instruction-snapshot'> => event.body.type === 'instruction-snapshot',
+	)
+	return instructions.at(-1) ?? null
 }
 
 function sortEvents(events: AgentRunEvent[]): AgentRunEvent[] {
@@ -35,6 +50,8 @@ function modelVisibleMessages(event: AgentRunEvent): AgentRunProviderMessage[] {
 		case 'model-message-started':
 		case 'tool-call-started':
 			return []
+		case 'instruction-snapshot':
+			return [{ role: 'system', content: textContent(event.body.instruction.content) }]
 		case 'input-message':
 			return [{ role: event.body.source.type === 'operator' ? 'user' : 'system', content: textContent(event.body.content) }]
 		case 'model-message-ended':
@@ -175,6 +192,35 @@ if (import.meta.vitest) {
 			])
 		})
 
+		it('renders instruction snapshots as system messages and preserves the latest one through compaction', () => {
+			const context = buildAgentRunModelContext(
+				[
+					event(1, instructionSnapshot('Use old instructions.')),
+					event(2, instructionSnapshot('Use current instructions.')),
+					event(3, { type: 'input-message', source: { type: 'runtime' }, content: [{ type: 'text', text: 'old' }] }),
+					event(4, {
+						type: 'context-compacted',
+						source: { type: 'runtime' },
+						summary: 'summary',
+						firstKeptEventId: 'event-5',
+						firstKeptSequence: 5,
+					}),
+					event(5, {
+						type: 'input-message',
+						source: { type: 'operator', authorized: localStamp() },
+						content: [{ type: 'text', text: 'new' }],
+					}),
+				],
+				5,
+			)
+
+			expect(context.messages).toEqual([
+				{ role: 'system', content: 'Use current instructions.' },
+				{ role: 'system', content: 'Compacted context summary:\nsummary' },
+				{ role: 'user', content: 'new' },
+			])
+		})
+
 		it('serializes aborted model and tool outcomes with explicit markers', () => {
 			const context = buildAgentRunModelContext(
 				[
@@ -202,6 +248,13 @@ if (import.meta.vitest) {
 
 	function event(sequence: number, body: AgentRunEvent['body']): AgentRunEvent {
 		return { id: `event-${sequence}`, agentRunId: 'agent-run-1', sequence, occurred: { at: '2026-06-10T12:00:00.000Z' }, body }
+	}
+
+	function instructionSnapshot(text: string): AgentRunEvent['body'] {
+		return {
+			type: 'instruction-snapshot',
+			instruction: { type: 'source-control-planning', version: 1, content: [{ type: 'text', text }] },
+		}
 	}
 
 	function stopOutcome(text: string): AgentRunModelMessageOutcome {
