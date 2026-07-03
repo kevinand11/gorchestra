@@ -13,7 +13,7 @@ type AgentRunMessageSendOptions = {
 	hasLoadedAgentRunEvents: Readonly<Ref<boolean>>
 }
 
-export function useAgentRunEvents(agentRunId: Ref<string | null>, cacheKey: Ref<string>) {
+export function useAgentRunEvents(agentRunId: Ref<string | null>) {
 	const serverApi = useServerApi()
 	const { portfolio } = useSelectedPortfolio()
 	const { queryKeys } = useQueryCache()
@@ -25,7 +25,7 @@ export function useAgentRunEvents(agentRunId: Ref<string | null>, cacheKey: Ref<
 		execute: refreshAgentRunEvents,
 		reset: resetAgentRunEvents,
 	} = useFetchAction(() => serverApi.getAgentRunEvents(requireAgentRunId(agentRunId.value)), {
-		queryKey: queryKeys.portfolio.agentRunEvents(portfolio.value.id, cacheKey.value),
+		queryKey: () => queryKeys.portfolio.agentRunEvents(portfolio.value.id, requireAgentRunId(agentRunId.value)),
 		initialData: [] as AgentRunEvent[],
 		immediate: false,
 	})
@@ -42,20 +42,24 @@ export function useAgentRunEvents(agentRunId: Ref<string | null>, cacheKey: Ref<
 	}
 }
 
-export function useAgentRunMessageSend(agentRunId: Ref<string | null>, cacheKey: Ref<string>, options: AgentRunMessageSendOptions) {
+export function useAgentRunMessageSend(agentRunId: Ref<string | null>, options: AgentRunMessageSendOptions) {
 	const serverApi = useServerApi()
 	const queryCache = useQueryCache()
 	const { portfolio } = useSelectedPortfolio()
 	const agentRunMessageForm = new AgentRunMessageFormDraft()
-	const eventsQueryKey = computed(() => queryCache.queryKeys.portfolio.agentRunEvents(portfolio.value.id, cacheKey.value))
 	const {
 		isLoading: isSendingAgentRunMessage,
 		error: sendAgentRunMessageError,
 		execute: sendAgentRunMessage,
 		reset: resetSendAgentRunMessage,
 	} = useApiAction(async () => {
-		const event = await serverApi.sendAgentRunMessage(requireAgentRunId(agentRunId.value), agentRunMessageForm.toModel())
-		if (options.hasLoadedAgentRunEvents.value) queryCache.set(eventsQueryKey.value, appendedEvent(options.agentRunEvents.value, event))
+		const runId = requireAgentRunId(agentRunId.value)
+		const event = await serverApi.sendAgentRunMessage(runId, agentRunMessageForm.toModel())
+		if (options.hasLoadedAgentRunEvents.value)
+			queryCache.set(
+				queryCache.queryKeys.portfolio.agentRunEvents(portfolio.value.id, runId),
+				appendedEvent(options.agentRunEvents.value, event),
+			)
 		agentRunMessageForm.clear()
 		return event
 	})

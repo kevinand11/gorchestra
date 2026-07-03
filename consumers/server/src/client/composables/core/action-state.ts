@@ -1,6 +1,6 @@
 import { onScopeDispose, onServerPrefetch, ref, shallowRef, type Ref } from 'vue'
 
-import { useQueryCacheControllerForFetch } from './query-cache'
+import { useQueryCacheControllerForFetch, type QueryKeyInput } from './query-cache'
 
 type ActionExecutionResult<T> = { success: true; result: T } | { success: false }
 
@@ -11,7 +11,7 @@ type ActionStateOptions = {
 }
 
 type FetchActionOptions<TData> = {
-	queryKey: readonly string[]
+	queryKey: QueryKeyInput
 	initialData: TData | (() => TData)
 	immediate?: boolean
 }

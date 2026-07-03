@@ -31,6 +31,7 @@ export const planPipe = v.object({
 	title: nonEmptyTrimmedStringPipe,
 	config: v.nullable(planConfigRecordPipe),
 	created: auditStampPipe,
+	closed: v.nullable(auditStampPipe),
 })
 export type Plan = PipeOutput<typeof planPipe>
 export const planWithPlanningAgentRunPipe = v.merge(planPipe, v.object({ agentRun: planningAgentRunPipe }))

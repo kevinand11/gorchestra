@@ -1,6 +1,7 @@
 import { isRef, readonly, ref, shallowRef, type Ref } from 'vue'
 
-type QueryKey = readonly string[]
+export type QueryKey = readonly string[]
+export type QueryKeyInput = QueryKey | (() => QueryKey)
 
 type QueryMatchOptions = {
 	exact?: boolean
@@ -10,7 +11,7 @@ type QueryInitialData<T> = T | (() => T)
 type QueryFetcher<T> = () => Promise<T>
 
 type QueryObserver<T> = {
-	queryKey: QueryKey
+	queryKey: QueryKeyInput
 	initialData: QueryInitialData<T>
 	data: Ref<T>
 	isLoading: Ref<boolean>
@@ -138,19 +139,16 @@ function createQueryCacheController(snapshot: Ref<QueryCacheSnapshot> | QueryCac
 	const snapshotRef = isRef(snapshot) ? snapshot : ref(snapshot)
 	const runtimeEntries = new Map<string, RuntimeQueryEntry>()
 	const clearedVersions = new Map<string, number>()
+	const observerRuntimeIds = new WeakMap<QueryObserver<unknown>, string>()
 
 	function attach<T>(observer: QueryObserver<T>): () => void {
-		const id = serializeQueryKey(observer.queryKey)
-		const runtime = getRuntimeEntry(id)
-		runtime.observers.add(observer)
-		applySnapshotToObserver(observer)
-		return () => {
-			runtime.observers.delete(observer)
-		}
+		tryApplySnapshotToObserver(observer)
+		return () => detachObserver(observer)
 	}
 
 	async function ensure<T>(observer: QueryObserver<T>): Promise<T> {
-		const entry = getSnapshotEntry(observer.queryKey)
+		const { key } = syncObserverRuntime(observer)
+		const entry = getSnapshotEntry(key)
 		if (hasFreshData(entry)) return applyFreshData(observer, entry)
 		if (isUnexecutedLazyObserver(observer)) return observer.data.value
 		return await runFetch(observer, entry.version, !entry.hasData)
@@ -167,7 +165,8 @@ function createQueryCacheController(snapshot: Ref<QueryCacheSnapshot> | QueryCac
 	}
 
 	async function refetch<T>(observer: QueryObserver<T>): Promise<T> {
-		const entry = getSnapshotEntry(observer.queryKey)
+		const { key } = syncObserverRuntime(observer)
+		const entry = getSnapshotEntry(key)
 		entry.invalidated = true
 		entry.version += 1
 		return await runFetch(observer, entry.version, true)
@@ -183,7 +182,7 @@ function createQueryCacheController(snapshot: Ref<QueryCacheSnapshot> | QueryCac
 		entry.data = data
 		entry.hasData = true
 		entry.invalidated = false
-		for (const observer of getRuntimeEntry(serializeQueryKey(queryKey)).observers) applySnapshotToObserver(observer)
+		for (const observer of getRuntimeEntry(serializeQueryKey(queryKey)).observers) tryApplySnapshotToObserver(observer)
 	}
 
 	function clear(queryKey: QueryKey, options: QueryMatchOptions = {}): void {
@@ -222,6 +221,27 @@ function createQueryCacheController(snapshot: Ref<QueryCacheSnapshot> | QueryCac
 		return entry
 	}
 
+	function syncObserverRuntime<T>(observer: QueryObserver<T>): { id: string; key: QueryKey; runtime: RuntimeQueryEntry } {
+		const key = resolveQueryKeyInput(observer.queryKey)
+		const id = serializeQueryKey(key)
+		const genericObserver = observer as unknown as QueryObserver<unknown>
+		const previousId = observerRuntimeIds.get(genericObserver)
+		if (previousId !== id) {
+			if (previousId !== undefined) runtimeEntries.get(previousId)?.observers.delete(genericObserver)
+			observerRuntimeIds.set(genericObserver, id)
+		}
+		const runtime = getRuntimeEntry(id)
+		runtime.observers.add(genericObserver)
+		return { id, key, runtime }
+	}
+
+	function detachObserver<T>(observer: QueryObserver<T>): void {
+		const genericObserver = observer as unknown as QueryObserver<unknown>
+		const id = observerRuntimeIds.get(genericObserver)
+		if (id !== undefined) runtimeEntries.get(id)?.observers.delete(genericObserver)
+		observerRuntimeIds.delete(genericObserver)
+	}
+
 	function matchingEntries(queryKey: QueryKey, options: QueryMatchOptions): SerializedQueryEntry[] {
 		return Object.values(snapshotRef.value).filter((entry) => matchesQueryKey(entry.key, queryKey, options))
 	}
@@ -258,10 +278,9 @@ function createQueryCacheController(snapshot: Ref<QueryCacheSnapshot> | QueryCac
 	}
 
 	async function runFetch<T>(observer: QueryObserver<T>, version: number, rejectOnError: boolean): Promise<T> {
-		const id = serializeQueryKey(observer.queryKey)
-		const runtime = getRuntimeEntry(id)
+		const { id, runtime } = syncObserverRuntime(observer)
 		if (runtime.inFlight !== null && runtime.inFlightVersion === version) {
-			return await resolveInFlight(observer, runtime.inFlight, rejectOnError)
+			return await resolveInFlight(observer, runtime.inFlight, rejectOnError, id)
 		}
 
 		setObserversLoading(runtime, true)
@@ -269,17 +288,22 @@ function createQueryCacheController(snapshot: Ref<QueryCacheSnapshot> | QueryCac
 		runtime.inFlight = current
 		runtime.inFlightVersion = version
 		try {
-			return await resolveInFlight(observer, current, rejectOnError)
+			return await resolveInFlight(observer, current, rejectOnError, id)
 		} finally {
 			if (runtime.inFlight === current) runtime.inFlight = null
 		}
 	}
 
-	async function resolveInFlight<T>(observer: QueryObserver<T>, inFlight: Promise<unknown>, rejectOnError: boolean): Promise<T> {
+	async function resolveInFlight<T>(
+		observer: QueryObserver<T>,
+		inFlight: Promise<unknown>,
+		rejectOnError: boolean,
+		id: string,
+	): Promise<T> {
 		try {
 			return (await inFlight) as T
 		} catch (error) {
-			if (rejectOnError || !getSnapshotEntry(observer.queryKey).hasData) throw error
+			if (rejectOnError || snapshotRef.value[id]?.hasData !== true) throw error
 			return observer.data.value
 		}
 	}
@@ -300,7 +324,7 @@ function createQueryCacheController(snapshot: Ref<QueryCacheSnapshot> | QueryCac
 		entry.data = result
 		entry.hasData = true
 		entry.invalidated = false
-		for (const currentObserver of getRuntimeEntry(id).observers) applySnapshotToObserver(currentObserver)
+		for (const currentObserver of getRuntimeEntry(id).observers) tryApplySnapshotToObserver(currentObserver)
 		return result
 	}
 
@@ -328,13 +352,21 @@ function createQueryCacheController(snapshot: Ref<QueryCacheSnapshot> | QueryCac
 	}
 
 	function applySnapshotToObserver<T>(observer: QueryObserver<T>): void {
-		const id = serializeQueryKey(observer.queryKey)
+		const { id } = syncObserverRuntime(observer)
 		const entry = snapshotRef.value[id]
 		if (entry?.hasData !== true) return
 		observer.data.value = entry.data as T
 		observer.hasExecuted.value = true
 		observer.error.value = ''
 		observer.isLoading.value = false
+	}
+
+	function tryApplySnapshotToObserver<T>(observer: QueryObserver<T>): void {
+		try {
+			applySnapshotToObserver(observer)
+		} catch {
+			// Lazy Query Keys may be unavailable until the first fetch executes.
+		}
 	}
 
 	function resetObserverToInitialData<T>(observer: QueryObserver<T>): void {
@@ -355,7 +387,7 @@ function createQueryCacheController(snapshot: Ref<QueryCacheSnapshot> | QueryCac
 	return { attach, ensure, read, refetch, invalidate, set, clear, snapshot: readonly(snapshotRef) }
 }
 
-function detachedObserver<T>(queryKey: QueryKey, initialData: QueryInitialData<T>, fetcher: QueryFetcher<T>): QueryObserver<T> {
+function detachedObserver<T>(queryKey: QueryKeyInput, initialData: QueryInitialData<T>, fetcher: QueryFetcher<T>): QueryObserver<T> {
 	return {
 		queryKey,
 		initialData,
@@ -366,6 +398,10 @@ function detachedObserver<T>(queryKey: QueryKey, initialData: QueryInitialData<T
 		immediate: true,
 		fetcher,
 	}
+}
+
+function resolveQueryKeyInput(queryKey: QueryKeyInput): QueryKey {
+	return typeof queryKey === 'function' ? queryKey() : queryKey
 }
 
 function matchesQueryKey(candidate: QueryKey, target: QueryKey, options: QueryMatchOptions = {}): boolean {
@@ -467,6 +503,29 @@ if (import.meta.vitest) {
 			expect(calls).toBe(1)
 			expect(second.data.value).toEqual(['workspace-1'])
 			expect(second.hasExecuted.value).toBe(true)
+		})
+
+		it('supports observer Query Key functions that resolve when fetching', async () => {
+			const cache = createQueryCacheController(createEmptyQueryCacheSnapshot())
+			let agentRunId: string | null = null
+			const observer = createTestObserver(
+				() => {
+					if (agentRunId === null) throw new Error('Agent Run is not loaded yet')
+					return queryKeys.portfolio.agentRunEvents('portfolio-1', agentRunId)
+				},
+				[] as string[],
+				() => Promise.resolve(['event-1']),
+			)
+
+			expect(() => cache.attach(observer)).not.toThrow()
+			expect(observer.hasExecuted.value).toBe(false)
+
+			agentRunId = 'agent-run-1'
+			await cache.ensure(observer)
+			cache.set(queryKeys.portfolio.agentRunEvents('portfolio-1', 'agent-run-1'), ['event-2'])
+
+			expect(observer.data.value).toEqual(['event-2'])
+			expect(observer.hasExecuted.value).toBe(true)
 		})
 
 		it('invalidates by prefix and refetches active observers stale-while-refetch', async () => {
@@ -588,7 +647,7 @@ if (import.meta.vitest) {
 		})
 	})
 
-	function createTestObserver<T>(queryKey: QueryKey, initialData: QueryInitialData<T>, fetcher: () => Promise<T>): QueryObserver<T> {
+	function createTestObserver<T>(queryKey: QueryKeyInput, initialData: QueryInitialData<T>, fetcher: () => Promise<T>): QueryObserver<T> {
 		return {
 			queryKey,
 			initialData,

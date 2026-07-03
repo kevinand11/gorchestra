@@ -334,6 +334,7 @@ if (import.meta.vitest) {
 				title: 'Plan One',
 				config: { configured: stamp, value: { model: { planning: { modelId: 'model-1', thinkingLevel: 'off' } } } },
 				created: stamp,
+				closed: null,
 			})
 			options.tx.deliveries.records.set('delivery-active', {
 				id: 'delivery-active',
@@ -429,6 +430,7 @@ if (import.meta.vitest) {
 				title: 'Inherited Plan',
 				config: null,
 				created: stamp,
+				closed: null,
 			})
 			options.tx.agentRuns.records.set('agent-run-1', {
 				id: 'agent-run-1',

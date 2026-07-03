@@ -150,6 +150,7 @@ if (import.meta.vitest) {
 			title: input.title,
 			config: null,
 			created: { origin: 'imported', at: createdAt },
+			closed: null,
 		}
 	}
 

@@ -10,9 +10,14 @@ import { useServerApi, type ServerApi } from '../../core/server-api'
 export type ListedPlan = Awaited<ReturnType<ServerApi['listPlans']>>[number]
 type PlanDetails = Awaited<ReturnType<ServerApi['getPlan']>>
 type CreatedPlan = Awaited<ReturnType<ServerApi['createPlan']>>
+type ClosedPlan = Awaited<ReturnType<ServerApi['closePlan']>>
 
 type PlansCreateOptions = {
 	onSuccess?: (plan: CreatedPlan) => void | Promise<void>
+}
+
+type PlanCloseOptions = {
+	onSuccess?: (plan: ClosedPlan) => void | Promise<void>
 }
 
 export function usePlansList(projectId: Ref<string>) {
@@ -38,7 +43,8 @@ export function usePlansList(projectId: Ref<string>) {
 export function usePlanDetail(projectId: Ref<string>, planId: Ref<string>) {
 	const serverApi = useServerApi()
 	const { portfolio } = useSelectedPortfolio()
-	const { queryKeys } = useQueryCache()
+	const queryCache = useQueryCache()
+	const { queryKeys } = queryCache
 	const {
 		data: plan,
 		isLoading: isLoadingPlan,
@@ -53,6 +59,27 @@ export function usePlanDetail(projectId: Ref<string>, planId: Ref<string>) {
 	const isRefreshingPlan = computed(() => isLoadingPlan.value && hasLoadedPlan.value)
 
 	return { plan, isLoadingPlan, planError, hasLoadedPlan, isRefreshingPlan, refreshPlan, resetPlan }
+}
+
+export function usePlanClose(projectId: Ref<string>, planId: Ref<string>, options: PlanCloseOptions = {}) {
+	const serverApi = useServerApi()
+	const queryCache = useQueryCache()
+	const { portfolio } = useSelectedPortfolio()
+	const { queryKeys } = queryCache
+	const {
+		isLoading: isClosingPlan,
+		error: closePlanError,
+		execute: closePlan,
+		reset: resetClosePlan,
+	} = useApiAction(async () => {
+		const plan = await serverApi.closePlan(projectId.value, planId.value)
+		queryCache.set(queryKeys.portfolio.plan(portfolio.value.id, projectId.value, planId.value), plan)
+		queryCache.invalidate(queryKeys.portfolio.plans(portfolio.value.id, projectId.value), { exact: true })
+		await options.onSuccess?.(plan)
+		return plan
+	})
+
+	return { isClosingPlan, closePlanError, closePlan, resetClosePlan }
 }
 
 export function usePlansCreate(projectId: Ref<string>, options: PlansCreateOptions = {}) {

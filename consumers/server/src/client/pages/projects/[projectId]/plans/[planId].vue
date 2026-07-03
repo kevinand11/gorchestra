@@ -37,7 +37,9 @@
 							v-for="event in agentRunEvents"
 							:key="event.id"
 							class="wrap-break-word border-b border-dimmer px-3 py-2 last:border-b-0">
-							<span class="font-mono text-sz-micro text-dim">#{{ event.sequence }} · {{ event.body.type }} · {{ event.id }}</span>
+							<span class="font-mono text-sz-micro text-dim"
+								>#{{ event.sequence }} · {{ event.body.type }} · {{ event.id }}</span
+							>
 							<pre class="m-0 mt-1 max-h-36 overflow-auto whitespace-pre-wrap font-mono text-sz-micro text-card-contrast">{{
 								eventSummary(event)
 							}}</pre>
@@ -45,7 +47,7 @@
 					</ol>
 				</section>
 
-				<UiForm class="border-b border-dimmer px-3 py-3" @submit.prevent="sendAgentRunMessage()">
+				<UiForm v-if="!isPlanningRunClosed" class="border-b border-dimmer px-3 py-3" @submit.prevent="sendAgentRunMessage()">
 					<UiFormGroup for-id="agent-run-message" :error="agentRunMessageForm.errors.text">
 						<UiTextarea
 							id="agent-run-message"
@@ -53,13 +55,12 @@
 							rows="5"
 							placeholder="Send a follow-up planning instruction…"
 							:invalid="!!agentRunMessageForm.errors.text"
-							:disabled="isPlanningRunComplete || isSendingAgentRunMessage" />
+							:disabled="isSendingAgentRunMessage || isClosingPlan" />
 					</UiFormGroup>
 					<div class="flex flex-wrap items-center gap-3">
 						<UiButton type="submit" :loading="isSendingAgentRunMessage" :disabled="!canSendAgentRunMessage">
 							Send Message
 						</UiButton>
-						<span v-if="isPlanningRunComplete" class="text-sz-helper text-dim">Planning Agent Run is completed.</span>
 					</div>
 					<UiText v-if="sendAgentRunMessageError" class="block" tone="error" size="helper">
 						{{ sendAgentRunMessageError }}
@@ -92,6 +93,20 @@
 						Started {{ formatDate(plan.agentRun.started.at) }}. Use manual event refresh to inspect the raw Planning Agent Run
 						transcript while the richer Planning UI is deferred.
 					</p>
+					<div class="mt-3 grid gap-2">
+						<UiButton
+							type="button"
+							variant="secondary"
+							tone="danger"
+							:loading="isClosingPlan"
+							:disabled="!canClosePlan"
+							@click="confirmAndClosePlan()">
+							Close Planning
+						</UiButton>
+						<UiText v-if="closePlanError" class="block" tone="error" size="helper">
+							{{ closePlanError }}
+						</UiText>
+					</div>
 				</section>
 			</aside>
 		</template>
@@ -106,25 +121,25 @@ import UiForm from '../../../../components/ui/UiForm.vue'
 import UiFormGroup from '../../../../components/ui/UiFormGroup.vue'
 import UiText from '../../../../components/ui/UiText.vue'
 import UiTextarea from '../../../../components/ui/UiTextarea.vue'
+import { useOverlay } from '../../../../composables/core/overlay'
 import { useAgentRunEvents, useAgentRunMessageSend } from '../../../../composables/portfolio/agent-runs'
-import { usePlanDetail } from '../../../../composables/portfolio/project/plans'
+import { usePlanClose, usePlanDetail } from '../../../../composables/portfolio/project/plans'
 import { formatDate } from '../../../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
 
 const route = useRoute()
+const { confirm } = useOverlay()
 const projectId = computed(() => route.params.projectId as string)
 const planId = computed(() => route.params.planId as string)
 const { plan, isLoadingPlan, planError, hasLoadedPlan, isRefreshingPlan } = usePlanDetail(projectId, planId)
 
 const planningAgentRunId = computed(() => plan.value?.agentRun.id ?? null)
-const { agentRunEvents, isLoadingAgentRunEvents, agentRunEventsError, hasLoadedAgentRunEvents, refreshAgentRunEvents } = useAgentRunEvents(
-	planningAgentRunId,
-	planId,
-)
+const { agentRunEvents, isLoadingAgentRunEvents, agentRunEventsError, hasLoadedAgentRunEvents, refreshAgentRunEvents } =
+	useAgentRunEvents(planningAgentRunId)
+const { isClosingPlan, closePlanError, closePlan } = usePlanClose(projectId, planId)
 const { agentRunMessageForm, isSendingAgentRunMessage, sendAgentRunMessageError, sendAgentRunMessage } = useAgentRunMessageSend(
 	planningAgentRunId,
-	planId,
 	{ agentRunEvents, hasLoadedAgentRunEvents },
 )
 
@@ -132,18 +147,33 @@ const planningRunLabel = computed(() => {
 	if (plan.value === null) return 'Unknown'
 	return plan.value.agentRun.completed === null ? 'In progress' : `Completed ${formatDate(plan.value.agentRun.completed.at)}`
 })
-const planningRunTitle = computed(() => (plan.value?.agentRun.completed === null ? 'Planning in progress' : 'Planning completed'))
-const isPlanningRunComplete = computed(() => plan.value !== null && plan.value.agentRun.completed !== null)
+const planningRunTitle = computed(() => (plan.value?.closed === null ? 'Planning in progress' : 'Planning closed'))
+const isPlanningClosed = computed(() => plan.value !== null && plan.value.closed !== null)
+const isPlanningRunClosed = computed(() => plan.value !== null && plan.value.agentRun.completed !== null)
 const canSendAgentRunMessage = computed(() =>
-	[agentRunMessageForm.valid, !isSendingAgentRunMessage.value, !isPlanningRunComplete.value, planningAgentRunId.value !== null].every(
-		Boolean,
-	),
+	[
+		agentRunMessageForm.valid,
+		!isSendingAgentRunMessage.value,
+		!isClosingPlan.value,
+		!isPlanningClosed.value,
+		!isPlanningRunClosed.value,
+		planningAgentRunId.value !== null,
+	].every(Boolean),
 )
-const composerHelpText = computed(() =>
-	isPlanningRunComplete.value
-		? 'This Planning Agent Run is completed, so it cannot accept new messages.'
-		: 'Send a follow-up operator message to this Planning Agent Run.',
+const canClosePlan = computed(
+	() => planningAgentRunId.value !== null && !isPlanningClosed.value && !isClosingPlan.value && !isSendingAgentRunMessage.value,
 )
+async function confirmAndClosePlan(): Promise<void> {
+	const confirmed = await confirm({
+		title: 'Close planning?',
+		body: 'This Plan will stop accepting new planning messages and model turns. Pending proposals can still be reviewed.',
+		confirm: { label: 'Close planning', variant: 'primary', tone: 'danger' },
+		cancel: { label: 'Keep planning', variant: 'ghost' },
+	})
+	if (!confirmed) return
+
+	await closePlan()
+}
 
 function eventSummary(event: (typeof agentRunEvents.value)[number]): string {
 	return JSON.stringify(event.body, null, 2)

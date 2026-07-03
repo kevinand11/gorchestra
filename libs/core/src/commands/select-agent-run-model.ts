@@ -13,6 +13,7 @@ import type {
 	InvalidInputError,
 	InvariantViolationError,
 	ModelThinkingLevelUnavailableError,
+	PlanClosedError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
@@ -37,6 +38,7 @@ export type Error =
 	| ArchivedModelReferenceError
 	| ArchivedModelProviderReferenceError
 	| ModelThinkingLevelUnavailableError
+	| PlanClosedError
 	| AgentRunNotInteractiveError
 	| AgentRunNotActiveError
 

@@ -124,6 +124,18 @@ if (import.meta.vitest) {
 			expect(options.tx.agentRuns.records.get('agent-run-1')).toEqual(expectedAgentRun)
 		})
 
+		it('closes the Revision Gate without overwriting an already completed Agent Run', async () => {
+			const options = closeRevisionGateFixture()
+			const previousCompletion = { at: '2026-06-10T11:30:00.000Z' }
+			options.tx.agentRuns.records.get('agent-run-1')!.completed = previousCompletion
+			const command = createCloseRevisionGateCommand(createTestCoreRuntime(options))
+
+			const result = await command({ revisionGateId: 'revision-gate-1' }, context)
+
+			expect(result).toMatchObject({ ok: true, value: { agentRun: { completed: previousCompletion } } })
+			expect(options.tx.agentRuns.records.get('agent-run-1')?.completed).toEqual(previousCompletion)
+		})
+
 		it('rejects non-open Revision Gates', async () => {
 			const options = closeRevisionGateFixture()
 			options.tx.revisionGates.records.get('revision-gate-1')!.closed = {

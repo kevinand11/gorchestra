@@ -35,7 +35,7 @@
 						<span class="text-sz-helper text-dim">Created {{ formatDate(plan.created.at) }}</span>
 					</span>
 					<span class="justify-self-start border border-dimmer bg-secondary px-2 py-0.5 text-sz-micro font-semibold text-dim">
-						{{ plan.agentRun.completed === null ? 'Planning' : 'Completed' }}
+						{{ plan.closed === null ? 'Planning' : 'Closed' }}
 					</span>
 				</NuxtLink>
 			</div>

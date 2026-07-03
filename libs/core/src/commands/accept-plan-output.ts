@@ -752,7 +752,14 @@ if (import.meta.vitest) {
 
 	function proposalFixture() {
 		const options = createTestCoreServices()
-		options.tx.plans.records.set('plan-1', { id: 'plan-1', projectId: 'project-1', title: 'Plan', config: null, created: localStamp() })
+		options.tx.plans.records.set('plan-1', {
+			id: 'plan-1',
+			projectId: 'project-1',
+			title: 'Plan',
+			config: null,
+			created: localStamp(),
+			closed: null,
+		})
 		options.tx.repositories.records.set('repository-1', {
 			id: 'repository-1',
 			projectId: 'project-1',

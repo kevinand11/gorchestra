@@ -41,6 +41,7 @@ export const coreStorageMigrations = [
 				stringField('title'),
 				nullableField(objectField('config')),
 				objectField('created'),
+				nullableField(objectField('closed')),
 			]),
 			createTable('deliveries', [
 				stringField('projectId'),

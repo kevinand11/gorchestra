@@ -69,6 +69,7 @@ async function runModelAgentRunStep(
 
 	const state = await loadLoopState(runtime.services.storage, agentRunId)
 	if (!state.ok) return state
+	if (state.value.agentRun.completed !== null) return { ok: true, value: undefined }
 
 	const claim = nextTurnClaim(state.value.events, followUpReason)
 	return claim === null ? { ok: true, value: undefined } : runClaimedTurn(runtime, state.value, claim, options, turn)
@@ -575,6 +576,18 @@ if (import.meta.vitest) {
 			expect(result).toEqual({ ok: true, value: undefined })
 			expect(services.tx.agentRuns.records.get('agent-run-1')?.completed).toEqual({ at: '2026-06-10T12:00:00.000Z' })
 			expect([...services.tx.agentRunEvents.records.values()].map((event) => event.body.type)).toContain('model-message-ended')
+		})
+
+		it('no-ops completed Agent Runs without processing queued input', async () => {
+			const services = planningFixture()
+			services.tx.agentRuns.records.get('agent-run-1')!.completed = { at: '2026-06-10T12:05:00.000Z' }
+			const initialEventCount = services.tx.agentRunEvents.records.size
+			const runtime = modelLoopRuntime(services, modelProviders([stopOutcome('Should not run.')]))
+
+			const result = await runModelAgentRun(runtime, 'agent-run-1')
+
+			expect(result).toEqual({ ok: true, value: undefined })
+			expect(services.tx.agentRunEvents.records.size).toBe(initialEventCount)
 		})
 
 		it('records proposal tool calls and continues to a tool-results stop turn', async () => {

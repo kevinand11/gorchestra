@@ -96,6 +96,7 @@ export const planSchema = Schema.from('plans')
 	.field('title', nonEmptyTrimmedStringPipe)
 	.field('config', v.nullable(planConfigRecordPipe))
 	.field('created', auditStampPipe)
+	.field('closed', v.nullable(auditStampPipe))
 	.build()
 
 export const deliverySchema = Schema.from('deliveries')
