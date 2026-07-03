@@ -32,6 +32,13 @@ export function createPlansApiRouter(context: ServerApiContext) {
 				response: Queries.GetPlan.resultPipe,
 			},
 		})(async (req) => getSelectedProjectPlan(context, req.cookies, req.params.projectId, req.params.planId))
+		.post('/projects/:projectId/plans/:planId/close', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ projectId: idPipe, planId: idPipe }),
+				response: Queries.GetPlan.resultPipe,
+			},
+		})(async (req) => closeSelectedProjectPlan(context, req.cookies, req.params.projectId, req.params.planId))
 }
 
 function listSelectedProjectPlans(
@@ -68,6 +75,21 @@ function getSelectedProjectPlan(
 ): Promise<Queries.GetPlan.Result> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
 		const plan = await core.queries.getPlan({ projectId, planId })
+		return plan.ok ? plan.value : throwCoreOperationError(plan.error)
+	})
+}
+
+function closeSelectedProjectPlan(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	projectId: string,
+	planId: string,
+): Promise<Domain.Plan.PlanWithPlanningAgentRun> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
+		const plan = await core.commands.closePlan(
+			{ projectId, planId },
+			{ actor: { type: 'workspace-member', id: workspaceMember.id }, correlationId: null },
+		)
 		return plan.ok ? plan.value : throwCoreOperationError(plan.error)
 	})
 }

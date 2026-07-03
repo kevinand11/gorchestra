@@ -218,6 +218,11 @@ export interface DeliveryClosedError {
 	outcome: DeliveryClosedOutcome
 }
 
+export interface PlanClosedError {
+	type: 'plan-closed'
+	planId: Id
+}
+
 export interface ReviewSurfaceAlreadyMergedError {
 	type: 'review-surface-already-merged'
 	reviewSurfaceId: Id
@@ -248,6 +253,12 @@ export interface AgentRunNotInteractiveError {
 export interface AgentRunNotActiveError {
 	type: 'agent-run-not-active'
 	agentRunId: Id
+}
+
+export interface AgentRunTurnActiveError {
+	type: 'agent-run-turn-active'
+	agentRunId: Id
+	turnStartedEventId: Id
 }
 
 export interface ProposalAlreadyReviewedError {

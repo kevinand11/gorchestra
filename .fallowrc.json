@@ -10,5 +10,8 @@
 	"health": {
 		"maxCyclomatic": 80,
 		"maxCrap": 4000
+	},
+	"audit": {
+		"gate": "all"
 	}
 }

@@ -127,7 +127,14 @@ if (import.meta.vitest) {
 	function proposalFixture() {
 		const options = createTestCoreServices()
 		seedProject(options.tx, 'project-1')
-		options.tx.plans.records.set('plan-1', { id: 'plan-1', projectId: 'project-1', title: 'Plan', config: null, created: stamp })
+		options.tx.plans.records.set('plan-1', {
+			id: 'plan-1',
+			projectId: 'project-1',
+			title: 'Plan',
+			config: null,
+			created: stamp,
+			closed: null,
+		})
 		options.tx.agentRuns.records.set('agent-run-1', {
 			id: 'agent-run-1',
 			agent: { type: 'model' },

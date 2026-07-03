@@ -22,7 +22,11 @@ export async function completeSingleAgentRunByPurpose(
 	completed: RuntimeRecord,
 ): Promise<Result<AgentRun, AgentRunCompletionError>> {
 	const agentRun = await getSingleAgentRunByPurpose(storage, purpose)
-	return agentRun.ok ? updateRecord('agent-run', storage, agentRun.value.id, { completed }) : agentRun
+	if (!agentRun.ok) return agentRun
+
+	return agentRun.value.completed === null
+		? updateRecord('agent-run', storage, agentRun.value.id, { completed })
+		: { ok: true, value: agentRun.value }
 }
 
 function singleAgentRunByPurpose(agentRuns: AgentRun[], purpose: AgentRunPurpose): Result<AgentRun, InvariantViolationError> {

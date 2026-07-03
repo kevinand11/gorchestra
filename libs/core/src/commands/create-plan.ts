@@ -177,7 +177,7 @@ function planCreationFactsValue(
 	modelUse: ModelUseConfig,
 ): PlanCreationFacts {
 	return {
-		plan: { id: values.planId, projectId: project.id, title: input.title, config, created: values.stamp },
+		plan: { id: values.planId, projectId: project.id, title: input.title, config, created: values.stamp, closed: null },
 		agentRunId: values.agentRunId,
 		started: values.started,
 		modelUse,
@@ -497,6 +497,7 @@ if (import.meta.vitest) {
 			title: 'Plan setup',
 			config: null,
 			created: localStamp(),
+			closed: null,
 		}
 	}
 

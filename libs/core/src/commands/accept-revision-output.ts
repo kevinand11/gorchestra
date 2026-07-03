@@ -387,6 +387,18 @@ if (import.meta.vitest) {
 			expect(options.tx.agentRuns.records.get('agent-run-1')?.completed).toEqual({ at: localStamp().at })
 		})
 
+		it('consumes the Revision Gate without overwriting an already completed Agent Run', async () => {
+			const options = deliveryRevisionFixture()
+			const previousCompletion = { at: '2026-06-10T11:30:00.000Z' }
+			options.tx.agentRuns.records.get('agent-run-1')!.completed = previousCompletion
+			const command = createAcceptRevisionOutputCommand(createTestCoreRuntime(options))
+
+			const result = await command({ proposalEventId: 'proposal-event' }, context)
+
+			expect(result).toMatchObject({ ok: true, value: { revisionGate: { closed: { type: 'consumed-by-revision' } } } })
+			expect(options.tx.agentRuns.records.get('agent-run-1')?.completed).toEqual(previousCompletion)
+		})
+
 		it('creates a Slice-scoped Revision through the Slice parent Delivery', async () => {
 			const options = sliceRevisionFixture()
 			const command = createAcceptRevisionOutputCommand(createTestCoreRuntime(options))

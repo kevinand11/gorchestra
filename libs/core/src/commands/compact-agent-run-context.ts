@@ -9,6 +9,7 @@ import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
+	PlanClosedError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
@@ -35,6 +36,7 @@ export type Error =
 	| StorageOperationFailedError
 	| ResourceNotFoundError
 	| InvariantViolationError
+	| PlanClosedError
 	| AgentRunNotInteractiveError
 	| AgentRunNotActiveError
 

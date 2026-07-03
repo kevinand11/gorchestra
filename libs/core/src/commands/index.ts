@@ -6,6 +6,7 @@ import { createArchiveModelProviderCommand } from './archive-model-provider'
 import { createArchiveSecretCommand } from './archive-secret'
 import { createArchiveSecretBindingCommand } from './archive-secret-binding'
 import { createBindSecretCommand } from './bind-secret'
+import { createClosePlanCommand } from './close-plan'
 import { createCloseRevisionGateCommand } from './close-revision-gate'
 import { createCompactAgentRunContextCommand } from './compact-agent-run-context'
 import { createConfigureDeliveryCommand } from './configure-delivery'
@@ -48,6 +49,7 @@ export type * as ArchiveModelProvider from './archive-model-provider'
 export type * as ArchiveSecret from './archive-secret'
 export type * as ArchiveSecretBinding from './archive-secret-binding'
 export type * as BindSecret from './bind-secret'
+export type * as ClosePlan from './close-plan'
 export type * as CloseRevisionGate from './close-revision-gate'
 export type * as CompactAgentRunContext from './compact-agent-run-context'
 export type * as ConfigureDelivery from './configure-delivery'
@@ -98,6 +100,7 @@ export function createCoreCommands(runtime: CoreRuntime) {
 		createMemoryRevision: createCreateMemoryRevisionCommand(runtime),
 		createPlan: createCreatePlanCommand(runtime),
 		sendAgentRunMessage: createSendAgentRunMessageCommand(runtime),
+		closePlan: createClosePlanCommand(runtime),
 		interruptAgentRun: createInterruptAgentRunCommand(runtime),
 		selectAgentRunModel: createSelectAgentRunModelCommand(runtime),
 		compactAgentRunContext: createCompactAgentRunContextCommand(runtime),
@@ -152,6 +155,7 @@ if (import.meta.vitest) {
 				'createMemoryRevision',
 				'createPlan',
 				'sendAgentRunMessage',
+				'closePlan',
 				'interruptAgentRun',
 				'selectAgentRunModel',
 				'compactAgentRunContext',

@@ -1,0 +1,3 @@
+# Plan-owned Planning closure
+
+Planning is closed through a consumer-authorized `closePlan` command on the Plan rather than a generic Agent Run completion command. Closing a Plan records `Plan.closed` as an Audit Stamp, blocks further planning input and model turns, and completes the Plan's Planning Agent Run with a runtime completion record as a side effect; pending Plan Output proposal review remains independent and may still be accepted or rejected after closure. We chose the Plan-owned surface so Planning mirrors Revision Planning target lifecycle closure, while Agent Run completion remains runtime lifecycle state instead of storing consumer authorization.
