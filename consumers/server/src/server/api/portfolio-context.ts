@@ -103,7 +103,8 @@ function openSelectedPortfolioCore(
 			secretEncryptionKey: context.secretEncryptionKey,
 			dispatcher: {
 				preflight: () => context.dispatcher.preflight(),
-				requestDispatch: (request) => context.dispatcher.requestDispatch({ coreStorageNamespace, request }),
+				request: (request) => context.dispatcher.request({ coreStorageNamespace, request }),
+				ready: (marker) => context.dispatcher.ready(marker),
 			},
 		}),
 	)

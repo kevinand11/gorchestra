@@ -393,7 +393,8 @@ if (import.meta.vitest) {
 			sandbox: { preflight: () => Promise.resolve({ ok: true }) },
 			dispatcher: {
 				preflight: () => Promise.resolve({ ok: true }),
-				requestDispatch: () => Promise.resolve(),
+				request: () => Promise.resolve('dispatch-marker'),
+				ready: () => {},
 			},
 		}
 	}

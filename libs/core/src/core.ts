@@ -130,7 +130,8 @@ if (import.meta.vitest) {
 	const sandbox: CoreServices['sandbox'] = { preflight: () => Promise.resolve({ ok: true }) }
 	const dispatcher: CoreServices['dispatcher'] = {
 		preflight: () => Promise.resolve({ ok: true }),
-		requestDispatch: () => Promise.resolve(),
+		request: () => Promise.resolve('dispatch-marker'),
+		ready: () => {},
 	}
 
 	function coreServices(): CoreServices {
@@ -190,8 +191,11 @@ if (import.meta.vitest) {
 					preflight: () => {
 						throw new Error('dispatcher preflight was probed')
 					},
-					requestDispatch: () => {
+					request: () => {
 						throw new Error('dispatcher dispatch was called')
+					},
+					ready: () => {
+						throw new Error('dispatcher ready was called')
 					},
 				},
 			}
@@ -212,8 +216,8 @@ if (import.meta.vitest) {
 				},
 			})
 
-			const invalidDispatcher = { ...options.dispatcher } as { requestDispatch?: unknown }
-			delete invalidDispatcher.requestDispatch
+			const invalidDispatcher = { ...options.dispatcher } as { request?: unknown }
+			delete invalidDispatcher.request
 
 			expect(openCore({ ...options, dispatcher: invalidDispatcher } as never)).toMatchObject({
 				ok: false,
@@ -221,7 +225,7 @@ if (import.meta.vitest) {
 					type: 'invalid-input',
 					boundary: 'core',
 					operation: 'openCore',
-					pipeError: { messages: [expect.objectContaining({ path: 'dispatcher.requestDispatch' })] },
+					pipeError: { messages: [expect.objectContaining({ path: 'dispatcher.request' })] },
 				},
 			})
 
@@ -287,7 +291,8 @@ if (import.meta.vitest) {
 						calls.push('dispatcher')
 						return Promise.resolve({ ok: true })
 					},
-					requestDispatch: () => Promise.resolve(),
+					request: () => Promise.resolve('dispatch-marker'),
+					ready: () => {},
 				},
 				logger: {
 					debug: () => {

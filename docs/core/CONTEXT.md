@@ -253,7 +253,7 @@ An ordered event in an Agent Run transcript. Agent Run Events record input messa
 _Avoid_: Session Entry, transcript row, checkpoint
 
 **Agent Run Dispatch Request**:
-A Core-originated request for a Consumer to arrange runtime execution for a runnable Agent Run. An Agent Run Dispatch Request records that execution should be arranged; it is not proof that execution has started or completed.
+A Core-originated request for a Consumer to arrange runtime execution for a runnable Agent Run. An Agent Run Dispatch Request records that execution should be arranged; it is not proof that execution has started or completed. In the v1 in-memory Server Consumer, dispatch request acceptance and dispatch processing are separate: Core may accept a request transactionally while the Consumer starts processing only after the write transaction succeeds.
 _Avoid_: Scheduler job, background job, runtime event
 
 **Interactive Agent Run**:

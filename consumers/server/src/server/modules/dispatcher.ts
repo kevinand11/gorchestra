@@ -1,4 +1,5 @@
 import { openCore, type CoreDispatchRequest, type CoreServices } from '@gorchestra/core'
+import { Instance } from 'equipped'
 
 import type { SecretEncryptionKey } from './secret-protection'
 import { createCoreServices } from '../core/services'
@@ -25,6 +26,7 @@ export type ServerDispatcher = ReturnType<typeof createServerDispatcher>
 
 export function createServerDispatcher(input: CreateServerDispatcherInput) {
 	const queue: string[] = []
+	const pending = new Map<string, ServerAgentRunDispatchItem>()
 	const queued = new Map<string, ServerAgentRunDispatchItem>()
 	const running = new Map<string, ServerAgentRunDispatchItem>()
 	const rerunRequested = new Set<string>()
@@ -34,9 +36,17 @@ export function createServerDispatcher(input: CreateServerDispatcherInput) {
 		return Promise.resolve({ ok: true })
 	}
 
-	function requestDispatch(request: ServerDispatchRequest): Promise<void> {
-		if (request.request.type === 'agent-run') enqueue(agentRunItem(request))
-		return Promise.resolve()
+	function request(request: ServerDispatchRequest): Promise<string> {
+		const marker = Instance.createId()
+		if (request.request.type === 'agent-run') pending.set(marker, agentRunItem(request))
+		return Promise.resolve(marker)
+	}
+
+	function ready(marker: string): void {
+		const item = pending.get(marker)
+		if (item === undefined) return
+		pending.delete(marker)
+		enqueue(item)
 	}
 
 	function agentRunItem(request: ServerDispatchRequest): ServerAgentRunDispatchItem {
@@ -120,21 +130,46 @@ export function createServerDispatcher(input: CreateServerDispatcherInput) {
 	function coreDispatcherForNamespace(coreStorageNamespace: string): CoreServices['dispatcher'] {
 		return {
 			preflight,
-			requestDispatch: (request) => requestDispatch({ coreStorageNamespace, request }),
+			request: (request) => requestForNamespace(coreStorageNamespace, request),
+			ready,
 		}
+	}
+
+	function requestForNamespace(coreStorageNamespace: string, coreRequest: CoreDispatchRequest): Promise<string> {
+		return request({ coreStorageNamespace, request: coreRequest })
 	}
 
 	function key(item: ServerAgentRunDispatchItem): string {
 		return `${item.coreStorageNamespace}:${item.agentRunId}`
 	}
 
-	return { preflight, requestDispatch }
+	return { preflight, request, ready }
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
 	describe('Server Agent Run dispatcher', () => {
+		it('does not process accepted requests until their marker is ready', async () => {
+			const started: string[] = []
+			const dispatcher = createServerDispatcher({
+				dataDir: '/tmp/gorchestra-test',
+				secretEncryptionKey: Buffer.alloc(32, 1),
+				runAgentRun: (item) => {
+					started.push(item.agentRunId)
+					return Promise.resolve()
+				},
+			})
+
+			const marker = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-1'))
+			await new Promise((resolve) => setTimeout(resolve, 0))
+			expect(started).toEqual([])
+
+			dispatcher.ready(marker)
+			await waitFor(() => started.length === 1)
+			expect(started).toEqual(['agent-run-1'])
+		})
+
 		it('coalesces queued duplicate requests for the same AgentRun', async () => {
 			const started: string[] = []
 			const dispatcher = createServerDispatcher({
@@ -146,8 +181,10 @@ if (import.meta.vitest) {
 				},
 			})
 
-			await dispatcher.requestDispatch(agentRunDispatch('portfolio-a', 'agent-run-1'))
-			await dispatcher.requestDispatch(agentRunDispatch('portfolio-a', 'agent-run-1'))
+			const first = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-1'))
+			const second = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-1'))
+			dispatcher.ready(first)
+			dispatcher.ready(second)
 			await waitFor(() => started.length === 1)
 
 			expect(started).toEqual(['portfolio-a:agent-run-1'])
@@ -170,15 +207,37 @@ if (import.meta.vitest) {
 				},
 			})
 
-			await dispatcher.requestDispatch(agentRunDispatch('portfolio-a', 'agent-run-1'))
+			const first = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-1'))
+			dispatcher.ready(first)
 			await waitFor(() => started.length === 1)
-			await dispatcher.requestDispatch(agentRunDispatch('portfolio-a', 'agent-run-1'))
+			const second = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-1'))
+			dispatcher.ready(second)
 			await new Promise((resolve) => setTimeout(resolve, 0))
 			expect(started).toEqual(['agent-run-1'])
 
 			releaseFirst()
 			await waitFor(() => completed.length === 2)
 			expect(started).toEqual(['agent-run-1', 'agent-run-1'])
+		})
+
+		it('ignores unknown or already readied dispatch markers', async () => {
+			const started: string[] = []
+			const dispatcher = createServerDispatcher({
+				dataDir: '/tmp/gorchestra-test',
+				secretEncryptionKey: Buffer.alloc(32, 1),
+				runAgentRun: (item) => {
+					started.push(item.agentRunId)
+					return Promise.resolve()
+				},
+			})
+
+			const marker = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-1'))
+			dispatcher.ready('missing-marker')
+			dispatcher.ready(marker)
+			dispatcher.ready(marker)
+			await waitFor(() => started.length === 1)
+
+			expect(started).toEqual(['agent-run-1'])
 		})
 	})
 

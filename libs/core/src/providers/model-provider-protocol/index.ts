@@ -756,7 +756,8 @@ if (import.meta.vitest) {
 	function noopDispatcher(): CoreServices['dispatcher'] {
 		return {
 			preflight: () => Promise.resolve({ ok: true }),
-			requestDispatch: () => Promise.resolve(),
+			request: () => Promise.resolve('dispatch-marker'),
+			ready: () => {},
 		}
 	}
 }

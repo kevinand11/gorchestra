@@ -52,7 +52,8 @@ if (import.meta.vitest) {
 		it('uses an explicit Agent Run dispatcher override', () => {
 			const dispatcher: ServerDispatcher = {
 				preflight: () => Promise.resolve({ ok: true }),
-				requestDispatch: () => Promise.resolve(),
+				request: () => Promise.resolve('dispatch-marker'),
+				ready: () => {},
 			}
 
 			const context = createServerApiContext({

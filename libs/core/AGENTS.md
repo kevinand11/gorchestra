@@ -29,6 +29,7 @@ The `libs/core/` package is the private Core package source surface for reusable
 - Durable Core docs/ADRs define Core-owned provider behavior and consumer-provided Core Services; do not add new consumer-owned behavior ports.
 - Core provider families receive `CoreServices` at runtime assembly and may own family-level dispatch and service-backed resolution; concrete external provider implementations should receive resolved values needed to perform the external action and should not load authoritative context themselves.
 - Opened Core exposes top-level `preflight()` for required Core Service readiness; keep it separate from command/query APIs and do not include optional logger/event checks.
+- Core dispatcher service acceptance uses `request(input): Promise<string>` to return an opaque marker inside command transactions and `ready(marker): void` only after successful transaction completion; command implementations must not start dispatch processing inside the transaction.
 - Storage-backed Secret and Secret Binding mutations must preserve Archive Period history and enforce duplicate exact binding scope/environment names across archived and active bindings.
 - Secret read queries return redacted Secret data with Secret References for Repository access, Secret Binding, and Model Provider usages; they must never expose plaintext or Protected Secret Value References.
 

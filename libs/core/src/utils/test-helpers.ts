@@ -181,7 +181,8 @@ export function createTestCoreServices(overrides: Partial<Pick<CoreServices, 'di
 
 const noopDispatcher: CoreServices['dispatcher'] = {
 	preflight: () => Promise.resolve({ ok: true }),
-	requestDispatch: () => Promise.resolve(),
+	request: () => Promise.resolve('dispatch-marker'),
+	ready: () => {},
 }
 
 export function createTestCoreStorage(): CoreStorage {

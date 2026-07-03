@@ -86,7 +86,8 @@ export type CoreSandboxService = PipeOutput<typeof coreSandboxServicePipe>
 
 export const coreDispatcherServicePipe = v.object({
 	preflight: typedFunctionDependencyPipe<PreflightFn>(),
-	requestDispatch: typedFunctionDependencyPipe<(input: CoreDispatchRequest) => Promise<void>>(),
+	request: typedFunctionDependencyPipe<(input: CoreDispatchRequest) => Promise<string>>(),
+	ready: typedFunctionDependencyPipe<(marker: string) => void>(),
 })
 export type CoreDispatcherService = PipeOutput<typeof coreDispatcherServicePipe>
 

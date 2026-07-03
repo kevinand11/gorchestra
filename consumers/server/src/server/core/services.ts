@@ -42,7 +42,8 @@ if (import.meta.vitest) {
 			const valueRef = protectSecretPlaintext('token-value', secretEncryptionKey)
 			const dispatcher: CoreServices['dispatcher'] = {
 				preflight: () => Promise.resolve({ ok: true }),
-				requestDispatch: () => Promise.resolve(),
+				request: () => Promise.resolve('dispatch-marker'),
+				ready: () => {},
 			}
 			const services = createCoreServices({} as CoreStorage, { secretEncryptionKey, dispatcher })
 

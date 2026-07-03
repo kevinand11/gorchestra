@@ -130,7 +130,8 @@ function createCorePortfolioStorageRepo<A extends CorePortfolioStorageAdapter>(b
 function noopCoreDispatcher(): Parameters<typeof createCoreServices>[1]['dispatcher'] {
 	return {
 		preflight: () => Promise.resolve({ ok: true }),
-		requestDispatch: () => Promise.resolve(),
+		request: () => Promise.resolve('dispatch-marker'),
+		ready: () => {},
 	}
 }
 
