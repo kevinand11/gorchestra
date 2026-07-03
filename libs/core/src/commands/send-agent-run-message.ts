@@ -65,8 +65,9 @@ export function createSendAgentRunMessageCommand(runtime: CoreRuntime): Operatio
 					agentRunId: input.agentRunId,
 					reason: { type: 'input-appended', inputEventId: event.value.id },
 				})
+				if (!dispatchMarker.ok) return dispatchMarker
 
-				return { ok: true, value: { event: event.value, dispatchMarker } }
+				return { ok: true, value: { event: event.value, dispatchMarker: dispatchMarker.value } }
 			},
 		)
 		if (!written.ok) return written
@@ -166,13 +167,10 @@ if (import.meta.vitest) {
 			})
 
 			const result = await sendNextTurn(options)
-			const cause = transactionFailureCause(result)
 
-			expect(cause).toBeInstanceOf(Error)
-			expect((cause as { cause?: unknown }).cause).toMatchObject({
-				type: 'invalid-core-service-output',
-				service: 'dispatcher',
-				operation: 'request',
+			expect(result).toMatchObject({
+				ok: false,
+				error: { type: 'invalid-core-service-output', service: 'dispatcher', operation: 'request' },
 			})
 			expectNoInputMessages(options)
 		})

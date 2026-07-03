@@ -10,7 +10,7 @@ import type {
 	SingletonNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreServices, CoreStorage } from '../services'
+import type { CoreStorage } from '../services'
 import {
 	coreIdResourceSchemas,
 	coreResourceSchemas,
@@ -22,35 +22,9 @@ import {
 } from './schemas'
 import type { Result } from '../utils/types'
 
+export { withTransaction, withTwoPhaseTransaction } from './transactions'
+
 export type StorageBoundaryError = StorageOperationFailedError | InvalidCoreServiceOutputError
-
-export async function withTransaction<TValue, TError>(
-	options: Pick<CoreServices, 'storage'>,
-	run: (storage: CoreStorage) => Promise<Result<TValue, TError>>,
-): Promise<Result<TValue, TError | StorageOperationFailedError>> {
-	try {
-		return await options.storage.session(() => run(options.storage))
-	} catch (error) {
-		return { ok: false, error: storageFailure({ type: 'transaction', cause: error }) }
-	}
-}
-
-export async function withTwoPhaseTransaction<TClaim, TOutside, TValue, TError>(
-	options: Pick<CoreServices, 'storage'>,
-	phases: {
-		read: (storage: CoreStorage) => Promise<Result<TClaim, TError>>
-		run: (claim: TClaim) => Promise<Result<TOutside, TError>>
-		write: (storage: CoreStorage, claim: TClaim, outside: TOutside) => Promise<Result<TValue, TError>>
-	},
-): Promise<Result<TValue, TError | StorageOperationFailedError>> {
-	const claim = await withTransaction(options, phases.read)
-	if (!claim.ok) return claim
-
-	const outside = await phases.run(claim.value)
-	if (!outside.ok) return outside
-
-	return withTransaction(options, (storage) => phases.write(storage, claim.value, outside.value))
-}
 
 export async function getPortfolioConfig(
 	storage: CoreStorage,

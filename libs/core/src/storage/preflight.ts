@@ -1,14 +1,11 @@
-import type { CorePreflightCheck } from '../services'
-import type { CoreStorage } from '../services'
+import type { CorePreflightCheck, CoreStorage } from '../services'
 import { portfolioConfigSchema, portfolioConfigStorageId } from './schemas'
+import { withTransaction } from './transactions'
 
 export async function preflightStorage(storage: CoreStorage): Promise<CorePreflightCheck> {
-	try {
-		await storage.session(async () => {
-			await storage.on(portfolioConfigSchema).one().id(portfolioConfigStorageId).find()
-		})
-		return { ok: true }
-	} catch {
-		return { ok: false, reason: 'probe-failed', message: null }
-	}
+	const probe = await withTransaction({ storage }, async (transactionStorage) => {
+		await transactionStorage.on(portfolioConfigSchema).one().id(portfolioConfigStorageId).find()
+		return { ok: true, value: undefined }
+	})
+	return probe.ok ? { ok: true } : { ok: false, reason: 'probe-failed', message: null }
 }

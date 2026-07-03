@@ -231,8 +231,9 @@ async function writeInitialPlanningInput(
 		agentRunId: agentRun.id,
 		reason: { type: 'input-appended', inputEventId: input.value.id },
 	})
+	if (!dispatchMarker.ok) return dispatchMarker
 
-	return { ok: true, value: { plan: { ...plan, agentRun }, dispatchMarker } }
+	return { ok: true, value: { plan: { ...plan, agentRun }, dispatchMarker: dispatchMarker.value } }
 }
 
 async function resolvePlanningModelUse(
@@ -398,13 +399,10 @@ if (import.meta.vitest) {
 			})
 
 			const result = await runDispatchablePlanCreation(options)
-			const cause = transactionFailureCause(result)
 
-			expect(cause).toBeInstanceOf(Error)
-			expect((cause as { cause?: unknown }).cause).toMatchObject({
-				type: 'invalid-core-service-output',
-				service: 'dispatcher',
-				operation: 'request',
+			expect(result).toMatchObject({
+				ok: false,
+				error: { type: 'invalid-core-service-output', service: 'dispatcher', operation: 'request' },
 			})
 			expectPlanCreationRolledBack(options)
 		})

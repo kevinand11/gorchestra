@@ -35,6 +35,7 @@ import {
 	type ResolvedSecretValues,
 } from '../../services'
 import { secretSchema } from '../../storage/schemas'
+import { withTransaction } from '../../storage/transactions'
 import type { Result } from '../../utils/types'
 import { validateCoreServiceOutput } from '../../validation'
 
@@ -174,15 +175,11 @@ async function resolveModelProviderProtocolAccessFromStorage(
 		: resolveModelProviderProtocolAccess(services, modelProvider, secrets.value.secrets)
 }
 
-async function readModelProviderSecretReadiness(
+function readModelProviderSecretReadiness(
 	services: CoreServices,
 	modelProvider: ModelProvider,
 ): Promise<Result<ModelProviderSecretReadiness, ModelProviderSecretReadinessError>> {
-	try {
-		return await services.storage.session(() => readModelProviderSecretReadinessFromStorage(services.storage, modelProvider))
-	} catch (error) {
-		return storageFailure({ type: 'transaction', cause: error })
-	}
+	return withTransaction(services, (storage) => readModelProviderSecretReadinessFromStorage(storage, modelProvider))
 }
 
 async function readModelProviderSecretReadinessFromStorage(
