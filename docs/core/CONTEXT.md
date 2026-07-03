@@ -9,7 +9,7 @@ A core orchestration boundary that groups Projects and shared reusable context o
 _Avoid_: Project Space, program, workspace
 
 **Portfolio Graph**:
-The Portfolio-scoped graph of Core graph nodes and Links. Projects, Plans, Deliveries, Slices, and Memories can be nodes whether or not they currently have Links; the Portfolio itself is the graph boundary, not a graph node.
+The Portfolio-scoped graph of Core graph nodes and Links. Projects, Plans, Deliveries, Slices, Memories, and Memory Revisions can be nodes whether or not they currently have Links; the Portfolio itself is the graph boundary, not a graph node.
 _Avoid_: Brain Graph, Workspace Graph, relationship map
 
 **Local Actor Ref**:
@@ -149,15 +149,15 @@ Immutable Plan-level orchestration settings for Planning, set only when the Plan
 _Avoid_: Delivery Config, Project Config
 
 **Planning**:
-The activity of exploring a problem and refining a Plan.
-_Avoid_: Grilling
+The read-only activity of exploring a problem and refining a Plan, plus creating, reviewing, and materializing Plan Output proposals. Planning does not implement Delivery or Slice work; implementation happens later through accepted Delivery execution.
+_Avoid_: Grilling, implementation
 
 **Planner**:
 The human steering Planning toward an acceptable Plan Output.
 _Avoid_: Agent, intelligence, Plan owner
 
 **Plan Output**:
-The structured proposal shape a planning Agent Run may produce for human review as one acceptable chunk. A Plan may have multiple Plan Outputs over time, and each Plan Output proposes new Deliveries with their initial Slices, plus Memories and Links. Proposed Deliveries may depend on existing Deliveries or other proposed Deliveries in the same Plan Output. Accepting a Plan Output materializes those proposed artifacts into the Portfolio graph, including Instruction Sources stored on the materialized Slices, and records Plan-produced Memory provenance for materialized Memories. Rejecting it materializes none of them. Plan Outputs do not add Slices to existing Deliveries, must propose at least one initial Slice for each proposed Delivery, and are not stored Portfolio artifacts.
+The structured proposal shape a planning Agent Run may produce for human review as one acceptable chunk. A Plan may have multiple Plan Outputs over time, each Plan Output is independently reviewable and materializable, and separate Plan Outputs may propose different acceptable chunks such as durable Memory changes first and executable Deliveries later. Each Plan Output proposes new Deliveries with their initial Slices, new Memories with initial Memory Revisions, and new Memory Revisions for existing Memories. Proposed Deliveries may depend on existing Deliveries or other proposed Deliveries in the same Plan Output. Accepting a Plan Output materializes those proposed artifacts into the Portfolio graph, including Instruction Sources stored on the materialized Slices, produced Links from the Plan to newly materialized Memories, produced Links from the Plan to every materialized Memory Revision, and depends-on Links for proposed Delivery or Slice dependencies. Rejecting it materializes none of them. Plan Outputs do not add Slices to existing Deliveries, must propose at least one initial Slice for each proposed Delivery, do not propose arbitrary Core Links, and are not stored Portfolio artifacts.
 _Avoid_: Accepted Plan, partial acceptance, staged output set, draft Plan
 
 **Delivery**:
@@ -181,7 +181,7 @@ A Delivery whose closed lifecycle field records an abandoned outcome, removed fr
 _Avoid_: Archived Delivery, Deleted Delivery, canceled Delivery, soft-deleted Delivery
 
 **Slice**:
-An independently executable unit inside exactly one Delivery. A Slice's parent Delivery, immutable Delivery-scoped order, and initial Instruction Source are immutable after acceptance. Slice order records the accepted Plan Output order for Slices within the Delivery and is the source of truth for deterministic same-Delivery Slice ordering. Slices participate in the Portfolio graph, and Slice-level dependencies are represented by Links between Slices in the same Delivery.
+An executable and reviewable unit inside exactly one Delivery. A Slice's parent Delivery, immutable Delivery-scoped order, and initial Instruction Source are immutable after acceptance. Slice order records the accepted Plan Output order for Slices within the Delivery and is the source of truth for deterministic same-Delivery Slice ordering. Slices participate in the Portfolio graph, and Slice-level dependencies are represented by Links between Slices in the same Delivery.
 _Avoid_: Step, task, subtask
 
 **Slice Work State**:
@@ -301,11 +301,11 @@ The Portfolio's second brain: the collection of Memories preserved across planni
 _Avoid_: Workspace Memory, Wiki, knowledge base
 
 **Memory**:
-A Portfolio-owned note-like and collection-capable item in Portfolio Memory. A Memory stores its current revision snapshot for fast reads, has durable Memory Revision history, and may contain child Memories through its immutable parent relationship.
-_Avoid_: Wiki, file, workspace note, graph node, folder-only record
+A Portfolio-owned note-like and collection-capable item in Portfolio Memory. A Memory stores its current revision snapshot for fast reads, has durable Memory Revision history, may contain child Memories through its immutable parent relationship, and is a stable Portfolio Graph node for the note identity.
+_Avoid_: Wiki, file, workspace note, folder-only record
 
 **Memory Revision**:
-An append-only record of a Memory's editable content at one save point. Memory Revisions preserve title and body history, while Memory stores the current revision snapshot for current reads.
+An append-only record of a Memory's editable content at one save point. Memory Revisions preserve title and body history, while Memory stores the current revision snapshot for current reads. Memory Revision is a Portfolio Graph node so provenance can target the exact content snapshot a Plan produced.
 _Avoid_: embedded revision array, edit-in-place fields, draft
 
 **Standalone Memory**:
@@ -329,7 +329,7 @@ The relationship where one Memory replaces another Memory without deleting it. S
 _Avoid_: Memory revision, Memory overwrite, Memory deletion
 
 **Link**:
-A typed directed relationship between Core graph nodes for system, provenance, or execution semantics. Portfolio is the graph boundary, not a graph node. Links connect graph nodes, not other Links. A Link reads as “from node, link-type verb, to node”; for example, a depends-on Link means the `from` node depends on the `to` node`. Core Links are reserved for durable Core facts such as produced provenance and depends-on execution dependencies; user-authored Memory-to-Memory references, support, contradiction, and supersession are expressed as Memory Inline Links instead.
+A typed directed relationship between Core graph nodes for system provenance or execution dependency semantics. Portfolio is the graph boundary, not a graph node. Links connect graph nodes, not other Links. V1 Core Link types are `produced` and `depends-on`. A produced Link records exact Core provenance, such as a Plan producing a Memory or Memory Revision. A depends-on Link is a hard execution gate: the `from` node cannot run or complete correctly until the `to` node completes, such as when required concepts or artifacts do not exist until earlier work finishes. User-authored Memory-to-Memory references, support, contradiction, and supersession are expressed as Memory Inline Links instead of Core Links.
 _Avoid_: Memory Inline Link, relationship, edge, reference, edge-as-node
 
 **Preflight**:
