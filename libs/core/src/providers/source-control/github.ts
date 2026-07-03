@@ -477,20 +477,29 @@ function failedArtifactCreationForReason(reason: SourceControlArtifactCreationFa
 	return { type: 'failed', reason, summary: artifactCreationFailureSummary(reason) }
 }
 
-const artifactCreationFailureSummaries: Record<SourceControlArtifactCreationFailureReason['type'], string> = {
-	'repository-access-secret-unresolved': 'GitHub repository access Secret value could not be resolved.',
-	'provider-authentication-failed': 'GitHub artifact branch authentication failed.',
-	'provider-access-denied': 'GitHub artifact branch access was denied.',
-	'provider-repository-not-found': 'GitHub repository was not found.',
-	'source-branch-not-found': 'GitHub artifact source branch was not found.',
-	'target-branch-not-found': 'GitHub artifact target branch was not found.',
-	'artifact-branch-diverged': 'GitHub artifact branch diverged from its source branch.',
-	'artifact-branch-update-denied': 'GitHub artifact branch could not be updated.',
-	'provider-unavailable': 'GitHub artifact branch operation failed.',
-}
-
 function artifactCreationFailureSummary(reason: SourceControlArtifactCreationFailureReason): string {
-	return artifactCreationFailureSummaries[reason.type]
+	switch (reason.type) {
+		case 'repository-access-secret-unresolved':
+			return 'GitHub repository access Secret value could not be resolved.'
+		case 'provider-authentication-failed':
+			return 'GitHub artifact branch authentication failed.'
+		case 'provider-access-denied':
+			return 'GitHub artifact branch access was denied.'
+		case 'provider-repository-not-found':
+			return 'GitHub repository was not found.'
+		case 'source-branch-not-found':
+			return 'GitHub artifact source branch was not found.'
+		case 'target-branch-not-found':
+			return 'GitHub artifact target branch was not found.'
+		case 'artifact-branch-diverged':
+			return 'GitHub artifact branch diverged from its source branch.'
+		case 'artifact-branch-update-denied':
+			return 'GitHub artifact branch could not be updated.'
+		case 'provider-unavailable':
+			return 'GitHub artifact branch operation failed.'
+		default:
+			throw new Error(`Unexpected GitHub artifact creation failure reason: ${String(reason satisfies never)}`)
+	}
 }
 
 type ReviewSurfaceFailureContext =
@@ -533,18 +542,25 @@ function failedReviewSurfaceCreationForReason(
 	return { type: 'failed', reason, summary: reviewSurfaceFailureSummary(reason) }
 }
 
-const reviewSurfaceFailureSummaries: Record<SourceControlBranchOperationFailureReason['type'], string> = {
-	'repository-access-secret-unresolved': 'GitHub repository access Secret value could not be resolved.',
-	'provider-authentication-failed': 'GitHub review surface authentication failed.',
-	'provider-access-denied': 'GitHub review surface access was denied.',
-	'provider-repository-not-found': 'GitHub repository was not found.',
-	'source-branch-not-found': 'GitHub review surface source branch was not found.',
-	'target-branch-not-found': 'GitHub review surface target branch was not found.',
-	'provider-unavailable': 'GitHub review surface operation failed.',
-}
-
 function reviewSurfaceFailureSummary(reason: SourceControlBranchOperationFailureReason): string {
-	return reviewSurfaceFailureSummaries[reason.type]
+	switch (reason.type) {
+		case 'repository-access-secret-unresolved':
+			return 'GitHub repository access Secret value could not be resolved.'
+		case 'provider-authentication-failed':
+			return 'GitHub review surface authentication failed.'
+		case 'provider-access-denied':
+			return 'GitHub review surface access was denied.'
+		case 'provider-repository-not-found':
+			return 'GitHub repository was not found.'
+		case 'source-branch-not-found':
+			return 'GitHub review surface source branch was not found.'
+		case 'target-branch-not-found':
+			return 'GitHub review surface target branch was not found.'
+		case 'provider-unavailable':
+			return 'GitHub review surface operation failed.'
+		default:
+			throw new Error(`Unexpected GitHub review surface failure reason: ${String(reason satisfies never)}`)
+	}
 }
 
 function statusCode(error: unknown): number | null {

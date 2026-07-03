@@ -50,7 +50,7 @@ function handleSliceValidationWorkState(
 		case 'needs-artifact-validation':
 			return handleSliceNeedsArtifactValidation(context, slice, state)
 		default:
-			return state satisfies never
+			throw new Error(`Unexpected validation Slice Work State: ${String(state satisfies never)}`)
 	}
 }
 
@@ -68,7 +68,7 @@ function handleRemainingSliceWorkState(
 		case 'executable':
 			return handleSliceExecutable(context, slice, state, resolution)
 		default:
-			return state satisfies never
+			throw new Error(`Unexpected remaining Slice Work State: ${String(state satisfies never)}`)
 	}
 }
 

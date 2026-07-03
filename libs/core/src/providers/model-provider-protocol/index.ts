@@ -118,12 +118,18 @@ function agentTurnNotImplementedOutput(protocol: ModelProviderProtocol): ModelAg
 }
 
 function concreteProviderForProtocol(concrete: Required<ModelProviderProtocolProviderImplementations>, protocol: ModelProviderProtocol) {
-	return {
-		'anthropic-messages': concrete.anthropicMessages,
-		'openai-responses': concrete.openAIResponses,
-		'openai-completions': concrete.openAICompletions,
-		'google-generative-ai': concrete.googleGenerativeAI,
-	}[protocol.type]
+	switch (protocol.type) {
+		case 'anthropic-messages':
+			return concrete.anthropicMessages
+		case 'openai-responses':
+			return concrete.openAIResponses
+		case 'openai-completions':
+			return concrete.openAICompletions
+		case 'google-generative-ai':
+			return concrete.googleGenerativeAI
+		default:
+			throw new Error(`Unexpected Model Provider Protocol: ${String(protocol satisfies never)}`)
+	}
 }
 
 function concretePreflight(
@@ -131,20 +137,17 @@ function concretePreflight(
 	input: ModelProviderProtocolPreflightModelInput,
 	access: ModelProviderProtocolAccess,
 ) {
-	return concretePreflightDispatch(concrete, input, access)[input.modelProvider.protocol.type]()
-}
-
-function concretePreflightDispatch(
-	concrete: Required<ModelProviderProtocolProviderImplementations>,
-	input: ModelProviderProtocolPreflightModelInput,
-	access: ModelProviderProtocolAccess,
-) {
-	return {
-		'anthropic-messages': () => concrete.anthropicMessages.preflightModel(protocolProviderInput(input, access, 'anthropic-messages')),
-		'openai-responses': () => concrete.openAIResponses.preflightModel(protocolProviderInput(input, access, 'openai-responses')),
-		'openai-completions': () => concrete.openAICompletions.preflightModel(protocolProviderInput(input, access, 'openai-completions')),
-		'google-generative-ai': () =>
-			concrete.googleGenerativeAI.preflightModel(protocolProviderInput(input, access, 'google-generative-ai')),
+	switch (input.modelProvider.protocol.type) {
+		case 'anthropic-messages':
+			return concrete.anthropicMessages.preflightModel(protocolProviderInput(input, access, 'anthropic-messages'))
+		case 'openai-responses':
+			return concrete.openAIResponses.preflightModel(protocolProviderInput(input, access, 'openai-responses'))
+		case 'openai-completions':
+			return concrete.openAICompletions.preflightModel(protocolProviderInput(input, access, 'openai-completions'))
+		case 'google-generative-ai':
+			return concrete.googleGenerativeAI.preflightModel(protocolProviderInput(input, access, 'google-generative-ai'))
+		default:
+			throw new Error(`Unexpected Model Provider Protocol: ${String(input.modelProvider.protocol satisfies never)}`)
 	}
 }
 
@@ -388,37 +391,54 @@ function isProtocolAccess(value: ModelProviderProtocolAccess | ModelProviderProt
 	return 'auth' in value
 }
 
-const modelProviderProtocolFailureSummaries: Record<ModelProviderProtocolPreflightFailureReason['type'], (name: string) => string> = {
-	'model-archived': (name) => `${name} Model is archived.`,
-	'model-provider-archived': (name) => `${name} Model Provider is archived.`,
-	'model-provider-auth-secret-missing': (name) => `${name} model provider auth Secret is missing.`,
-	'model-provider-auth-secret-inactive': (name) => `${name} model provider auth Secret is not active.`,
-	'model-provider-header-secret-missing': (name) => `${name} model provider header Secret is missing.`,
-	'model-provider-header-secret-inactive': (name) => `${name} model provider header Secret is not active.`,
-	'model-provider-secret-unresolved': (name) => `${name} model provider Secret value could not be resolved.`,
-	'provider-authentication-failed': (name) => `${name} authentication failed.`,
-	'provider-access-denied': (name) => `${name} access was denied.`,
-	'provider-model-not-found': (name) => `${name} model was not found.`,
-	'provider-unavailable': (name) => `${name} model preflight failed.`,
-	'provider-preflight-not-implemented': (name) => `${name} model preflight is not implemented.`,
-}
-
-const protocolDisplayNames: Record<ModelProviderProtocolType, string> = {
-	'anthropic-messages': 'Anthropic Messages',
-	'openai-responses': 'OpenAI Responses',
-	'openai-completions': 'OpenAI Completions',
-	'google-generative-ai': 'Google Generative AI',
-}
-
 export function modelProviderProtocolFailureSummary(
 	protocol: ModelProviderProtocol,
 	reason: ModelProviderProtocolPreflightFailureReason,
 ): string {
-	return modelProviderProtocolFailureSummaries[reason.type](protocolDisplayName(protocol))
+	const name = protocolDisplayName(protocol)
+	switch (reason.type) {
+		case 'model-archived':
+			return `${name} Model is archived.`
+		case 'model-provider-archived':
+			return `${name} Model Provider is archived.`
+		case 'model-provider-auth-secret-missing':
+			return `${name} model provider auth Secret is missing.`
+		case 'model-provider-auth-secret-inactive':
+			return `${name} model provider auth Secret is not active.`
+		case 'model-provider-header-secret-missing':
+			return `${name} model provider header Secret is missing.`
+		case 'model-provider-header-secret-inactive':
+			return `${name} model provider header Secret is not active.`
+		case 'model-provider-secret-unresolved':
+			return `${name} model provider Secret value could not be resolved.`
+		case 'provider-authentication-failed':
+			return `${name} authentication failed.`
+		case 'provider-access-denied':
+			return `${name} access was denied.`
+		case 'provider-model-not-found':
+			return `${name} model was not found.`
+		case 'provider-unavailable':
+			return `${name} model preflight failed.`
+		case 'provider-preflight-not-implemented':
+			return `${name} model preflight is not implemented.`
+		default:
+			throw new Error(`Unexpected Model Provider Protocol preflight failure reason: ${String(reason satisfies never)}`)
+	}
 }
 
 function protocolDisplayName(protocol: ModelProviderProtocol): string {
-	return protocolDisplayNames[protocol.type]
+	switch (protocol.type) {
+		case 'anthropic-messages':
+			return 'Anthropic Messages'
+		case 'openai-responses':
+			return 'OpenAI Responses'
+		case 'openai-completions':
+			return 'OpenAI Completions'
+		case 'google-generative-ai':
+			return 'Google Generative AI'
+		default:
+			throw new Error(`Unexpected Model Provider Protocol: ${String(protocol satisfies never)}`)
+	}
 }
 
 export type { AnthropicMessagesModelProviderProtocolProvider } from './anthropic-messages'

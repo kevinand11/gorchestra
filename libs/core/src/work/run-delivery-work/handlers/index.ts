@@ -89,10 +89,8 @@ function handleFailedDeliveryWorkState(state: FailedDeliveryState): RunDeliveryW
 			return handleDeliveryValidationFailed()
 		case 'delivery-review-failed':
 			return handleDeliveryReviewFailed()
-		default: {
-			const exhaustive = state satisfies never
-			return exhaustive
-		}
+		default:
+			throw new Error(`Unexpected failed Delivery Work State: ${String(state satisfies never)}`)
 	}
 }
 
@@ -116,10 +114,8 @@ function handleArtifactOrSliceDeliveryWorkState(
 			return handleDeliverySlicesIncompleteState(context, runtime)
 		case 'needs-artifact-validation':
 			return handleDeliveryNeedsArtifactValidation(context, state)
-		default: {
-			const exhaustive = state satisfies never
-			return exhaustive
-		}
+		default:
+			throw new Error(`Unexpected artifact/slice Delivery Work State: ${String(state satisfies never)}`)
 	}
 }
 
@@ -129,10 +125,8 @@ function handleReviewDeliveryWorkState(state: ReviewDeliveryState): Promise<RunD
 			return providerBackedDeliveryStateInvariant()
 		case 'awaiting-review':
 			return handleDeliveryAwaitingReview(state)
-		default: {
-			const exhaustive = state satisfies never
-			return exhaustive
-		}
+		default:
+			throw new Error(`Unexpected review Delivery Work State: ${String(state satisfies never)}`)
 	}
 }
 

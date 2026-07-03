@@ -234,30 +234,34 @@ function referenceActiveRank(reference: Pick<SecretReference, 'active'>): number
 	return reference.active ? 0 : 1
 }
 
-type SecretReferenceReader<T> = {
-	[ReferenceType in SecretReference['type']]: (reference: Extract<SecretReference, { type: ReferenceType }>) => T
-}
-
-const referenceLabelByType: SecretReferenceReader<string> = {
-	'repository-access': (reference) => `${reference.owner}/${reference.name}`,
-	'model-provider-auth': (reference) => reference.name,
-	'model-provider-header': (reference) => `${reference.name}/${reference.headerName}`,
-	'secret-binding': (reference) => reference.envName,
-}
-
-const referenceIdByType: SecretReferenceReader<string> = {
-	'repository-access': (reference) => reference.repositoryId,
-	'model-provider-auth': (reference) => reference.modelProviderId,
-	'model-provider-header': (reference) => reference.modelProviderId,
-	'secret-binding': (reference) => reference.secretBindingId,
-}
-
 function referenceLabel(reference: SecretReference): string {
-	return referenceLabelByType[reference.type](reference as never)
+	switch (reference.type) {
+		case 'repository-access':
+			return `${reference.owner}/${reference.name}`
+		case 'model-provider-auth':
+			return reference.name
+		case 'model-provider-header':
+			return `${reference.name}/${reference.headerName}`
+		case 'secret-binding':
+			return reference.envName
+		default:
+			throw new Error(`Unexpected Secret Reference type: ${String(reference satisfies never)}`)
+	}
 }
 
 function referenceId(reference: SecretReference): string {
-	return referenceIdByType[reference.type](reference as never)
+	switch (reference.type) {
+		case 'repository-access':
+			return reference.repositoryId
+		case 'model-provider-auth':
+			return reference.modelProviderId
+		case 'model-provider-header':
+			return reference.modelProviderId
+		case 'secret-binding':
+			return reference.secretBindingId
+		default:
+			throw new Error(`Unexpected Secret Reference type: ${String(reference satisfies never)}`)
+	}
 }
 
 if (import.meta.vitest) {

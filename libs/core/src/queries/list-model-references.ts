@@ -228,30 +228,34 @@ function referenceActiveRank(reference: Pick<ModelReference, 'active'>): number 
 	return reference.active ? 0 : 1
 }
 
-type ModelReferenceReader<T> = {
-	[ReferenceType in ModelReference['type']]: (reference: Extract<ModelReference, { type: ReferenceType }>) => T
-}
-
-const referenceLabelByType: ModelReferenceReader<string> = {
-	'portfolio-config': () => 'Portfolio Config',
-	'project-config': (reference) => reference.projectTitle,
-	'plan-config': (reference) => reference.planTitle,
-	'delivery-config': (reference) => reference.deliveryTitle,
-}
-
-const referenceIdByType: ModelReferenceReader<string> = {
-	'portfolio-config': () => '',
-	'project-config': (reference) => reference.projectId,
-	'plan-config': (reference) => reference.planId,
-	'delivery-config': (reference) => reference.deliveryId,
-}
-
 function referenceLabel(reference: ModelReference): string {
-	return referenceLabelByType[reference.type](reference as never)
+	switch (reference.type) {
+		case 'portfolio-config':
+			return 'Portfolio Config'
+		case 'project-config':
+			return reference.projectTitle
+		case 'plan-config':
+			return reference.planTitle
+		case 'delivery-config':
+			return reference.deliveryTitle
+		default:
+			throw new Error(`Unexpected Model Reference type: ${String(reference satisfies never)}`)
+	}
 }
 
 function referenceId(reference: ModelReference): string {
-	return referenceIdByType[reference.type](reference as never)
+	switch (reference.type) {
+		case 'portfolio-config':
+			return ''
+		case 'project-config':
+			return reference.projectId
+		case 'plan-config':
+			return reference.planId
+		case 'delivery-config':
+			return reference.deliveryId
+		default:
+			throw new Error(`Unexpected Model Reference type: ${String(reference satisfies never)}`)
+	}
 }
 
 if (import.meta.vitest) {

@@ -34,14 +34,6 @@ type ActionableSliceWorkState = Extract<
 
 type SliceActionPriority = 0 | 1 | 2 | 3 | 4
 
-const sliceActionPriorities = {
-	'needs-delivery-validation': 0,
-	'needs-artifact-validation': 1,
-	'needs-review-surface': 2,
-	'needs-artifact-creation': 3,
-	executable: 4,
-} satisfies Record<ActionableSliceWorkState['type'], SliceActionPriority>
-
 interface SliceWorkerPool {
 	runtime: CoreRuntime
 	deliveryId: Id
@@ -173,7 +165,26 @@ function sliceStateCandidate(slice: Slice, state: SliceWorkState, order: number,
 }
 
 function sliceActionPriority(state: SliceWorkState): SliceActionPriority | null {
-	return state.type in sliceActionPriorities ? sliceActionPriorities[state.type as ActionableSliceWorkState['type']] : null
+	switch (state.type) {
+		case 'needs-delivery-validation':
+			return 0
+		case 'needs-artifact-validation':
+			return 1
+		case 'needs-review-surface':
+			return 2
+		case 'needs-artifact-creation':
+			return 3
+		case 'executable':
+			return 4
+		case 'complete':
+		case 'dependency-blocked':
+		case 'correction-blocked':
+		case 'awaiting-review':
+		case 'slice-operation-failed':
+			return null
+		default:
+			throw new Error(`Unexpected Slice Work State: ${String(state satisfies never)}`)
+	}
 }
 
 function compareSliceCandidates(left: SliceStateCandidate, right: SliceStateCandidate): number {
@@ -185,17 +196,20 @@ function sliceOperationKey(sliceId: Id, state: ActionableSliceWorkState): string
 }
 
 function sliceOperationKeyDetail(state: ActionableSliceWorkState): string {
-	return sliceOperationKeyDetails[state.type](state as never)
-}
-
-const sliceOperationKeyDetails: {
-	[TState in ActionableSliceWorkState as TState['type']]: (state: TState) => string
-} = {
-	'needs-artifact-validation': (state) => state.sliceArtifactId,
-	'needs-delivery-validation': (state) => state.actionId,
-	'needs-review-surface': (state) => state.sliceArtifactId,
-	'needs-artifact-creation': () => 'current',
-	executable: executableKeyDetail,
+	switch (state.type) {
+		case 'needs-artifact-validation':
+			return state.sliceArtifactId
+		case 'needs-delivery-validation':
+			return state.actionId
+		case 'needs-review-surface':
+			return state.sliceArtifactId
+		case 'needs-artifact-creation':
+			return 'current'
+		case 'executable':
+			return executableKeyDetail(state)
+		default:
+			throw new Error(`Unexpected actionable Slice Work State: ${String(state satisfies never)}`)
+	}
 }
 
 function executableKeyDetail(state: Extract<ActionableSliceWorkState, { type: 'executable' }>): string {

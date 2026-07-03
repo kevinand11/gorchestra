@@ -312,10 +312,8 @@ function revisionScopeKey(scope: RevisionScope): string {
 			return `delivery:${scope.deliveryId}:${scope.deliveryArtifactId}`
 		case 'slice-artifact':
 			return `slice:${scope.sliceId}:${scope.sliceArtifactId}`
-		default: {
-			const exhaustive = scope satisfies never
-			return exhaustive
-		}
+		default:
+			throw new Error(`Unexpected revision/review surface scope: ${String(scope satisfies never)}`)
 	}
 }
 
@@ -325,10 +323,8 @@ function reviewSurfaceScopeKey(scope: ReviewSurfaceScope): string {
 			return `delivery:${scope.deliveryId}:${scope.deliveryArtifactId}`
 		case 'slice':
 			return `slice:${scope.sliceId}:${scope.sliceArtifactId}`
-		default: {
-			const exhaustive = scope satisfies never
-			return exhaustive
-		}
+		default:
+			throw new Error(`Unexpected revision/review surface scope: ${String(scope satisfies never)}`)
 	}
 }
 

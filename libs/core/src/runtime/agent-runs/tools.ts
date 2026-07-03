@@ -13,13 +13,17 @@ export interface CoreAgentRunTool<TInput = unknown> {
 }
 
 export function toolsForAgentRunPurpose(purpose: AgentRunPurpose): CoreAgentRunTool[] {
-	const toolSets = {
-		planning: () => [proposePlanOutputTool()],
-		'revision-planning': () => [proposeRevisionOutputTool()],
-		execution: () => [],
-		'revision-execution': () => [],
-	} satisfies Record<AgentRunPurpose['type'], () => CoreAgentRunTool[]>
-	return toolSets[purpose.type]()
+	switch (purpose.type) {
+		case 'planning':
+			return [proposePlanOutputTool()]
+		case 'revision-planning':
+			return [proposeRevisionOutputTool()]
+		case 'execution':
+		case 'revision-execution':
+			return []
+		default:
+			throw new Error(`Unexpected Agent Run purpose: ${String(purpose satisfies never)}`)
+	}
 }
 
 export function providerTool(tool: CoreAgentRunTool): AgentRunProviderTool {

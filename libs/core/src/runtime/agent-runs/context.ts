@@ -28,52 +28,60 @@ function sortEvents(events: AgentRunEvent[]): AgentRunEvent[] {
 }
 
 function modelVisibleMessages(event: AgentRunEvent): AgentRunProviderMessage[] {
-	const serializers = modelVisibleSerializers[event.body.type]
-	return serializers === undefined ? [] : serializers(event as never)
-}
-
-const modelVisibleSerializers: Partial<{
-	[TBody in AgentRunEvent['body'] as TBody['type']]: (event: AgentRunEvent & { body: TBody }) => AgentRunProviderMessage[]
-}> = {
-	'input-message': (event) => [
-		{ role: event.body.source.type === 'operator' ? 'user' : 'system', content: textContent(event.body.content) },
-	],
-	'model-message-ended': (event) => [{ role: 'assistant', content: modelOutcomeText(event.body.outcome) }],
-	'tool-call-scheduled': (event) =>
-		event.body.scheduling.type === 'refused'
-			? [{ role: 'tool', content: `Tool ${event.body.toolName} refused.\n${toolOutputText(event.body.scheduling.output)}` }]
-			: [],
-	'tool-call-ended': (event) => [{ role: 'tool', content: toolOutcomeText(event.body.outcome) }],
-	'proposed-plan-output': (event) => [{ role: 'assistant', content: `Proposed Plan Output: ${JSON.stringify(event.body.output)}` }],
-	'proposed-revision-output': (event) => [
-		{ role: 'assistant', content: `Proposed Revision Output: ${JSON.stringify(event.body.output)}` },
-	],
-	'proposal-accepted': (event) => [{ role: 'user', content: `Proposal ${event.body.proposalEventId} accepted.` }],
-	'proposal-rejected': (event) => [
-		{
-			role: 'user',
-			content: `Proposal ${event.body.proposalEventId} rejected.${event.body.reason === null ? '' : ` ${event.body.reason}`}`,
-		},
-	],
-	'interrupt-requested': (event) => [
-		{ role: 'user', content: `Interrupt requested.${event.body.reason === null ? '' : ` ${event.body.reason}`}` },
-	],
-	'context-compacted': (event) => [{ role: 'system', content: `Compacted context summary:\n${event.body.summary}` }],
+	switch (event.body.type) {
+		case 'agent-run-model-selected':
+		case 'turn-started':
+		case 'turn-ended':
+		case 'model-message-started':
+		case 'tool-call-started':
+			return []
+		case 'input-message':
+			return [{ role: event.body.source.type === 'operator' ? 'user' : 'system', content: textContent(event.body.content) }]
+		case 'model-message-ended':
+			return [{ role: 'assistant', content: modelOutcomeText(event.body.outcome) }]
+		case 'tool-call-scheduled':
+			return event.body.scheduling.type === 'refused'
+				? [{ role: 'tool', content: `Tool ${event.body.toolName} refused.\n${toolOutputText(event.body.scheduling.output)}` }]
+				: []
+		case 'tool-call-ended':
+			return [{ role: 'tool', content: toolOutcomeText(event.body.outcome) }]
+		case 'proposed-plan-output':
+			return [{ role: 'assistant', content: `Proposed Plan Output: ${JSON.stringify(event.body.output)}` }]
+		case 'proposed-revision-output':
+			return [{ role: 'assistant', content: `Proposed Revision Output: ${JSON.stringify(event.body.output)}` }]
+		case 'proposal-accepted':
+			return [{ role: 'user', content: `Proposal ${event.body.proposalEventId} accepted.` }]
+		case 'proposal-rejected':
+			return [
+				{
+					role: 'user',
+					content: `Proposal ${event.body.proposalEventId} rejected.${event.body.reason === null ? '' : ` ${event.body.reason}`}`,
+				},
+			]
+		case 'interrupt-requested':
+			return [{ role: 'user', content: `Interrupt requested.${event.body.reason === null ? '' : ` ${event.body.reason}`}` }]
+		case 'context-compacted':
+			return [{ role: 'system', content: `Compacted context summary:\n${event.body.summary}` }]
+		default:
+			throw new Error(`Unexpected Agent Run event body: ${String(event.body satisfies never)}`)
+	}
 }
 
 function modelOutcomeText(outcome: AgentRunModelMessageOutcome): string {
-	return modelOutcomeTextSerializers[outcome.type](outcome as never)
+	switch (outcome.type) {
+		case 'stop':
+		case 'tool-use':
+			return modelMessageText(outcome.message)
+		case 'length':
+			return `${modelMessageText(outcome.message)}\n[Model stopped due to length.${outcome.summary === null ? '' : ` ${outcome.summary}`}]`
+		case 'error':
+			return `Model error: ${outcome.summary}`
+		case 'aborted':
+			return `Model aborted: ${outcome.summary ?? outcome.reason.type}`
+		default:
+			throw new Error(`Unexpected Agent Run model message outcome: ${String(outcome satisfies never)}`)
+	}
 }
-
-const modelOutcomeTextSerializers = {
-	stop: (outcome: Extract<AgentRunModelMessageOutcome, { type: 'stop' }>) => modelMessageText(outcome.message),
-	'tool-use': (outcome: Extract<AgentRunModelMessageOutcome, { type: 'tool-use' }>) => modelMessageText(outcome.message),
-	length: (outcome: Extract<AgentRunModelMessageOutcome, { type: 'length' }>) =>
-		`${modelMessageText(outcome.message)}\n[Model stopped due to length.${outcome.summary === null ? '' : ` ${outcome.summary}`}]`,
-	error: (outcome: Extract<AgentRunModelMessageOutcome, { type: 'error' }>) => `Model error: ${outcome.summary}`,
-	aborted: (outcome: Extract<AgentRunModelMessageOutcome, { type: 'aborted' }>) =>
-		`Model aborted: ${outcome.summary ?? outcome.reason.type}`,
-} satisfies Record<AgentRunModelMessageOutcome['type'], (outcome: never) => string>
 
 function toolOutcomeText(outcome: AgentRunToolCallOutcome): string {
 	if (outcome.type === 'success') return toolOutputText(outcome.output)

@@ -89,31 +89,6 @@ const route = useRoute()
 const secretId = computed(() => route.params.secretId as string)
 const { secret, isLoadingSecret, secretError, hasLoadedSecret, isRefreshingSecret } = useSecretDetail(secretId)
 
-type SecretReferenceReader<T> = {
-	[ReferenceType in SecretReference['type']]: (reference: Extract<SecretReference, { type: ReferenceType }>) => T
-}
-
-const referenceTitleByType: SecretReferenceReader<string> = {
-	'repository-access': (reference) => `${reference.owner}/${reference.name}`,
-	'model-provider-auth': (reference) => reference.name,
-	'model-provider-header': (reference) => `${reference.name} · ${reference.headerName}`,
-	'secret-binding': (reference) => reference.envName,
-}
-
-const referenceSubtitleByType: SecretReferenceReader<string> = {
-	'repository-access': () => 'GitHub Repository access',
-	'model-provider-auth': (reference) => `${modelProviderProtocolLabel(reference.protocol.type)} API key`,
-	'model-provider-header': (reference) => `${modelProviderProtocolLabel(reference.protocol.type)} custom header`,
-	'secret-binding': (reference) => `${secretBindingScopeLabel(reference.scope)} environment variable`,
-}
-
-const referenceKeyByType: SecretReferenceReader<string> = {
-	'repository-access': (reference) => `${reference.type}:${reference.repositoryId}`,
-	'model-provider-auth': (reference) => `${reference.type}:${reference.modelProviderId}`,
-	'model-provider-header': (reference) => `${reference.type}:${reference.modelProviderId}:${reference.headerName}`,
-	'secret-binding': (reference) => `${reference.type}:${reference.secretBindingId}`,
-}
-
 const modelProviderProtocolLabels: Record<string, string> = {
 	'anthropic-messages': 'Anthropic Messages',
 	'openai-responses': 'OpenAI Responses',
@@ -132,19 +107,54 @@ function referenceLocation(reference: LinkedSecretReference): string {
 		case 'model-provider-auth':
 		case 'model-provider-header':
 			return `/models/providers/${reference.modelProviderId}`
+		default:
+			throw new Error(`Unexpected linked Secret Reference type: ${String(reference satisfies never)}`)
 	}
 }
 
 function referenceTitle(reference: SecretReference): string {
-	return referenceTitleByType[reference.type](reference as never)
+	switch (reference.type) {
+		case 'repository-access':
+			return `${reference.owner}/${reference.name}`
+		case 'model-provider-auth':
+			return reference.name
+		case 'model-provider-header':
+			return `${reference.name} · ${reference.headerName}`
+		case 'secret-binding':
+			return reference.envName
+		default:
+			throw new Error(`Unexpected Secret Reference type: ${String(reference satisfies never)}`)
+	}
 }
 
 function referenceSubtitle(reference: SecretReference): string {
-	return referenceSubtitleByType[reference.type](reference as never)
+	switch (reference.type) {
+		case 'repository-access':
+			return 'GitHub Repository access'
+		case 'model-provider-auth':
+			return `${modelProviderProtocolLabel(reference.protocol.type)} API key`
+		case 'model-provider-header':
+			return `${modelProviderProtocolLabel(reference.protocol.type)} custom header`
+		case 'secret-binding':
+			return `${secretBindingScopeLabel(reference.scope)} environment variable`
+		default:
+			throw new Error(`Unexpected Secret Reference type: ${String(reference satisfies never)}`)
+	}
 }
 
 function referenceKey(reference: SecretReference): string {
-	return referenceKeyByType[reference.type](reference as never)
+	switch (reference.type) {
+		case 'repository-access':
+			return `${reference.type}:${reference.repositoryId}`
+		case 'model-provider-auth':
+			return `${reference.type}:${reference.modelProviderId}`
+		case 'model-provider-header':
+			return `${reference.type}:${reference.modelProviderId}:${reference.headerName}`
+		case 'secret-binding':
+			return `${reference.type}:${reference.secretBindingId}`
+		default:
+			throw new Error(`Unexpected Secret Reference type: ${String(reference satisfies never)}`)
+	}
 }
 
 function modelProviderProtocolLabel(protocol: string): string {
@@ -159,6 +169,8 @@ function secretBindingScopeLabel(scope: Extract<SecretReference, { type: 'secret
 			return 'Project-scoped'
 		case 'delivery':
 			return 'Delivery-scoped'
+		default:
+			throw new Error(`Unexpected Secret Binding scope: ${String(scope satisfies never)}`)
 	}
 }
 </script>

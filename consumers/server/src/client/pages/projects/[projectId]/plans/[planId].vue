@@ -18,25 +18,26 @@
 								Refresh events
 							</UiButton>
 						</div>
-						<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-							Raw transcript events are shown for verification only. The interactive transcript UI comes in a later slice.
-						</p>
 					</div>
-					<UiText v-if="agentRunEventsError" class="block border-b border-dimmer px-3 py-2" tone="error" size="helper">
+					<UiText v-if="agentRunEventsError" class="block border-b border-dimmer px-3 py-3" tone="error" size="helper">
 						{{ agentRunEventsError }}
 					</UiText>
-					<p v-else-if="!hasLoadedAgentRunEvents" class="m-0 border-b border-dimmer px-3 py-3 text-sz-helper text-dim">
+					<UiText v-else-if="!hasLoadedAgentRunEvents" class="block border-b border-dimmer px-3 py-3" tone="muted" size="helper">
 						Refresh to load raw Agent Run events.
-					</p>
-					<p v-else-if="agentRunEvents.length === 0" class="m-0 border-b border-dimmer px-3 py-3 text-sz-helper text-dim">
+					</UiText>
+					<UiText
+						v-else-if="agentRunEvents.length === 0"
+						class="block border-b border-dimmer px-3 py-3"
+						tone="muted"
+						size="helper">
 						No Agent Run events returned.
-					</p>
+					</UiText>
 					<ol v-else class="m-0 grid list-none p-0 text-sz-helper">
 						<li
 							v-for="event in agentRunEvents"
 							:key="event.id"
-							class="break-words border-b border-dimmer px-3 py-2 last:border-b-0">
-							<span class="font-mono text-sz-micro text-dim">#{{ event.sequence }} · {{ event.body.type }}</span>
+							class="wrap-break-word border-b border-dimmer px-3 py-2 last:border-b-0">
+							<span class="font-mono text-sz-micro text-dim">#{{ event.sequence }} · {{ event.body.type }} · {{ event.id }}</span>
 							<pre class="m-0 mt-1 max-h-36 overflow-auto whitespace-pre-wrap font-mono text-sz-micro text-card-contrast">{{
 								eventSummary(event)
 							}}</pre>

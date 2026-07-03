@@ -102,10 +102,8 @@ async function recordDeliveryReviewSurfaceCreationResult(
 			return writeDeliveryReviewSurface(context, input, creation)
 		case 'failed':
 			return writeFailedDeliveryReviewSurfaceCreation(context, creation.summary)
-		default: {
-			const exhaustive = creation satisfies never
-			return exhaustive
-		}
+		default:
+			throw new Error(`Unexpected Delivery review surface creation result: ${String(creation satisfies never)}`)
 	}
 }
 

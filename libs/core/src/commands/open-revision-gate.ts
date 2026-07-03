@@ -180,10 +180,8 @@ function revisionScopeFromReviewSurfaceScope(scope: ReviewSurfaceScope): Revisio
 			return { type: 'delivery-artifact', deliveryId: scope.deliveryId, deliveryArtifactId: scope.deliveryArtifactId }
 		case 'slice':
 			return { type: 'slice-artifact', sliceId: scope.sliceId, sliceArtifactId: scope.sliceArtifactId }
-		default: {
-			const exhaustive = scope satisfies never
-			return exhaustive
-		}
+		default:
+			throw new Error(`Unexpected Review Surface Scope: ${String(scope satisfies never)}`)
 	}
 }
 

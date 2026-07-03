@@ -38,15 +38,15 @@ function listProjects(projects: Project[], repositories: Repository[]): ListedPr
 	)
 }
 
-const projectSourceListBuilders = {
-	'source-control': (project: Project, repositories: Repository[]): ListedProject => {
-		const { source: _source, ...projectFields } = project
-		return { ...projectFields, source: { type: 'source-control', repositories } }
-	},
-} satisfies Record<Project['source']['type'], (project: Project, repositories: Repository[]) => ListedProject>
-
 export function listedProjectFromProjectAndRepositories(project: Project, repositories: Repository[]): ListedProject {
-	return projectSourceListBuilders[project.source.type](project, repositories)
+	switch (project.source.type) {
+		case 'source-control': {
+			const { source: _source, ...projectFields } = project
+			return { ...projectFields, source: { type: 'source-control', repositories } }
+		}
+		default:
+			throw new Error(`Unexpected Project source: ${String(project.source.type)}`)
+	}
 }
 
 function groupRepositoriesByProjectId(repositories: Repository[]): Map<string, Repository[]> {

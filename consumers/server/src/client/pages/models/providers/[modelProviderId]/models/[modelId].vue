@@ -315,63 +315,80 @@ function unarchiveModel(): Promise<unknown> {
 	return runModelLifecycle('unarchive')
 }
 
-type ModelReferenceReader<T> = {
-	[ReferenceType in ModelReference['type']]: (reference: Extract<ModelReference, { type: ReferenceType }>) => T
-}
-
-const modelReferenceTitleByType: ModelReferenceReader<string> = {
-	'portfolio-config': () => 'Portfolio Config',
-	'project-config': () => 'Project Config',
-	'plan-config': () => 'Plan Config',
-	'delivery-config': () => 'Delivery Config',
-}
-
-const modelReferenceSubtitleByType: ModelReferenceReader<string> = {
-	'portfolio-config': (reference) => `${purposeLabel(reference.purpose)} Model`,
-	'project-config': (reference) => `${reference.projectTitle} · ${purposeLabel(reference.purpose)} Model`,
-	'plan-config': (reference) => `${reference.planTitle} · ${purposeLabel(reference.purpose)} Model`,
-	'delivery-config': (reference) => `${reference.deliveryTitle} · ${purposeLabel(reference.purpose)} Model`,
-}
-
-const modelReferenceLocationByType: ModelReferenceReader<string> = {
-	'portfolio-config': () => '/portfolio-config',
-	'project-config': (reference) => `/projects/${reference.projectId}/config`,
-	'plan-config': (reference) => `/projects/${reference.projectId}/plans/${reference.planId}`,
-	'delivery-config': (reference) => `/projects/${reference.projectId}/deliveries/${reference.deliveryId}`,
-}
-
-const modelReferenceKeyByType: ModelReferenceReader<string> = {
-	'portfolio-config': (reference) => `${reference.type}:${reference.purpose}`,
-	'project-config': (reference) => `${reference.type}:${reference.projectId}:${reference.purpose}`,
-	'plan-config': (reference) => `${reference.type}:${reference.planId}:${reference.purpose}`,
-	'delivery-config': (reference) => `${reference.type}:${reference.deliveryId}:${reference.purpose}`,
-}
-
-const purposeLabels: Record<ModelReferencePurpose, string> = {
-	default: 'Default',
-	planning: 'Planning',
-	'revision-planning': 'Revision Planning',
-	execution: 'Execution',
-	'revision-execution': 'Revision Execution',
-}
-
 function modelReferenceTitle(reference: ModelReference): string {
-	return modelReferenceTitleByType[reference.type](reference as never)
+	switch (reference.type) {
+		case 'portfolio-config':
+			return 'Portfolio Config'
+		case 'project-config':
+			return 'Project Config'
+		case 'plan-config':
+			return 'Plan Config'
+		case 'delivery-config':
+			return 'Delivery Config'
+		default:
+			throw new Error(`Unexpected Model Reference type: ${String(reference satisfies never)}`)
+	}
 }
 
 function modelReferenceSubtitle(reference: ModelReference): string {
-	return modelReferenceSubtitleByType[reference.type](reference as never)
+	switch (reference.type) {
+		case 'portfolio-config':
+			return `${purposeLabel(reference.purpose)} Model`
+		case 'project-config':
+			return `${reference.projectTitle} · ${purposeLabel(reference.purpose)} Model`
+		case 'plan-config':
+			return `${reference.planTitle} · ${purposeLabel(reference.purpose)} Model`
+		case 'delivery-config':
+			return `${reference.deliveryTitle} · ${purposeLabel(reference.purpose)} Model`
+		default:
+			throw new Error(`Unexpected Model Reference type: ${String(reference satisfies never)}`)
+	}
 }
 
 function modelReferenceLocation(reference: ModelReference): string {
-	return modelReferenceLocationByType[reference.type](reference as never)
+	switch (reference.type) {
+		case 'portfolio-config':
+			return '/portfolio-config'
+		case 'project-config':
+			return `/projects/${reference.projectId}/config`
+		case 'plan-config':
+			return `/projects/${reference.projectId}/plans/${reference.planId}`
+		case 'delivery-config':
+			return `/projects/${reference.projectId}/deliveries/${reference.deliveryId}`
+		default:
+			throw new Error(`Unexpected Model Reference type: ${String(reference satisfies never)}`)
+	}
 }
 
 function modelReferenceKey(reference: ModelReference): string {
-	return modelReferenceKeyByType[reference.type](reference as never)
+	switch (reference.type) {
+		case 'portfolio-config':
+			return `${reference.type}:${reference.purpose}`
+		case 'project-config':
+			return `${reference.type}:${reference.projectId}:${reference.purpose}`
+		case 'plan-config':
+			return `${reference.type}:${reference.planId}:${reference.purpose}`
+		case 'delivery-config':
+			return `${reference.type}:${reference.deliveryId}:${reference.purpose}`
+		default:
+			throw new Error(`Unexpected Model Reference type: ${String(reference satisfies never)}`)
+	}
 }
 
 function purposeLabel(purpose: ModelReferencePurpose): string {
-	return purposeLabels[purpose]
+	switch (purpose) {
+		case 'default':
+			return 'Default'
+		case 'planning':
+			return 'Planning'
+		case 'revision-planning':
+			return 'Revision Planning'
+		case 'execution':
+			return 'Execution'
+		case 'revision-execution':
+			return 'Revision Execution'
+		default:
+			throw new Error(`Unexpected Model Reference purpose: ${String(purpose satisfies never)}`)
+	}
 }
 </script>

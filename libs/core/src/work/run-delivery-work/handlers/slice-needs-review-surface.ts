@@ -110,10 +110,8 @@ async function recordSliceReviewSurfaceCreationResult(
 			return writeSliceReviewSurface(context, input, creation)
 		case 'failed':
 			return writeFailedSliceReviewSurfaceCreation(context, slice.id, creation.summary)
-		default: {
-			const exhaustive = creation satisfies never
-			return exhaustive
-		}
+		default:
+			throw new Error(`Unexpected Slice review surface creation result: ${String(creation satisfies never)}`)
 	}
 }
 

@@ -162,18 +162,25 @@ function gitHubRepositoryPreflight(
 		: { type: 'failed', reason: preflight.reason, summary: gitHubFailureSummary(preflight.reason) }
 }
 
-const gitHubFailureSummaries: Record<SourceControlRepositoryPreflightFailureReason['type'], string> = {
-	'repository-access-secret-missing': 'GitHub repository access Secret is missing.',
-	'repository-access-secret-inactive': 'GitHub repository access Secret is not active.',
-	'repository-access-secret-unresolved': 'GitHub repository access Secret value could not be resolved.',
-	'provider-authentication-failed': 'GitHub repository authentication failed.',
-	'provider-access-denied': 'GitHub repository access was denied.',
-	'provider-repository-not-found': 'GitHub repository was not found.',
-	'provider-unavailable': 'GitHub repository preflight failed.',
-}
-
 function gitHubFailureSummary(reason: SourceControlRepositoryPreflightFailureReason): string {
-	return gitHubFailureSummaries[reason.type]
+	switch (reason.type) {
+		case 'repository-access-secret-missing':
+			return 'GitHub repository access Secret is missing.'
+		case 'repository-access-secret-inactive':
+			return 'GitHub repository access Secret is not active.'
+		case 'repository-access-secret-unresolved':
+			return 'GitHub repository access Secret value could not be resolved.'
+		case 'provider-authentication-failed':
+			return 'GitHub repository authentication failed.'
+		case 'provider-access-denied':
+			return 'GitHub repository access was denied.'
+		case 'provider-repository-not-found':
+			return 'GitHub repository was not found.'
+		case 'provider-unavailable':
+			return 'GitHub repository preflight failed.'
+		default:
+			throw new Error(`Unexpected GitHub repository preflight failure reason: ${String(reason satisfies never)}`)
+	}
 }
 
 function artifactCreationAccessFailure(preflight: SourceControlRepositoryPreflight): SourceControlArtifactCreation {

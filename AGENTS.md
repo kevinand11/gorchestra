@@ -45,6 +45,7 @@ This root AGENTS.md is the project-wide DOX rail: it gives repo-wide instruction
 - Authoritative Delivery lifecycle gates such as queueing and closure live on direct Delivery lifecycle fields with domain-named `AuditStamp` records; non-lifecycle execution facts remain Actions.
 - Embedded records must contain all fields that change atomically with that lifecycle moment, so the model cannot represent half-updated states.
 - Prefer discriminated unions over nullable peer fields when exactly one variant applies.
+- For discriminated-union control flow, use exhaustive `switch` statements with throwing `default` branches for impossible cases; do not use union-key object indexing for behavior, formatting, or other discriminant-dependent dispatch. Inert registry/data maps are allowed when they are not control flow.
 - Prefer passing identifiers and inferring authoritative fields inside Core over duplicating inferable values in consumer-facing API inputs, so callers cannot provide contradictory values.
 - For Core-owned provider/runtime behavior and Core Service calls that perform external actions, resolved values should be available at the boundary so service/provider code does not infer, load, or calculate authoritative context itself.
 - Parse and validate external, serialized, or otherwise unknown data through Valleyed pipes rather than hand-written parsing/type guards; use `v.fromJson(v.object(...))` for expected JSON shapes.

@@ -477,18 +477,18 @@ class PlanOutputBuilder {
 	}
 
 	private graphRef(ref: ProposedGraphRef): CoreResult<GraphNodeRef, InvalidPlanOutputError> {
-		const resolvers = {
-			existing: () => ({
-				ok: true,
-				value: ref.type === 'existing' ? ref.node : ({ type: 'project', id: '' } satisfies GraphNodeRef),
-			}),
-			'proposed-delivery': () =>
-				this.proposedRef('delivery', this.#deliveryIds, ref.type === 'proposed-delivery' ? ref.proposedDeliveryKey : ''),
-			'proposed-slice': () => this.proposedRef('slice', this.#sliceIds, ref.type === 'proposed-slice' ? ref.proposedSliceKey : ''),
-			'proposed-memory': () =>
-				this.proposedRef('memory', this.#memoryIds, ref.type === 'proposed-memory' ? ref.proposedMemoryKey : ''),
-		} satisfies Record<ProposedGraphRef['type'], () => CoreResult<GraphNodeRef, InvalidPlanOutputError>>
-		return resolvers[ref.type]()
+		switch (ref.type) {
+			case 'existing':
+				return { ok: true, value: ref.node }
+			case 'proposed-delivery':
+				return this.proposedRef('delivery', this.#deliveryIds, ref.proposedDeliveryKey)
+			case 'proposed-slice':
+				return this.proposedRef('slice', this.#sliceIds, ref.proposedSliceKey)
+			case 'proposed-memory':
+				return this.proposedRef('memory', this.#memoryIds, ref.proposedMemoryKey)
+			default:
+				throw new Error(`Unexpected Proposed Graph Reference type: ${String(ref satisfies never)}`)
+		}
 	}
 
 	private proposedRef(type: GraphNodeRef['type'], ids: Map<string, Id>, key: string): CoreResult<GraphNodeRef, InvalidPlanOutputError> {

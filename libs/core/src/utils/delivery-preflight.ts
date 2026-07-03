@@ -302,14 +302,18 @@ function modelSecretSummary(modelProvider: ModelProvider, secretKind: 'auth' | '
 }
 
 function protocolDisplayName(modelProvider: ModelProvider): string {
-	const names: Record<ModelProvider['protocol']['type'], string> = {
-		'anthropic-messages': 'Anthropic Messages',
-		'openai-responses': 'OpenAI Responses',
-		'openai-completions': 'OpenAI Completions',
-		'google-generative-ai': 'Google Generative AI',
+	switch (modelProvider.protocol.type) {
+		case 'anthropic-messages':
+			return 'Anthropic Messages'
+		case 'openai-responses':
+			return 'OpenAI Responses'
+		case 'openai-completions':
+			return 'OpenAI Completions'
+		case 'google-generative-ai':
+			return 'Google Generative AI'
+		default:
+			throw new Error(`Unexpected Model Provider Protocol: ${String(modelProvider.protocol satisfies never)}`)
 	}
-
-	return names[modelProvider.protocol.type]
 }
 
 function validationEvidence(operation: ValidationEvidence['operation']['type'], passed: boolean, summary: string): ValidationEvidence {
