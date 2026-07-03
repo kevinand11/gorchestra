@@ -227,7 +227,11 @@ if (import.meta.vitest) {
 			body: {
 				type: 'proposed-plan-output',
 				toolCallScheduledEventId: 'tool-call-1',
-				output: { proposedDeliveries: [], proposedMemories: [] },
+				output: {
+					proposedDeliveries: {},
+					proposedMemoryCreations: { memory: { parentId: null, title: 'Memory', body: '', children: {} } },
+					proposedMemoryRevisions: {},
+				},
 			},
 		}
 	}
@@ -244,7 +248,14 @@ if (import.meta.vitest) {
 							type,
 							proposalEventId: 'agent-run-event-1',
 							authorized: localStamp(),
-							materialized: { type: 'plan-output', deliveryIds: [], sliceIds: [], memoryIds: [], linkIds: [] },
+							materialized: {
+								type: 'plan-output',
+								deliveryIds: [],
+								sliceIds: [],
+								memoryIds: [],
+								memoryRevisionIds: [],
+								linkIds: [],
+							},
 						}
 					: { type, proposalEventId: 'agent-run-event-1', authorized: localStamp(), reason: null },
 		}

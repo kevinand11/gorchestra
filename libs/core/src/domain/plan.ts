@@ -6,21 +6,21 @@ import { planConfigRecordPipe, type PlanConfig, type PlanConfigRecord } from './
 export {
 	instructionSourcePipe,
 	planOutputProposalPipe,
+	proposedChildMemoryCreationPipe,
 	proposedDeliveryPipe,
 	proposedDeliveryTargetPipe,
-	proposedGraphRefPipe,
-	proposedMemoryLinkPipe,
-	proposedMemoryPipe,
+	proposedMemoryCreationPipe,
+	proposedMemoryRevisionPipe,
 	proposedSlicePipe,
 } from './proposals'
 export type {
 	InstructionSource,
 	PlanOutputProposal,
+	ProposedChildMemoryCreation,
 	ProposedDelivery,
 	ProposedDeliveryTarget,
-	ProposedGraphRef,
-	ProposedMemory,
-	ProposedMemoryLink,
+	ProposedMemoryCreation,
+	ProposedMemoryRevision,
 	ProposedSlice,
 	ProposedSourceControlDeliveryTarget,
 } from './proposals'

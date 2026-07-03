@@ -195,6 +195,7 @@ export const agentRunProposalMaterializationPipe = v.discriminate((value) => val
 		deliveryIds: v.array(idPipe),
 		sliceIds: v.array(idPipe),
 		memoryIds: v.array(idPipe),
+		memoryRevisionIds: v.array(idPipe),
 		linkIds: v.array(idPipe),
 	}),
 	'revision-output': v.object({ type: v.eq('revision-output'), revisionId: idPipe }),

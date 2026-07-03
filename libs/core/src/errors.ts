@@ -205,6 +205,14 @@ export type InvalidPlanOutputError =
 	| { type: 'invalid-plan-output'; reason: 'duplicate-link'; linkType: LinkType; from: GraphNodeRef; to: GraphNodeRef }
 	| { type: 'invalid-plan-output'; reason: 'delivery-dependency-cycle' }
 	| { type: 'invalid-plan-output'; reason: 'slice-dependency-cycle'; proposedDeliveryKey: string }
+	| {
+			type: 'invalid-plan-output'
+			reason: 'stale-memory-revision'
+			memoryId: Id
+			expectedCurrentRevisionId: Id
+			actualCurrentRevisionId: Id
+	  }
+	| { type: 'invalid-plan-output'; reason: 'noop-memory-revision'; memoryId: Id }
 	| { type: 'invalid-plan-output'; reason: 'memory-supersession-cycle' }
 
 export interface RevisionGateClosedError {
