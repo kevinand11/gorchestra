@@ -268,7 +268,7 @@ if (import.meta.vitest) {
 	}
 
 	function deliveryModelConfig(executionModelId: string): NonNullable<NonNullable<ValidatedInput['config']>['model']> {
-		return { execution: { modelId: executionModelId, thinkingLevel: 'off' }, revisionExecution: null }
+		return { execution: { modelId: executionModelId, thinkingLevel: 'none' }, revisionExecution: null }
 	}
 
 	function seedAction(

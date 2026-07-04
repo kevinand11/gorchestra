@@ -63,9 +63,9 @@ if (import.meta.vitest) {
 				{
 					config: {
 						model: {
-							default: { modelId: ' model-1 ', thinkingLevel: 'off' },
+							default: { modelId: ' model-1 ', thinkingLevel: 'none' },
 							planning: null,
-							revisionPlanning: { modelId: 'model-1', thinkingLevel: 'off' },
+							revisionPlanning: { modelId: 'model-1', thinkingLevel: 'none' },
 							execution: null,
 							revisionExecution: null,
 						},
@@ -81,9 +81,9 @@ if (import.meta.vitest) {
 					configured: localStamp(),
 					value: {
 						model: {
-							default: { modelId: 'model-1', thinkingLevel: 'off' },
+							default: { modelId: 'model-1', thinkingLevel: 'none' },
 							planning: null,
-							revisionPlanning: { modelId: 'model-1', thinkingLevel: 'off' },
+							revisionPlanning: { modelId: 'model-1', thinkingLevel: 'none' },
 							execution: null,
 							revisionExecution: null,
 						},

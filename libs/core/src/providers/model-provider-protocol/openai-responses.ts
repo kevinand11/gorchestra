@@ -1,9 +1,7 @@
 import { createOpenAI } from '@ai-sdk/openai'
 
 import type { AISDKLanguageModelResolution, ModelProviderProtocolAccess, ModelProviderProtocolProvider } from './types'
-import type { ModelThinkingLevel } from '../../domain/model'
 import type { ModelProvider } from '../../domain/model-provider'
-import type { ModelAgentTurnThinking } from '../../runtime/agent-runs/types'
 
 export type OpenAIResponsesModelProviderProtocolProvider = ModelProviderProtocolProvider<'openai-responses'>
 
@@ -21,7 +19,7 @@ export function createOpenAIResponsesModelProviderProtocolProvider(
 				ok: true,
 				value: {
 					languageModel: providerFactory(input).responses(input.model.providerModelId),
-					providerOptions: openAIResponsesProviderOptions(input),
+					providerOptions: openAIResponsesProviderOptions(),
 				},
 			}
 		},
@@ -36,31 +34,8 @@ function createOpenAIResponsesProvider(input: { modelProvider: ModelProvider; ac
 	})
 }
 
-function openAIResponsesProviderOptions(input: OpenAIResponsesInput): AISDKLanguageModelResolution['providerOptions'] {
-	return { openai: { store: false, ...openAIResponsesThinkingOptions(agentRunThinking(input)) } }
-}
-
-function agentRunThinking(input: OpenAIResponsesInput): ModelAgentTurnThinking {
-	return input.mode === 'agent-run' ? input.thinking : null
-}
-
-function openAIResponsesThinkingOptions(thinking: ModelAgentTurnThinking): Record<string, string> {
-	if (thinking === null) return {}
-	if (thinking.level === 'off') return { reasoningEffort: 'none' }
-	return { reasoningEffort: openAIReasoningEffort(thinking.level), reasoningSummary: 'auto' }
-}
-
-function openAIReasoningEffort(level: Exclude<ModelThinkingLevel, 'off'>): string {
-	switch (level) {
-		case 'minimal':
-		case 'low':
-		case 'medium':
-		case 'high':
-		case 'xhigh':
-			return level
-		default:
-			throw new Error(`Unexpected Model Thinking Level: ${String(level satisfies never)}`)
-	}
+function openAIResponsesProviderOptions(): AISDKLanguageModelResolution['providerOptions'] {
+	return { openai: { store: false } }
 }
 
 if (import.meta.vitest) {
@@ -83,7 +58,7 @@ if (import.meta.vitest) {
 				ok: true,
 				value: {
 					languageModel: 'language-model',
-					providerOptions: { openai: { store: false, reasoningEffort: 'high', reasoningSummary: 'auto' } },
+					providerOptions: { openai: { store: false } },
 				},
 			})
 			expect(modelId).toBe('gpt-5')

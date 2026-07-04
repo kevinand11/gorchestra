@@ -1,7 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { archivePeriodPipe, auditStampPipe, idPipe, nonEmptyTrimmedStringPipe } from './commons'
-import { listedModelPipe } from './model'
+import { listedModelPipe, positiveModelThinkingLevelPipe } from './model'
 
 export const modelProviderProtocolPipe = v.discriminate((value) => value.type, {
 	'anthropic-messages': v.object({ type: v.eq('anthropic-messages') }),
@@ -80,6 +80,7 @@ export const listedModelProviderPipe = v.object({
 	created: auditStampPipe,
 	updated: v.nullable(auditStampPipe),
 	archived: v.boolean(),
+	configurableThinkingLevels: v.array(positiveModelThinkingLevelPipe),
 	models: v.array(listedModelPipe),
 })
 export type ListedModelProvider = PipeOutput<typeof listedModelProviderPipe>
@@ -90,6 +91,7 @@ export const modelProviderSummaryPipe = v.object({
 	protocol: modelProviderProtocolPipe,
 	baseUrl: nonEmptyTrimmedStringPipe,
 	archived: v.boolean(),
+	configurableThinkingLevels: v.array(positiveModelThinkingLevelPipe),
 })
 export type ModelProviderSummary = PipeOutput<typeof modelProviderSummaryPipe>
 

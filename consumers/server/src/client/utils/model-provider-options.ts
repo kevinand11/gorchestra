@@ -9,7 +9,7 @@ type ThinkingLevelOption = UiSelectOption<ModelThinkingLevel>
 type ListedModel = ListedModelProvider['models'][number]
 
 export const thinkingLevelOptions: ThinkingLevelOption[] = [
-	{ value: 'off', label: 'Off' },
+	{ value: 'none', label: 'None' },
 	{ value: 'minimal', label: 'Minimal' },
 	{ value: 'low', label: 'Low' },
 	{ value: 'medium', label: 'Medium' },
@@ -81,8 +81,8 @@ if (import.meta.vitest) {
 				provider({
 					id: 'provider-1',
 					models: [
-						model({ id: 'model-1', availableThinkingLevels: ['off', 'high'] }),
-						model({ id: 'model-archived', availableThinkingLevels: ['off', 'low'], archived: true }),
+						model({ id: 'model-1', availableThinkingLevels: ['none', 'high'] }),
+						model({ id: 'model-archived', availableThinkingLevels: ['none', 'low'], archived: true }),
 					],
 				}),
 				provider({
@@ -93,7 +93,7 @@ if (import.meta.vitest) {
 			] satisfies ListedModelProvider[]
 
 			expect(thinkingLevelOptionsForModel(providers, 'model-1')).toEqual([
-				{ value: 'off', label: 'Off' },
+				{ value: 'none', label: 'None' },
 				{ value: 'high', label: 'High' },
 			])
 			expect(thinkingLevelOptionsForModel(providers, null)).toEqual([])
@@ -113,6 +113,7 @@ if (import.meta.vitest) {
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 			updated: null,
 			archived: input.archived ?? false,
+			configurableThinkingLevels: ['minimal', 'low', 'medium', 'high', 'xhigh'],
 			models: input.models,
 		}
 	}
@@ -127,7 +128,7 @@ if (import.meta.vitest) {
 			providerId: 'provider-1',
 			name: input.id,
 			providerModelId: input.id,
-			capabilities: { inputs: ['text'], contextWindowTokens: 128000, maxOutputTokens: 16384, reasoning: null },
+			capabilities: { inputs: ['text'], contextWindowTokens: 128000, maxOutputTokens: 16384, thinking: null },
 			pricing: null,
 			availableThinkingLevels: input.availableThinkingLevels,
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },

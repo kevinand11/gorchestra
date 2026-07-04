@@ -243,7 +243,7 @@ if (import.meta.vitest) {
 			deliveryContext: deliveryContext.value,
 			workResolution: {
 				workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
-				executionModelUse: { modelId: 'model-1', thinkingLevel: 'off' as const },
+				executionModelUse: { modelId: 'model-1', thinkingLevel: 'none' as const },
 				executionModel: options.tx.models.records.get('model-1')!,
 				executionModelProvider: options.tx.modelProviders.records.get('model-1-provider')!,
 			},

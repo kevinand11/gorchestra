@@ -1,9 +1,7 @@
 import { createAnthropic } from '@ai-sdk/anthropic'
 
 import type { AISDKLanguageModelResolution, ModelProviderProtocolAccess, ModelProviderProtocolProvider } from './types'
-import type { ModelThinkingLevel } from '../../domain/model'
 import type { ModelProvider } from '../../domain/model-provider'
-import type { ModelAgentTurnThinking } from '../../runtime/agent-runs/types'
 
 export type AnthropicMessagesModelProviderProtocolProvider = ModelProviderProtocolProvider<'anthropic-messages'>
 
@@ -21,7 +19,7 @@ export function createAnthropicMessagesModelProviderProtocolProvider(
 				ok: true,
 				value: {
 					languageModel: providerFactory(input).messages(input.model.providerModelId),
-					providerOptions: anthropicProviderOptions(input),
+					providerOptions: undefined,
 				},
 			}
 		},
@@ -36,41 +34,12 @@ function createAnthropicMessagesProvider(input: { modelProvider: ModelProvider; 
 	})
 }
 
-function anthropicProviderOptions(input: AnthropicMessagesInput): AISDKLanguageModelResolution['providerOptions'] {
-	const thinking = input.mode === 'agent-run' ? input.thinking : null
-	return thinking === null ? undefined : { anthropic: anthropicThinkingOptions(thinking) }
-}
-
-function anthropicThinkingOptions(
-	thinking: ModelAgentTurnThinking,
-): Record<string, NonNullable<AISDKLanguageModelResolution['providerOptions']>[string][string]> {
-	if (thinking === null) return {}
-	if (thinking.level === 'off') return { thinking: { type: 'disabled' } }
-	return { thinking: { type: 'adaptive', display: 'summarized' }, effort: anthropicEffort(thinking.level) }
-}
-
-function anthropicEffort(level: Exclude<ModelThinkingLevel, 'off'>): string {
-	switch (level) {
-		case 'minimal':
-		case 'low':
-			return 'low'
-		case 'medium':
-			return 'medium'
-		case 'high':
-			return 'high'
-		case 'xhigh':
-			return 'max'
-		default:
-			throw new Error(`Unexpected Model Thinking Level: ${String(level satisfies never)}`)
-	}
-}
-
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { defaultModelCapabilities } = await import('../../domain/model')
 
 	describe('Anthropic Messages AI SDK resolver', () => {
-		it('resolves a messages model with summarized adaptive thinking', () => {
+		it('resolves a messages model and leaves thinking control to AI SDK reasoning', () => {
 			let modelId: string | null = null
 			const provider = createAnthropicMessagesModelProviderProtocolProvider(() => ({
 				messages(id) {
@@ -83,10 +52,7 @@ if (import.meta.vitest) {
 
 			expect(result).toEqual({
 				ok: true,
-				value: {
-					languageModel: 'language-model',
-					providerOptions: { anthropic: { thinking: { type: 'adaptive', display: 'summarized' }, effort: 'max' } },
-				},
+				value: { languageModel: 'language-model', providerOptions: undefined },
 			})
 			expect(modelId).toBe('claude-sonnet-4-5')
 		})

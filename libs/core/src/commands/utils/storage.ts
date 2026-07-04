@@ -35,6 +35,7 @@ import type {
 	SecretNotActiveError,
 	StorageOperationFailedError,
 } from '../../errors'
+import { validateModelThinkingLevelForUse } from '../../providers/model-provider-protocol/thinking'
 import type { CoreRuntime } from '../../runtime'
 import type { CoreStorage } from '../../services'
 import {
@@ -211,7 +212,7 @@ export function validateModelUseConfigs(
 		const fact = facts.get(modelUse.modelId)
 		if (fact === undefined) return invariant(`Selectable Model facts missing for ${modelUse.modelId}.`)
 
-		const validation = validateModelThinkingLevel(fact.model, modelUse.thinkingLevel)
+		const validation = validateModelThinkingLevel(fact.model, fact.provider, modelUse.thinkingLevel)
 		if (!validation.ok) return validation
 	}
 
@@ -220,17 +221,10 @@ export function validateModelUseConfigs(
 
 export function validateModelThinkingLevel(
 	model: Model,
+	provider: ModelProvider,
 	thinkingLevel: ModelThinkingLevel,
 ): Result<void, ModelThinkingLevelUnavailableError> {
-	if (model.capabilities.reasoning === null) {
-		return thinkingLevel === 'off'
-			? { ok: true, value: undefined }
-			: modelThinkingLevelUnavailable(model.id, thinkingLevel, 'model-reasoning-unconfigured')
-	}
-
-	return model.capabilities.reasoning[thinkingLevel] === null
-		? modelThinkingLevelUnavailable(model.id, thinkingLevel, 'thinking-level-unconfigured')
-		: { ok: true, value: undefined }
+	return validateModelThinkingLevelForUse(model, provider.protocol, thinkingLevel)
 }
 
 async function loadSelectableModelProvider(
@@ -249,14 +243,6 @@ async function loadSelectableModelProvider(
 
 	cache.set(providerId, providerResult.value)
 	return providerResult
-}
-
-function modelThinkingLevelUnavailable(
-	modelId: Id,
-	thinkingLevel: ModelThinkingLevel,
-	reason: ModelThinkingLevelUnavailableError['reason']['type'],
-): Result<never, ModelThinkingLevelUnavailableError> {
-	return { ok: false, error: { type: 'model-thinking-level-unavailable', modelId, thinkingLevel, reason: { type: reason } } }
 }
 
 function invariant(message: string): Result<never, InvariantViolationError> {

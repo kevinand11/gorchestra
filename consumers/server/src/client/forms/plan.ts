@@ -71,7 +71,7 @@ if (import.meta.vitest) {
 			expect(factory.toModel()).toEqual({
 				title: 'Plan',
 				initialMessage: 'Plan this.',
-				config: { model: { planning: { modelId: 'model-1', thinkingLevel: 'off' } } },
+				config: { model: { planning: { modelId: 'model-1', thinkingLevel: 'none' } } },
 			})
 		})
 

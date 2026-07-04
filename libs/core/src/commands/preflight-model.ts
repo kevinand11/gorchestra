@@ -13,6 +13,7 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import { modelProviderProtocolPreflight } from '../providers/model-provider-protocol'
+import { validateModelThinkingCapabilityForProtocol } from '../providers/model-provider-protocol/thinking'
 import type { ModelProviderProtocolPreflightFailureReason } from '../providers/model-provider-protocol/types'
 import type { CoreRuntime } from '../runtime'
 import type { CoreServices, CoreStorage, ResolvableSecretValue } from '../services'
@@ -108,7 +109,10 @@ async function validateActiveModelFacts(
 	modelProvider: ModelProvider,
 ): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
 	const archivalReadiness = modelArchivalReadiness(model, modelProvider)
-	return archivalReadiness.type === 'failed' ? { ok: true, value: archivalReadiness } : validateModelSecrets(storage, modelProvider)
+	if (archivalReadiness.type === 'failed') return { ok: true, value: archivalReadiness }
+
+	const thinkingReadiness = modelThinkingReadiness(model, modelProvider)
+	return thinkingReadiness.type === 'failed' ? { ok: true, value: thinkingReadiness } : validateModelSecrets(storage, modelProvider)
 }
 
 async function validateModelSecrets(
@@ -145,6 +149,11 @@ function modelArchivalReadiness(model: Model, modelProvider: ModelProvider): Mod
 	return isArchived(modelProvider.archivePeriods)
 		? { type: 'failed', modelProvider, reason: { type: 'model-provider-archived', modelProviderId: modelProvider.id } }
 		: { type: 'passed', secrets: [] }
+}
+
+function modelThinkingReadiness(model: Model, modelProvider: ModelProvider): ModelPreflightFactReadiness {
+	const validation = validateModelThinkingCapabilityForProtocol(model, modelProvider.protocol)
+	return validation.ok ? { type: 'passed', secrets: [] } : { type: 'failed', modelProvider, reason: validation.error }
 }
 
 async function validateAuthSecret(
@@ -285,6 +294,26 @@ if (import.meta.vitest) {
 			const result = await command({ modelId: 'model-1' }, context)
 
 			expect(result).toEqual({ ok: true, value: modelPreflightEvidence(false, 'OpenAI Responses Model Provider is archived.') })
+		})
+
+		it('returns failed evidence when configured thinking support is unsupported by the Model Provider Protocol', async () => {
+			const options = modelFixture()
+			options.tx.modelProviders.records.set('model-provider-1', {
+				...options.tx.modelProviders.records.get('model-provider-1')!,
+				protocol: { type: 'google-generative-ai' },
+			})
+			options.tx.models.records.set('model-1', {
+				...options.tx.models.records.get('model-1')!,
+				capabilities: { ...defaultModelCapabilities, thinking: { supportedLevels: ['xhigh'] } },
+			})
+			const command = createPreflightModelCommand(createTestCoreRuntime(options, { providers: neverCalledProviders(options) }))
+
+			const result = await command({ modelId: 'model-1' }, context)
+
+			expect(result).toEqual({
+				ok: true,
+				value: modelPreflightEvidence(false, 'Google Generative AI Model thinking level xhigh is unavailable.'),
+			})
 		})
 
 		it('returns failed evidence when the auth Secret is missing', async () => {

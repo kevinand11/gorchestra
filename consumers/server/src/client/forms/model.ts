@@ -4,14 +4,16 @@ import { v } from 'valleyed'
 import type {
 	CreateModelInput,
 	ModelCapabilities,
-	ModelThinkingLevel,
-	ModelThinkingLevelMap,
+	ModelThinkingCapability,
 	ModelTokenPricing,
+	PositiveModelThinkingLevel,
 	UpdateModelInput,
 } from '../composables/core/server-api'
 
 export type ModelCreationFormModel = CreateModelInput
 export type ModelUpdateFormModel = UpdateModelInput
+
+export const positiveThinkingLevels: PositiveModelThinkingLevel[] = ['minimal', 'low', 'medium', 'high', 'xhigh']
 
 type ModelCreationFormFields = {
 	name: string
@@ -28,17 +30,10 @@ type ModelCapabilitiesFormFields = {
 	inputs: ModelCapabilities['inputs']
 	contextWindowTokens: number
 	maxOutputTokens: number
-	reasoning: ModelReasoningFormDraft
+	thinking: ModelThinkingFormDraft
 }
 
-type ModelReasoningFormFields = Record<ModelThinkingLevel, ModelReasoningLevelFormDraft>
-
-type ModelReasoningLevelModel = ModelThinkingLevelMap[ModelThinkingLevel]
-
-type ModelReasoningLevelFormFields = {
-	enabled: boolean
-	providerValue: string
-}
+type ModelThinkingFormFields = Record<PositiveModelThinkingLevel, boolean>
 
 type ModelPricingFormFields = {
 	enabled: boolean
@@ -48,19 +43,17 @@ type ModelPricingFormFields = {
 	cacheWriteUsdPerMillion: number
 }
 
-const thinkingLevels: ModelThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh']
 const modelNamePipe = v.string().pipe(v.min<string>(1, 'Enter a Model name'))
 const providerModelIdPipe = v.string().pipe(v.min<string>(1, 'Enter a provider model id'))
 const modelInputsPipe = v.array(v.in(['text']))
 const positiveIntegerPipe = v.number().pipe(v.int(), v.gte(1))
 const nonNegativeNumberPipe = v.number().pipe(v.gte(0))
-const enabledReasoningProviderValuePipe = v.string().pipe(v.min<string>(1, 'Enter a provider reasoning value'))
 
 const defaultModelCapabilities: ModelCapabilities = {
 	inputs: ['text'],
 	contextWindowTokens: 128000,
 	maxOutputTokens: 16384,
-	reasoning: null,
+	thinking: null,
 }
 
 export class ModelCreationFormDraft extends FormDraft<ModelCreationFormModel, ModelCreationFormModel, ModelCreationFormFields> {
@@ -78,54 +71,40 @@ export class ModelCreationFormDraft extends FormDraft<ModelCreationFormModel, Mo
 	}
 }
 
-export class ModelReasoningLevelFormDraft extends FormDraft<
-	ModelReasoningLevelModel,
-	ModelReasoningLevelModel,
-	ModelReasoningLevelFormFields
+export class ModelThinkingFormDraft extends FormDraft<
+	ModelThinkingCapability | null,
+	ModelThinkingCapability | null,
+	ModelThinkingFormFields
 > {
 	protected readonly rules = {
-		enabled: v.boolean(),
-		providerValue: v.lazy(() => (this.enabled ? enabledReasoningProviderValuePipe : v.string())),
+		minimal: v.boolean(),
+		low: v.boolean(),
+		medium: v.boolean(),
+		high: v.boolean(),
+		xhigh: v.boolean(),
 	}
-
-	constructor(private readonly defaultProviderValue: ModelThinkingLevel) {
-		super({ enabled: false, providerValue: defaultProviderValue })
-	}
-
-	protected model = (): ModelReasoningLevelModel => (this.enabled ? { type: 'provider-value', value: this.providerValue } : null)
-
-	protected load = (entity: ModelReasoningLevelModel): void => {
-		this.enabled = entity !== null
-		this.providerValue = entity?.value ?? this.defaultProviderValue
-	}
-}
-
-export class ModelReasoningFormDraft extends FormDraft<
-	ModelCapabilities['reasoning'],
-	ModelCapabilities['reasoning'],
-	ModelReasoningFormFields
-> {
-	protected readonly rules = modelReasoningRules()
+	#configurableLevels = new Set<PositiveModelThinkingLevel>(positiveThinkingLevels)
 
 	constructor() {
-		super(modelReasoningDraftFields())
+		super(emptyThinkingFields())
 	}
 
-	protected model = (): ModelCapabilities['reasoning'] => presentReasoningMap(this.reasoningMap())
-
-	protected load = (entity: ModelCapabilities['reasoning']): void => {
-		const reasoning = reasoningMapFields(entity)
-		thinkingLevels.forEach((level) => this[level].loadEntity(reasoning[level]))
+	setConfigurableLevels(levels: PositiveModelThinkingLevel[]): void {
+		this.#configurableLevels = new Set(levels)
+		for (const level of positiveThinkingLevels) {
+			if (!this.#configurableLevels.has(level)) this[level] = false
+		}
 	}
 
-	private reasoningMap(): ModelThinkingLevelMap {
-		return {
-			off: this.off.toModel(),
-			minimal: this.minimal.toModel(),
-			low: this.low.toModel(),
-			medium: this.medium.toModel(),
-			high: this.high.toModel(),
-			xhigh: this.xhigh.toModel(),
+	protected model = (): ModelThinkingCapability | null => {
+		const supportedLevels = positiveThinkingLevels.filter((level) => this.#configurableLevels.has(level) && this[level])
+		return supportedLevels.length === 0 ? null : { supportedLevels }
+	}
+
+	protected load = (entity: ModelThinkingCapability | null): void => {
+		const supportedLevels = new Set(entity?.supportedLevels ?? [])
+		for (const level of positiveThinkingLevels) {
+			this[level] = this.#configurableLevels.has(level) && supportedLevels.has(level)
 		}
 	}
 }
@@ -135,25 +114,29 @@ export class ModelCapabilitiesFormDraft extends FormDraft<ModelCapabilities, Mod
 		inputs: modelInputsPipe,
 		contextWindowTokens: positiveIntegerPipe,
 		maxOutputTokens: positiveIntegerPipe,
-		reasoning: formDraftPipe<ModelReasoningFormDraft>(),
+		thinking: formDraftPipe<ModelThinkingFormDraft>(),
 	}
 
 	constructor() {
-		super({ ...defaultModelCapabilities, reasoning: new ModelReasoningFormDraft() })
+		super({ ...defaultModelCapabilities, thinking: new ModelThinkingFormDraft() })
+	}
+
+	setConfigurableThinkingLevels(levels: PositiveModelThinkingLevel[]): void {
+		this.thinking.setConfigurableLevels(levels)
 	}
 
 	protected model = (): ModelCapabilities => ({
 		inputs: this.inputs,
 		contextWindowTokens: this.contextWindowTokens,
 		maxOutputTokens: this.maxOutputTokens,
-		reasoning: this.reasoning.toModel(),
+		thinking: this.thinking.toModel(),
 	})
 
 	protected load = (entity: ModelCapabilities): void => {
 		this.inputs = entity.inputs
 		this.contextWindowTokens = entity.contextWindowTokens
 		this.maxOutputTokens = entity.maxOutputTokens
-		this.reasoning.loadEntity(entity.reasoning)
+		this.thinking.loadEntity(entity.thinking)
 	}
 }
 
@@ -211,6 +194,10 @@ export class ModelUpdateFormDraft extends FormDraft<ModelUpdateFormModel, ModelU
 		super({ name: '', capabilities: new ModelCapabilitiesFormDraft(), pricing: new ModelPricingFormDraft() })
 	}
 
+	setConfigurableThinkingLevels(levels: PositiveModelThinkingLevel[]): void {
+		this.capabilities.setConfigurableThinkingLevels(levels)
+	}
+
 	protected model = (): ModelUpdateFormModel => ({
 		name: this.name,
 		capabilities: this.capabilities.toModel(),
@@ -224,34 +211,8 @@ export class ModelUpdateFormDraft extends FormDraft<ModelUpdateFormModel, ModelU
 	}
 }
 
-function modelReasoningDraftFields(): ModelReasoningFormFields {
-	return {
-		off: new ModelReasoningLevelFormDraft('off'),
-		minimal: new ModelReasoningLevelFormDraft('minimal'),
-		low: new ModelReasoningLevelFormDraft('low'),
-		medium: new ModelReasoningLevelFormDraft('medium'),
-		high: new ModelReasoningLevelFormDraft('high'),
-		xhigh: new ModelReasoningLevelFormDraft('xhigh'),
-	}
-}
-
-function modelReasoningRules() {
-	return {
-		off: formDraftPipe<ModelReasoningLevelFormDraft>(),
-		minimal: formDraftPipe<ModelReasoningLevelFormDraft>(),
-		low: formDraftPipe<ModelReasoningLevelFormDraft>(),
-		medium: formDraftPipe<ModelReasoningLevelFormDraft>(),
-		high: formDraftPipe<ModelReasoningLevelFormDraft>(),
-		xhigh: formDraftPipe<ModelReasoningLevelFormDraft>(),
-	}
-}
-
-function reasoningMapFields(reasoning: ModelCapabilities['reasoning']): ModelThinkingLevelMap {
-	return reasoning ?? { off: null, minimal: null, low: null, medium: null, high: null, xhigh: null }
-}
-
-function presentReasoningMap(reasoning: ModelThinkingLevelMap): ModelThinkingLevelMap | null {
-	return thinkingLevels.some((level) => reasoning[level] !== null) ? reasoning : null
+function emptyThinkingFields(): ModelThinkingFormFields {
+	return { minimal: false, low: false, medium: false, high: false, xhigh: false }
 }
 
 function emptyPricingFields(): ModelPricingFormFields {
@@ -323,8 +284,8 @@ if (import.meta.vitest) {
 			factory.loadEntity({ name: 'Sonnet 4', capabilities: defaultModelCapabilities, pricing })
 			factory.name = '  Sonnet 4 updated  '
 			factory.capabilities.maxOutputTokens = 8192
-			factory.capabilities.reasoning.high.enabled = true
-			factory.capabilities.reasoning.high.providerValue = 'high'
+			factory.capabilities.thinking.high = true
+			factory.capabilities.thinking.low = true
 			factory.pricing.inputUsdPerMillion = 1.125
 
 			expect(factory.valid).toBe(true)
@@ -333,14 +294,7 @@ if (import.meta.vitest) {
 				capabilities: {
 					...defaultModelCapabilities,
 					maxOutputTokens: 8192,
-					reasoning: {
-						off: null,
-						minimal: null,
-						low: null,
-						medium: null,
-						high: { type: 'provider-value', value: 'high' },
-						xhigh: null,
-					},
+					thinking: { supportedLevels: ['low', 'high'] },
 				},
 				pricing: {
 					unit: 'micro-usd-per-million-tokens',
@@ -350,6 +304,21 @@ if (import.meta.vitest) {
 					cacheWrite: 500_000,
 				},
 			})
+		})
+
+		it('clears unconfigurable Model Thinking Levels', () => {
+			const factory = new ModelUpdateFormDraft()
+			factory.loadEntity({
+				name: 'Gemini',
+				capabilities: { ...defaultModelCapabilities, thinking: { supportedLevels: ['low', 'xhigh'] } },
+				pricing: null,
+			})
+
+			factory.setConfigurableThinkingLevels(['minimal', 'low', 'medium', 'high'])
+
+			expect(factory.capabilities.thinking.low).toBe(true)
+			expect(factory.capabilities.thinking.xhigh).toBe(false)
+			expect(factory.toModel().capabilities.thinking).toEqual({ supportedLevels: ['low'] })
 		})
 	})
 }

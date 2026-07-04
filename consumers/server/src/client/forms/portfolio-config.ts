@@ -118,11 +118,11 @@ if (import.meta.vitest) {
 			expect(factory.toModel()).toEqual({
 				config: {
 					model: {
-						default: { modelId: 'model-default', thinkingLevel: 'off' },
+						default: { modelId: 'model-default', thinkingLevel: 'none' },
 						planning: null,
-						revisionPlanning: { modelId: 'model-revision-planning', thinkingLevel: 'off' },
+						revisionPlanning: { modelId: 'model-revision-planning', thinkingLevel: 'none' },
 						execution: null,
-						revisionExecution: { modelId: 'model-revision-execution', thinkingLevel: 'off' },
+						revisionExecution: { modelId: 'model-revision-execution', thinkingLevel: 'none' },
 					},
 					work: { maxProcessableSliceSlots: 2, maxCorrectionRetriesPerFailure: 0, modelTimeoutMs: 60_000 },
 				},
@@ -135,7 +135,7 @@ if (import.meta.vitest) {
 			factory.loadEntity({
 				config: {
 					model: {
-						default: { modelId: 'model-default', thinkingLevel: 'off' },
+						default: { modelId: 'model-default', thinkingLevel: 'none' },
 						planning: null,
 						revisionPlanning: null,
 						execution: null,

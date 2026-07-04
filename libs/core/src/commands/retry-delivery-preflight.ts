@@ -313,7 +313,7 @@ if (import.meta.vitest) {
 			seedRepository(options)
 			const providers = passingProviderBackedPreflightProviders()
 			providers.modelProviderProtocols.preflightModel = () => {
-				options.tx.portfolioConfig.record!.value.model.default = { modelId: 'model-2', thinkingLevel: 'off' }
+				options.tx.portfolioConfig.record!.value.model.default = { modelId: 'model-2', thinkingLevel: 'none' }
 				return Promise.resolve({ ok: true, value: { type: 'passed', summary: 'Anthropic Messages model preflight passed.' } })
 			}
 			const command = createRetryDeliveryPreflightCommand(createTestCoreRuntime(options, { providers }))
@@ -419,7 +419,7 @@ if (import.meta.vitest) {
 			configured: localStamp(),
 			value: {
 				model: {
-					default: { modelId: 'model-1', thinkingLevel: 'off' },
+					default: { modelId: 'model-1', thinkingLevel: 'none' },
 					planning: null,
 					revisionPlanning: null,
 					execution: null,

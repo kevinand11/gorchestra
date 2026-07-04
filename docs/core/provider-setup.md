@@ -24,7 +24,7 @@ Repository Preflight is observational. It verifies stored Repository facts, acti
 
 ## Model Provider Protocol setup
 
-Model Providers define a stable protocol, base URL, optional API-key auth Secret, and optional custom header Secrets. Models under a provider store the provider-facing model identifier.
+Model Providers define a stable protocol, base URL, optional API-key auth Secret, and optional custom header Secrets. Models under a provider store the provider-facing model identifier and configured positive Model Thinking Levels supported by that Model. `none` is implicit and always selectable.
 
 Supported Model Provider Protocols:
 
@@ -34,7 +34,7 @@ Supported Model Provider Protocols:
 | `anthropic-messages`   | `https://api.anthropic.com`                 | API key Secret, optional header Secrets such as Anthropic beta headers | Tiny bounded AI SDK `streamText` generation |
 | `google-generative-ai` | `https://generativelanguage.googleapis.com` | API key Secret, optional Google header Secrets                         | Tiny bounded AI SDK `streamText` generation |
 
-Model Preflight is observational. It checks stored Model and Model Provider facts, archived state, active provider access Secret references, plaintext Secret resolution, and AI SDK-backed provider generation reachability with a tiny bounded no-tool `streamText` probe. It returns safe Validation Evidence and does not write Agent Run Events, Portfolio lifecycle facts, readiness state, or history. The generation output is ignored. Model Preflight currently sends no thinking options; future work should verify configured thinking behavior.
+Model Preflight is observational. It checks stored Model and Model Provider facts, archived state, configured positive thinking support against the Model Provider Protocol, active provider access Secret references, plaintext Secret resolution, and AI SDK-backed provider generation reachability with a tiny bounded no-tool `streamText` probe. It returns safe Validation Evidence and does not write Agent Run Events, Portfolio lifecycle facts, readiness state, or history. The generation output is ignored. Model Preflight sends no AI SDK reasoning option; configured thinking levels are validated as Core metadata rather than exercised through the preflight generation.
 
 ### Example provider records
 

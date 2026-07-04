@@ -341,7 +341,7 @@ if (import.meta.vitest) {
 				v.validate(agentRunEventBodyPipe, {
 					type: 'agent-run-model-selected',
 					modelId: 'model-1',
-					thinkingLevel: 'off',
+					thinkingLevel: 'none',
 					authorized: null,
 				}),
 			).toMatchObject({ valid: true })

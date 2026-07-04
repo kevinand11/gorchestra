@@ -294,7 +294,7 @@ if (import.meta.vitest) {
 			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toEqual({
 				type: 'agent-run-model-selected',
 				modelId: 'model-1',
-				thinkingLevel: 'off',
+				thinkingLevel: 'none',
 				authorized: null,
 			})
 		})
@@ -367,7 +367,7 @@ if (import.meta.vitest) {
 			value: {
 				model: {
 					planning: null,
-					revisionPlanning: { modelId: 'model-project', thinkingLevel: 'off' },
+					revisionPlanning: { modelId: 'model-project', thinkingLevel: 'none' },
 					execution: null,
 					revisionExecution: null,
 				},
@@ -438,7 +438,7 @@ if (import.meta.vitest) {
 			configured: stamp,
 			value: {
 				model: {
-					default: { modelId: defaultModelId, thinkingLevel: 'off' },
+					default: { modelId: defaultModelId, thinkingLevel: 'none' },
 					planning: null,
 					revisionPlanning: null,
 					execution: null,

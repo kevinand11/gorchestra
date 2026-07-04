@@ -163,9 +163,9 @@ if (import.meta.vitest) {
 			expect(draft.toModel()).toEqual({
 				config: {
 					model: {
-						planning: { modelId: 'model-planning', thinkingLevel: 'off' },
+						planning: { modelId: 'model-planning', thinkingLevel: 'none' },
 						revisionPlanning: null,
-						execution: { modelId: 'model-execution', thinkingLevel: 'off' },
+						execution: { modelId: 'model-execution', thinkingLevel: 'none' },
 						revisionExecution: null,
 					},
 					work: null,
@@ -186,7 +186,7 @@ if (import.meta.vitest) {
 			const draft = new ProjectConfigFormDraft().loadEntity({
 				config: {
 					model: {
-						planning: { modelId: 'model-planning', thinkingLevel: 'off' },
+						planning: { modelId: 'model-planning', thinkingLevel: 'none' },
 						revisionPlanning: null,
 						execution: null,
 						revisionExecution: null,

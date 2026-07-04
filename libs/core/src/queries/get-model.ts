@@ -26,7 +26,7 @@ export function createGetModelQuery(options: CoreServices): Operation {
 
 			const provider = await getRequired('model-provider', storage, model.value.providerId)
 			return provider.ok
-				? { ok: true, value: { ...listedModel(model.value), provider: modelProviderSummary(provider.value) } }
+				? { ok: true, value: { ...listedModel(model.value, provider.value), provider: modelProviderSummary(provider.value) } }
 				: provider
 		}),
 	)
@@ -81,7 +81,7 @@ if (import.meta.vitest) {
 				providerId: 'provider-1',
 				name: 'Model One',
 				providerModelId: 'provider-model-1',
-				capabilities: defaultModelCapabilities,
+				capabilities: { ...defaultModelCapabilities, thinking: { supportedLevels: ['high'] } },
 				pricing: null,
 				created: stamp,
 				updated: null,
@@ -98,9 +98,9 @@ if (import.meta.vitest) {
 					providerId: 'provider-1',
 					name: 'Model One',
 					providerModelId: 'provider-model-1',
-					capabilities: defaultModelCapabilities,
+					capabilities: { ...defaultModelCapabilities, thinking: { supportedLevels: ['high'] } },
 					pricing: null,
-					availableThinkingLevels: ['off'],
+					availableThinkingLevels: ['none', 'high'],
 					created: stamp,
 					updated: null,
 					archived: true,
@@ -110,6 +110,7 @@ if (import.meta.vitest) {
 						protocol: { type: 'openai-responses' },
 						baseUrl: 'https://api.example.com',
 						archived: true,
+						configurableThinkingLevels: ['minimal', 'low', 'medium', 'high', 'xhigh'],
 					},
 				},
 			})

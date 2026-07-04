@@ -105,7 +105,7 @@ if (import.meta.vitest) {
 			expect(context.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toEqual({
 				type: 'agent-run-model-selected',
 				modelId: 'model-1',
-				thinkingLevel: 'off',
+				thinkingLevel: 'none',
 				authorized: null,
 			})
 			expect(context.tx.agentRunEvents.records.get('agent-run-event-2')?.body).toEqual({
@@ -140,13 +140,13 @@ if (import.meta.vitest) {
 
 	const resolution: DeliveryWorkResolution = {
 		workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
-		executionModelUse: { modelId: 'model-1', thinkingLevel: 'off' },
+		executionModelUse: { modelId: 'model-1', thinkingLevel: 'none' },
 		executionModel: {
 			id: 'model-1',
 			providerId: 'model-provider-1',
 			name: 'Model',
 			providerModelId: 'provider-model',
-			capabilities: { inputs: ['text'], contextWindowTokens: 128000, maxOutputTokens: 16384, reasoning: null },
+			capabilities: { inputs: ['text'], contextWindowTokens: 128000, maxOutputTokens: 16384, thinking: null },
 			pricing: null,
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 			updated: null,

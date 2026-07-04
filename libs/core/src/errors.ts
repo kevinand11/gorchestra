@@ -6,6 +6,7 @@ import type { DeliveryClosedOutcome, DeliveryWorkState } from './domain/delivery
 import type { ExternalOperationEvidence, ValidationEvidence } from './domain/evidence'
 import type { LinkDef } from './domain/graph'
 import type { ModelThinkingLevel } from './domain/model'
+import type { ModelProviderProtocolType } from './domain/model-provider'
 import type { SecretBindingScope } from './domain/secret'
 
 export type CorePreflightCheckName = 'storage' | 'secrets' | 'sandbox' | 'dispatcher'
@@ -238,7 +239,10 @@ export interface ModelThinkingLevelUnavailableError {
 	type: 'model-thinking-level-unavailable'
 	modelId: Id
 	thinkingLevel: ModelThinkingLevel
-	reason: { type: 'model-reasoning-unconfigured' } | { type: 'thinking-level-unconfigured' }
+	reason:
+		| { type: 'model-thinking-unconfigured' }
+		| { type: 'thinking-level-unconfigured' }
+		| { type: 'provider-thinking-level-unsupported'; protocol: ModelProviderProtocolType }
 }
 
 export interface AgentRunNotInteractiveError {

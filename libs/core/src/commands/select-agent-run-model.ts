@@ -98,7 +98,7 @@ if (import.meta.vitest) {
 			seedSelectableModel(options.tx, 'model-2')
 			const command = createSelectAgentRunModelCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', modelId: 'model-2', thinkingLevel: 'off' }, context)
+			const result = await command({ agentRunId: 'agent-run-1', modelId: 'model-2', thinkingLevel: 'none' }, context)
 
 			expect(result).toEqual({
 				ok: true,
@@ -110,7 +110,7 @@ if (import.meta.vitest) {
 					body: {
 						type: 'agent-run-model-selected',
 						modelId: 'model-2',
-						thinkingLevel: 'off',
+						thinkingLevel: 'none',
 						authorized: localStamp(),
 					},
 				},
@@ -122,7 +122,7 @@ if (import.meta.vitest) {
 			seedSelectableModel(options.tx, 'model-2', { modelArchived: true })
 			const command = createSelectAgentRunModelCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', modelId: 'model-2', thinkingLevel: 'off' }, context)
+			const result = await command({ agentRunId: 'agent-run-1', modelId: 'model-2', thinkingLevel: 'none' }, context)
 
 			expect(result).toEqual({ ok: false, error: { type: 'archived-model-reference', modelId: 'model-2' } })
 		})
@@ -138,7 +138,7 @@ if (import.meta.vitest) {
 			}
 			const command = createSelectAgentRunModelCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', modelId: 'model-2', thinkingLevel: 'off' }, context)
+			const result = await command({ agentRunId: 'agent-run-1', modelId: 'model-2', thinkingLevel: 'none' }, context)
 
 			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-interactive', agentRunId: 'agent-run-1' } })
 		})
@@ -148,7 +148,7 @@ if (import.meta.vitest) {
 			seedSelectableModel(options.tx, 'model-2')
 			const command = createSelectAgentRunModelCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', modelId: 'model-2', thinkingLevel: 'off' }, context)
+			const result = await command({ agentRunId: 'agent-run-1', modelId: 'model-2', thinkingLevel: 'none' }, context)
 
 			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: 'agent-run-1' } })
 		})

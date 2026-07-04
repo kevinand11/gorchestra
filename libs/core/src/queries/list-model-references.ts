@@ -306,7 +306,7 @@ if (import.meta.vitest) {
 					configured: stamp,
 					value: {
 						model: {
-							planning: { modelId: 'model-1', thinkingLevel: 'off' },
+							planning: { modelId: 'model-1', thinkingLevel: 'none' },
 							revisionPlanning: null,
 							execution: null,
 							revisionExecution: null,
@@ -319,7 +319,7 @@ if (import.meta.vitest) {
 				configured: stamp,
 				value: {
 					model: {
-						default: { modelId: 'model-1', thinkingLevel: 'off' },
+						default: { modelId: 'model-1', thinkingLevel: 'none' },
 						planning: null,
 						revisionPlanning: null,
 						execution: null,
@@ -332,7 +332,7 @@ if (import.meta.vitest) {
 				id: 'plan-1',
 				projectId: 'project-1',
 				title: 'Plan One',
-				config: { configured: stamp, value: { model: { planning: { modelId: 'model-1', thinkingLevel: 'off' } } } },
+				config: { configured: stamp, value: { model: { planning: { modelId: 'model-1', thinkingLevel: 'none' } } } },
 				created: stamp,
 				closed: null,
 			})
@@ -344,7 +344,7 @@ if (import.meta.vitest) {
 				target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
 				config: {
 					configured: stamp,
-					value: { model: { execution: { modelId: 'model-1', thinkingLevel: 'off' }, revisionExecution: null }, work: null },
+					value: { model: { execution: { modelId: 'model-1', thinkingLevel: 'none' }, revisionExecution: null }, work: null },
 				},
 				accepted: stamp,
 				queued: null,
@@ -358,7 +358,7 @@ if (import.meta.vitest) {
 				target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
 				config: {
 					configured: stamp,
-					value: { model: { execution: { modelId: 'model-1', thinkingLevel: 'off' }, revisionExecution: null }, work: null },
+					value: { model: { execution: { modelId: 'model-1', thinkingLevel: 'none' }, revisionExecution: null }, work: null },
 				},
 				accepted: stamp,
 				queued: null,
@@ -415,7 +415,7 @@ if (import.meta.vitest) {
 				configured: stamp,
 				value: {
 					model: {
-						default: { modelId: 'model-1', thinkingLevel: 'off' },
+						default: { modelId: 'model-1', thinkingLevel: 'none' },
 						planning: null,
 						revisionPlanning: null,
 						execution: null,
@@ -444,7 +444,7 @@ if (import.meta.vitest) {
 				agentRunId: 'agent-run-1',
 				cursor: '01J00000000000000000000001',
 				occurred: { at: stamp.at },
-				body: { type: 'agent-run-model-selected', modelId: 'model-1', thinkingLevel: 'off', authorized: null },
+				body: { type: 'agent-run-model-selected', modelId: 'model-1', thinkingLevel: 'none', authorized: null },
 			})
 			const query = createListModelReferencesQuery(options)
 

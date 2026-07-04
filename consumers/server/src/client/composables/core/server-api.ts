@@ -23,13 +23,14 @@ export type ModelProviderProtocol = { type: 'anthropic-messages' } | { type: 'op
 export type ModelProviderProtocolType = ModelProviderProtocol['type']
 export type ModelProviderAuth = { type: 'apiKey'; secretId: string }
 export type ModelProviderHeader = { name: string; valueSecretId: string }
-export type ModelThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
-export type ModelThinkingLevelMap = Record<ModelThinkingLevel, { type: 'provider-value'; value: string } | null>
+export type ModelThinkingLevel = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+export type PositiveModelThinkingLevel = Exclude<ModelThinkingLevel, 'none'>
+export type ModelThinkingCapability = { supportedLevels: PositiveModelThinkingLevel[] }
 export type ModelCapabilities = {
 	inputs: Array<'text'>
 	contextWindowTokens: number
 	maxOutputTokens: number
-	reasoning: ModelThinkingLevelMap | null
+	thinking: ModelThinkingCapability | null
 }
 export type ModelTokenPricing = {
 	unit: 'micro-usd-per-million-tokens'

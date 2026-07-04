@@ -9,26 +9,26 @@ import {
 	positiveIntegerPipe,
 } from './commons'
 
-export const modelThinkingLevelPipe = v.in(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'])
+export const positiveModelThinkingLevelPipe = v.in(['minimal', 'low', 'medium', 'high', 'xhigh'])
+export type PositiveModelThinkingLevel = PipeOutput<typeof positiveModelThinkingLevelPipe>
+export const positiveModelThinkingLevels = [
+	'minimal',
+	'low',
+	'medium',
+	'high',
+	'xhigh',
+] as const satisfies readonly PositiveModelThinkingLevel[]
+
+export const modelThinkingLevelPipe = v.in(['none', 'minimal', 'low', 'medium', 'high', 'xhigh'])
 export type ModelThinkingLevel = PipeOutput<typeof modelThinkingLevelPipe>
-export const modelThinkingLevels = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const satisfies readonly ModelThinkingLevel[]
+export const modelThinkingLevels = ['none', ...positiveModelThinkingLevels] as const satisfies readonly ModelThinkingLevel[]
 
-export const modelThinkingLevelProviderValuePipe = v.object({ type: v.eq('provider-value'), value: nonEmptyTrimmedStringPipe })
-export type ModelThinkingLevelProviderValue = PipeOutput<typeof modelThinkingLevelProviderValuePipe>
+type RawModelThinkingCapability = { supportedLevels: PositiveModelThinkingLevel[] }
 
-const modelThinkingLevelMapEntryPipe = v.defaults(v.nullable(modelThinkingLevelProviderValuePipe), null)
-
-export const modelThinkingLevelMapPipe = v.object({
-	off: modelThinkingLevelMapEntryPipe,
-	minimal: modelThinkingLevelMapEntryPipe,
-	low: modelThinkingLevelMapEntryPipe,
-	medium: modelThinkingLevelMapEntryPipe,
-	high: modelThinkingLevelMapEntryPipe,
-	xhigh: modelThinkingLevelMapEntryPipe,
-})
-export type ModelThinkingLevelMap = PipeOutput<typeof modelThinkingLevelMapPipe>
-
-export const modelReasoningPipe = v.nullable(modelThinkingLevelMapPipe).pipe(normalizeReasoning)
+export const modelThinkingCapabilityPipe = v
+	.object({ supportedLevels: v.array(positiveModelThinkingLevelPipe).pipe(v.asSet()).pipe(v.min(1)) })
+	.pipe((capability: RawModelThinkingCapability) => ({ supportedLevels: sortedPositiveThinkingLevels(capability.supportedLevels) }))
+export type ModelThinkingCapability = PipeOutput<typeof modelThinkingCapabilityPipe>
 
 export const modelInputPipe = v.in(['text'])
 export type ModelInput = PipeOutput<typeof modelInputPipe>
@@ -38,7 +38,7 @@ type RawModelCapabilities = {
 	inputs: ModelInput[]
 	contextWindowTokens: number
 	maxOutputTokens: number
-	reasoning: ModelThinkingLevelMap | null
+	thinking: ModelThinkingCapability | null
 }
 
 export const modelCapabilitiesPipe = v
@@ -46,7 +46,7 @@ export const modelCapabilitiesPipe = v
 		inputs: modelInputsPipe,
 		contextWindowTokens: positiveIntegerPipe,
 		maxOutputTokens: positiveIntegerPipe,
-		reasoning: modelReasoningPipe,
+		thinking: v.nullable(modelThinkingCapabilityPipe),
 	})
 	.pipe(
 		v.custom<RawModelCapabilities>(
@@ -60,7 +60,7 @@ export const defaultModelCapabilities = {
 	inputs: ['text'],
 	contextWindowTokens: 128000,
 	maxOutputTokens: 16384,
-	reasoning: null,
+	thinking: null,
 } satisfies ModelCapabilities
 
 export const modelTokenPricingPipe = v.object({
@@ -149,14 +149,12 @@ export const modelReferencePipe = v.discriminate((value) => value.type, {
 })
 export type ModelReference = PipeOutput<typeof modelReferencePipe>
 
-export function availableThinkingLevels(capabilities: Pick<ModelCapabilities, 'reasoning'>): ModelThinkingLevel[] {
-	if (capabilities.reasoning === null) return ['off']
-	return modelThinkingLevels.filter((level) => level === 'off' || capabilities.reasoning?.[level] !== null)
+export function modelConfiguredThinkingLevels(capabilities: Pick<ModelCapabilities, 'thinking'>): PositiveModelThinkingLevel[] {
+	return capabilities.thinking?.supportedLevels ?? []
 }
 
-function normalizeReasoning(value: ModelThinkingLevelMap | null): ModelThinkingLevelMap | null {
-	if (value === null) return null
-	return Object.values(value).every((entry) => entry === null) ? null : value
+function sortedPositiveThinkingLevels(levels: PositiveModelThinkingLevel[]): PositiveModelThinkingLevel[] {
+	return positiveModelThinkingLevels.filter((level) => levels.includes(level))
 }
 
 function hasValidOutputTokenLimit(capabilities: RawModelCapabilities): boolean {
@@ -167,53 +165,36 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
 	describe('Model domain pipes', () => {
-		it('normalizes capabilities and configured reasoning provider values', () => {
+		it('normalizes capabilities and configured thinking support', () => {
 			expect(
 				v.assert(modelCapabilitiesPipe, {
 					inputs: ['text', 'text'],
 					contextWindowTokens: 128000,
 					maxOutputTokens: 16384,
-					reasoning: {
-						off: undefined,
-						minimal: null,
-						low: null,
-						medium: null,
-						high: { type: 'provider-value', value: ' high ' },
-						xhigh: null,
-					},
+					thinking: { supportedLevels: ['high', 'low', 'high'] },
 				}),
 			).toEqual({
 				inputs: ['text'],
 				contextWindowTokens: 128000,
 				maxOutputTokens: 16384,
-				reasoning: {
-					off: null,
-					minimal: null,
-					low: null,
-					medium: null,
-					high: { type: 'provider-value', value: 'high' },
-					xhigh: null,
-				},
+				thinking: { supportedLevels: ['low', 'high'] },
 			})
 		})
 
-		it('normalizes an all-null reasoning map to unknown reasoning', () => {
+		it('rejects empty thinking support, empty inputs, and output limits larger than the context window', () => {
 			expect(
-				v.assert(modelCapabilitiesPipe, {
+				v.validate(modelCapabilitiesPipe, {
 					inputs: ['text'],
 					contextWindowTokens: 128000,
 					maxOutputTokens: 16384,
-					reasoning: { off: null, minimal: null, low: null, medium: null, high: null, xhigh: null },
-				}),
-			).toMatchObject({ reasoning: null })
-		})
-
-		it('rejects empty inputs and output limits larger than the context window', () => {
-			expect(
-				v.validate(modelCapabilitiesPipe, { inputs: [], contextWindowTokens: 1, maxOutputTokens: 1, reasoning: null }).valid,
+					thinking: { supportedLevels: [] },
+				}).valid,
 			).toBe(false)
 			expect(
-				v.validate(modelCapabilitiesPipe, { inputs: ['text'], contextWindowTokens: 1, maxOutputTokens: 2, reasoning: null }).valid,
+				v.validate(modelCapabilitiesPipe, { inputs: [], contextWindowTokens: 1, maxOutputTokens: 1, thinking: null }).valid,
+			).toBe(false)
+			expect(
+				v.validate(modelCapabilitiesPipe, { inputs: ['text'], contextWindowTokens: 1, maxOutputTokens: 2, thinking: null }).valid,
 			).toBe(false)
 		})
 	})

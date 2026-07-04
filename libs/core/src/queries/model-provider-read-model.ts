@@ -1,19 +1,30 @@
 import { isArchived } from '../commands/utils/storage'
-import { availableThinkingLevels, defaultModelCapabilities, type ListedModel, type Model } from '../domain/model'
+import { defaultModelCapabilities, type ListedModel, type Model } from '../domain/model'
 import type { ListedModelProvider, ModelProvider, ModelProviderSummary } from '../domain/model-provider'
+import { availableThinkingLevelsForModel, configurableThinkingLevelsForProtocol } from '../providers/model-provider-protocol/thinking'
 
 export function listedModelProviders(modelProviders: ModelProvider[], models: Model[]): ListedModelProvider[] {
-	const modelsByProviderId = groupModelsByProviderId(sortByCreatedAtThenId(models).map(listedModel))
+	const modelsByProviderId = groupModelsByProviderId(models)
 
 	return sortByCreatedAtThenId(modelProviders).map((provider) => {
 		const { archivePeriods, ...providerFields } = provider
-		return { ...providerFields, archived: isArchived(archivePeriods), models: modelsByProviderId.get(provider.id) ?? [] }
+		const providerModels = sortByCreatedAtThenId(modelsByProviderId.get(provider.id) ?? []).map((model) => listedModel(model, provider))
+		return {
+			...providerFields,
+			archived: isArchived(archivePeriods),
+			configurableThinkingLevels: configurableThinkingLevelsForProtocol(provider.protocol),
+			models: providerModels,
+		}
 	})
 }
 
-export function listedModel(model: Model): ListedModel {
+export function listedModel(model: Model, provider: ModelProvider): ListedModel {
 	const { archivePeriods, ...modelFields } = model
-	return { ...modelFields, archived: isArchived(archivePeriods), availableThinkingLevels: availableThinkingLevels(model.capabilities) }
+	return {
+		...modelFields,
+		archived: isArchived(archivePeriods),
+		availableThinkingLevels: availableThinkingLevelsForModel(model, provider.protocol),
+	}
 }
 
 export function modelProviderSummary(provider: ModelProvider): ModelProviderSummary {
@@ -23,11 +34,12 @@ export function modelProviderSummary(provider: ModelProvider): ModelProviderSumm
 		protocol: provider.protocol,
 		baseUrl: provider.baseUrl,
 		archived: isArchived(provider.archivePeriods),
+		configurableThinkingLevels: configurableThinkingLevelsForProtocol(provider.protocol),
 	}
 }
 
-function groupModelsByProviderId(models: ListedModel[]): Map<string, ListedModel[]> {
-	const grouped = new Map<string, ListedModel[]>()
+function groupModelsByProviderId(models: Model[]): Map<string, Model[]> {
+	const grouped = new Map<string, Model[]>()
 	for (const model of models) {
 		const providerModels = grouped.get(model.providerId) ?? []
 		providerModels.push(model)
@@ -45,19 +57,30 @@ if (import.meta.vitest) {
 	const { stamp } = await import('../utils/test-helpers')
 
 	describe('listedModelProviders', () => {
-		it('groups Models under Providers in creation order with archive state', () => {
+		it('groups Models under Providers in creation order with archive state and thinking levels', () => {
 			const providerA = modelProvider({ id: 'provider-a', createdAt: '2026-06-09T00:00:00.000Z', archived: true })
 			const providerB = modelProvider({ id: 'provider-b', createdAt: '2026-06-10T00:00:00.000Z' })
 			const modelA = model({ id: 'model-a', providerId: 'provider-a', createdAt: '2026-06-09T00:00:00.000Z' })
-			const modelB = model({ id: 'model-b', providerId: 'provider-a', createdAt: '2026-06-10T00:00:00.000Z', archived: true })
+			const modelB = model({
+				id: 'model-b',
+				providerId: 'provider-a',
+				createdAt: '2026-06-10T00:00:00.000Z',
+				archived: true,
+				thinking: { supportedLevels: ['low', 'high'] },
+			})
 			const modelC = model({ id: 'model-c', providerId: 'missing-provider', createdAt: '2026-06-11T00:00:00.000Z' })
 
 			expect(listedModelProviders([providerB, providerA], [modelB, modelC, modelA])).toEqual([
 				{
 					...listedProvider(providerA, true),
-					models: [listedModelRecord(modelA, false), listedModelRecord(modelB, true)],
+					configurableThinkingLevels: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+					models: [listedModelRecord(modelA, false), listedModelRecord(modelB, true, ['none', 'low', 'high'])],
 				},
-				{ ...listedProvider(providerB, false), models: [] },
+				{
+					...listedProvider(providerB, false),
+					configurableThinkingLevels: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+					models: [],
+				},
 			])
 		})
 	})
@@ -76,13 +99,19 @@ if (import.meta.vitest) {
 		}
 	}
 
-	function model(input: { id: string; providerId: string; createdAt: string; archived?: boolean }): Model {
+	function model(input: {
+		id: string
+		providerId: string
+		createdAt: string
+		archived?: boolean
+		thinking?: Model['capabilities']['thinking']
+	}): Model {
 		return {
 			id: input.id,
 			providerId: input.providerId,
 			name: input.id,
 			providerModelId: input.id,
-			capabilities: defaultModelCapabilities,
+			capabilities: { ...defaultModelCapabilities, thinking: input.thinking ?? null },
 			pricing: null,
 			created: { origin: 'imported', at: input.createdAt },
 			updated: null,
@@ -90,13 +119,20 @@ if (import.meta.vitest) {
 		}
 	}
 
-	function listedProvider(provider: ModelProvider, archived: boolean): Omit<ListedModelProvider, 'models'> {
+	function listedProvider(
+		provider: ModelProvider,
+		archived: boolean,
+	): Omit<ListedModelProvider, 'configurableThinkingLevels' | 'models'> {
 		const { archivePeriods: _archivePeriods, ...providerFields } = provider
 		return { ...providerFields, archived }
 	}
 
-	function listedModelRecord(modelRecord: Model, archived: boolean): ListedModel {
+	function listedModelRecord(
+		modelRecord: Model,
+		archived: boolean,
+		availableThinkingLevels: ListedModel['availableThinkingLevels'] = ['none'],
+	): ListedModel {
 		const { archivePeriods: _archivePeriods, ...modelFields } = modelRecord
-		return { ...modelFields, archived, availableThinkingLevels: ['off'] }
+		return { ...modelFields, archived, availableThinkingLevels }
 	}
 }

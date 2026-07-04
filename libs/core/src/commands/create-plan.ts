@@ -349,7 +349,7 @@ if (import.meta.vitest) {
 			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toEqual({
 				type: 'agent-run-model-selected',
 				modelId: 'model-1',
-				thinkingLevel: 'off',
+				thinkingLevel: 'none',
 				authorized: null,
 			})
 			expect(options.tx.agentRunEvents.records.get('agent-run-event-2')?.body).toMatchObject({
@@ -443,7 +443,7 @@ if (import.meta.vitest) {
 				configured: localStamp(),
 				value: {
 					model: {
-						planning: { modelId: 'model-project', thinkingLevel: 'off' },
+						planning: { modelId: 'model-project', thinkingLevel: 'none' },
 						revisionPlanning: null,
 						execution: null,
 						revisionExecution: null,
@@ -459,7 +459,7 @@ if (import.meta.vitest) {
 					projectId: 'project-1',
 					title: 'Plan',
 					initialMessage: 'Plan this.',
-					config: { model: { planning: { modelId: 'model-plan', thinkingLevel: 'off' } } },
+					config: { model: { planning: { modelId: 'model-plan', thinkingLevel: 'none' } } },
 				},
 				context,
 			)
@@ -541,8 +541,8 @@ if (import.meta.vitest) {
 			configured: stamp,
 			value: {
 				model: {
-					default: { modelId: defaultModelId, thinkingLevel: 'off' },
-					planning: planningModelId === null ? null : { modelId: planningModelId, thinkingLevel: 'off' },
+					default: { modelId: defaultModelId, thinkingLevel: 'none' },
+					planning: planningModelId === null ? null : { modelId: planningModelId, thinkingLevel: 'none' },
 					revisionPlanning: null,
 					execution: null,
 					revisionExecution: null,

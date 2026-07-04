@@ -233,7 +233,7 @@ The stable Core-owned wire/API protocol variant Gorchestra uses to call a Model 
 _Avoid_: provider brand, model type, API key type
 
 **Model**:
-A named Portfolio-owned selectable language model under a Model Provider, with a provider-facing model identifier and capability metadata such as supported inputs, context and output limits, reasoning support, and pricing. A Model describes what the language model can do; scoped configuration describes how Gorchestra uses it for a Plan, Delivery, or Agent Run. Models may be archived, which makes them unavailable for new work while retaining them for historical references. Archived Models may be updated before being unarchived.
+A named Portfolio-owned selectable language model under a Model Provider, with a provider-facing model identifier and capability metadata such as supported inputs, context and output limits, positive thinking support, and pricing. A Model describes what the language model can do; scoped configuration describes how Gorchestra uses it for a Plan, Delivery, or Agent Run. Model thinking capability stores only configured positive Model Thinking Levels (`minimal`, `low`, `medium`, `high`, `xhigh`); `none` is implicit and always selectable. Core validates configured positive thinking support against the Model Provider Protocol so provider-impossible levels do not become selectable. Models may be archived, which makes them unavailable for new work while retaining them for historical references. Archived Models may be updated before being unarchived.
 _Avoid_: provider/model string, model slug, runtime model policy
 
 **Model Preflight**:
@@ -241,7 +241,7 @@ An observational validation operation that checks whether a stored Model is read
 _Avoid_: Model status, Model health state, access lifecycle event
 
 **Model Thinking Level**:
-A Core canonical level for requesting or explicitly disabling provider reasoning behavior during a Model Agent turn. `off` means the user or configuration explicitly disabled thinking for that Agent Run, while missing runtime thinking means Core sends no provider thinking options. Model Thinking Levels are recorded with Agent Run model selection transcript state and validated against the selected Model's reasoning capability metadata before provider execution. During the AI SDK migration, existing provider-value entries in Model reasoning metadata are treated as availability markers and Core-owned provider-family mappings choose concrete AI SDK options.
+A Core canonical level for requesting or explicitly disabling provider reasoning behavior during a Model Agent turn. `none` means the user or configuration explicitly requested disabled thinking for that Agent Run, while missing runtime thinking means Core sends no AI SDK reasoning option. `none` is best-effort because some providers may approximate disabled thinking. Positive Model Thinking Levels are `minimal`, `low`, `medium`, `high`, and `xhigh`; a selected positive level must be configured on the Model and supported by its Model Provider Protocol. Model Thinking Levels are recorded with Agent Run model selection transcript state and sent to AI SDK `streamText` through the generic `reasoning` option.
 _Avoid_: reasoning effort, thinking budget, provider reasoning value
 
 **Model Agent**:

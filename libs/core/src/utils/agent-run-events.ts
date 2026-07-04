@@ -165,7 +165,7 @@ if (import.meta.vitest) {
 				purpose: { type: 'planning', planId: 'plan-1' },
 				started: { at: '2026-06-10T12:00:00.000Z' },
 				modelId: 'model-1',
-				thinkingLevel: 'off',
+				thinkingLevel: 'none',
 			})
 
 			expect(result).toEqual({
@@ -181,7 +181,7 @@ if (import.meta.vitest) {
 			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toEqual({
 				type: 'agent-run-model-selected',
 				modelId: 'model-1',
-				thinkingLevel: 'off',
+				thinkingLevel: 'none',
 				authorized: null,
 			})
 		})

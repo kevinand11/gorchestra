@@ -239,6 +239,7 @@ export function useModelUpdate(modelProviderId: Ref<string>, modelId: Ref<string
 		model,
 		(loadedModel) => {
 			if (loadedModel === null) return
+			modelUpdateForm.setConfigurableThinkingLevels(loadedModel.provider.configurableThinkingLevels)
 			modelUpdateForm.loadEntity({ name: loadedModel.name, capabilities: loadedModel.capabilities, pricing: loadedModel.pricing })
 		},
 		{ immediate: true },

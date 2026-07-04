@@ -41,6 +41,7 @@ import type {
 } from '../../errors'
 import type { CoreProviders } from '../../providers'
 import { providerFailureReason, safeProviderErrorSummary } from '../../providers/model-provider-protocol/provider-failures'
+import { validateModelThinkingLevelForUse } from '../../providers/model-provider-protocol/thinking'
 import type { CoreServices, CoreStorage } from '../../services'
 import { getRequired, listRecords, updateRecord, withTransaction } from '../../storage/helpers'
 import { appendAgentRunEvent } from '../../utils/agent-run-events'
@@ -204,6 +205,7 @@ async function runStartedTurn(
 		turnStarted,
 		turnModelUse.value.model,
 		modelContext.messages,
+		turnModelUse.value.thinking,
 		resolution.value,
 		options,
 	)
@@ -301,28 +303,17 @@ function turnModelUseForProvider(
 	model: Model,
 	modelProvider: ModelProvider,
 ): Result<TurnModelUse, ModelThinkingLevelUnavailableError> {
-	const thinking = resolveProviderTurnThinking(model, selection.thinkingLevel)
+	const thinking = resolveProviderTurnThinking(model, modelProvider, selection.thinkingLevel)
 	return thinking.ok ? { ok: true, value: { selection, model, modelProvider, thinking: thinking.value } } : thinking
 }
 
 function resolveProviderTurnThinking(
 	model: Model,
+	modelProvider: ModelProvider,
 	thinkingLevel: ModelThinkingLevel,
 ): Result<ModelAgentTurnThinking, ModelThinkingLevelUnavailableError> {
-	if (thinkingLevel === 'off') return { ok: true, value: { level: 'off' } }
-	if (model.capabilities.reasoning === null) return modelThinkingLevelUnavailable(model.id, thinkingLevel, 'model-reasoning-unconfigured')
-
-	return model.capabilities.reasoning[thinkingLevel] === null
-		? modelThinkingLevelUnavailable(model.id, thinkingLevel, 'thinking-level-unconfigured')
-		: { ok: true, value: { level: thinkingLevel } }
-}
-
-function modelThinkingLevelUnavailable(
-	modelId: Id,
-	thinkingLevel: ModelThinkingLevel,
-	reason: ModelThinkingLevelUnavailableError['reason']['type'],
-): Result<never, ModelThinkingLevelUnavailableError> {
-	return { ok: false, error: { type: 'model-thinking-level-unavailable', modelId, thinkingLevel, reason: { type: reason } } }
+	const validation = validateModelThinkingLevelForUse(model, modelProvider.protocol, thinkingLevel)
+	return validation.ok ? { ok: true, value: { level: thinkingLevel } } : validation
 }
 
 function staleThinkingOutcome(error: ModelThinkingLevelUnavailableError): AgentRunModelMessageOutcome {
@@ -344,6 +335,7 @@ async function runAISDKTurn(
 	turnStarted: AgentRunEvent,
 	model: Model,
 	messages: ModelMessage[],
+	thinking: ModelAgentTurnThinking,
 	resolution: { languageModel: LanguageModel; providerOptions: Record<string, Record<string, JSONValue>> | undefined },
 	options: RunModelAgentRunOptions,
 ): Promise<Result<AISDKTurnOutput, AgentRunRuntimeError>> {
@@ -356,6 +348,7 @@ async function runAISDKTurn(
 			stopWhen: isStepCount(maxModelStepsPerTurn),
 			maxOutputTokens: model.capabilities.maxOutputTokens,
 			maxRetries: 0,
+			...(aiSdkReasoningForThinking(thinking) === undefined ? {} : { reasoning: aiSdkReasoningForThinking(thinking) }),
 			...(resolution.providerOptions === undefined ? {} : { providerOptions: resolution.providerOptions }),
 			onLanguageModelCallStart: (
 				event: Parameters<NonNullable<Parameters<typeof streamText<ToolSet>>[0]['onLanguageModelCallStart']>>[0],
@@ -382,6 +375,10 @@ async function runAISDKTurn(
 			value: { turnOutcome: turnFailureOutcome(error, options.signal) },
 		}
 	}
+}
+
+function aiSdkReasoningForThinking(thinking: ModelAgentTurnThinking): ModelThinkingLevel | undefined {
+	return thinking?.level
 }
 
 class AISDKTurnRecorder {
@@ -914,7 +911,7 @@ if (import.meta.vitest) {
 			body: {
 				type: 'agent-run-model-selected',
 				modelId: 'model-1',
-				thinkingLevel: 'off',
+				thinkingLevel: 'none',
 				authorized: null,
 			},
 		})

@@ -57,23 +57,19 @@
 					</section>
 
 					<section class="border-b border-dimmer px-3 py-3">
-						<h2 class="m-0 text-sz-subsection font-semibold">Reasoning</h2>
+						<h2 class="m-0 text-sz-subsection font-semibold">Thinking</h2>
 						<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-							Enabled levels become selectable Thinking Levels. Leave all levels disabled when provider reasoning support is
-							unknown.
+							Enabled levels become selectable Model Thinking Levels for this Model. None is always available and requests
+							provider reasoning be disabled when possible.
 						</p>
 						<div class="mt-3 border-y border-dimmer">
 							<div
-								v-for="level in thinkingLevels"
+								v-for="level in configurableThinkingLevels"
 								:key="level"
-								class="grid gap-2 border-b border-dimmer py-2 last:border-b-0 md:grid-cols-[160px_minmax(0,1fr)] md:items-center">
-								<UiCheckbox v-model="modelUpdateForm.capabilities.reasoning[level].enabled" class="font-semibold">
+								class="border-b border-dimmer py-2 last:border-b-0">
+								<UiCheckbox v-model="modelUpdateForm.capabilities.thinking[level]" class="font-semibold">
 									{{ thinkingLevelLabel(level) }}
 								</UiCheckbox>
-								<UiInput
-									v-model="modelUpdateForm.capabilities.reasoning[level].providerValue"
-									:disabled="!modelUpdateForm.capabilities.reasoning[level].enabled"
-									:invalid="!!modelUpdateForm.capabilities.reasoning[level].errors.providerValue" />
 							</div>
 						</div>
 					</section>
@@ -265,8 +261,8 @@ import UiFormGroup from '../../../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../../../components/ui/UiInput.vue'
 import UiText from '../../../../../components/ui/UiText.vue'
 import { useOverlay } from '../../../../../composables/core/overlay'
-import type { ServerApi } from '../../../../../composables/core/server-api'
-import { thinkingLevelLabel, thinkingLevelOptions } from '../../../../../utils/model-provider-options'
+import type { PositiveModelThinkingLevel, ServerApi } from '../../../../../composables/core/server-api'
+import { thinkingLevelLabel } from '../../../../../utils/model-provider-options'
 import {
 	useModelDetail,
 	useModelLifecycle,
@@ -285,9 +281,8 @@ const route = useRoute()
 const modelProviderId = computed(() => route.params.modelProviderId as string)
 const modelId = computed(() => route.params.modelId as string)
 const { confirm } = useOverlay()
-const thinkingLevels = thinkingLevelOptions.map((option) => option.value)
-
 const { model, isLoadingModel, modelError, hasLoadedModel, isRefreshingModel } = useModelDetail(modelProviderId, modelId)
+const configurableThinkingLevels = computed<PositiveModelThinkingLevel[]>(() => model.value?.provider.configurableThinkingLevels ?? [])
 const { references, isLoadingReferences, referencesError, hasLoadedReferences, isRefreshingReferences } = useModelReferences(
 	modelProviderId,
 	modelId,

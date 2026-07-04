@@ -114,7 +114,7 @@ if (import.meta.vitest) {
 			expect(
 				v.assert(portfolioConfigPipe, {
 					model: {
-						default: { modelId: 'model-1', thinkingLevel: 'off' },
+						default: { modelId: 'model-1', thinkingLevel: 'none' },
 						planning: null,
 						revisionPlanning: null,
 						execution: null,
@@ -122,7 +122,7 @@ if (import.meta.vitest) {
 					},
 					work: null,
 				}),
-			).toMatchObject({ model: { default: { modelId: 'model-1', thinkingLevel: 'off' } } })
+			).toMatchObject({ model: { default: { modelId: 'model-1', thinkingLevel: 'none' } } })
 		})
 	})
 }

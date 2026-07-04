@@ -14,7 +14,7 @@ type ModelUseFormDraftOptions = {
 	required?: boolean
 }
 
-const thinkingLevelValues: ModelThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh']
+const thinkingLevelValues: ModelThinkingLevel[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
 const modelRequiredMessage = 'Select a Model'
 const thinkingLevelMessage = 'Select a Thinking Level'
 
@@ -34,7 +34,7 @@ export class ModelUseFormDraft extends FormDraft<ModelUseFormModel, ModelUseForm
 				pipe: (base) => base.pipe(v.custom((value) => modelIdIsValid(value, requiresModel), modelRequiredMessage)),
 			}),
 			thinkingLevel: new FormDraftSelect<ModelThinkingLevel>({
-				initialValue: 'off',
+				initialValue: 'none',
 				pipe: (base) => base.pipe(v.custom((value) => thinkingLevelValues.includes(value), thinkingLevelMessage)),
 			}),
 		})
@@ -56,7 +56,7 @@ function modelIdIsValid(value: string | null, required: boolean): boolean {
 }
 
 function modelUseFields(modelUse: ModelUseConfig | null): { modelId: string | null; thinkingLevel: ModelThinkingLevel } {
-	return modelUse === null ? { modelId: null, thinkingLevel: 'off' } : modelUse
+	return modelUse === null ? { modelId: null, thinkingLevel: 'none' } : modelUse
 }
 
 if (import.meta.vitest) {
@@ -70,7 +70,7 @@ if (import.meta.vitest) {
 		})
 
 		it('requires a Model when constructed as required', () => {
-			const draft = new ModelUseFormDraft({ required: true }).loadEntity({ modelId: 'model-1', thinkingLevel: 'off' })
+			const draft = new ModelUseFormDraft({ required: true }).loadEntity({ modelId: 'model-1', thinkingLevel: 'none' })
 
 			draft.modelId.value = null
 
@@ -92,7 +92,7 @@ if (import.meta.vitest) {
 			const draft = new ModelUseFormDraft()
 
 			draft.modelId.value = 'model-1'
-			draft.thinkingLevel.setOptions(['off', 'low'])
+			draft.thinkingLevel.setOptions(['none', 'low'])
 			draft.thinkingLevel.value = 'high'
 
 			expect(draft.valid).toBe(false)
@@ -117,7 +117,7 @@ if (import.meta.vitest) {
 
 			draft.loadEntity(null)
 			expect(draft.modelId.value).toBeNull()
-			expect(draft.thinkingLevel.value).toBe('off')
+			expect(draft.thinkingLevel.value).toBe('none')
 		})
 	})
 }

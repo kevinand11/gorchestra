@@ -202,7 +202,7 @@ if (import.meta.vitest) {
 					event(1, {
 						type: 'agent-run-model-selected',
 						modelId: 'model-1',
-						thinkingLevel: 'off',
+						thinkingLevel: 'none',
 						authorized: null,
 					}),
 					event(2, {

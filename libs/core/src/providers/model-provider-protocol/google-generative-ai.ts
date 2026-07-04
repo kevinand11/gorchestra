@@ -2,9 +2,6 @@ import { createGoogle } from '@ai-sdk/google'
 
 import type { AISDKLanguageModelResolution, ModelProviderProtocolAccess, ModelProviderProtocolProvider } from './types'
 import type { ModelProvider } from '../../domain/model-provider'
-import type { ModelThinkingLevelUnavailableError } from '../../errors'
-import type { ModelAgentTurnThinking } from '../../runtime/agent-runs/types'
-import type { Result } from '../../utils/types'
 
 export type GoogleGenerativeAIModelProviderProtocolProvider = ModelProviderProtocolProvider<'google-generative-ai'>
 
@@ -18,16 +15,13 @@ export function createGoogleGenerativeAIModelProviderProtocolProvider(
 ): GoogleGenerativeAIModelProviderProtocolProvider {
 	return {
 		resolveLanguageModel(input) {
-			const providerOptions = googleProviderOptions(input)
-			return providerOptions.ok
-				? {
-						ok: true,
-						value: {
-							languageModel: providerFactory(input).languageModel(input.model.providerModelId),
-							providerOptions: providerOptions.value,
-						},
-					}
-				: providerOptions
+			return {
+				ok: true,
+				value: {
+					languageModel: providerFactory(input).languageModel(input.model.providerModelId),
+					providerOptions: undefined,
+				},
+			}
 		},
 	}
 }
@@ -44,48 +38,12 @@ function googleBaseURL(baseUrl: string): string {
 	return baseUrl.endsWith('/v1beta') ? baseUrl : `${baseUrl}/v1beta`
 }
 
-function googleProviderOptions(
-	input: GoogleGenerativeAIInput,
-): Result<AISDKLanguageModelResolution['providerOptions'], ModelThinkingLevelUnavailableError> {
-	const thinking = input.mode === 'agent-run' ? input.thinking : null
-	if (thinking?.level === 'xhigh') {
-		return {
-			ok: false,
-			error: {
-				type: 'model-thinking-level-unavailable',
-				modelId: input.model.id,
-				thinkingLevel: 'xhigh',
-				reason: { type: 'thinking-level-unconfigured' },
-			},
-		}
-	}
-	return { ok: true, value: thinking === null ? undefined : { google: googleThinkingOptions(thinking) } }
-}
-
-function googleThinkingOptions(
-	thinking: Exclude<ModelAgentTurnThinking, null>,
-): Record<string, NonNullable<AISDKLanguageModelResolution['providerOptions']>[string][string]> {
-	switch (thinking.level) {
-		case 'off':
-			return { thinkingConfig: { thinkingBudget: 0, includeThoughts: false } }
-		case 'minimal':
-		case 'low':
-		case 'medium':
-		case 'high':
-			return { thinkingConfig: { thinkingLevel: thinking.level, includeThoughts: true } }
-		case 'xhigh':
-			throw new Error('Google Generative AI does not support xhigh thinking.')
-		default:
-			throw new Error(`Unexpected Model Thinking Level: ${String(thinking.level satisfies never)}`)
-	}
-}
-
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { defaultModelCapabilities } = await import('../../domain/model')
 
 	describe('Google Generative AI SDK resolver', () => {
-		it('resolves language models with thinking config and v1beta base URL', () => {
+		it('resolves language models with v1beta base URL and leaves thinking control to AI SDK reasoning', () => {
 			let modelId: string | null = null
 			let observedBaseUrl: string | null = null
 			const provider = createGoogleGenerativeAIModelProviderProtocolProvider((input) => {
@@ -102,10 +60,7 @@ if (import.meta.vitest) {
 
 			expect(result).toEqual({
 				ok: true,
-				value: {
-					languageModel: 'language-model',
-					providerOptions: { google: { thinkingConfig: { thinkingLevel: 'low', includeThoughts: true } } },
-				},
+				value: { languageModel: 'language-model', providerOptions: undefined },
 			})
 			expect(modelId).toBe('gemini-2.5-pro')
 			expect(observedBaseUrl).toBe('https://generativelanguage.googleapis.com/v1beta')

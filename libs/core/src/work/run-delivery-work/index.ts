@@ -538,7 +538,7 @@ if (import.meta.vitest) {
 			configured: localStamp(),
 			value: {
 				model: {
-					default: { modelId: 'model-1', thinkingLevel: 'off' },
+					default: { modelId: 'model-1', thinkingLevel: 'none' },
 					planning: null,
 					revisionPlanning: null,
 					execution: null,
