@@ -265,8 +265,12 @@ A Core-generated monotonic ULID-format ordering handle for one Agent Run Event. 
 _Avoid_: sequence number, event id, AI SDK call id, provider response id
 
 **Agent Run Dispatch Request**:
-A Core-originated request for a Consumer to arrange runtime execution for a runnable Agent Run. An Agent Run Dispatch Request records that execution should be arranged; it is not proof that execution has started or completed. In the v1 in-memory Server Consumer, dispatch request acceptance and dispatch processing are separate: Core may accept a request transactionally while the Consumer starts processing only after the write transaction succeeds.
+A Core-originated request for a Consumer to arrange runtime execution for a runnable Agent Run. An Agent Run Dispatch Request records that execution should be arranged; it is not proof that execution has started or completed. Each request carries a Dispatch Serialization Key that tells Consumers which readied requests must not overlap. In the v1 in-memory Server Consumer, dispatch request acceptance and dispatch processing are separate: Core may accept a request transactionally while the Consumer starts processing only after the write transaction succeeds.
 _Avoid_: Scheduler job, background job, runtime event
+
+**Dispatch Serialization Key**:
+A Core-supplied plain string on an Agent Run Dispatch Request that identifies the mutual-exclusion group for runtime dispatch processing. Consumers must not run two readied dispatch requests with the same Dispatch Serialization Key concurrently. The key is not an idempotency or coalescing key: each readied request remains an independent execution attempt, same-key requests run serially, and different keys may run concurrently. If a Consumer runtime handles multiple Portfolio storage namespaces, it scopes the Core-supplied key by that namespace before enforcing serialization.
+_Avoid_: idempotency key, scheduler job id, typed dispatch target
 
 **Interactive Agent Run**:
 An Agent Run that remains open for human steering and may receive new human messages until its target domain object closes. Planning and Revision Planning Agent Runs are Interactive Agent Runs in v1. Closing a Plan or Revision Gate blocks further input and model turns for the associated Interactive Agent Run and records runtime completion on that Agent Run as a side effect; pending proposal review remains separate from target closure. Human-reviewable proposal events belong only to Interactive Agent Runs.

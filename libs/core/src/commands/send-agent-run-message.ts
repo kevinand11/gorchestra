@@ -65,6 +65,7 @@ export function createSendAgentRunMessageCommand(runtime: CoreRuntime): Operatio
 				const dispatchMarker = await acceptDispatchRequest(runtime.services.dispatcher, {
 					type: 'agent-run',
 					agentRunId: input.agentRunId,
+					serializationKey: input.agentRunId,
 					reason: { type: 'input-appended', inputEventId: event.value.id },
 				})
 				if (!dispatchMarker.ok) return dispatchMarker
@@ -136,7 +137,12 @@ if (import.meta.vitest) {
 
 			expect(result).toMatchObject({ ok: true })
 			expect(dispatches).toEqual([
-				{ type: 'agent-run', agentRunId: 'agent-run-1', reason: { type: 'input-appended', inputEventId: 'agent-run-event-1' } },
+				{
+					type: 'agent-run',
+					agentRunId: 'agent-run-1',
+					serializationKey: 'agent-run-1',
+					reason: { type: 'input-appended', inputEventId: 'agent-run-event-1' },
+				},
 			])
 			expect(readyMarkers).toEqual(['marker-1'])
 		})

@@ -61,6 +61,7 @@ export type ResolvedSecretValues = Record<Id, string>
 export type CoreDispatchRequest = {
 	type: 'agent-run'
 	agentRunId: Id
+	serializationKey: string
 	reason: { type: 'input-appended'; inputEventId: Id }
 }
 
