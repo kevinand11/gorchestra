@@ -248,9 +248,8 @@ async function writeFailedSliceReviewSurfaceCreation(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { buildDeliveryContext } = await import('../../../utils/delivery-context')
-	const { createTestCoreServices, localStamp, seedDelivery, seedSelectableModel, seedSlice, stamp } =
-		await import('../../../utils/test-helpers')
+	const { stamp } = await import('../../../utils/test-helpers')
+	const { createRunDeliveryWorkHandlerTestContext } = await import('./test-utils')
 
 	describe('Slice Review Surface creation handler', () => {
 		it('stores a Slice Review Surface and Action after provider creation', async () => {
@@ -342,45 +341,19 @@ if (import.meta.vitest) {
 	})
 
 	async function handlerFixture() {
-		const options = createTestCoreServices()
-		seedDelivery(options.tx, 'delivery-1')
-		seedSelectableModel(options.tx, 'model-1')
-		seedSlice(options.tx, 'slice-1', 'delivery-1')
-		options.tx.deliveries.records.get('delivery-1')!.queued = localStamp()
-		options.tx.deliveryArtifacts.records.set('delivery-artifact-1', {
-			id: 'delivery-artifact-1',
-			deliveryId: 'delivery-1',
-			config: { type: 'source-control', deliveryBranch: 'delivery-branch' },
-			created: stamp,
-		})
-		options.tx.sliceArtifacts.records.set('slice-artifact-1', {
+		const context = await createRunDeliveryWorkHandlerTestContext({ sliceId: 'slice-1' })
+		const sliceArtifact = {
 			id: 'slice-artifact-1',
 			sliceId: 'slice-1',
-			config: { type: 'source-control', sliceBranch: 'slice-branch' },
+			config: { type: 'source-control' as const, sliceBranch: 'slice-branch' },
 			created: stamp,
-		})
-
-		const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
-		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
-
-		const context = {
-			services: options,
-			storage: options.tx,
-			values: options.values,
-			tx: options.tx,
-			deliveryContext: deliveryContext.value,
-			workResolution: {
-				workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
-				executionModelUse: { modelId: 'model-1', thinkingLevel: 'none' as const },
-				executionModel: options.tx.models.records.get('model-1')!,
-				executionModelProvider: options.tx.modelProviders.records.get('model-1-provider')!,
-			},
-			repositoryAccessSecret: { secretId: 'secret-1', valueRef: 'protected-ref' },
-		} satisfies ResolvedDeliveryHandlerContext
+		}
+		context.tx.sliceArtifacts.records.set(sliceArtifact.id, sliceArtifact)
+		context.deliveryContext.slices[0] = { ...context.deliveryContext.slices[0]!, artifact: sliceArtifact }
 
 		return {
 			context,
-			slice: options.tx.slices.records.get('slice-1')!,
+			slice: context.tx.slices.records.get('slice-1')!,
 			state: { type: 'needs-review-surface' as const, sliceArtifactId: 'slice-artifact-1' },
 		}
 	}

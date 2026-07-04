@@ -8,10 +8,13 @@ import {
 	agentPipe,
 	agentRunEventBodyPipe,
 	agentRunEventCursorPipe,
+	agentRunModelUseOverridePipe,
+	agentRunProfileSnapshotPipe,
 	agentRunPurposePipe,
 	type AgentRun,
 	type AgentRunEvent,
 } from '../domain/agent-run'
+import { type AgentRunProfile } from '../domain/agent-run-profile'
 import { deliveryArtifactConfigPipe, sliceArtifactConfigPipe, type DeliveryArtifact, type SliceArtifact } from '../domain/artifact'
 import {
 	archivePeriodPipe,
@@ -23,13 +26,7 @@ import {
 	runtimeRecordPipe,
 	type Id,
 } from '../domain/commons'
-import {
-	deliveryConfigRecordPipe,
-	planConfigRecordPipe,
-	portfolioConfigPipe,
-	projectConfigRecordPipe,
-	type PortfolioConfigRecord,
-} from '../domain/config'
+import { deliveryConfigRecordPipe, modelUseConfigPipe, projectConfigRecordPipe } from '../domain/config'
 import { deliveryClosedPipe, deliveryTargetPipe, type Delivery } from '../domain/delivery'
 import { linkDefPipe, type Link } from '../domain/graph'
 import { currentMemoryRevisionPipe, memoryBodyPipe, memoryTitlePipe, type Memory, type MemoryRevision } from '../domain/memory'
@@ -44,8 +41,6 @@ import { envNamePipe, secretBindingScopePipe, secretValueRefPipe, type Secret, t
 import { type Slice } from '../domain/slice'
 import type { CoreIdResource, CoreResource } from '../errors'
 
-export const portfolioConfigStorageId = 'portfolio-config'
-
 const explicitStorageId = new AsyncLocalStorage<Id>()
 const archivePeriodsPipe = v.array(archivePeriodPipe)
 
@@ -53,17 +48,11 @@ export function withExplicitCoreStorageId<T>(id: Id, run: () => Promise<T>): Pro
 	return explicitStorageId.run(id, run)
 }
 
-export const portfolioConfigSchema = Schema.from('portfolio_config')
-	.pk('id', idPipe, explicitCoreIdRequired)
-	.field('configured', auditStampPipe)
-	.field('value', portfolioConfigPipe)
-	.build()
-
 export const projectSchema = Schema.from('projects')
 	.pk('id', idPipe, explicitCoreIdRequired)
 	.field('title', nonEmptyTrimmedStringPipe)
 	.field('source', projectSourcePipe)
-	.field('config', v.nullable(projectConfigRecordPipe))
+	.field('config', projectConfigRecordPipe)
 	.field('created', auditStampPipe)
 	.build()
 
@@ -99,11 +88,19 @@ export const modelSchema = Schema.from('models')
 	.field('archivePeriods', archivePeriodsPipe)
 	.build()
 
+export const agentRunProfileSchema = Schema.from('agent_run_profiles')
+	.pk('id', idPipe, explicitCoreIdRequired)
+	.field('name', nonEmptyTrimmedStringPipe)
+	.field('modelUse', modelUseConfigPipe)
+	.field('created', auditStampPipe)
+	.field('updated', v.nullable(auditStampPipe))
+	.field('archivePeriods', archivePeriodsPipe)
+	.build()
+
 export const planSchema = Schema.from('plans')
 	.pk('id', idPipe, explicitCoreIdRequired)
 	.field('projectId', idPipe)
 	.field('title', nonEmptyTrimmedStringPipe)
-	.field('config', v.nullable(planConfigRecordPipe))
 	.field('created', auditStampPipe)
 	.field('closed', v.nullable(auditStampPipe))
 	.build()
@@ -176,6 +173,8 @@ export const agentRunSchema = Schema.from('agent_runs')
 	.pk('id', idPipe, explicitCoreIdRequired)
 	.field('agent', agentPipe)
 	.field('purpose', agentRunPurposePipe)
+	.field('profile', agentRunProfileSnapshotPipe)
+	.field('modelUseOverride', v.nullable(agentRunModelUseOverridePipe))
 	.field('started', runtimeRecordPipe)
 	.field('completed', v.nullable(runtimeRecordPipe))
 	.build()
@@ -233,11 +232,11 @@ export const secretBindingSchema = Schema.from('secret_bindings')
 	.build()
 
 export const coreStorageSchemas = [
-	portfolioConfigSchema,
 	projectSchema,
 	repositorySchema,
 	modelProviderSchema,
 	modelSchema,
+	agentRunProfileSchema,
 	planSchema,
 	deliverySchema,
 	sliceSchema,
@@ -261,6 +260,7 @@ export const coreIdResourceSchemas = {
 	repository: repositorySchema,
 	'model-provider': modelProviderSchema,
 	model: modelSchema,
+	'agent-run-profile': agentRunProfileSchema,
 	plan: planSchema,
 	delivery: deliverySchema,
 	slice: sliceSchema,
@@ -279,16 +279,14 @@ export const coreIdResourceSchemas = {
 	'secret-binding': secretBindingSchema,
 } as const satisfies Record<CoreIdResource, AnySchema>
 
-export const coreResourceSchemas = {
-	'portfolio-config': portfolioConfigSchema,
-	...coreIdResourceSchemas,
-} as const satisfies Record<CoreResource, AnySchema>
+export const coreResourceSchemas = coreIdResourceSchemas as Record<CoreResource, AnySchema>
 
 export interface CoreIdStorageRecordMap {
 	project: Project
 	repository: Repository
 	'model-provider': ModelProvider
 	model: Model
+	'agent-run-profile': AgentRunProfile
 	plan: Plan
 	delivery: Delivery
 	slice: Slice
@@ -307,9 +305,7 @@ export interface CoreIdStorageRecordMap {
 	'secret-binding': SecretBinding
 }
 
-export interface CoreStorageRecordMap extends CoreIdStorageRecordMap {
-	'portfolio-config': PortfolioConfigRecord & { id: Id }
-}
+export type CoreStorageRecordMap = CoreIdStorageRecordMap
 
 export type CoreStorageRecord<Resource extends CoreResource> = CoreStorageRecordMap[Resource]
 export type CoreIdStorageRecord<Resource extends CoreIdResource> = CoreIdStorageRecordMap[Resource]

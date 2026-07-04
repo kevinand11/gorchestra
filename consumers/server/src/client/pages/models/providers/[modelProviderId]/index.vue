@@ -60,7 +60,7 @@
 					<div v-if="provider.models.length === 0" class="border-b border-dimmer px-3 py-4">
 						<h3 class="m-0 text-sz-helper font-semibold">No Models yet.</h3>
 						<p class="m-0 mt-1 text-sz-helper text-dim">
-							Add a Model from the right rail before selecting this provider in Portfolio Config.
+							Add a Model from the right rail before using this provider in Agent Run Profiles.
 						</p>
 					</div>
 					<nav v-else aria-label="Models">
@@ -153,7 +153,7 @@
 					<div>
 						<h2 class="m-0 text-sz-subsection font-semibold">Add Model</h2>
 						<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-							Add Models under this Provider before selecting them in Portfolio Config.
+							Add Models under this Provider before selecting them in Agent Run Profiles.
 						</p>
 					</div>
 					<UiForm class="mt-3 grid gap-3" @submit.prevent="createModel()">
@@ -256,7 +256,7 @@ function modelProviderSourceLabel(source: ModelProviderSource): string {
 async function requestProviderArchive(): Promise<void> {
 	const confirmed = await confirm({
 		title: 'Archive Model Provider?',
-		body: 'Archiving can make Portfolio Config references unusable until the config is changed.',
+		body: 'Archiving can make Agent Run Profile references unusable until profiles are changed.',
 		confirm: { label: 'Archive Provider', tone: 'danger' },
 	})
 	if (!confirmed) return

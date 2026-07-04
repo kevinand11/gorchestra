@@ -113,7 +113,17 @@ if (import.meta.vitest) {
 			id: 'project-1',
 			title: 'Project',
 			source: { type: 'source-control' as const },
-			config: null,
+			config: {
+				configured: localStamp(),
+				value: {
+					work: {
+						maxProcessableSliceSlots: 1,
+						maxCorrectionRetriesPerFailure: 1,
+						executionAgentRunProfileId: 'agent-run-profile-1',
+						revisionExecutionAgentRunProfileId: null,
+					},
+				},
+			},
 			created: localStamp(),
 		}
 	}

@@ -1,5 +1,6 @@
 export * as Action from './action'
 export * as AgentRun from './agent-run'
+export * as AgentRunProfile from './agent-run-profile'
 export * as Artifact from './artifact'
 export * as Commons from './commons'
 export * as Config from './config'

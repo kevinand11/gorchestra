@@ -58,14 +58,14 @@
 					</p>
 				</section>
 				<section class="px-3 py-3">
-					<h2 class="m-0 text-sz-helper font-semibold">Portfolio Config</h2>
+					<h2 class="m-0 text-sz-helper font-semibold">Agent Run Profiles</h2>
 					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-						After adding active Models, select defaults in Portfolio Config.
+						After adding active Models, create profiles for future Agent Runs.
 					</p>
 					<NuxtLink
 						class="mt-2 inline-flex text-sz-helper font-semibold text-primary hover:brightness-110"
-						to="/portfolio-config">
-						Open Portfolio Config
+						to="/agent-run-profiles">
+						Open Agent Run Profiles
 					</NuxtLink>
 				</section>
 			</aside>

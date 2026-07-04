@@ -1,6 +1,12 @@
-import type { AgentRun, AgentRunEvent, AgentRunEventBody, AgentRunEventCursor, AgentRunPurpose } from '../domain/agent-run'
+import type {
+	AgentRun,
+	AgentRunEvent,
+	AgentRunEventBody,
+	AgentRunEventCursor,
+	AgentRunProfileSnapshot,
+	AgentRunPurpose,
+} from '../domain/agent-run'
 import type { Id, RuntimeRecord } from '../domain/commons'
-import type { Model, ModelThinkingLevel } from '../domain/model'
 import type { InvalidCoreServiceOutputError, InvariantViolationError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreStorage } from '../services'
 import { nextCursor, nextId, runtimeRecord, type CoreRuntimeValues } from './runtime-values'
@@ -20,70 +26,32 @@ export type AppendAgentRunEventError =
 
 export type CreateModelAgentRunError = AppendAgentRunEventError
 
-export async function createModelAgentRunWithInitialModel<TPurpose extends AgentRunPurpose>(
-	values: { values: CoreRuntimeValues },
+export async function createModelAgentRunWithProfileSnapshot<TPurpose extends AgentRunPurpose>(
 	storage: CoreStorage,
 	input: {
 		agentRunId: Id
 		purpose: TPurpose
 		started: RuntimeRecord
-		modelId: Id
-		thinkingLevel: ModelThinkingLevel
+		profile: AgentRunProfileSnapshot
 	},
-): Promise<Result<ModelAgentRunWithPurpose<TPurpose>, CreateModelAgentRunError>> {
-	const modelSelection = await getModelSelection(storage, input.modelId, input.thinkingLevel)
-	return modelSelection.ok ? createModelAgentRunWithSelection(values, storage, input, modelSelection.value) : modelSelection
-}
-
-interface ModelSelection {
-	model: Model
-	thinkingLevel: ModelThinkingLevel
-}
-
-async function getModelSelection(
-	storage: CoreStorage,
-	modelId: Id,
-	thinkingLevel: ModelThinkingLevel,
-): Promise<Result<ModelSelection, CreateModelAgentRunError>> {
-	const model = await getRequired('model', storage, modelId)
-	return model.ok ? { ok: true, value: { model: model.value, thinkingLevel } } : model
-}
-
-async function createModelAgentRunWithSelection<TPurpose extends AgentRunPurpose>(
-	values: { values: CoreRuntimeValues },
-	storage: CoreStorage,
-	input: { agentRunId: Id; purpose: TPurpose; started: RuntimeRecord },
-	selection: ModelSelection,
 ): Promise<Result<ModelAgentRunWithPurpose<TPurpose>, CreateModelAgentRunError>> {
 	const agentRun = modelAgentRun(input)
 	const stored = await createRecord('agent-run', storage, agentRun)
-	return stored.ok ? appendInitialModelSelection(values, storage, agentRun, selection) : stored
-}
-
-async function appendInitialModelSelection<TPurpose extends AgentRunPurpose>(
-	values: { values: CoreRuntimeValues },
-	storage: CoreStorage,
-	agentRun: ModelAgentRunWithPurpose<TPurpose>,
-	selection: ModelSelection,
-): Promise<Result<ModelAgentRunWithPurpose<TPurpose>, CreateModelAgentRunError>> {
-	const event = await appendAgentRunEvent(values, storage, agentRun.id, {
-		type: 'agent-run-model-selected',
-		modelId: selection.model.id,
-		thinkingLevel: selection.thinkingLevel,
-		authorized: null,
-	})
-	return event.ok ? { ok: true, value: agentRun } : event
+	return stored.ok ? { ok: true, value: agentRun } : stored
 }
 
 function modelAgentRun<TPurpose extends AgentRunPurpose>(input: {
 	agentRunId: Id
 	purpose: TPurpose
 	started: RuntimeRecord
+	profile: AgentRunProfileSnapshot
 }): ModelAgentRunWithPurpose<TPurpose> {
 	return {
 		id: input.agentRunId,
 		agent: { type: 'model' },
 		purpose: input.purpose,
+		profile: input.profile,
+		modelUseOverride: null,
 		started: input.started,
 		completed: null,
 	}
@@ -132,41 +100,20 @@ function agentRunEventRecord(agentRunId: Id, facts: AgentRunEventFacts, body: Ag
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { createTestCoreServices } = await import('./test-helpers')
-	const { defaultModelCapabilities } = await import('../domain/model')
 
-	describe('createModelAgentRunWithInitialModel', () => {
-		it('creates a Model Agent Run with an initial model selection event', async () => {
+	describe('createModelAgentRunWithProfileSnapshot', () => {
+		it('creates a Model Agent Run with a profile snapshot and no transcript event', async () => {
 			const options = createTestCoreServices()
-			options.tx.modelProviders.records.set('model-provider-1', {
-				id: 'model-provider-1',
-				name: 'Provider',
-				source: { type: 'anthropic' },
-				auth: null,
-				headers: [],
-				providerOptions: null,
-				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
-				updated: null,
-				archivePeriods: [],
-			})
-			options.tx.models.records.set('model-1', {
-				id: 'model-1',
-				providerId: 'model-provider-1',
-				name: 'Model',
-				providerModelId: 'provider-model',
-				providerOptions: null,
-				capabilities: defaultModelCapabilities,
-				pricing: null,
-				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
-				updated: null,
-				archivePeriods: [],
-			})
 
-			const result = await createModelAgentRunWithInitialModel(options, options.storage, {
+			const result = await createModelAgentRunWithProfileSnapshot(options.storage, {
 				agentRunId: 'agent-run-1',
 				purpose: { type: 'planning', planId: 'plan-1' },
 				started: { at: '2026-06-10T12:00:00.000Z' },
-				modelId: 'model-1',
-				thinkingLevel: 'none',
+				profile: {
+					agentRunProfileId: 'agent-run-profile-1',
+					name: 'Planning',
+					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				},
 			})
 
 			expect(result).toEqual({
@@ -175,16 +122,17 @@ if (import.meta.vitest) {
 					id: 'agent-run-1',
 					agent: { type: 'model' },
 					purpose: { type: 'planning', planId: 'plan-1' },
+					profile: {
+						agentRunProfileId: 'agent-run-profile-1',
+						name: 'Planning',
+						modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+					},
+					modelUseOverride: null,
 					started: { at: '2026-06-10T12:00:00.000Z' },
 					completed: null,
 				},
 			})
-			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toEqual({
-				type: 'agent-run-model-selected',
-				modelId: 'model-1',
-				thinkingLevel: 'none',
-				authorized: null,
-			})
+			expect(options.tx.agentRunEvents.records.size).toBe(0)
 		})
 	})
 
@@ -195,6 +143,12 @@ if (import.meta.vitest) {
 				id: 'agent-run-1',
 				agent: { type: 'model' },
 				purpose: { type: 'planning', planId: 'plan-1' },
+				profile: {
+					agentRunProfileId: 'agent-run-profile-1',
+					name: 'Planning',
+					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				},
+				modelUseOverride: null,
 				started: { at: '2026-06-10T12:00:00.000Z' },
 				completed: null,
 			})

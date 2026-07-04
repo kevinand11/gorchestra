@@ -7,15 +7,12 @@ import type {
 	InvalidCoreServiceOutputError,
 	InvariantViolationError,
 	ResourceNotFoundError,
-	SingletonNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreStorage } from '../services'
 import {
 	coreIdResourceSchemas,
 	coreResourceSchemas,
-	portfolioConfigSchema,
-	portfolioConfigStorageId,
 	type CoreIdStorageRecord,
 	type CoreStorageRecord,
 	withExplicitCoreStorageId,
@@ -25,61 +22,6 @@ import type { Result } from '../utils/types'
 export { withTransaction, withTwoPhaseTransaction } from './transactions'
 
 export type StorageBoundaryError = StorageOperationFailedError | InvalidCoreServiceOutputError
-
-export async function getPortfolioConfig(
-	storage: CoreStorage,
-): Promise<Result<CoreStorageRecord<'portfolio-config'> | null, StorageBoundaryError>> {
-	try {
-		const record = await storage.on(portfolioConfigSchema).one().id(portfolioConfigStorageId).find()
-		return { ok: true, value: record }
-	} catch (error) {
-		return readStorageError('portfolio-config', { type: 'get', resource: 'portfolio-config', id: null }, error)
-	}
-}
-
-export async function getRequiredPortfolioConfig(
-	storage: CoreStorage,
-): Promise<Result<CoreStorageRecord<'portfolio-config'>, StorageBoundaryError | SingletonNotFoundError>> {
-	const record = await getPortfolioConfig(storage)
-	if (!record.ok) return record
-
-	return record.value === null
-		? { ok: false, error: { type: 'not-found-singleton', resource: 'portfolio-config' } }
-		: { ok: true, value: record.value }
-}
-
-export async function setPortfolioConfig(
-	storage: CoreStorage,
-	record: Omit<CoreStorageRecord<'portfolio-config'>, 'id'>,
-): Promise<Result<CoreStorageRecord<'portfolio-config'>, StorageBoundaryError | InvariantViolationError>> {
-	const existing = await getPortfolioConfig(storage)
-	if (!existing.ok) return existing
-
-	return existing.value === null ? createPortfolioConfigRecord(storage, record) : updatePortfolioConfigRecord(storage, record)
-}
-
-function createPortfolioConfigRecord(
-	storage: CoreStorage,
-	record: Omit<CoreStorageRecord<'portfolio-config'>, 'id'>,
-): Promise<Result<CoreStorageRecord<'portfolio-config'>, StorageBoundaryError | InvariantViolationError>> {
-	return createRecord('portfolio-config', storage, portfolioConfigRecord(record))
-}
-
-async function updatePortfolioConfigRecord(
-	storage: CoreStorage,
-	record: Omit<CoreStorageRecord<'portfolio-config'>, 'id'>,
-): Promise<Result<CoreStorageRecord<'portfolio-config'>, StorageOperationFailedError | InvariantViolationError>> {
-	try {
-		const updated = await storage.on(portfolioConfigSchema).one().id(portfolioConfigStorageId).update(record)
-		return { ok: true, value: updated ?? portfolioConfigRecord(record) }
-	} catch (error) {
-		return writeStorageError('portfolio-config', { type: 'update', resource: 'portfolio-config', id: portfolioConfigStorageId }, error)
-	}
-}
-
-function portfolioConfigRecord(record: Omit<CoreStorageRecord<'portfolio-config'>, 'id'>): CoreStorageRecord<'portfolio-config'> {
-	return { id: portfolioConfigStorageId, ...record }
-}
 
 export async function getRecord<Resource extends CoreIdResource>(
 	resource: Resource,

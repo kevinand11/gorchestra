@@ -1,14 +1,15 @@
 import type { CoreRuntime } from '../runtime'
 import { createGetAgentRunEventsQuery } from './get-agent-run-events'
+import { createGetAgentRunProfileQuery } from './get-agent-run-profile'
 import { createGetDeliveryQuery } from './get-delivery'
 import { createGetMemoryQuery } from './get-memory'
 import { createGetModelQuery } from './get-model'
 import { createGetModelProviderQuery } from './get-model-provider'
 import { createGetPlanQuery } from './get-plan'
-import { createGetPortfolioConfigQuery } from './get-portfolio-config'
 import { createGetProjectQuery } from './get-project'
 import { createGetRepositoryQuery } from './get-repository'
 import { createGetSecretQuery } from './get-secret'
+import { createListAgentRunProfilesQuery } from './list-agent-run-profiles'
 import { createListDeliveriesQuery } from './list-deliveries'
 import { createListMemoryChildrenQuery } from './list-memory-children'
 import { createListModelProvidersQuery } from './list-model-providers'
@@ -25,7 +26,8 @@ export function createCoreQueries(runtime: CoreRuntime) {
 	return {
 		listProjects: createListProjectsQuery(services),
 		getProject: createGetProjectQuery(services),
-		getPortfolioConfig: createGetPortfolioConfigQuery(services),
+		listAgentRunProfiles: createListAgentRunProfilesQuery(services),
+		getAgentRunProfile: createGetAgentRunProfileQuery(services),
 		listModelProviders: createListModelProvidersQuery(services),
 		getModel: createGetModelQuery(services),
 		getModelProvider: createGetModelProviderQuery(services),
@@ -57,15 +59,16 @@ if (import.meta.vitest) {
 			const queries = createCoreQueries(createCoreRuntime(createTestCoreServices())) as Record<string, unknown>
 			const queryNames = [
 				'getAgentRunEvents',
+				'getAgentRunProfile',
 				'getDelivery',
 				'getMemory',
 				'getModel',
 				'getModelProvider',
 				'getPlan',
-				'getPortfolioConfig',
 				'getProject',
 				'getRepository',
 				'getSecret',
+				'listAgentRunProfiles',
 				'listDeliveries',
 				'listMemoryChildren',
 				'listModelProviders',

@@ -10,28 +10,24 @@ import type { Result as CoreResult } from '../utils/types'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { buildCommandHandler } from './utils/handler'
 import {
+	agentRunProfileIdsFromProjectConfig,
 	auditStamp,
 	createRecordValue,
-	loadSelectableModelFacts,
-	modelIdsFromModelUses,
-	modelUsesFromProjectConfigRecord,
 	nextId,
-	normalizeProjectConfigRecordForCreate,
-	validateModelUseConfigs,
+	normalizeProjectConfigRecord,
+	validateSelectableAgentRunProfiles,
 	withTransaction,
 } from './utils/storage'
 
 const createProjectInputPipe = v.object({
 	title: nonEmptyTrimmedStringPipe,
 	source: projectSourcePipe,
-	config: v.nullable(projectConfigPipe),
+	config: projectConfigPipe,
 })
 export type Input = PipeOutput<typeof createProjectInputPipe>
 
 export type Result = Project
-
 export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
-
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreateProjectCommand(runtime: CoreRuntime): Operation {
@@ -43,21 +39,14 @@ export function createCreateProjectCommand(runtime: CoreRuntime): Operation {
 		if (!idResult.ok) return Promise.resolve(idResult)
 
 		return withTransaction(runtime.services, async (storage): Promise<CoreResult<Project, Exclude<Error, InvalidInputError>>> => {
-			const config = normalizeProjectConfigRecordForCreate(input.config, stampResult.value)
-			if (config !== null) {
-				const modelUses = modelUsesFromProjectConfigRecord(config)
-				const facts = await loadSelectableModelFacts(storage, modelIdsFromModelUses(modelUses))
-				if (!facts.ok) return facts
-
-				const modelUseValidation = validateModelUseConfigs(facts.value, modelUses)
-				if (!modelUseValidation.ok) return modelUseValidation
-			}
+			const profileValidation = await validateSelectableAgentRunProfiles(storage, agentRunProfileIdsFromProjectConfig(input.config))
+			if (!profileValidation.ok) return profileValidation
 
 			const project: Project = {
 				id: idResult.value,
 				title: input.title,
 				source: input.source,
-				config,
+				config: normalizeProjectConfigRecord(input.config, stampResult.value),
 				created: stampResult.value,
 			}
 			return createRecordValue('project', storage, project)
@@ -67,27 +56,17 @@ export function createCreateProjectCommand(runtime: CoreRuntime): Operation {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestCoreRuntime, createTestCoreServices, localStamp } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, defaultDeliveryWorkConfig, localStamp, seedAgentRunProfile } =
+		await import('../utils/test-helpers')
 
 	describe('createProject command', () => {
-		it('creates Projects with normalized titles, immutable source, folded create config, and Audit Stamps', async () => {
+		it('creates Projects with normalized titles, immutable source, required config, and Audit Stamps', async () => {
 			const options = createTestCoreServices()
+			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
 			const command = createCreateProjectCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{
-					title: '  Build Gorchestra  ',
-					source: { type: 'source-control' },
-					config: {
-						model: {
-							planning: null,
-							revisionPlanning: null,
-							execution: null,
-							revisionExecution: null,
-						},
-						work: null,
-					},
-				},
+				{ title: '  Build Gorchestra  ', source: { type: 'source-control' }, config: { work: defaultDeliveryWorkConfig() } },
 				context,
 			)
 
@@ -97,11 +76,22 @@ if (import.meta.vitest) {
 					id: 'project-1',
 					title: 'Build Gorchestra',
 					source: { type: 'source-control' },
-					config: null,
+					config: { configured: localStamp(), value: { work: defaultDeliveryWorkConfig() } },
 					created: localStamp(),
 				},
 			})
 			expect(options.tx.projects.records.get('project-1')).toEqual(result.ok ? result.value : null)
+		})
+
+		it('rejects missing Agent Run Profile references', async () => {
+			const command = createCreateProjectCommand(createTestCoreRuntime(createTestCoreServices()))
+
+			const result = await command(
+				{ title: 'Project', source: { type: 'source-control' }, config: { work: defaultDeliveryWorkConfig('missing-profile') } },
+				context,
+			)
+
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'agent-run-profile', id: 'missing-profile' } })
 		})
 	})
 }

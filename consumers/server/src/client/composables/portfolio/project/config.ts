@@ -1,46 +1,28 @@
-import { computed, watch, type Ref } from 'vue'
+import { computed, type Ref, watch } from 'vue'
 
-import { defaultDeliveryWorkConfig, ProjectConfigFormDraft } from '../../../forms/project-config'
+import { ProjectConfigFormDraft } from '../../../forms/project-config'
 import { useSelectedPortfolio } from '../../auth/session'
 import { useApiAction } from '../../core/action-state'
 import { useOverlay } from '../../core/overlay'
 import { useQueryCache } from '../../core/query-cache'
 import { useServerApi } from '../../core/server-api'
-import { usePortfolioConfig } from '../config'
-import { useSelectModel } from '../models/select-model'
+import { useAgentRunProfilesList } from '../agent-run-profiles'
 import { useProjectDetail } from '../projects'
 
 export function useProjectConfig(projectId: Ref<string>) {
 	const serverApi = useServerApi()
 	const { toast } = useOverlay()
 	const queryCache = useQueryCache()
-	const { portfolio } = useSelectedPortfolio()
-	const projectConfigForm = new ProjectConfigFormDraft()
 	const { queryKeys } = queryCache
+	const { portfolio } = useSelectedPortfolio()
 	const projectState = useProjectDetail(projectId)
-	const portfolioConfigState = usePortfolioConfig()
-	const planningModelSelect = useSelectModel(projectConfigForm.planningModelUse, { optionalLabel: 'Use inherited/default' })
-	const revisionPlanningModelSelect = useSelectModel(projectConfigForm.revisionPlanningModelUse, {
-		providerState: planningModelSelect,
-		optionalLabel: 'Use inherited/default',
-	})
-	const executionModelSelect = useSelectModel(projectConfigForm.executionModelUse, {
-		providerState: planningModelSelect,
-		optionalLabel: 'Use inherited/default',
-	})
-	const revisionExecutionModelSelect = useSelectModel(projectConfigForm.revisionExecutionModelUse, {
-		providerState: planningModelSelect,
-		optionalLabel: 'Use inherited/default',
-	})
-	const projectQueryKey = computed(() => queryKeys.portfolio.project(portfolio.value.id, projectId.value))
-	const projectsQueryKey = computed(() => queryKeys.portfolio.projects(portfolio.value.id))
-	const modelProvidersQueryKey = computed(() => queryKeys.portfolio.modelProviders(portfolio.value.id))
-	const inheritedWorkConfig = computed(() => portfolioConfigState.portfolioConfig.value?.value.work ?? defaultDeliveryWorkConfig())
+	const profileState = useAgentRunProfilesList()
+	const projectConfigForm = new ProjectConfigFormDraft()
 
 	watch(
-		projectState.project,
-		(project) => {
-			if (project !== null) projectConfigForm.loadEntity({ config: project.config?.value ?? null })
+		() => projectState.project.value?.config ?? null,
+		(config) => {
+			if (config !== null) projectConfigForm.loadEntity({ config: config.value })
 		},
 		{ immediate: true },
 	)
@@ -49,41 +31,26 @@ export function useProjectConfig(projectId: Ref<string>) {
 		isLoading: isSavingProjectConfig,
 		error: saveProjectConfigError,
 		execute: saveProjectConfig,
-		reset: resetSaveProjectConfig,
 	} = useApiAction(async () => {
 		const saved = await serverApi.setProjectConfig(projectId.value, projectConfigForm.toModel())
-		queryCache.set(projectQueryKey.value, saved)
-		queryCache.invalidate(projectsQueryKey.value, { exact: true })
-		queryCache.invalidate(modelProvidersQueryKey.value)
+		queryCache.set(queryKeys.portfolio.project(portfolio.value.id, saved.id), saved)
+		queryCache.invalidate(queryKeys.portfolio.projects(portfolio.value.id), { exact: true })
 		toast.success({ title: 'Project Config saved.', body: saved.title })
 		return saved
 	})
-
-	function enableWorkOverride(): void {
-		projectConfigForm.enableWorkOverrideFrom(inheritedWorkConfig.value)
-	}
-
-	function clearProjectOverrides(): void {
-		projectConfigForm.clearOverrides(inheritedWorkConfig.value)
-	}
+	const isLoadingProjectConfig = computed(() => projectState.isLoadingProject.value || profileState.isLoadingAgentRunProfiles.value)
+	const projectConfigError = computed(() => projectState.projectError.value || profileState.agentRunProfilesError.value)
+	const hasLoadedProjectConfig = computed(() => projectState.hasLoadedProject.value && profileState.hasLoadedAgentRunProfiles.value)
 
 	return {
-		...projectState,
-		portfolioConfig: portfolioConfigState.portfolioConfig,
-		isLoadingPortfolioConfig: portfolioConfigState.isLoadingConfig,
-		portfolioConfigError: portfolioConfigState.configError,
-		hasLoadedPortfolioConfig: portfolioConfigState.hasLoadedConfig,
-		inheritedWorkConfig,
 		projectConfigForm,
-		planningModelSelect,
-		revisionPlanningModelSelect,
-		executionModelSelect,
-		revisionExecutionModelSelect,
+		project: projectState.project,
+		activeAgentRunProfileOptions: profileState.activeAgentRunProfileOptions,
+		isLoadingProjectConfig,
+		projectConfigError,
+		hasLoadedProjectConfig,
 		isSavingProjectConfig,
 		saveProjectConfigError,
 		saveProjectConfig,
-		resetSaveProjectConfig,
-		enableWorkOverride,
-		clearProjectOverrides,
 	}
 }

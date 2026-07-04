@@ -1,7 +1,7 @@
 import type { AgentRun, AgentRunEvent } from '../../domain/agent-run'
 import type { RevisionGate } from '../../domain/revision'
 import type { CoreServices } from '../../services'
-import { createTestCoreServices, stamp } from '../../utils/test-helpers'
+import { createTestCoreServices, stamp, testModelAgentRun } from '../../utils/test-helpers'
 
 export function planningAgentRunFixture(overrides: Partial<Pick<CoreServices, 'dispatcher'>> = {}) {
 	const options = createTestCoreServices(overrides)
@@ -9,7 +9,6 @@ export function planningAgentRunFixture(overrides: Partial<Pick<CoreServices, 'd
 		id: 'plan-1',
 		projectId: 'project-1',
 		title: 'Plan',
-		config: null,
 		created: stamp,
 		closed: null,
 	})
@@ -49,13 +48,7 @@ export function inputEvent(id: string, agentRunId: string, sequence: number): Ag
 }
 
 export function planningAgentRun(): AgentRun {
-	return {
-		id: 'agent-run-1',
-		agent: { type: 'model' },
-		purpose: { type: 'planning', planId: 'plan-1' },
-		started: { at: '2026-06-10T12:00:00.000Z' },
-		completed: null,
-	}
+	return testModelAgentRun({ purpose: { type: 'planning', planId: 'plan-1' } })
 }
 
 export function revisionPlanningAgentRun(): AgentRun {

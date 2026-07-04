@@ -2,7 +2,6 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { planningAgentRunPipe, type PlanningAgentRun } from './agent-run'
 import { auditStampPipe, idPipe, nonEmptyTrimmedStringPipe } from './commons'
-import { planConfigRecordPipe, type PlanConfig, type PlanConfigRecord } from './config'
 export {
 	instructionSourcePipe,
 	planOutputProposalPipe,
@@ -29,7 +28,6 @@ export const planPipe = v.object({
 	id: idPipe,
 	projectId: idPipe,
 	title: nonEmptyTrimmedStringPipe,
-	config: v.nullable(planConfigRecordPipe),
 	created: auditStampPipe,
 	closed: v.nullable(auditStampPipe),
 })
@@ -38,5 +36,3 @@ export const planWithPlanningAgentRunPipe = v.merge(planPipe, v.object({ agentRu
 export type PlanWithPlanningAgentRun = PipeOutput<typeof planWithPlanningAgentRunPipe>
 
 export type { PlanningAgentRun }
-
-export type { PlanConfig, PlanConfigRecord }

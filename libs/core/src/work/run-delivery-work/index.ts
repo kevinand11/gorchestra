@@ -121,6 +121,7 @@ if (import.meta.vitest) {
 		localStamp,
 		neverCalledProviderBackedPreflightProviders,
 		passingProviderBackedPreflightProviders,
+		seedAgentRunProfile,
 		seedDelivery,
 		seedProject,
 		seedSecret,
@@ -229,9 +230,9 @@ if (import.meta.vitest) {
 			expect(result).toEqual({ ok: true, value: { processedCount: 0, failures: [] } })
 		})
 
-		it('records failed preflight evidence when Delivery Work Config is unresolved', async () => {
+		it('records failed preflight evidence when the selected execution Agent Run Profile is archived', async () => {
 			const options = providerPreflightFixture()
-			options.tx.portfolioConfig.record!.value.work = null
+			options.tx.agentRunProfiles.records.get('agent-run-profile-1')!.archivePeriods = [{ archived: localStamp(), unarchived: null }]
 			const operation = createRunDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: neverCalledProviderBackedPreflightProviders() }),
 			)
@@ -239,7 +240,7 @@ if (import.meta.vitest) {
 			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
 			expectWorkedPreflightResult(options, result, [
-				validationEvidence('delivery-preflight', false, 'Delivery Work Config is not resolved.'),
+				validationEvidence('delivery-preflight', false, 'Selected Delivery execution Agent Run Profile is archived.'),
 			])
 		})
 
@@ -528,25 +529,13 @@ if (import.meta.vitest) {
 		seedDelivery(options.tx, 'delivery-1')
 		seedSecret(options.tx, 'secret-1')
 		seedSelectableModel(options.tx, 'model-1')
+		seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
 		options.tx.repositories.records.set('repository-1', {
 			id: 'repository-1',
 			projectId: 'project-1',
 			config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
 			created: localStamp(),
 		})
-		options.tx.portfolioConfig.record = {
-			configured: localStamp(),
-			value: {
-				model: {
-					default: { modelId: 'model-1', thinkingLevel: 'none' },
-					planning: null,
-					revisionPlanning: null,
-					execution: null,
-					revisionExecution: null,
-				},
-				work: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
-			},
-		}
 		options.tx.deliveries.records.get('delivery-1')!.queued = localStamp()
 
 		return options
@@ -626,6 +615,12 @@ if (import.meta.vitest) {
 			id: 'agent-run-completed',
 			agent: { type: 'model' },
 			purpose: { type: 'execution', deliveryId: 'delivery-1', sliceId, mode: { type: 'initial' } },
+			profile: {
+				agentRunProfileId: 'agent-run-profile-1',
+				name: 'Agent Run Profile',
+				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+			},
+			modelUseOverride: null,
 			started: { at: '2026-06-10T11:30:00.000Z' },
 			completed: { at: '2026-06-10T11:40:00.000Z' },
 		})

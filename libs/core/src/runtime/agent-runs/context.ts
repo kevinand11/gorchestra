@@ -53,7 +53,7 @@ function sortEvents(events: AgentRunEvent[]): AgentRunEvent[] {
 
 function modelVisibleMessages(event: AgentRunEvent, events: AgentRunEvent[]): ModelMessage[] {
 	switch (event.body.type) {
-		case 'agent-run-model-selected':
+		case 'agent-run-model-use-override-changed':
 		case 'turn-started':
 		case 'model-message-started':
 		case 'tool-call-started':
@@ -200,10 +200,9 @@ if (import.meta.vitest) {
 			const context = buildAgentRunModelContext(
 				[
 					event(1, {
-						type: 'agent-run-model-selected',
-						modelId: 'model-1',
-						thinkingLevel: 'none',
-						authorized: null,
+						type: 'agent-run-model-use-override-changed',
+						modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+						authorized: localStamp(),
 					}),
 					event(2, {
 						type: 'input-message',

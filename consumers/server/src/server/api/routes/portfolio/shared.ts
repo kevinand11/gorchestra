@@ -8,17 +8,21 @@ import { sessionCookieSchema } from '../../session'
 const selectionCookieSchema = optionalCookiePipe(selectionCookieName)
 
 export const portfolioRequestCookieSchema = v.merge(sessionCookieSchema, selectionCookieSchema)
-export const createProjectRequestSchema = v.object({ title: Domain.Commons.nonEmptyTrimmedStringPipe })
-const planModelConfigRequestSchema = v.object({ planning: v.nullable(Domain.Config.modelUseConfigPipe) })
-const planConfigRequestSchema = v.object({ model: v.nullable(planModelConfigRequestSchema) })
+export const agentRunProfileRequestSchema = v.object({
+	name: Domain.Commons.nonEmptyTrimmedStringPipe,
+	modelUse: Domain.Config.modelUseConfigPipe,
+})
+export const createProjectRequestSchema = v.object({
+	title: Domain.Commons.nonEmptyTrimmedStringPipe,
+	config: Domain.Config.projectConfigPipe,
+})
 
 export const createPlanRequestSchema = v.object({
 	title: Domain.Commons.nonEmptyTrimmedStringPipe,
 	initialMessage: Domain.Commons.nonEmptyTrimmedStringPipe,
-	config: planConfigRequestSchema,
+	agentRunProfileId: Domain.Commons.idPipe,
 })
 export const sendAgentRunMessageRequestSchema = v.object({ content: v.array(Domain.AgentRun.agentRunTextContentPipe) })
-export const setPortfolioConfigRequestSchema = v.object({ config: Domain.Config.portfolioConfigPipe })
 export const setProjectConfigRequestSchema = v.object({ config: Domain.Config.projectConfigPipe })
 export const createModelProviderRequestSchema = v.object({
 	name: Domain.Commons.nonEmptyTrimmedStringPipe,
@@ -61,10 +65,10 @@ export const createSecretRequestSchema = v.object({
 export const createRepositoryRequestSchema = v.object({ config: Domain.Repository.repositoryConfigPipe })
 
 export type PortfolioRequestCookies = Record<string, string | undefined>
+export type AgentRunProfileRequest = PipeOutput<typeof agentRunProfileRequestSchema>
 export type CreateProjectRequest = PipeOutput<typeof createProjectRequestSchema>
 export type CreatePlanRequest = PipeOutput<typeof createPlanRequestSchema>
 export type SendAgentRunMessageRequest = PipeOutput<typeof sendAgentRunMessageRequestSchema>
-export type SetPortfolioConfigRequest = PipeOutput<typeof setPortfolioConfigRequestSchema>
 export type SetProjectConfigRequest = PipeOutput<typeof setProjectConfigRequestSchema>
 export type CreateModelProviderRequest = PipeOutput<typeof createModelProviderRequestSchema>
 export type UpdateModelProviderRequest = PipeOutput<typeof updateModelProviderRequestSchema>

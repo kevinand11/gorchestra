@@ -1,0 +1,135 @@
+import { Domain, Queries } from '@gorchestra/core'
+import { Router } from 'equipped/server'
+import { v } from 'valleyed'
+
+import {
+	agentRunProfileRequestSchema,
+	portfolioRequestCookieSchema,
+	type AgentRunProfileRequest,
+	type PortfolioRequestCookies,
+} from './shared'
+import type { ServerApiContext } from '../../context'
+import { throwCoreOperationError } from '../../errors'
+import { withSelectedPortfolioCore, withSelectedPortfolioOwnerCore } from '../../portfolio-context'
+import { idPipe } from '../../schemas'
+
+export function createAgentRunProfilesApiRouter(context: ServerApiContext) {
+	return new Router()
+		.get('/agent-run-profiles', {
+			schema: { cookies: portfolioRequestCookieSchema, response: Queries.ListAgentRunProfiles.resultPipe },
+		})(async (req) => listSelectedPortfolioAgentRunProfiles(context, req.cookies))
+		.post('/agent-run-profiles', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				body: agentRunProfileRequestSchema,
+				response: Domain.AgentRunProfile.agentRunProfilePipe,
+			},
+		})(async (req) => createSelectedPortfolioAgentRunProfile(context, req.cookies, req.body))
+		.get('/agent-run-profiles/:agentRunProfileId', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ agentRunProfileId: idPipe }),
+				response: Queries.GetAgentRunProfile.resultPipe,
+			},
+		})(async (req) => getSelectedPortfolioAgentRunProfile(context, req.cookies, req.params.agentRunProfileId))
+		.put('/agent-run-profiles/:agentRunProfileId', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ agentRunProfileId: idPipe }),
+				body: agentRunProfileRequestSchema,
+				response: Domain.AgentRunProfile.agentRunProfilePipe,
+			},
+		})(async (req) => updateSelectedPortfolioAgentRunProfile(context, req.cookies, req.params.agentRunProfileId, req.body))
+		.post('/agent-run-profiles/:agentRunProfileId/archive', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ agentRunProfileId: idPipe }),
+				response: Domain.AgentRunProfile.agentRunProfilePipe,
+			},
+		})(async (req) => archiveSelectedPortfolioAgentRunProfile(context, req.cookies, req.params.agentRunProfileId))
+		.post('/agent-run-profiles/:agentRunProfileId/unarchive', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ agentRunProfileId: idPipe }),
+				response: Domain.AgentRunProfile.agentRunProfilePipe,
+			},
+		})(async (req) => unarchiveSelectedPortfolioAgentRunProfile(context, req.cookies, req.params.agentRunProfileId))
+}
+
+function listSelectedPortfolioAgentRunProfiles(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+): Promise<Queries.ListAgentRunProfiles.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
+		const profiles = await core.queries.listAgentRunProfiles({})
+		return profiles.ok ? profiles.value : throwCoreOperationError(profiles.error)
+	})
+}
+
+function getSelectedPortfolioAgentRunProfile(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	agentRunProfileId: string,
+): Promise<Queries.GetAgentRunProfile.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
+		const profile = await core.queries.getAgentRunProfile({ agentRunProfileId })
+		return profile.ok ? profile.value : throwCoreOperationError(profile.error)
+	})
+}
+
+function createSelectedPortfolioAgentRunProfile(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	input: AgentRunProfileRequest,
+): Promise<Domain.AgentRunProfile.AgentRunProfile> {
+	return withSelectedPortfolioOwnerCore(context, cookies, async ({ core, workspaceMember }) => {
+		const profile = await core.commands.createAgentRunProfile(input, {
+			actor: { type: 'workspace-member', id: workspaceMember.id },
+			correlationId: null,
+		})
+		return profile.ok ? profile.value : throwCoreOperationError(profile.error)
+	})
+}
+
+function updateSelectedPortfolioAgentRunProfile(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	agentRunProfileId: string,
+	input: AgentRunProfileRequest,
+): Promise<Domain.AgentRunProfile.AgentRunProfile> {
+	return withSelectedPortfolioOwnerCore(context, cookies, async ({ core, workspaceMember }) => {
+		const profile = await core.commands.updateAgentRunProfile(
+			{ agentRunProfileId, ...input },
+			{ actor: { type: 'workspace-member', id: workspaceMember.id }, correlationId: null },
+		)
+		return profile.ok ? profile.value : throwCoreOperationError(profile.error)
+	})
+}
+
+function archiveSelectedPortfolioAgentRunProfile(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	agentRunProfileId: string,
+): Promise<Domain.AgentRunProfile.AgentRunProfile> {
+	return withSelectedPortfolioOwnerCore(context, cookies, async ({ core, workspaceMember }) => {
+		const profile = await core.commands.archiveAgentRunProfile(
+			{ agentRunProfileId },
+			{ actor: { type: 'workspace-member', id: workspaceMember.id }, correlationId: null },
+		)
+		return profile.ok ? profile.value : throwCoreOperationError(profile.error)
+	})
+}
+
+function unarchiveSelectedPortfolioAgentRunProfile(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	agentRunProfileId: string,
+): Promise<Domain.AgentRunProfile.AgentRunProfile> {
+	return withSelectedPortfolioOwnerCore(context, cookies, async ({ core, workspaceMember }) => {
+		const profile = await core.commands.unarchiveAgentRunProfile(
+			{ agentRunProfileId },
+			{ actor: { type: 'workspace-member', id: workspaceMember.id }, correlationId: null },
+		)
+		return profile.ok ? profile.value : throwCoreOperationError(profile.error)
+	})
+}

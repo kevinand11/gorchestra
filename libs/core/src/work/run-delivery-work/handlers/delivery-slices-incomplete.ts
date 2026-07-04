@@ -270,6 +270,8 @@ if (import.meta.vitest) {
 		createTestCoreServices,
 		localStamp,
 		passingProviderBackedPreflightProviders,
+		defaultDeliveryWorkConfig,
+		seedAgentRunProfile,
 		seedDelivery,
 		seedProject,
 		seedSelectableModel,
@@ -361,39 +363,19 @@ if (import.meta.vitest) {
 		}
 	}
 
-	function executableDeliveryFixture(
-		options: { portfolioConfig?: boolean; workConfig?: boolean; maxProcessableSliceSlots?: number } = {},
-	) {
+	function executableDeliveryFixture(options: { workConfig?: boolean; maxProcessableSliceSlots?: number } = {}) {
 		const core = createTestCoreServices()
 		seedSelectableModel(core.tx, 'model-1')
-		seedProject(core.tx, 'project-1')
+		seedProject(core.tx, 'project-1', defaultDeliveryWorkConfig('agent-run-profile-1'))
 		seedDelivery(core.tx, 'delivery-1')
 		seedQueuedDelivery(core.tx)
 		seedDeliveryArtifact(core.tx)
-		if (options.portfolioConfig !== false)
-			seedPortfolioConfig(core.tx, options.workConfig !== false, options.maxProcessableSliceSlots ?? 1)
+		if (options.workConfig !== false) {
+			seedAgentRunProfile(core.tx, 'agent-run-profile-1', 'model-1')
+			core.tx.projects.records.get('project-1')!.config.value.work.maxProcessableSliceSlots = options.maxProcessableSliceSlots ?? 1
+		}
 
 		return core
-	}
-
-	function seedPortfolioConfig(
-		tx: ReturnType<typeof executableDeliveryFixture>['tx'],
-		includeWorkConfig: boolean,
-		maxProcessableSliceSlots: number,
-	) {
-		tx.portfolioConfig.record = {
-			configured: localStamp(),
-			value: {
-				model: {
-					default: { modelId: 'model-1', thinkingLevel: 'none' },
-					planning: null,
-					revisionPlanning: null,
-					execution: null,
-					revisionExecution: null,
-				},
-				work: includeWorkConfig ? { maxProcessableSliceSlots, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 } : null,
-			},
-		}
 	}
 
 	function seedQueuedDelivery(tx: ReturnType<typeof executableDeliveryFixture>['tx']) {
@@ -442,6 +424,12 @@ if (import.meta.vitest) {
 			id: `${sliceId}-agent-run`,
 			agent: { type: 'model' },
 			purpose: { type: 'execution', deliveryId: 'delivery-1', sliceId, mode: { type: 'initial' } },
+			profile: {
+				agentRunProfileId: 'agent-run-profile-1',
+				name: 'Agent Run Profile',
+				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+			},
+			modelUseOverride: null,
 			started: { at: '2026-06-10T11:30:00.000Z' },
 			completed: { at: '2026-06-10T11:40:00.000Z' },
 		})

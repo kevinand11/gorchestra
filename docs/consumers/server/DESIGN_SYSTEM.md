@@ -16,7 +16,7 @@ The Server Consumer UI is a dense, flat operations interface for managing select
 - Use the existing app shell rails and page headers as the main structure.
 - The app shell owns viewport scrolling: the topbar stays fixed, while left, middle, and right rails are individually scrollable.
 - Primary navigation items live together in the left rail; active route backgrounds should span the full rail width rather than appearing inside padded nav groups.
-- Portfolio Config is the final left-rail item and is pushed to the rail bottom to separate global selected-Portfolio configuration from day-to-day surfaces.
+- Agent Run Profiles is the final left-rail item and is pushed to the rail bottom to separate reusable selected-Portfolio run configuration from day-to-day surfaces.
 - Page headers may have horizontal padding; section dividers below them must span the full content width.
 - Prefer stacked full-width sections separated by `border-b` or `border-t` over nested bordered cards.
 - Forms with internal sections should use full-width bordered sections or rows, then apply horizontal padding to the fields/content inside those sections.
@@ -79,23 +79,22 @@ type UiSelectOptions<TValue extends string = string> = readonly (UiSelectOption<
 - Model selectors should group Models under their Model Providers.
 - Forms that select a Model and Model Thinking Level together must derive the Thinking Level options from the selected Model's available Thinking Levels; do not show unavailable Thinking Levels for that Model.
 
-## Models and Portfolio Config surfaces
+## Models and Agent Run Profiles surfaces
 
 - The top-level `Models` surface lists Model Providers only.
 - Model Provider rows link directly to provider detail pages.
 - Model Provider rows do not show `Open`, `Archive`, or `Preflight` actions.
 - Model Provider detail pages own Provider metadata/actions, Provider lifecycle, Model creation, and a flat linked list of Models under that Provider.
 - Model detail pages own Model metadata, capability/pricing editing, Model References, Model Preflight, and Model lifecycle actions.
-- The top-level `Portfolio Config` surface lives at `/portfolio-config` and edits Portfolio Config directly.
-- Portfolio Config should be the last item in the left rail and visually separated at the bottom of the rail.
-- Portfolio Config should not be presented as generic Workspace or account settings.
-- Portfolio Config pages should separate model-related configuration from delivery/work-related configuration with clear full-width section hierarchy.
-- Portfolio Config model fields need a full-width separator below them before the delivery/work configuration header.
-- Use the right rail for Portfolio Config guidance copy rather than adding summary blocks below the form.
+- The top-level `Agent Run Profiles` surface lives at `/agent-run-profiles` and manages reusable selected-Portfolio run profiles.
+- Agent Run Profiles should be the last item in the left rail and visually separated at the bottom of the rail.
+- Agent Run Profiles should not be presented as generic Workspace or account settings.
+- Agent Run Profile forms should keep model and thinking selection together so users understand the atomic Model Use Config that future runs snapshot.
+- Use the right rail for Agent Run Profiles guidance copy rather than adding summary blocks below the form.
 
 ## Copy and visual tone
 
 - Use concise operational copy.
 - Use Core and Server Consumer domain terms from the context docs.
 - Prefer helper text that explains immediate consequences over generic descriptions.
-- Keep labels stable and explicit: `Portfolio Config`, `Model Provider`, `Model`, `Secret`, `Preflight`, `Archived`, `Active`.
+- Keep labels stable and explicit: `Agent Run Profiles`, `Model Provider`, `Model`, `Secret`, `Preflight`, `Archived`, `Active`.

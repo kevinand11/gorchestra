@@ -16,7 +16,7 @@ export const projectPipe = v.object({
 	id: idPipe,
 	title: nonEmptyTrimmedStringPipe,
 	source: projectSourcePipe,
-	config: v.nullable(projectConfigRecordPipe),
+	config: projectConfigRecordPipe,
 	created: auditStampPipe,
 })
 export type Project = PipeOutput<typeof projectPipe>
@@ -28,7 +28,7 @@ export const listedProjectPipe = v.object({
 	id: idPipe,
 	title: nonEmptyTrimmedStringPipe,
 	source: v.discriminate((value) => value.type, { 'source-control': sourceControlProjectListSourcePipe }),
-	config: v.nullable(projectConfigRecordPipe),
+	config: projectConfigRecordPipe,
 	created: auditStampPipe,
 })
 export type ListedProject = PipeOutput<typeof listedProjectPipe>

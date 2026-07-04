@@ -294,7 +294,6 @@ import { formatDate } from '../../../../../utils/time'
 definePageMeta({ middleware: ['has-selection'] })
 
 type ModelReference = Awaited<ReturnType<ServerApi['listModelReferences']>>[number]
-type ModelReferencePurpose = ModelReference['purpose']
 
 const route = useRoute()
 const modelProviderId = computed(() => route.params.modelProviderId as string)
@@ -331,14 +330,8 @@ function unarchiveModel(): Promise<unknown> {
 
 function modelReferenceTitle(reference: ModelReference): string {
 	switch (reference.type) {
-		case 'portfolio-config':
-			return 'Portfolio Config'
-		case 'project-config':
-			return 'Project Config'
-		case 'plan-config':
-			return 'Plan Config'
-		case 'delivery-config':
-			return 'Delivery Config'
+		case 'agent-run-profile':
+			return 'Agent Run Profile'
 		default:
 			throw new Error(`Unexpected Model Reference type: ${String(reference satisfies never)}`)
 	}
@@ -346,14 +339,8 @@ function modelReferenceTitle(reference: ModelReference): string {
 
 function modelReferenceSubtitle(reference: ModelReference): string {
 	switch (reference.type) {
-		case 'portfolio-config':
-			return `${purposeLabel(reference.purpose)} Model`
-		case 'project-config':
-			return `${reference.projectTitle} · ${purposeLabel(reference.purpose)} Model`
-		case 'plan-config':
-			return `${reference.planTitle} · ${purposeLabel(reference.purpose)} Model`
-		case 'delivery-config':
-			return `${reference.deliveryTitle} · ${purposeLabel(reference.purpose)} Model`
+		case 'agent-run-profile':
+			return reference.agentRunProfileName
 		default:
 			throw new Error(`Unexpected Model Reference type: ${String(reference satisfies never)}`)
 	}
@@ -361,14 +348,8 @@ function modelReferenceSubtitle(reference: ModelReference): string {
 
 function modelReferenceLocation(reference: ModelReference): string {
 	switch (reference.type) {
-		case 'portfolio-config':
-			return '/portfolio-config'
-		case 'project-config':
-			return `/projects/${reference.projectId}/config`
-		case 'plan-config':
-			return `/projects/${reference.projectId}/plans/${reference.planId}`
-		case 'delivery-config':
-			return `/projects/${reference.projectId}/deliveries/${reference.deliveryId}`
+		case 'agent-run-profile':
+			return '/agent-run-profiles'
 		default:
 			throw new Error(`Unexpected Model Reference type: ${String(reference satisfies never)}`)
 	}
@@ -376,33 +357,10 @@ function modelReferenceLocation(reference: ModelReference): string {
 
 function modelReferenceKey(reference: ModelReference): string {
 	switch (reference.type) {
-		case 'portfolio-config':
-			return `${reference.type}:${reference.purpose}`
-		case 'project-config':
-			return `${reference.type}:${reference.projectId}:${reference.purpose}`
-		case 'plan-config':
-			return `${reference.type}:${reference.planId}:${reference.purpose}`
-		case 'delivery-config':
-			return `${reference.type}:${reference.deliveryId}:${reference.purpose}`
+		case 'agent-run-profile':
+			return `${reference.type}:${reference.agentRunProfileId}`
 		default:
 			throw new Error(`Unexpected Model Reference type: ${String(reference satisfies never)}`)
-	}
-}
-
-function purposeLabel(purpose: ModelReferencePurpose): string {
-	switch (purpose) {
-		case 'default':
-			return 'Default'
-		case 'planning':
-			return 'Planning'
-		case 'revision-planning':
-			return 'Revision Planning'
-		case 'execution':
-			return 'Execution'
-		case 'revision-execution':
-			return 'Revision Execution'
-		default:
-			throw new Error(`Unexpected Model Reference purpose: ${String(purpose satisfies never)}`)
 	}
 }
 </script>

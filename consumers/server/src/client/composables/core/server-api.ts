@@ -48,31 +48,17 @@ export type ModelTokenPricing = {
 	cacheWrite: number
 }
 export type ModelUseConfig = { modelId: string; thinkingLevel: ModelThinkingLevel }
+export type AgentRunProfileInput = { name: string; modelUse: ModelUseConfig }
 
-export type DeliveryWorkConfigInput = { maxProcessableSliceSlots: number; maxCorrectionRetriesPerFailure: number; modelTimeoutMs: number }
-
-export type PortfolioConfigInput = {
-	model: {
-		default: ModelUseConfig
-		planning: ModelUseConfig | null
-		revisionPlanning: ModelUseConfig | null
-		execution: ModelUseConfig | null
-		revisionExecution: ModelUseConfig | null
-	}
-	work: DeliveryWorkConfigInput | null
+export type DeliveryWorkConfigInput = {
+	maxProcessableSliceSlots: number
+	maxCorrectionRetriesPerFailure: number
+	executionAgentRunProfileId: string
+	revisionExecutionAgentRunProfileId: string | null
 }
 
-export type ProjectConfigInput = {
-	model: {
-		planning: ModelUseConfig | null
-		revisionPlanning: ModelUseConfig | null
-		execution: ModelUseConfig | null
-		revisionExecution: ModelUseConfig | null
-	} | null
-	work: DeliveryWorkConfigInput | null
-}
+export type ProjectConfigInput = { work: DeliveryWorkConfigInput }
 
-export type PlanConfigInput = { model: { planning: ModelUseConfig | null } | null }
 export type SendAgentRunMessageInput = { content: Array<{ type: 'text'; text: string }> }
 
 export type CreateModelProviderInput = {
@@ -168,7 +154,7 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async listProjects() {
 			return routes.request('get', '/api/portfolio/projects')
 		},
-		async createProject(input: { title: string }) {
+		async createProject(input: { title: string; config: ProjectConfigInput }) {
 			return routes.request('post', '/api/portfolio/projects', { body: input })
 		},
 		async getProject(projectId: string) {
@@ -180,7 +166,7 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async listPlans(projectId: string) {
 			return routes.request('get', '/api/portfolio/projects/:projectId/plans', { params: { projectId } })
 		},
-		async createPlan(projectId: string, input: { title: string; initialMessage: string; config: PlanConfigInput }) {
+		async createPlan(projectId: string, input: { title: string; initialMessage: string; agentRunProfileId: string }) {
 			return routes.request('post', '/api/portfolio/projects/:projectId/plans', { params: { projectId }, body: input })
 		},
 		async getPlan(projectId: string, planId: string) {
@@ -198,11 +184,28 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async sendAgentRunMessage(agentRunId: string, input: SendAgentRunMessageInput) {
 			return routes.request('post', '/api/portfolio/agent-runs/:agentRunId/messages', { params: { agentRunId }, body: input })
 		},
-		async getPortfolioConfig() {
-			return routes.request('get', '/api/portfolio/config')
+		async listAgentRunProfiles() {
+			return routes.request('get', '/api/portfolio/agent-run-profiles')
 		},
-		async setPortfolioConfig(input: { config: PortfolioConfigInput }) {
-			return routes.request('put', '/api/portfolio/config', { body: input })
+		async createAgentRunProfile(input: AgentRunProfileInput) {
+			return routes.request('post', '/api/portfolio/agent-run-profiles', { body: input })
+		},
+		async getAgentRunProfile(agentRunProfileId: string) {
+			return routes.request('get', '/api/portfolio/agent-run-profiles/:agentRunProfileId', { params: { agentRunProfileId } })
+		},
+		async updateAgentRunProfile(agentRunProfileId: string, input: AgentRunProfileInput) {
+			return routes.request('put', '/api/portfolio/agent-run-profiles/:agentRunProfileId', {
+				params: { agentRunProfileId },
+				body: input,
+			})
+		},
+		async archiveAgentRunProfile(agentRunProfileId: string) {
+			return routes.request('post', '/api/portfolio/agent-run-profiles/:agentRunProfileId/archive', { params: { agentRunProfileId } })
+		},
+		async unarchiveAgentRunProfile(agentRunProfileId: string) {
+			return routes.request('post', '/api/portfolio/agent-run-profiles/:agentRunProfileId/unarchive', {
+				params: { agentRunProfileId },
+			})
 		},
 		async listModelProviders() {
 			return routes.request('get', '/api/portfolio/model-providers')

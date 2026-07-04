@@ -1,6 +1,7 @@
 import type { DeliveryContext } from './types'
+import type { AgentRunProfile } from '../../domain/agent-run-profile'
 import type { Id } from '../../domain/commons'
-import type { DeliveryWorkConfig, ModelUseConfig, ProjectConfigRecord } from '../../domain/config'
+import type { DeliveryWorkConfig, ModelUseConfig } from '../../domain/config'
 import type { ValidationEvidence } from '../../domain/evidence'
 import type { Model } from '../../domain/model'
 import type { ModelProvider } from '../../domain/model-provider'
@@ -16,6 +17,7 @@ import type { Result } from '../types'
 
 export interface DeliveryWorkResolution {
 	workConfig: DeliveryWorkConfig
+	executionProfile: AgentRunProfile
 	executionModelUse: ModelUseConfig
 	executionModel: Model
 	executionModelProvider: ModelProvider
@@ -29,10 +31,9 @@ export interface PassedDeliveryPreflight {
 }
 
 export type FailedDeliveryPreflightReason =
-	| { type: 'portfolio-config-missing' }
+	| { type: 'agent-run-profile-archived'; agentRunProfileId: Id }
 	| { type: 'model-archived'; modelId: Id }
 	| { type: 'model-provider-archived'; modelProviderId: Id }
-	| { type: 'work-config-unresolved' }
 
 export interface FailedDeliveryPreflight {
 	type: 'failed'
@@ -51,27 +52,43 @@ export type DeliveryPreflightError =
 	| InvariantViolationError
 
 const summaries = {
-	portfolioConfigMissing: 'Portfolio Config is not configured.',
+	agentRunProfileArchived: 'Selected Delivery execution Agent Run Profile is archived.',
 	modelArchived: 'Selected Delivery execution Model is archived.',
 	modelProviderArchived: 'Selected Delivery execution Model Provider is archived.',
-	workConfigUnresolved: 'Delivery Work Config is not resolved.',
 } as const
 
 export async function resolveDeliveryWork(
 	storage: CoreStorage,
 	context: DeliveryContext,
 ): Promise<Result<DeliveryPreflight, DeliveryPreflightError>> {
-	if (context.portfolioConfig === null) return ok(portfolioConfigMissing())
+	const workConfig = resolveDeliveryWorkConfig(context)
+	const executionProfile = await selectedAgentRunProfile(storage, workConfig.executionAgentRunProfileId)
+	if (!executionProfile.ok) return executionProfile
+	if (isFailedDeliveryPreflight(executionProfile.value)) return ok(executionProfile.value)
 
-	const executionModelUse = resolveExecutionModelUse(context)
-	const modelFacts = await selectedModelFacts(storage, executionModelUse)
+	const modelFacts = await selectedModelFacts(storage, executionProfile.value.modelUse)
 	if (!modelFacts.ok) return modelFacts
 	if (isFailedDeliveryPreflight(modelFacts.value)) return ok(modelFacts.value)
 
-	return resolvedWorkConfig(context, executionModelUse, modelFacts.value.model, modelFacts.value.modelProvider)
+	return ok(
+		passedPreflight({
+			workConfig,
+			executionProfile: executionProfile.value,
+			executionModelUse: executionProfile.value.modelUse,
+			executionModel: modelFacts.value.model,
+			executionModelProvider: modelFacts.value.modelProvider,
+		}),
+	)
 }
 
 type SelectedModelFacts = { model: Model; modelProvider: ModelProvider }
+
+async function selectedAgentRunProfile(storage: CoreStorage, agentRunProfileId: Id): Promise<PreflightStep<AgentRunProfile>> {
+	const profile = await getRequired('agent-run-profile', storage, agentRunProfileId)
+	if (!profile.ok) return profile
+
+	return isArchived(profile.value) ? ok(agentRunProfileArchived(agentRunProfileId)) : ok(profile.value)
+}
 
 async function selectedModelFacts(storage: CoreStorage, modelUse: ModelUseConfig): Promise<PreflightStep<SelectedModelFacts>> {
 	const model = await selectedModel(storage, modelUse.modelId)
@@ -111,24 +128,6 @@ async function selectedModelProvider(storage: CoreStorage, providerId: Id): Prom
 	return isArchived(provider.value) ? ok(modelProviderArchived(provider.value.id)) : ok(provider.value)
 }
 
-function resolvedWorkConfig(
-	context: DeliveryContext,
-	executionModelUse: ModelUseConfig,
-	executionModel: Model,
-	executionModelProvider: ModelProvider,
-): Result<DeliveryPreflight, never> {
-	const workConfig = resolveDeliveryWorkConfig(context)
-	return workConfig === null
-		? ok(
-				failedPreflight(
-					summaries.workConfigUnresolved,
-					{ type: 'work-config-unresolved' },
-					unresolvedWorkConfigSnapshot(context, executionModel, executionModelProvider),
-				),
-			)
-		: ok(passedPreflight({ workConfig, executionModelUse, executionModel, executionModelProvider }))
-}
-
 function passedPreflight(resolution: DeliveryWorkResolution): PassedDeliveryPreflight {
 	return {
 		type: 'passed',
@@ -140,8 +139,8 @@ function passedPreflight(resolution: DeliveryWorkResolution): PassedDeliveryPref
 
 type PreflightStep<T> = Result<T | FailedDeliveryPreflight, DeliveryPreflightError>
 
-function portfolioConfigMissing(): FailedDeliveryPreflight {
-	return failedPreflight(summaries.portfolioConfigMissing, { type: 'portfolio-config-missing' })
+function agentRunProfileArchived(agentRunProfileId: Id): FailedDeliveryPreflight {
+	return failedPreflight(summaries.agentRunProfileArchived, { type: 'agent-run-profile-archived', agentRunProfileId })
 }
 
 function modelArchived(modelId: Id): FailedDeliveryPreflight {
@@ -161,40 +160,8 @@ function failedPreflight(summary: string, reason: FailedDeliveryPreflightReason,
 	}
 }
 
-function resolveExecutionModelUse(context: DeliveryContext): ModelUseConfig {
-	if (context.portfolioConfig === null) throw new Error('Expected Portfolio Config before resolving execution Model Use Config.')
-
-	return firstPresent([
-		context.delivery.config?.value?.model?.execution,
-		context.projectConfig?.value?.model?.execution,
-		context.portfolioConfig.value.model.execution,
-		context.portfolioConfig.value.model.default,
-	])
-}
-
-function resolveDeliveryWorkConfig(context: DeliveryContext): DeliveryWorkConfig | null {
-	if (context.portfolioConfig === null) return null
-
-	return firstOptional([context.delivery.config?.value?.work, context.projectConfig?.value?.work, context.portfolioConfig.value.work])
-}
-
-function unresolvedWorkConfigSnapshot(context: DeliveryContext, executionModel: Model, executionModelProvider: ModelProvider) {
-	return {
-		type: 'work-config-unresolved',
-		executionModel,
-		executionModelProvider,
-		deliveryWorkConfig: deliveryWorkConfigValue(context.delivery),
-		projectWorkConfig: projectWorkConfigValue(context.projectConfig),
-		portfolioWorkConfig: context.portfolioConfig?.value.work ?? null,
-	}
-}
-
-function deliveryWorkConfigValue(delivery: DeliveryContext['delivery']): DeliveryWorkConfig | null {
-	return delivery.config === null ? null : (delivery.config.value?.work ?? null)
-}
-
-function projectWorkConfigValue(projectConfig: ProjectConfigRecord | null): DeliveryWorkConfig | null {
-	return projectConfig === null ? null : (projectConfig.value?.work ?? null)
+function resolveDeliveryWorkConfig(context: DeliveryContext): DeliveryWorkConfig {
+	return context.delivery.config?.value?.work ?? context.project.config.value.work
 }
 
 function deliveryPreflightEvidence(passed: boolean, summary: string): ValidationEvidence {
@@ -209,18 +176,7 @@ function deliveryPreflightSnapshot(value: unknown): DeliveryPreflightSnapshot {
 	return JSON.stringify(value)
 }
 
-function firstPresent<T>(values: Array<T | null | undefined>): T {
-	const value = values.find((candidate): candidate is T => candidate !== null && candidate !== undefined)
-	if (value === undefined) throw new Error('Expected at least one required fallback value.')
-
-	return value
-}
-
-function firstOptional<T>(values: Array<T | null | undefined>): T | null {
-	return values.find((candidate): candidate is T => candidate !== null && candidate !== undefined) ?? null
-}
-
-function isArchived(record: Model | ModelProvider): boolean {
+function isArchived(record: { archivePeriods: Array<{ unarchived: object | null }> }): boolean {
 	return record.archivePeriods.at(-1)?.unarchived === null
 }
 

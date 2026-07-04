@@ -1,7 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { auditStampPipe, freeFormStringPipe, idPipe, nonEmptyTrimmedStringPipe, nonNegativeIntegerPipe, runtimeRecordPipe } from './commons'
-import { modelThinkingLevelPipe } from './model'
+import { modelUseConfigPipe } from './config'
 import { planOutputProposalPipe, revisionOutputProposalPipe } from './proposals'
 
 export const agentPipe = v.discriminate((value) => value.type, {
@@ -27,10 +27,22 @@ export const agentRunPurposePipe = v.discriminate((value) => value.type, {
 })
 export type AgentRunPurpose = PipeOutput<typeof agentRunPurposePipe>
 
+export const agentRunProfileSnapshotPipe = v.object({
+	agentRunProfileId: idPipe,
+	name: nonEmptyTrimmedStringPipe,
+	modelUse: modelUseConfigPipe,
+})
+export type AgentRunProfileSnapshot = PipeOutput<typeof agentRunProfileSnapshotPipe>
+
+export const agentRunModelUseOverridePipe = v.object({ modelUse: modelUseConfigPipe, selected: auditStampPipe })
+export type AgentRunModelUseOverride = PipeOutput<typeof agentRunModelUseOverridePipe>
+
 export const agentRunPipe = v.object({
 	id: idPipe,
 	agent: agentPipe,
 	purpose: agentRunPurposePipe,
+	profile: agentRunProfileSnapshotPipe,
+	modelUseOverride: v.nullable(agentRunModelUseOverridePipe),
 	started: runtimeRecordPipe,
 	completed: v.nullable(runtimeRecordPipe),
 })
@@ -40,6 +52,8 @@ export const planningAgentRunPipe = v.object({
 	id: idPipe,
 	agent: agentPipe,
 	purpose: planningAgentRunPurposePipe,
+	profile: agentRunProfileSnapshotPipe,
+	modelUseOverride: v.nullable(agentRunModelUseOverridePipe),
 	started: runtimeRecordPipe,
 	completed: v.nullable(runtimeRecordPipe),
 })
@@ -243,11 +257,10 @@ export const agentRunProposalMaterializationPipe = v.discriminate((value) => val
 export type AgentRunProposalMaterialization = PipeOutput<typeof agentRunProposalMaterializationPipe>
 
 export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
-	'agent-run-model-selected': v.object({
-		type: v.eq('agent-run-model-selected'),
-		modelId: idPipe,
-		thinkingLevel: modelThinkingLevelPipe,
-		authorized: v.nullable(auditStampPipe),
+	'agent-run-model-use-override-changed': v.object({
+		type: v.eq('agent-run-model-use-override-changed'),
+		modelUse: v.nullable(modelUseConfigPipe),
+		authorized: auditStampPipe,
 	}),
 	'instruction-snapshot': v.object({ type: v.eq('instruction-snapshot'), instruction: agentRunInstructionPipe }),
 	'input-message': v.object({ type: v.eq('input-message'), source: agentRunInputSourcePipe, content: v.array(agentRunTextContentPipe) }),
@@ -336,13 +349,12 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
 	describe('AgentRunEvent domain pipes', () => {
-		it('accepts model selection and turn boundary events', () => {
+		it('accepts model-use override and turn boundary events', () => {
 			expect(
 				v.validate(agentRunEventBodyPipe, {
-					type: 'agent-run-model-selected',
-					modelId: 'model-1',
-					thinkingLevel: 'none',
-					authorized: null,
+					type: 'agent-run-model-use-override-changed',
+					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+					authorized: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				}),
 			).toMatchObject({ valid: true })
 			expect(

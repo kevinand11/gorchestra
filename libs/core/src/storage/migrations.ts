@@ -8,13 +8,7 @@ export const coreStorageMigrations = [
 		id: '2026-06-16-0001-create-core-storage',
 		tx: true,
 		changes: [
-			createTable('portfolio_config', [objectField('configured'), objectField('value')]),
-			createTable('projects', [
-				stringField('title'),
-				objectField('source'),
-				nullableField(objectField('config')),
-				objectField('created'),
-			]),
+			createTable('projects', [stringField('title'), objectField('source'), objectField('config'), objectField('created')]),
 			createTable('repositories', [stringField('projectId'), objectField('config'), objectField('created')]),
 			createTable('model_providers', [
 				stringField('name'),
@@ -37,10 +31,16 @@ export const coreStorageMigrations = [
 				nullableField(objectField('updated')),
 				arrayField('archivePeriods'),
 			]),
+			createTable('agent_run_profiles', [
+				stringField('name'),
+				objectField('modelUse'),
+				objectField('created'),
+				nullableField(objectField('updated')),
+				arrayField('archivePeriods'),
+			]),
 			createTable('plans', [
 				stringField('projectId'),
 				stringField('title'),
-				nullableField(objectField('config')),
 				objectField('created'),
 				nullableField(objectField('closed')),
 			]),
@@ -75,6 +75,8 @@ export const coreStorageMigrations = [
 			createTable('agent_runs', [
 				objectField('agent'),
 				objectField('purpose'),
+				objectField('profile'),
+				nullableField(objectField('modelUseOverride')),
 				objectField('started'),
 				nullableField(objectField('completed')),
 			]),
