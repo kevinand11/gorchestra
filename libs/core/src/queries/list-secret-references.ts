@@ -2,7 +2,7 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { isArchived } from '../commands/utils/storage'
 import { idPipe, type Id } from '../domain/commons'
-import type { ModelProvider } from '../domain/model-provider'
+import { modelProviderProtocolForSource, type ModelProvider, type ModelProviderAccessValue } from '../domain/model-provider'
 import type { Repository } from '../domain/repository'
 import { secretReferencePipe, type SecretBinding, type SecretReference } from '../domain/secret'
 export type {
@@ -166,17 +166,17 @@ function modelProviderSecretReferences(modelProvider: ModelProvider, secretIds: 
 }
 
 function modelProviderAuthSecretReference(modelProvider: ModelProvider, secretIds: Set<Id>, archived: boolean): SecretReferenceMatch[] {
-	const auth = modelProvider.auth
-	return auth !== null && secretIds.has(auth.secretId)
+	const secretId = modelProvider.auth === null ? null : secretIdFromAccessValue(modelProvider.auth.value)
+	return secretId !== null && secretIds.has(secretId)
 		? [
 				{
-					secretId: auth.secretId,
+					secretId,
 					reference: {
 						type: 'model-provider-auth',
 						active: !archived,
 						modelProviderId: modelProvider.id,
 						name: modelProvider.name,
-						protocol: modelProvider.protocol,
+						protocol: modelProviderProtocolForSource(modelProvider.source),
 					},
 				},
 			]
@@ -189,21 +189,31 @@ function modelProviderHeaderSecretReference(
 	secretIds: Set<Id>,
 	archived: boolean,
 ): SecretReferenceMatch[] {
-	return secretIds.has(header.valueSecretId)
+	const secretId = secretIdFromAccessValue(header.value)
+	return secretIds.has(secretId)
 		? [
 				{
-					secretId: header.valueSecretId,
+					secretId,
 					reference: {
 						type: 'model-provider-header',
 						active: !archived,
 						modelProviderId: modelProvider.id,
 						name: modelProvider.name,
-						protocol: modelProvider.protocol,
+						protocol: modelProviderProtocolForSource(modelProvider.source),
 						headerName: header.name,
 					},
 				},
 			]
 		: []
+}
+
+function secretIdFromAccessValue(value: ModelProviderAccessValue): Id {
+	switch (value.type) {
+		case 'secret':
+			return value.secretId
+		default:
+			throw new Error('Unexpected Model Provider access value.')
+	}
 }
 
 function sortSecretReferences(references: SecretReference[]): SecretReference[] {
@@ -317,14 +327,14 @@ if (import.meta.vitest) {
 						active: false,
 						modelProviderId: 'model-provider-1',
 						name: 'Anthropic',
-						protocol: { type: 'anthropic-messages' },
+						protocol: 'anthropic-messages',
 					},
 					{
 						type: 'model-provider-header',
 						active: false,
 						modelProviderId: 'model-provider-1',
 						name: 'Anthropic',
-						protocol: { type: 'anthropic-messages' },
+						protocol: 'anthropic-messages',
 						headerName: 'X-Team',
 					},
 					{
@@ -421,13 +431,13 @@ if (import.meta.vitest) {
 		options.tx.modelProviders.records.set('model-provider-1', {
 			id: 'model-provider-1',
 			name: 'Anthropic',
-			protocol: { type: 'anthropic-messages' },
-			baseUrl: 'https://api.anthropic.com',
-			auth: { type: 'apiKey', secretId: 'secret-1' },
+			source: { type: 'anthropic' },
+			auth: { value: { type: 'secret', secretId: 'secret-1' } },
 			headers: [
-				{ name: 'X-Team', valueSecretId: 'secret-1' },
-				{ name: 'X-Other', valueSecretId: 'secret-2' },
+				{ name: 'X-Team', value: { type: 'secret', secretId: 'secret-1' } },
+				{ name: 'X-Other', value: { type: 'secret', secretId: 'secret-2' } },
 			],
+			providerOptions: null,
 			created: stamp,
 			updated: null,
 			archivePeriods: [{ archived: stamp, unarchived: null }],

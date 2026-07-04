@@ -1,7 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
-import { idPipe, nonEmptyTrimmedStringPipe } from '../domain/commons'
+import { idPipe, jsonObjectPipe, nonEmptyTrimmedStringPipe } from '../domain/commons'
 import { defaultModelCapabilities, type Model } from '../domain/model'
 import type {
 	ArchivedModelProviderReferenceError,
@@ -28,6 +28,7 @@ const createModelInputPipe = v.object({
 	providerId: idPipe,
 	name: nonEmptyTrimmedStringPipe,
 	providerModelId: nonEmptyTrimmedStringPipe,
+	providerOptions: v.defaults(v.nullable(jsonObjectPipe), null),
 })
 export type Input = PipeOutput<typeof createModelInputPipe>
 
@@ -61,6 +62,7 @@ export function createCreateModelCommand(runtime: CoreRuntime): Operation {
 				providerId: input.providerId,
 				name: input.name,
 				providerModelId: input.providerModelId,
+				providerOptions: input.providerOptions,
 				capabilities: defaultModelCapabilities,
 				pricing: null,
 				created: stamp.value,
@@ -82,7 +84,15 @@ if (import.meta.vitest) {
 			seedModelProvider(options.tx, 'provider-1')
 			const command = createCreateModelCommand(createTestCoreRuntime(options))
 
-			const result = await command({ providerId: 'provider-1', name: ' Sonnet ', providerModelId: ' claude-sonnet ' }, context)
+			const result = await command(
+				{
+					providerId: 'provider-1',
+					name: ' Sonnet ',
+					providerModelId: ' claude-sonnet ',
+					providerOptions: { serviceTier: 'flex' },
+				},
+				context,
+			)
 
 			expect(result).toMatchObject({
 				ok: true,
@@ -91,6 +101,7 @@ if (import.meta.vitest) {
 					providerId: 'provider-1',
 					name: 'Sonnet',
 					providerModelId: 'claude-sonnet',
+					providerOptions: { serviceTier: 'flex' },
 					capabilities: defaultModelCapabilities,
 					pricing: null,
 					archivePeriods: [],

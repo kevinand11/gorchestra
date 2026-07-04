@@ -22,23 +22,25 @@ export const setPortfolioConfigRequestSchema = v.object({ config: Domain.Config.
 export const setProjectConfigRequestSchema = v.object({ config: Domain.Config.projectConfigPipe })
 export const createModelProviderRequestSchema = v.object({
 	name: Domain.Commons.nonEmptyTrimmedStringPipe,
-	protocol: Domain.ModelProvider.modelProviderProtocolPipe,
-	baseUrl: Domain.ModelProvider.modelProviderBaseUrlPipe,
+	source: Domain.ModelProvider.modelProviderSourcePipe,
 	auth: v.nullable(Domain.ModelProvider.modelProviderAuthPipe),
 	headers: Domain.ModelProvider.modelProviderHeadersPipe,
+	providerOptions: v.nullable(Domain.ModelProvider.modelProviderOptionsPipe),
 })
 export const updateModelProviderRequestSchema = v.object({
 	name: Domain.Commons.nonEmptyTrimmedStringPipe,
-	baseUrl: Domain.ModelProvider.modelProviderBaseUrlPipe,
 	auth: v.nullable(Domain.ModelProvider.modelProviderAuthPipe),
 	headers: Domain.ModelProvider.modelProviderHeadersPipe,
+	providerOptions: v.nullable(Domain.ModelProvider.modelProviderOptionsPipe),
 })
 export const createModelRequestSchema = v.object({
 	name: Domain.Commons.nonEmptyTrimmedStringPipe,
 	providerModelId: Domain.Commons.nonEmptyTrimmedStringPipe,
+	providerOptions: v.nullable(Domain.ModelProvider.modelProviderOptionsPipe),
 })
 export const updateModelRequestSchema = v.object({
 	name: Domain.Commons.nonEmptyTrimmedStringPipe,
+	providerOptions: v.nullable(Domain.ModelProvider.modelProviderOptionsPipe),
 	capabilities: Domain.Model.modelCapabilitiesPipe,
 	pricing: v.nullable(Domain.Model.modelTokenPricingPipe),
 })

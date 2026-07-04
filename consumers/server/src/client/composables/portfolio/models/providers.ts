@@ -240,7 +240,12 @@ export function useModelUpdate(modelProviderId: Ref<string>, modelId: Ref<string
 		(loadedModel) => {
 			if (loadedModel === null) return
 			modelUpdateForm.setConfigurableThinkingLevels(loadedModel.provider.configurableThinkingLevels)
-			modelUpdateForm.loadEntity({ name: loadedModel.name, capabilities: loadedModel.capabilities, pricing: loadedModel.pricing })
+			modelUpdateForm.loadEntity({
+				name: loadedModel.name,
+				providerOptions: loadedModel.providerOptions,
+				capabilities: loadedModel.capabilities,
+				pricing: loadedModel.pricing,
+			})
 		},
 		{ immediate: true },
 	)
@@ -313,7 +318,7 @@ export function useModelLifecycle(modelProviderId: Ref<string>, modelId: Ref<str
 }
 
 function modelProviderUpdateInput(formModel: ModelProviderFormModel): UpdateModelProviderInput {
-	return { name: formModel.name, baseUrl: formModel.baseUrl, auth: formModel.auth, headers: formModel.headers }
+	return { name: formModel.name, auth: formModel.auth, headers: formModel.headers, providerOptions: formModel.providerOptions }
 }
 
 function invalidateModelProviderQueries(queryCache: ReturnType<typeof useQueryCache>, portfolioId: string, modelProviderId: string): void {

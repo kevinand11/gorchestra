@@ -4,9 +4,9 @@ import type { CommandContext } from './types'
 import { nonEmptyTrimmedStringPipe } from '../domain/commons'
 import {
 	modelProviderAuthPipe,
-	modelProviderBaseUrlPipe,
 	modelProviderHeadersPipe,
-	modelProviderProtocolPipe,
+	modelProviderOptionsPipe,
+	modelProviderSourcePipe,
 	type ModelProvider,
 } from '../domain/model-provider'
 import type {
@@ -24,10 +24,10 @@ import { auditStamp, createValidModelProvider, nextId, withTransaction } from '.
 
 const createModelProviderInputPipe = v.object({
 	name: nonEmptyTrimmedStringPipe,
-	protocol: modelProviderProtocolPipe,
-	baseUrl: modelProviderBaseUrlPipe,
+	source: modelProviderSourcePipe,
 	auth: v.nullable(modelProviderAuthPipe),
 	headers: modelProviderHeadersPipe,
+	providerOptions: v.defaults(v.nullable(modelProviderOptionsPipe), null),
 })
 export type Input = PipeOutput<typeof createModelProviderInputPipe>
 
@@ -55,10 +55,10 @@ export function createCreateModelProviderCommand(runtime: CoreRuntime): Operatio
 			const provider: ModelProvider = {
 				id: id.value,
 				name: input.name,
-				protocol: input.protocol,
-				baseUrl: input.baseUrl,
+				source: input.source,
 				auth: input.auth,
 				headers: input.headers,
+				providerOptions: input.providerOptions,
 				created: stamp.value,
 				updated: null,
 				archivePeriods: [],
@@ -81,10 +81,10 @@ if (import.meta.vitest) {
 			const result = await command(
 				{
 					name: '  Anthropic  ',
-					protocol: { type: 'anthropic-messages' },
-					baseUrl: ' https://api.example.com ',
+					source: { type: 'custom-hosted', protocol: 'anthropic-messages', baseUrl: ' https://api.example.com ' },
 					auth: null,
 					headers: [],
+					providerOptions: { beta: true },
 				},
 				context,
 			)
@@ -94,10 +94,10 @@ if (import.meta.vitest) {
 				value: {
 					id: 'model-provider-1',
 					name: 'Anthropic',
-					protocol: { type: 'anthropic-messages' },
-					baseUrl: 'https://api.example.com',
+					source: { type: 'custom-hosted', protocol: 'anthropic-messages', baseUrl: 'https://api.example.com' },
 					auth: null,
 					headers: [],
+					providerOptions: { beta: true },
 					created: localStamp(),
 					updated: null,
 					archivePeriods: [],
