@@ -10,6 +10,7 @@ import { useServerApi, type ServerApi } from '../core/server-api'
 type ListedAgentRunProfile = Awaited<ReturnType<ServerApi['listAgentRunProfiles']>>[number]
 type AgentRunProfileDetails = Awaited<ReturnType<ServerApi['getAgentRunProfile']>>
 type SavedAgentRunProfile = Awaited<ReturnType<ServerApi['createAgentRunProfile']>>
+type AgentRunProfileReference = Awaited<ReturnType<ServerApi['listAgentRunProfileReferences']>>[number]
 
 export function useAgentRunProfilesList() {
 	const serverApi = useServerApi()
@@ -73,6 +74,36 @@ export function useAgentRunProfileDetail(agentRunProfileId: Ref<string>) {
 	}
 }
 
+export function useAgentRunProfileReferences(agentRunProfileId: Ref<string>) {
+	const serverApi = useServerApi()
+	const { portfolio } = useSelectedPortfolio()
+	const { queryKeys } = useQueryCache()
+	const {
+		data: agentRunProfileReferences,
+		isLoading: isLoadingAgentRunProfileReferences,
+		error: agentRunProfileReferencesError,
+		hasExecuted: hasLoadedAgentRunProfileReferences,
+		execute: refreshAgentRunProfileReferences,
+		reset: resetAgentRunProfileReferences,
+	} = useFetchAction(() => serverApi.listAgentRunProfileReferences(agentRunProfileId.value), {
+		queryKey: queryKeys.portfolio.agentRunProfileReferences(portfolio.value.id, agentRunProfileId.value),
+		initialData: [] as AgentRunProfileReference[],
+	})
+	const isRefreshingAgentRunProfileReferences = computed(
+		() => isLoadingAgentRunProfileReferences.value && hasLoadedAgentRunProfileReferences.value,
+	)
+
+	return {
+		agentRunProfileReferences,
+		isLoadingAgentRunProfileReferences,
+		agentRunProfileReferencesError,
+		hasLoadedAgentRunProfileReferences,
+		isRefreshingAgentRunProfileReferences,
+		refreshAgentRunProfileReferences,
+		resetAgentRunProfileReferences,
+	}
+}
+
 export function useAgentRunProfileCreate(options: { onSuccess?: (profile: SavedAgentRunProfile) => void | Promise<void> } = {}) {
 	const serverApi = useServerApi()
 	const queryCache = useQueryCache()
@@ -86,8 +117,9 @@ export function useAgentRunProfileCreate(options: { onSuccess?: (profile: SavedA
 		execute: createAgentRunProfile,
 	} = useApiAction(async () => {
 		const profile = await serverApi.createAgentRunProfile(agentRunProfileForm.toModel())
-		queryCache.set(queryKeys.portfolio.agentRunProfile(portfolio.value.id, profile.id), profile)
+		queryCache.set(queryKeys.portfolio.agentRunProfile(portfolio.value.id, profile.id), listedAgentRunProfile(profile))
 		queryCache.invalidate(queryKeys.portfolio.agentRunProfiles(portfolio.value.id), { exact: true })
+		queryCache.invalidate(queryKeys.portfolio.modelProviders(portfolio.value.id))
 		toast.success({ title: 'Agent Run Profile created.', body: profile.name })
 		await options.onSuccess?.(profile)
 		return profile
@@ -109,8 +141,9 @@ export function useAgentRunProfileUpdate(agentRunProfileId: Ref<string>) {
 		execute: updateAgentRunProfile,
 	} = useApiAction(async () => {
 		const profile = await serverApi.updateAgentRunProfile(agentRunProfileId.value, agentRunProfileForm.toModel())
-		queryCache.set(queryKeys.portfolio.agentRunProfile(portfolio.value.id, profile.id), profile)
+		queryCache.set(queryKeys.portfolio.agentRunProfile(portfolio.value.id, profile.id), listedAgentRunProfile(profile))
 		queryCache.invalidate(queryKeys.portfolio.agentRunProfiles(portfolio.value.id), { exact: true })
+		queryCache.invalidate(queryKeys.portfolio.modelProviders(portfolio.value.id))
 		toast.success({ title: 'Agent Run Profile saved.', body: profile.name })
 		return profile
 	})
@@ -130,8 +163,9 @@ export function useAgentRunProfileArchiveActions() {
 		execute: archiveAgentRunProfile,
 	} = useApiAction(async (profile: ListedAgentRunProfile) => {
 		const archived = await serverApi.archiveAgentRunProfile(profile.id)
-		queryCache.set(queryKeys.portfolio.agentRunProfile(portfolio.value.id, archived.id), archived)
+		queryCache.set(queryKeys.portfolio.agentRunProfile(portfolio.value.id, archived.id), listedAgentRunProfile(archived))
 		queryCache.invalidate(queryKeys.portfolio.agentRunProfiles(portfolio.value.id), { exact: true })
+		queryCache.invalidate(queryKeys.portfolio.modelProviders(portfolio.value.id))
 		toast.success({ title: 'Agent Run Profile archived.', body: archived.name })
 		return archived
 	})
@@ -141,8 +175,9 @@ export function useAgentRunProfileArchiveActions() {
 		execute: unarchiveAgentRunProfile,
 	} = useApiAction(async (profile: ListedAgentRunProfile) => {
 		const unarchived = await serverApi.unarchiveAgentRunProfile(profile.id)
-		queryCache.set(queryKeys.portfolio.agentRunProfile(portfolio.value.id, unarchived.id), unarchived)
+		queryCache.set(queryKeys.portfolio.agentRunProfile(portfolio.value.id, unarchived.id), listedAgentRunProfile(unarchived))
 		queryCache.invalidate(queryKeys.portfolio.agentRunProfiles(portfolio.value.id), { exact: true })
+		queryCache.invalidate(queryKeys.portfolio.modelProviders(portfolio.value.id))
 		toast.success({ title: 'Agent Run Profile unarchived.', body: unarchived.name })
 		return unarchived
 	})
@@ -154,5 +189,16 @@ export function useAgentRunProfileArchiveActions() {
 		isUnarchivingAgentRunProfile,
 		unarchiveAgentRunProfileError,
 		unarchiveAgentRunProfile,
+	}
+}
+
+function listedAgentRunProfile(profile: SavedAgentRunProfile): AgentRunProfileDetails {
+	return {
+		id: profile.id,
+		name: profile.name,
+		modelUse: profile.modelUse,
+		created: profile.created,
+		updated: profile.updated,
+		archived: profile.archivePeriods.at(-1)?.unarchived === null,
 	}
 }

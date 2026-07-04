@@ -32,6 +32,13 @@ export function createAgentRunProfilesApiRouter(context: ServerApiContext) {
 				response: Queries.GetAgentRunProfile.resultPipe,
 			},
 		})(async (req) => getSelectedPortfolioAgentRunProfile(context, req.cookies, req.params.agentRunProfileId))
+		.get('/agent-run-profiles/:agentRunProfileId/references', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ agentRunProfileId: idPipe }),
+				response: Queries.ListAgentRunProfileReferences.resultPipe,
+			},
+		})(async (req) => listSelectedPortfolioAgentRunProfileReferences(context, req.cookies, req.params.agentRunProfileId))
 		.put('/agent-run-profiles/:agentRunProfileId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
@@ -74,6 +81,17 @@ function getSelectedPortfolioAgentRunProfile(
 	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
 		const profile = await core.queries.getAgentRunProfile({ agentRunProfileId })
 		return profile.ok ? profile.value : throwCoreOperationError(profile.error)
+	})
+}
+
+function listSelectedPortfolioAgentRunProfileReferences(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	agentRunProfileId: string,
+): Promise<Queries.ListAgentRunProfileReferences.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
+		const references = await core.queries.listAgentRunProfileReferences({ agentRunProfileId })
+		return references.ok ? references.value : throwCoreOperationError(references.error)
 	})
 }
 

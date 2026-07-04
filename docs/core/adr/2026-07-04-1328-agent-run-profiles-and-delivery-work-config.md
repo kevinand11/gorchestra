@@ -8,6 +8,7 @@ We chose direct profile selection for Planning and Revision Planning, required P
 
 - Agent Run Profile create/update validates that its Model Use Config references an active Model, active Model Provider, and available Model Thinking Level.
 - Model reference queries include Agent Run Profiles, but not per-run profile snapshots, current overrides, or override history events.
+- Agent Run Profile reference queries include Project Config and Delivery Config references by execution/revision-execution role, include null revision-execution selections as revision-execution references to the execution profile, include closed Delivery Config references as inactive, and exclude per-run profile snapshots and transcript history.
 - Project Config is source-type-agnostic and required on Project creation; source-specific setup remains in Project Source or source-specific records.
 - Delivery Config may override the full Delivery Work Config for future work, but does not merge individual fields and does not apply to revision planning.
 - Runtime model selection uses `agentRun.modelUseOverride?.modelUse ?? agentRun.profile.modelUse`; transcript history uses a model-use override changed event with nullable `modelUse`, and no initial model-selection event is emitted.

@@ -35,6 +35,7 @@ export function useProjectConfig(projectId: Ref<string>) {
 		const saved = await serverApi.setProjectConfig(projectId.value, projectConfigForm.toModel())
 		queryCache.set(queryKeys.portfolio.project(portfolio.value.id, saved.id), saved)
 		queryCache.invalidate(queryKeys.portfolio.projects(portfolio.value.id), { exact: true })
+		queryCache.invalidate(queryKeys.portfolio.agentRunProfiles(portfolio.value.id))
 		toast.success({ title: 'Project Config saved.', body: saved.title })
 		return saved
 	})

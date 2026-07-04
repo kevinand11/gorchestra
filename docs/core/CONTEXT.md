@@ -256,6 +256,10 @@ _Avoid_: agent config, runtime profile, provider profile, model provider profile
 The copied profile selection stored on an Agent Run when it is created, containing the selected Agent Run Profile id, profile name, and Model Use Config. Agent Run Profile Snapshots make profile edits apply only to future Agent Runs.
 _Avoid_: live profile pointer, model selection event, profile reference
 
+**Agent Run Profile Reference**:
+A direct Core-owned usage of an Agent Run Profile by a stored reusable configuration model that may select that profile for future Agent Runs. V1 Agent Run Profile References come from Project Config and Delivery Config, distinguish execution and revision-execution roles, treat a null revision-execution profile as using the execution profile, include closed Delivery Config references as inactive, and exclude Agent Run Profile Snapshots, current Agent Run Model Use Overrides, and transcript history.
+_Avoid_: Agent Run history, profile snapshot usage, profile reference count
+
 **Agent Run Model Use Override**:
 A consumer-authorized current Model Use Config stored on an Agent Run that supersedes the Agent Run Profile Snapshot for later turns without changing the selected Agent Run Profile. Transcript events may preserve model switch history, but the override is the current runtime selection.
 _Avoid_: profile switch, transcript-selected model, live profile edit

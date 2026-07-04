@@ -81,7 +81,7 @@ The oldest Portfolio registered for a Workspace. The Default Portfolio is admini
 _Avoid_: Personal Portfolio, Workspace data
 
 **Agent Run Profiles**:
-The selected-Portfolio Server Consumer surface for listing and managing Core Agent Run Profiles. Agent Run Profiles is a top-level Portfolio navigation item and replaces the old singleton Portfolio Config surface.
+The selected-Portfolio Server Consumer surface for listing, creating, managing, editing, and inspecting direct config references for Core Agent Run Profiles. Agent Run Profiles is a top-level Portfolio navigation item and replaces the old singleton Portfolio Config surface; profile creation uses a dedicated New Agent Run Profile page, and individual profile detail pages expose metadata plus Project Config and Delivery Config references.
 _Avoid_: Portfolio Config, model settings, run settings
 
 **Brain**:
