@@ -51,14 +51,6 @@
 							<span>{{ item.label }}</span>
 						</NuxtLink>
 					</nav>
-					<nav class="mt-auto border-t border-dimmer" aria-label="Selected Portfolio configuration navigation">
-						<NuxtLink
-							to="/agent-run-profiles"
-							class="flex min-h-8 items-center justify-between gap-2 px-3 py-2 text-sz-helper font-semibold"
-							:class="navItemClass('/agent-run-profiles')">
-							<span>Agent Run Profiles</span>
-						</NuxtLink>
-					</nav>
 				</div>
 			</slot>
 		</template>
@@ -90,6 +82,7 @@ const primaryNavItems = [
 	{ label: 'Brain', to: '/brain' },
 	{ label: 'Secrets', to: '/secrets' },
 	{ label: 'Models', to: '/models/providers' },
+	{ label: 'Agent Run Profiles', to: '/agent-run-profiles' },
 ]
 
 const { isSigningOut, signOutError, signOut } = useSignout()

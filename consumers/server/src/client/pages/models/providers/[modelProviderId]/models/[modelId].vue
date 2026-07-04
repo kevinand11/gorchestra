@@ -333,7 +333,7 @@ function modelReferenceTitle(reference: ModelReference): string {
 		case 'agent-run-profile':
 			return 'Agent Run Profile'
 		default:
-			throw new Error(`Unexpected Model Reference type: ${String(reference satisfies never)}`)
+			throw new Error(`Unexpected Model Reference type: ${String(reference.type satisfies never)}`)
 	}
 }
 
@@ -342,7 +342,7 @@ function modelReferenceSubtitle(reference: ModelReference): string {
 		case 'agent-run-profile':
 			return reference.agentRunProfileName
 		default:
-			throw new Error(`Unexpected Model Reference type: ${String(reference satisfies never)}`)
+			throw new Error(`Unexpected Model Reference type: ${String(reference.type satisfies never)}`)
 	}
 }
 
@@ -351,7 +351,7 @@ function modelReferenceLocation(reference: ModelReference): string {
 		case 'agent-run-profile':
 			return '/agent-run-profiles'
 		default:
-			throw new Error(`Unexpected Model Reference type: ${String(reference satisfies never)}`)
+			throw new Error(`Unexpected Model Reference type: ${String(reference.type satisfies never)}`)
 	}
 }
 
@@ -360,7 +360,7 @@ function modelReferenceKey(reference: ModelReference): string {
 		case 'agent-run-profile':
 			return `${reference.type}:${reference.agentRunProfileId}`
 		default:
-			throw new Error(`Unexpected Model Reference type: ${String(reference satisfies never)}`)
+			throw new Error(`Unexpected Model Reference type: ${String(reference.type satisfies never)}`)
 	}
 }
 </script>

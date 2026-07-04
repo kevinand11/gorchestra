@@ -21,6 +21,7 @@
 						id="plan-agent-run-profile"
 						v-model="planCreationForm.agentRunProfileId"
 						:options="activeAgentRunProfileOptions"
+						placeholder="Select Agent Run Profile"
 						:invalid="!!planCreationForm.errors.agentRunProfileId" />
 				</UiFormGroup>
 				<div class="mt-3 flex flex-wrap items-center gap-2">

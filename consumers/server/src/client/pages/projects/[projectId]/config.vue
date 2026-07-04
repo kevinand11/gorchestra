@@ -20,6 +20,7 @@
 							id="execution-profile"
 							v-model="projectConfigForm.executionAgentRunProfileId"
 							:options="activeAgentRunProfileOptions"
+							placeholder="Select execution profile"
 							:invalid="!!projectConfigForm.errors.executionAgentRunProfileId" />
 					</UiFormGroup>
 					<UiFormGroup
@@ -30,6 +31,7 @@
 							id="revision-execution-profile"
 							v-model="projectConfigForm.revisionExecutionAgentRunProfileId"
 							:options="[{ value: null, label: 'Use execution profile' }, ...activeAgentRunProfileOptions]"
+							placeholder="Select revision profile"
 							:invalid="!!projectConfigForm.errors.revisionExecutionAgentRunProfileId" />
 					</UiFormGroup>
 					<UiFormGroup

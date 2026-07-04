@@ -32,6 +32,7 @@
 						id="agent-run-profile-model"
 						v-model="agentRunProfileForm.modelUse.modelId.value"
 						:options="modelSelect.modelOptions.value"
+						placeholder="Select Model"
 						:invalid="!!agentRunProfileForm.modelUse.errors.modelId" />
 				</UiFormGroup>
 				<UiFormGroup
@@ -42,6 +43,7 @@
 						id="agent-run-profile-thinking"
 						v-model="agentRunProfileForm.modelUse.thinkingLevel.value"
 						:options="modelSelect.thinkingLevelOptions.value"
+						placeholder="Select thinking"
 						:invalid="!!agentRunProfileForm.modelUse.errors.thinkingLevel" />
 				</UiFormGroup>
 			</div>

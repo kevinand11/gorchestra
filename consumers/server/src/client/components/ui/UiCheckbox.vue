@@ -31,8 +31,6 @@ const props = withDefaults(
 	}>(),
 	{
 		type: 'checkbox',
-		value: true as T,
-		uncheckedValue: false as T,
 		disabled: false,
 		description: undefined,
 		reverse: false,
@@ -40,8 +38,10 @@ const props = withDefaults(
 )
 
 const model = defineModel<T | T[]>({ required: true })
+const checkedValue = computed<T>(() => props.value ?? (true as T))
+const uncheckedValue = computed<T>(() => props.uncheckedValue ?? (false as T))
 const isSelected = computed(() =>
-	Array.isArray(model.value) ? arrayIncludes(model.value, props.value) : differ.equal(model.value, props.value),
+	Array.isArray(model.value) ? arrayIncludes(model.value, checkedValue.value) : differ.equal(model.value, checkedValue.value),
 )
 const checkboxClass = computed(() => [
 	'mt-0.5 flex size-4 shrink-0 items-center justify-center border text-[10px] font-semibold leading-none transition peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary',
@@ -62,11 +62,11 @@ function toggle(): void {
 }
 
 function toggledScalar(): T {
-	return isSelected.value ? props.uncheckedValue : props.value
+	return isSelected.value ? uncheckedValue.value : checkedValue.value
 }
 
 function toggledArray(values: T[]): T[] {
-	return isSelected.value ? values.filter((value) => !differ.equal(value, props.value)) : [...values, props.value]
+	return isSelected.value ? values.filter((value) => !differ.equal(value, checkedValue.value)) : [...values, checkedValue.value]
 }
 
 function arrayIncludes(values: T[], value: T): boolean {
