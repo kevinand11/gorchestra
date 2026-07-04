@@ -8,6 +8,10 @@ import {
 	createGoogleGenerativeAIModelProviderProtocolProvider,
 	type GoogleGenerativeAIModelProviderProtocolProvider,
 } from './google-generative-ai'
+import {
+	createOpenAIChatCompletionsModelProviderProtocolProvider,
+	type OpenAIChatCompletionsModelProviderProtocolProvider,
+} from './openai-chat-completions'
 import { createOpenAIResponsesModelProviderProtocolProvider, type OpenAIResponsesModelProviderProtocolProvider } from './openai-responses'
 import { providerFailureReason } from './provider-failures'
 import type {
@@ -25,7 +29,13 @@ import type {
 } from './types'
 import type { AgentRunModelMessageOutcome } from '../../domain/agent-run'
 import type { ArchivePeriod, Id } from '../../domain/commons'
-import type { ModelProvider, ModelProviderHeader, ModelProviderProtocol, ModelProviderProtocolType } from '../../domain/model-provider'
+import {
+	modelProviderProtocolForSource,
+	type ModelProvider,
+	type ModelProviderAccessValue,
+	type ModelProviderHeader,
+	type ModelProviderProtocol,
+} from '../../domain/model-provider'
 import type { Secret } from '../../domain/secret'
 import type { CoreStorageOperation } from '../../errors'
 import {
@@ -43,6 +53,7 @@ import { validateCoreServiceOutput } from '../../validation'
 export interface ModelProviderProtocolProviderImplementations {
 	anthropicMessages?: AnthropicMessagesModelProviderProtocolProvider
 	openAIResponses?: OpenAIResponsesModelProviderProtocolProvider
+	openAIChatCompletions?: OpenAIChatCompletionsModelProviderProtocolProvider
 	googleGenerativeAI?: GoogleGenerativeAIModelProviderProtocolProvider
 }
 
@@ -68,6 +79,7 @@ function createConcreteProviders(
 	return {
 		anthropicMessages: createAnthropicMessagesModelProviderProtocolProvider(),
 		openAIResponses: createOpenAIResponsesModelProviderProtocolProvider(),
+		openAIChatCompletions: createOpenAIChatCompletionsModelProviderProtocolProvider(),
 		googleGenerativeAI: createGoogleGenerativeAIModelProviderProtocolProvider(),
 		...implementations,
 	}
@@ -83,14 +95,15 @@ async function preflightModelWithConcreteProviders(
 	if (!isProtocolAccess(access.value)) return { ok: true, value: access.value }
 
 	const resolution = concreteResolveLanguageModel(concrete, { ...input, mode: 'preflight', access: access.value })
+	const protocol = modelProviderProtocolForSource(input.modelProvider.source)
 	if (!resolution.ok)
 		return {
 			ok: true,
-			value: modelProviderProtocolPreflight(input.modelProvider.protocol, { type: 'failed', reason: resolution.error }),
+			value: modelProviderProtocolPreflight(protocol, { type: 'failed', reason: resolution.error }),
 		}
 
 	const preflight = await runGenerationPreflight(resolution.value)
-	return { ok: true, value: modelProviderProtocolPreflight(input.modelProvider.protocol, preflight) }
+	return { ok: true, value: modelProviderProtocolPreflight(protocol, preflight) }
 }
 
 async function runGenerationPreflight(
@@ -135,15 +148,18 @@ function concreteResolveLanguageModel(
 	concrete: Required<ModelProviderProtocolProviderImplementations>,
 	input: AISDKLanguageModelResolutionInput,
 ): Result<AISDKLanguageModelResolution, ResolveAISDKLanguageModelError> {
-	switch (input.modelProvider.protocol.type) {
+	const protocol = modelProviderProtocolForSource(input.modelProvider.source)
+	switch (protocol) {
 		case 'anthropic-messages':
-			return concrete.anthropicMessages.resolveLanguageModel(protocolProviderInput(input, 'anthropic-messages'))
+			return concrete.anthropicMessages.resolveLanguageModel(protocolProviderInput(input, protocol))
 		case 'openai-responses':
-			return concrete.openAIResponses.resolveLanguageModel(protocolProviderInput(input, 'openai-responses'))
+			return concrete.openAIResponses.resolveLanguageModel(protocolProviderInput(input, protocol))
+		case 'openai-chat-completions':
+			return concrete.openAIChatCompletions.resolveLanguageModel(protocolProviderInput(input, protocol))
 		case 'google-generative-ai':
-			return concrete.googleGenerativeAI.resolveLanguageModel(protocolProviderInput(input, 'google-generative-ai'))
+			return concrete.googleGenerativeAI.resolveLanguageModel(protocolProviderInput(input, protocol))
 		default:
-			throw new Error(`Unexpected Model Provider Protocol: ${String(input.modelProvider.protocol satisfies never)}`)
+			throw new Error(`Unexpected Model Provider Protocol: ${String(protocol satisfies never)}`)
 	}
 }
 
@@ -201,9 +217,9 @@ function readAuthSecretReadiness(
 ): Promise<Result<ModelProviderSecretReadiness, ModelProviderSecretReadinessError>> {
 	return modelProvider.auth === null
 		? Promise.resolve({ ok: true, value: { type: 'passed', secrets: [] } })
-		: readSecretReadiness(storage, modelProvider, modelProvider.auth.secretId, {
-				missing: { type: 'model-provider-auth-secret-missing', secretId: modelProvider.auth.secretId },
-				inactive: { type: 'model-provider-auth-secret-inactive', secretId: modelProvider.auth.secretId },
+		: readSecretReadiness(storage, modelProvider, secretIdFromAccessValue(modelProvider.auth.value), {
+				missing: { type: 'model-provider-auth-secret-missing', secretId: secretIdFromAccessValue(modelProvider.auth.value) },
+				inactive: { type: 'model-provider-auth-secret-inactive', secretId: secretIdFromAccessValue(modelProvider.auth.value) },
 			})
 }
 
@@ -225,9 +241,10 @@ function readHeaderSecretRef(
 	modelProvider: ModelProvider,
 	header: ModelProviderHeader,
 ): Promise<Result<ModelProviderSecretReadiness, ModelProviderSecretReadinessError>> {
-	return readSecretReadiness(storage, modelProvider, header.valueSecretId, {
-		missing: { type: 'model-provider-header-secret-missing', secretId: header.valueSecretId, headerName: header.name },
-		inactive: { type: 'model-provider-header-secret-inactive', secretId: header.valueSecretId, headerName: header.name },
+	const secretId = secretIdFromAccessValue(header.value)
+	return readSecretReadiness(storage, modelProvider, secretId, {
+		missing: { type: 'model-provider-header-secret-missing', secretId, headerName: header.name },
+		inactive: { type: 'model-provider-header-secret-inactive', secretId, headerName: header.name },
 	})
 }
 
@@ -260,7 +277,10 @@ type SecretFailureReasons = {
 }
 
 function secretFailure(modelProvider: ModelProvider, reason: ModelProviderProtocolPreflightFailureReason): ModelProviderSecretReadiness {
-	return { type: 'failed', preflight: modelProviderProtocolPreflight(modelProvider.protocol, { type: 'failed', reason }) }
+	return {
+		type: 'failed',
+		preflight: modelProviderProtocolPreflight(modelProviderProtocolForSource(modelProvider.source), { type: 'failed', reason }),
+	}
 }
 
 function combineSecretReadiness(
@@ -298,9 +318,10 @@ async function resolveModelProviderProtocolAccess(
 
 	const secretValues = secretValuesForIds(secretIds, secrets)
 	const missingSecret = secretValues.find(isMissingSecretValueRef)
-	if (missingSecret !== undefined) return { ok: true, value: unresolvedSecretPreflight(modelProvider.protocol, missingSecret.secretId) }
+	const protocol = modelProviderProtocolForSource(modelProvider.source)
+	if (missingSecret !== undefined) return { ok: true, value: unresolvedSecretPreflight(protocol, missingSecret.secretId) }
 
-	const resolution = await resolveSecretValueOutput(services, modelProvider.protocol, secretValues.filter(isResolvableSecretValue))
+	const resolution = await resolveSecretValueOutput(services, protocol, secretValues.filter(isResolvableSecretValue))
 	return resolution.ok ? accessFromSecretValueResolution(resolution.value, modelProvider) : resolution
 }
 
@@ -335,22 +356,42 @@ function accessFromResolvedSecretValues(
 	const missingSecretId = secretIdsFromModelProvider(modelProvider).find((secretId) => shapeValidation.value[secretId] === undefined)
 	return missingSecretId === undefined
 		? { ok: true, value: resolvedAccess(modelProvider, shapeValidation.value) }
-		: { ok: true, value: unresolvedSecretPreflight(modelProvider.protocol, missingSecretId) }
+		: { ok: true, value: unresolvedSecretPreflight(modelProviderProtocolForSource(modelProvider.source), missingSecretId) }
 }
 
 function resolvedAccess(modelProvider: ModelProvider, values: ResolvedSecretValues): ModelProviderProtocolAccess {
 	return {
-		auth: modelProvider.auth === null ? null : { type: 'apiKey', plaintext: values[modelProvider.auth.secretId] ?? '' },
-		headers: modelProvider.headers.map((header) => ({ name: header.name, plaintext: values[header.valueSecretId] ?? '' })),
+		auth:
+			modelProvider.auth === null
+				? null
+				: { type: 'apiKey', plaintext: values[secretIdFromAccessValue(modelProvider.auth.value)] ?? '' },
+		headers: modelProvider.headers.map((header) => ({
+			name: header.name,
+			plaintext: values[secretIdFromAccessValue(header.value)] ?? '',
+		})),
 	}
 }
 
 function secretIdsFromModelProvider(modelProvider: ModelProvider): Id[] {
-	const secretIds = [modelProvider.auth?.secretId, ...modelProvider.headers.map((header) => header.valueSecretId)].filter(
-		(secretId): secretId is Id => secretId !== undefined,
-	)
+	return [
+		...new Set([
+			...(modelProvider.auth === null ? [] : secretIdsFromAccessValue(modelProvider.auth.value)),
+			...modelProvider.headers.flatMap((header) => secretIdsFromAccessValue(header.value)),
+		]),
+	]
+}
 
-	return [...new Set(secretIds)]
+function secretIdsFromAccessValue(value: ModelProviderAccessValue): Id[] {
+	switch (value.type) {
+		case 'secret':
+			return [value.secretId]
+		default:
+			throw new Error('Unexpected Model Provider access value.')
+	}
+}
+
+function secretIdFromAccessValue(value: ModelProviderAccessValue): Id {
+	return secretIdsFromAccessValue(value)[0]!
 }
 
 function secretValuesForIds(
@@ -375,14 +416,11 @@ function unresolvedSecretPreflight(protocol: ModelProviderProtocol, secretId: Id
 	return modelProviderProtocolPreflight(protocol, { type: 'failed', reason: { type: 'model-provider-secret-unresolved', secretId } })
 }
 
-function protocolProviderInput<Protocol extends ModelProviderProtocolType>(
+function protocolProviderInput<Protocol extends ModelProviderProtocol>(
 	input: AISDKLanguageModelResolutionInput,
 	protocol: Protocol,
 ): ModelProviderProtocolProviderResolveInput<Protocol> {
-	return {
-		...input,
-		modelProvider: { ...input.modelProvider, protocol: { type: protocol } },
-	} as ModelProviderProtocolProviderResolveInput<Protocol>
+	return { ...input, protocol }
 }
 
 function isProtocolAccess(value: ModelProviderProtocolAccess | ModelProviderProtocolPreflight): value is ModelProviderProtocolAccess {
@@ -431,11 +469,13 @@ export function modelProviderProtocolFailureSummary(
 }
 
 function protocolDisplayName(protocol: ModelProviderProtocol): string {
-	switch (protocol.type) {
+	switch (protocol) {
 		case 'anthropic-messages':
 			return 'Anthropic Messages'
 		case 'openai-responses':
 			return 'OpenAI Responses'
+		case 'openai-chat-completions':
+			return 'OpenAI Chat Completions'
 		case 'google-generative-ai':
 			return 'Google Generative AI'
 		default:
@@ -445,6 +485,7 @@ function protocolDisplayName(protocol: ModelProviderProtocol): string {
 
 export type { AnthropicMessagesModelProviderProtocolProvider } from './anthropic-messages'
 export type { GoogleGenerativeAIModelProviderProtocolProvider } from './google-generative-ai'
+export type { OpenAIChatCompletionsModelProviderProtocolProvider } from './openai-chat-completions'
 export type { OpenAIResponsesModelProviderProtocolProvider } from './openai-responses'
 export type {
 	AISDKLanguageModelResolution,
@@ -552,6 +593,7 @@ if (import.meta.vitest) {
 			providerId: 'model-provider-1',
 			name: 'GPT 5',
 			providerModelId: 'gpt-5',
+			providerOptions: null,
 			capabilities: defaultModelCapabilities,
 			pricing: null,
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
@@ -564,10 +606,10 @@ if (import.meta.vitest) {
 		return {
 			id: 'model-provider-1',
 			name: 'OpenAI',
-			protocol: { type: 'openai-responses' },
-			baseUrl: 'https://api.openai.com/v1',
-			auth: { type: 'apiKey', secretId: 'secret-1' },
-			headers: [{ name: 'OpenAI-Organization', valueSecretId: 'secret-2' }],
+			source: { type: 'openai-responses' },
+			auth: { value: { type: 'secret', secretId: 'secret-1' } },
+			headers: [{ name: 'OpenAI-Organization', value: { type: 'secret', secretId: 'secret-2' } }],
+			providerOptions: null,
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 			updated: null,
 			archivePeriods: [],

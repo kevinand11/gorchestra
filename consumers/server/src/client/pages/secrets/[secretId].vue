@@ -91,6 +91,7 @@ const { secret, isLoadingSecret, secretError, hasLoadedSecret, isRefreshingSecre
 
 const modelProviderProtocolLabels: Record<string, string> = {
 	'anthropic-messages': 'Anthropic Messages',
+	'openai-chat-completions': 'OpenAI Chat Completions',
 	'openai-responses': 'OpenAI Responses',
 	'google-generative-ai': 'Google Generative AI',
 }
@@ -131,9 +132,9 @@ function referenceSubtitle(reference: SecretReference): string {
 		case 'repository-access':
 			return 'GitHub Repository access'
 		case 'model-provider-auth':
-			return `${modelProviderProtocolLabel(reference.protocol.type)} API key`
+			return `${modelProviderProtocolLabel(reference.protocol)} API key`
 		case 'model-provider-header':
-			return `${modelProviderProtocolLabel(reference.protocol.type)} custom header`
+			return `${modelProviderProtocolLabel(reference.protocol)} custom header`
 		case 'secret-binding':
 			return `${secretBindingScopeLabel(reference.scope)} environment variable`
 		default:

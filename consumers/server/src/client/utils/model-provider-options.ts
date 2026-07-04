@@ -48,7 +48,7 @@ export function modelHasThinkingLevel(
 
 function activeModelOptionGroup(provider: ListedModelProvider): ModelSelectOptionGroup {
 	return {
-		label: `${provider.name} · ${provider.protocol.type}`,
+		label: `${provider.name} · ${provider.protocol}`,
 		options: provider.archived ? [] : provider.models.filter((model) => !model.archived).map(modelOption),
 	}
 }
@@ -106,10 +106,11 @@ if (import.meta.vitest) {
 		return {
 			id: input.id,
 			name: input.id,
-			protocol: { type: 'openai-responses' },
-			baseUrl: 'https://api.example.com',
+			source: { type: 'openai-responses' },
+			protocol: 'openai-responses',
 			auth: null,
 			headers: [],
+			providerOptions: null,
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 			updated: null,
 			archived: input.archived ?? false,
@@ -128,6 +129,7 @@ if (import.meta.vitest) {
 			providerId: 'provider-1',
 			name: input.id,
 			providerModelId: input.id,
+			providerOptions: null,
 			capabilities: { inputs: ['text'], contextWindowTokens: 128000, maxOutputTokens: 16384, thinking: null },
 			pricing: null,
 			availableThinkingLevels: input.availableThinkingLevels,

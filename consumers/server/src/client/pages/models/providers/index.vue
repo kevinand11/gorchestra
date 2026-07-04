@@ -33,7 +33,7 @@
 					<span class="min-w-0">
 						<strong class="block truncate font-semibold">{{ provider.name }}</strong>
 						<span class="mt-1 block truncate text-sz-helper text-dim">
-							<span class="font-mono">{{ provider.protocol.type }}</span> · {{ provider.baseUrl }}
+							<span class="font-mono">{{ provider.protocol }}</span> · {{ modelProviderSourceLabel(provider.source) }}
 						</span>
 					</span>
 				</NuxtLink>
@@ -74,9 +74,27 @@
 </template>
 
 <script setup lang="ts">
+import type { ModelProviderSource } from '../../../composables/core/server-api'
 import { useModelProvidersList } from '../../../composables/portfolio/models/providers'
 
 definePageMeta({ middleware: ['has-selection'] })
 
 const { providers, isLoadingProviders, providersError, hasLoadedProviders, isRefreshingProviders } = useModelProvidersList()
+
+function modelProviderSourceLabel(source: ModelProviderSource): string {
+	switch (source.type) {
+		case 'openai-responses':
+			return 'OpenAI Responses'
+		case 'anthropic':
+			return 'Anthropic'
+		case 'google':
+			return 'Google'
+		case 'groq':
+			return 'Groq'
+		case 'custom-hosted':
+			return source.baseUrl
+		default:
+			throw new Error(`Unexpected Model Provider Source: ${String(source satisfies never)}`)
+	}
+}
 </script>

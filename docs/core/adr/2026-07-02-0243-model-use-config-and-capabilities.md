@@ -6,7 +6,7 @@ Model thinking metadata uses `capabilities.thinking: { supportedLevels } | null`
 
 Agent Run model selection remains a single `agent-run-model-selected` transcript event containing only the selected `modelId`, selected `thinkingLevel`, and authorization. Core deliberately does not snapshot Model Provider IDs or protocol variants in the event for now because they are inferable from the selected Model and current immutable Model Provider; protocol snapshotting can be added later if replay/debug needs justify storing redundant provider behavior metadata.
 
-Model Provider Protocol is a discriminated variant rather than a string so future protocol-specific options have a stable home, but protocol options are deferred until there is a concrete provider compatibility need. Because this is pre-v1, Core storage and API shapes move directly to the new forms without compatibility inputs or storage migrations.
+Model Provider Protocol was originally described here as a discriminated variant stored directly on Model Provider records. That provider-shape detail is superseded by `2026-07-04-1208-source-owned-model-provider-identity-and-provider-options.md`: Model Providers now store an immutable Model Provider Source, built-in sources derive a flat protocol by construction, and custom-hosted sources declare the flat protocol they implement. Because this is pre-v1, Core storage and API shapes continue to move directly to new forms without compatibility inputs or storage migrations.
 
 ## Consequences
 

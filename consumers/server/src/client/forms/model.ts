@@ -9,6 +9,7 @@ import type {
 	PositiveModelThinkingLevel,
 	UpdateModelInput,
 } from '../composables/core/server-api'
+import { isJsonObjectText, providerOptionsFromText, providerOptionsText } from '../utils/provider-options-text'
 
 export type ModelCreationFormModel = CreateModelInput
 export type ModelUpdateFormModel = UpdateModelInput
@@ -18,10 +19,12 @@ export const positiveThinkingLevels: PositiveModelThinkingLevel[] = ['minimal', 
 type ModelCreationFormFields = {
 	name: string
 	providerModelId: string
+	providerOptionsText: string
 }
 
 type ModelUpdateFormFields = {
 	name: string
+	providerOptionsText: string
 	capabilities: ModelCapabilitiesFormDraft
 	pricing: ModelPricingFormDraft
 }
@@ -45,6 +48,7 @@ type ModelPricingFormFields = {
 
 const modelNamePipe = v.string().pipe(v.min<string>(1, 'Enter a Model name'))
 const providerModelIdPipe = v.string().pipe(v.min<string>(1, 'Enter a provider model id'))
+const providerOptionsTextPipe = v.string().pipe(v.custom(isJsonObjectText, 'Enter a JSON object or leave empty'))
 const modelInputsPipe = v.array(v.in(['text']))
 const positiveIntegerPipe = v.number().pipe(v.int(), v.gte(1))
 const nonNegativeNumberPipe = v.number().pipe(v.gte(0))
@@ -57,17 +61,22 @@ const defaultModelCapabilities: ModelCapabilities = {
 }
 
 export class ModelCreationFormDraft extends FormDraft<ModelCreationFormModel, ModelCreationFormModel, ModelCreationFormFields> {
-	protected readonly rules = { name: modelNamePipe, providerModelId: providerModelIdPipe }
+	protected readonly rules = { name: modelNamePipe, providerModelId: providerModelIdPipe, providerOptionsText: providerOptionsTextPipe }
 
 	constructor() {
-		super({ name: '', providerModelId: '' })
+		super({ name: '', providerModelId: '', providerOptionsText: '' })
 	}
 
-	protected model = (): ModelCreationFormModel => ({ name: this.name, providerModelId: this.providerModelId })
+	protected model = (): ModelCreationFormModel => ({
+		name: this.name,
+		providerModelId: this.providerModelId,
+		providerOptions: providerOptionsFromText(this.providerOptionsText),
+	})
 
 	protected load = (entity: ModelCreationFormModel): void => {
 		this.name = entity.name
 		this.providerModelId = entity.providerModelId
+		this.providerOptionsText = providerOptionsText(entity.providerOptions)
 	}
 }
 
@@ -186,12 +195,13 @@ export class ModelPricingFormDraft extends FormDraft<ModelTokenPricing | null, M
 export class ModelUpdateFormDraft extends FormDraft<ModelUpdateFormModel, ModelUpdateFormModel, ModelUpdateFormFields> {
 	protected readonly rules = {
 		name: modelNamePipe,
+		providerOptionsText: providerOptionsTextPipe,
 		capabilities: formDraftPipe<ModelCapabilitiesFormDraft>(),
 		pricing: formDraftPipe<ModelPricingFormDraft>(),
 	}
 
 	constructor() {
-		super({ name: '', capabilities: new ModelCapabilitiesFormDraft(), pricing: new ModelPricingFormDraft() })
+		super({ name: '', providerOptionsText: '', capabilities: new ModelCapabilitiesFormDraft(), pricing: new ModelPricingFormDraft() })
 	}
 
 	setConfigurableThinkingLevels(levels: PositiveModelThinkingLevel[]): void {
@@ -200,12 +210,14 @@ export class ModelUpdateFormDraft extends FormDraft<ModelUpdateFormModel, ModelU
 
 	protected model = (): ModelUpdateFormModel => ({
 		name: this.name,
+		providerOptions: providerOptionsFromText(this.providerOptionsText),
 		capabilities: this.capabilities.toModel(),
 		pricing: this.pricing.toModel(),
 	})
 
 	protected load = (entity: ModelUpdateFormModel): void => {
 		this.name = entity.name
+		this.providerOptionsText = providerOptionsText(entity.providerOptions)
 		this.capabilities.loadEntity(entity.capabilities)
 		this.pricing.loadEntity(entity.pricing)
 	}
@@ -253,13 +265,22 @@ if (import.meta.vitest) {
 
 			factory.name = '  GPT 4.1  '
 			factory.providerModelId = '  gpt-4.1  '
+			factory.providerOptionsText = '{"serviceTier":"flex"}'
 
 			expect(factory.valid).toBe(true)
-			expect(factory.toModel()).toEqual({ name: '  GPT 4.1  ', providerModelId: '  gpt-4.1  ' })
+			expect(factory.toModel()).toEqual({
+				name: '  GPT 4.1  ',
+				providerModelId: '  gpt-4.1  ',
+				providerOptions: { serviceTier: 'flex' },
+			})
 		})
 
 		it('rejects empty Model creation input', () => {
-			const factory = new ModelCreationFormDraft().loadEntity({ name: 'Model', providerModelId: 'provider-model' })
+			const factory = new ModelCreationFormDraft().loadEntity({
+				name: 'Model',
+				providerModelId: 'provider-model',
+				providerOptions: null,
+			})
 
 			factory.name = ''
 			factory.providerModelId = ''
@@ -281,7 +302,12 @@ if (import.meta.vitest) {
 				cacheWrite: 500_000,
 			}
 
-			factory.loadEntity({ name: 'Sonnet 4', capabilities: defaultModelCapabilities, pricing })
+			factory.loadEntity({
+				name: 'Sonnet 4',
+				providerOptions: { serviceTier: 'flex' },
+				capabilities: defaultModelCapabilities,
+				pricing,
+			})
 			factory.name = '  Sonnet 4 updated  '
 			factory.capabilities.maxOutputTokens = 8192
 			factory.capabilities.thinking.high = true
@@ -291,6 +317,7 @@ if (import.meta.vitest) {
 			expect(factory.valid).toBe(true)
 			expect(factory.toModel()).toEqual({
 				name: '  Sonnet 4 updated  ',
+				providerOptions: { serviceTier: 'flex' },
 				capabilities: {
 					...defaultModelCapabilities,
 					maxOutputTokens: 8192,
@@ -310,6 +337,7 @@ if (import.meta.vitest) {
 			const factory = new ModelUpdateFormDraft()
 			factory.loadEntity({
 				name: 'Gemini',
+				providerOptions: null,
 				capabilities: { ...defaultModelCapabilities, thinking: { supportedLevels: ['low', 'xhigh'] } },
 				pricing: null,
 			})

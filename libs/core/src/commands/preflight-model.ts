@@ -4,7 +4,12 @@ import type { CommandContext } from './types'
 import { idPipe } from '../domain/commons'
 import type { ValidationEvidence } from '../domain/evidence'
 import { defaultModelCapabilities, type Model } from '../domain/model'
-import type { ModelProvider, ModelProviderHeader } from '../domain/model-provider'
+import {
+	modelProviderProtocolForSource,
+	type ModelProvider,
+	type ModelProviderAccessValue,
+	type ModelProviderHeader,
+} from '../domain/model-provider'
 import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
@@ -48,12 +53,10 @@ export function createPreflightModelCommand(runtime: CoreRuntime): Operation {
 		const readiness = await readModelPreflightReadiness(options, input)
 		if (!readiness.ok) return readiness
 		if (readiness.value.type === 'failed') {
+			const protocol = modelProviderProtocolForSource(readiness.value.modelProvider.source)
 			return {
 				ok: true,
-				value: modelPreflightEvidence(
-					false,
-					modelProviderProtocolPreflight(readiness.value.modelProvider.protocol, readiness.value).summary,
-				),
+				value: modelPreflightEvidence(false, modelProviderProtocolPreflight(protocol, readiness.value).summary),
 			}
 		}
 
@@ -152,7 +155,7 @@ function modelArchivalReadiness(model: Model, modelProvider: ModelProvider): Mod
 }
 
 function modelThinkingReadiness(model: Model, modelProvider: ModelProvider): ModelPreflightFactReadiness {
-	const validation = validateModelThinkingCapabilityForProtocol(model, modelProvider.protocol)
+	const validation = validateModelThinkingCapabilityForProtocol(model, modelProviderProtocolForSource(modelProvider.source))
 	return validation.ok ? { type: 'passed', secrets: [] } : { type: 'failed', modelProvider, reason: validation.error }
 }
 
@@ -162,7 +165,8 @@ async function validateAuthSecret(
 ): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
 	if (modelProvider.auth === null) return { ok: true, value: { type: 'passed', secrets: [] } }
 
-	const secret = await validateActiveSecret(storage, modelProvider.auth.secretId)
+	const secretId = secretIdFromAccessValue(modelProvider.auth.value)
+	const secret = await validateActiveSecret(storage, secretId)
 	return secret.ok
 		? { ok: true, value: { type: 'passed', secrets: [secretValueRef(secret.value)] } }
 		: mapAuthSecretFailure(modelProvider, secret.error)
@@ -174,7 +178,7 @@ async function validateHeaderSecrets(
 ): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
 	const secrets: ResolvableSecretValue[] = []
 	for (const header of modelProvider.headers) {
-		const secret = await validateActiveSecret(storage, header.valueSecretId)
+		const secret = await validateActiveSecret(storage, secretIdFromAccessValue(header.value))
 		if (!secret.ok) return mapHeaderSecretFailure(modelProvider, header, secret.error)
 		secrets.push(secretValueRef(secret.value))
 	}
@@ -233,6 +237,15 @@ function mapHeaderSecretFailure(
 	}
 
 	return { ok: false, error }
+}
+
+function secretIdFromAccessValue(value: ModelProviderAccessValue): string {
+	switch (value.type) {
+		case 'secret':
+			return value.secretId
+		default:
+			throw new Error('Unexpected Model Provider access value.')
+	}
 }
 
 function modelPreflightEvidence(passed: boolean, summary: string): ValidationEvidence {
@@ -300,7 +313,7 @@ if (import.meta.vitest) {
 			const options = modelFixture()
 			options.tx.modelProviders.records.set('model-provider-1', {
 				...options.tx.modelProviders.records.get('model-provider-1')!,
-				protocol: { type: 'google-generative-ai' },
+				source: { type: 'google' },
 			})
 			options.tx.models.records.set('model-1', {
 				...options.tx.models.records.get('model-1')!,
@@ -426,6 +439,7 @@ if (import.meta.vitest) {
 			providerId: 'model-provider-1',
 			name: 'GPT 5',
 			providerModelId: 'gpt-5',
+			providerOptions: null,
 			capabilities: defaultModelCapabilities,
 			pricing: null,
 			created: stamp,
@@ -438,10 +452,10 @@ if (import.meta.vitest) {
 		return {
 			id: 'model-provider-1',
 			name: 'OpenAI',
-			protocol: { type: 'openai-responses' },
-			baseUrl: 'https://api.openai.com/v1',
-			auth: { type: 'apiKey', secretId: 'secret-1' },
-			headers: [{ name: 'OpenAI-Organization', valueSecretId: 'secret-2' }],
+			source: { type: 'openai-responses' },
+			auth: { value: { type: 'secret', secretId: 'secret-1' } },
+			headers: [{ name: 'OpenAI-Organization', value: { type: 'secret', secretId: 'secret-2' } }],
+			providerOptions: null,
 			created: stamp,
 			updated: null,
 			archivePeriods: archived ? [{ archived: stamp, unarchived: null }] : [],

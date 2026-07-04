@@ -1,6 +1,11 @@
 import { isArchived } from '../commands/utils/storage'
 import { defaultModelCapabilities, type ListedModel, type Model } from '../domain/model'
-import type { ListedModelProvider, ModelProvider, ModelProviderSummary } from '../domain/model-provider'
+import {
+	modelProviderProtocolForSource,
+	type ListedModelProvider,
+	type ModelProvider,
+	type ModelProviderSummary,
+} from '../domain/model-provider'
 import { availableThinkingLevelsForModel, configurableThinkingLevelsForProtocol } from '../providers/model-provider-protocol/thinking'
 
 export function listedModelProviders(modelProviders: ModelProvider[], models: Model[]): ListedModelProvider[] {
@@ -8,11 +13,13 @@ export function listedModelProviders(modelProviders: ModelProvider[], models: Mo
 
 	return sortByCreatedAtThenId(modelProviders).map((provider) => {
 		const { archivePeriods, ...providerFields } = provider
+		const protocol = modelProviderProtocolForSource(provider.source)
 		const providerModels = sortByCreatedAtThenId(modelsByProviderId.get(provider.id) ?? []).map((model) => listedModel(model, provider))
 		return {
 			...providerFields,
+			protocol,
 			archived: isArchived(archivePeriods),
-			configurableThinkingLevels: configurableThinkingLevelsForProtocol(provider.protocol),
+			configurableThinkingLevels: configurableThinkingLevelsForProtocol(protocol),
 			models: providerModels,
 		}
 	})
@@ -20,21 +27,23 @@ export function listedModelProviders(modelProviders: ModelProvider[], models: Mo
 
 export function listedModel(model: Model, provider: ModelProvider): ListedModel {
 	const { archivePeriods, ...modelFields } = model
+	const protocol = modelProviderProtocolForSource(provider.source)
 	return {
 		...modelFields,
 		archived: isArchived(archivePeriods),
-		availableThinkingLevels: availableThinkingLevelsForModel(model, provider.protocol),
+		availableThinkingLevels: availableThinkingLevelsForModel(model, protocol),
 	}
 }
 
 export function modelProviderSummary(provider: ModelProvider): ModelProviderSummary {
+	const protocol = modelProviderProtocolForSource(provider.source)
 	return {
 		id: provider.id,
 		name: provider.name,
-		protocol: provider.protocol,
-		baseUrl: provider.baseUrl,
+		source: provider.source,
+		protocol,
 		archived: isArchived(provider.archivePeriods),
-		configurableThinkingLevels: configurableThinkingLevelsForProtocol(provider.protocol),
+		configurableThinkingLevels: configurableThinkingLevelsForProtocol(protocol),
 	}
 }
 
@@ -73,11 +82,13 @@ if (import.meta.vitest) {
 			expect(listedModelProviders([providerB, providerA], [modelB, modelC, modelA])).toEqual([
 				{
 					...listedProvider(providerA, true),
+					protocol: 'openai-responses',
 					configurableThinkingLevels: ['minimal', 'low', 'medium', 'high', 'xhigh'],
 					models: [listedModelRecord(modelA, false), listedModelRecord(modelB, true, ['none', 'low', 'high'])],
 				},
 				{
 					...listedProvider(providerB, false),
+					protocol: 'openai-responses',
 					configurableThinkingLevels: ['minimal', 'low', 'medium', 'high', 'xhigh'],
 					models: [],
 				},
@@ -89,10 +100,10 @@ if (import.meta.vitest) {
 		return {
 			id: input.id,
 			name: input.id,
-			protocol: { type: 'openai-responses' },
-			baseUrl: 'https://api.example.com',
+			source: { type: 'openai-responses' },
 			auth: null,
 			headers: [],
+			providerOptions: null,
 			created: { origin: 'imported', at: input.createdAt },
 			updated: null,
 			archivePeriods: input.archived === true ? [{ archived: stamp, unarchived: null }] : [],
@@ -111,6 +122,7 @@ if (import.meta.vitest) {
 			providerId: input.providerId,
 			name: input.id,
 			providerModelId: input.id,
+			providerOptions: null,
 			capabilities: { ...defaultModelCapabilities, thinking: input.thinking ?? null },
 			pricing: null,
 			created: { origin: 'imported', at: input.createdAt },
@@ -122,7 +134,7 @@ if (import.meta.vitest) {
 	function listedProvider(
 		provider: ModelProvider,
 		archived: boolean,
-	): Omit<ListedModelProvider, 'configurableThinkingLevels' | 'models'> {
+	): Omit<ListedModelProvider, 'configurableThinkingLevels' | 'models' | 'protocol'> {
 		const { archivePeriods: _archivePeriods, ...providerFields } = provider
 		return { ...providerFields, archived }
 	}

@@ -19,10 +19,18 @@ export type CreateMemoryRevisionInput = {
 	body: string
 }
 
-export type ModelProviderProtocol = { type: 'anthropic-messages' } | { type: 'openai-responses' } | { type: 'google-generative-ai' }
-export type ModelProviderProtocolType = ModelProviderProtocol['type']
-export type ModelProviderAuth = { type: 'apiKey'; secretId: string }
-export type ModelProviderHeader = { name: string; valueSecretId: string }
+export type JsonObject = Record<string, unknown>
+export type ModelProviderProtocol = 'openai-responses' | 'openai-chat-completions' | 'anthropic-messages' | 'google-generative-ai'
+export type ModelProviderProtocolType = ModelProviderProtocol
+export type ModelProviderSource =
+	| { type: 'openai-responses' }
+	| { type: 'anthropic' }
+	| { type: 'google' }
+	| { type: 'groq' }
+	| { type: 'custom-hosted'; protocol: ModelProviderProtocol; baseUrl: string }
+export type ModelProviderAccessValue = { type: 'secret'; secretId: string }
+export type ModelProviderAuth = { value: ModelProviderAccessValue }
+export type ModelProviderHeader = { name: string; value: ModelProviderAccessValue }
 export type ModelThinkingLevel = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 export type PositiveModelThinkingLevel = Exclude<ModelThinkingLevel, 'none'>
 export type ModelThinkingCapability = { supportedLevels: PositiveModelThinkingLevel[] }
@@ -69,15 +77,20 @@ export type SendAgentRunMessageInput = { content: Array<{ type: 'text'; text: st
 
 export type CreateModelProviderInput = {
 	name: string
-	protocol: ModelProviderProtocol
-	baseUrl: string
+	source: ModelProviderSource
 	auth: ModelProviderAuth | null
 	headers: ModelProviderHeader[]
+	providerOptions: JsonObject | null
 }
 
-export type UpdateModelProviderInput = Omit<CreateModelProviderInput, 'protocol'>
-export type CreateModelInput = { name: string; providerModelId: string }
-export type UpdateModelInput = { name: string; capabilities: ModelCapabilities; pricing: ModelTokenPricing | null }
+export type UpdateModelProviderInput = Omit<CreateModelProviderInput, 'source'>
+export type CreateModelInput = { name: string; providerModelId: string; providerOptions: JsonObject | null }
+export type UpdateModelInput = {
+	name: string
+	providerOptions: JsonObject | null
+	capabilities: ModelCapabilities
+	pricing: ModelTokenPricing | null
+}
 
 type ServerApiOptionsResolver = () => ServerApiOptions | null
 type PreconditionRequiredHandler = () => void | Promise<void>

@@ -1,5 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai'
 
+import { resolveProviderOptions } from './options'
 import type { AISDKLanguageModelResolution, ModelProviderProtocolAccess, ModelProviderProtocolProvider } from './types'
 import type { ModelProvider } from '../../domain/model-provider'
 
@@ -19,7 +20,7 @@ export function createOpenAIResponsesModelProviderProtocolProvider(
 				ok: true,
 				value: {
 					languageModel: providerFactory(input).responses(input.model.providerModelId),
-					providerOptions: openAIResponsesProviderOptions(),
+					providerOptions: resolveProviderOptions('openai', { store: false }, input.modelProvider, input.model),
 				},
 			}
 		},
@@ -29,13 +30,24 @@ export function createOpenAIResponsesModelProviderProtocolProvider(
 function createOpenAIResponsesProvider(input: { modelProvider: ModelProvider; access: ModelProviderProtocolAccess }) {
 	return createOpenAI({
 		apiKey: input.access.auth?.plaintext ?? 'unused',
-		baseURL: input.modelProvider.baseUrl,
+		...baseUrlConfig(input.modelProvider),
 		headers: Object.fromEntries(input.access.headers.map((header) => [header.name, header.plaintext])),
 	})
 }
 
-function openAIResponsesProviderOptions(): AISDKLanguageModelResolution['providerOptions'] {
-	return { openai: { store: false } }
+function baseUrlConfig(modelProvider: ModelProvider): { baseURL?: string } {
+	switch (modelProvider.source.type) {
+		case 'openai-responses':
+			return {}
+		case 'custom-hosted':
+			return { baseURL: modelProvider.source.baseUrl }
+		case 'anthropic':
+		case 'google':
+		case 'groq':
+			throw new Error(`Unexpected OpenAI Responses source: ${modelProvider.source.type}`)
+		default:
+			throw new Error(`Unexpected Model Provider Source: ${String(modelProvider.source satisfies never)}`)
+	}
 }
 
 if (import.meta.vitest) {
@@ -43,7 +55,7 @@ if (import.meta.vitest) {
 	const { defaultModelCapabilities } = await import('../../domain/model')
 
 	describe('OpenAI Responses AI SDK resolver', () => {
-		it('uses Responses models and disables OpenAI response storage', () => {
+		it('uses Responses models and disables OpenAI response storage by default', () => {
 			let modelId: string | null = null
 			const provider = createOpenAIResponsesModelProviderProtocolProvider(() => ({
 				responses(id) {
@@ -63,16 +75,32 @@ if (import.meta.vitest) {
 			})
 			expect(modelId).toBe('gpt-5')
 		})
+
+		it('lets explicit model provider options override OpenAI defaults', () => {
+			const provider = createOpenAIResponsesModelProviderProtocolProvider(() => ({ responses: () => 'language-model' }))
+
+			const result = provider.resolveLanguageModel({
+				...input(),
+				modelProvider: { ...input().modelProvider, providerOptions: { store: true, reasoningSummary: 'auto' } },
+			})
+
+			expect(result).toMatchObject({
+				ok: true,
+				value: { providerOptions: { openai: { store: true, reasoningSummary: 'auto' } } },
+			})
+		})
 	})
 
 	function input(): Extract<OpenAIResponsesInput, { mode: 'agent-run' }> {
 		return {
 			mode: 'agent-run',
+			protocol: 'openai-responses',
 			model: {
 				id: 'model-1',
 				providerId: 'model-provider-1',
 				name: 'GPT 5',
 				providerModelId: 'gpt-5',
+				providerOptions: null,
 				capabilities: defaultModelCapabilities,
 				pricing: null,
 				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
@@ -82,10 +110,10 @@ if (import.meta.vitest) {
 			modelProvider: {
 				id: 'model-provider-1',
 				name: 'OpenAI',
-				protocol: { type: 'openai-responses' },
-				baseUrl: 'https://api.openai.com/v1',
+				source: { type: 'openai-responses' },
 				auth: null,
 				headers: [],
+				providerOptions: null,
 				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				updated: null,
 				archivePeriods: [],

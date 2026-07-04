@@ -25,14 +25,20 @@
 							}}</span>
 						</div>
 						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
-							<span class="text-dim">Protocol</span><span class="font-mono">{{ provider.protocol.type }}</span>
+							<span class="text-dim">Source</span><span>{{ modelProviderSourceLabel(provider.source) }}</span>
 						</div>
-						<div class="flex justify-between gap-3 border-b border-dimmer py-2 sm:col-span-2">
-							<span class="text-dim">Base URL</span><span class="min-w-0 truncate font-mono">{{ provider.baseUrl }}</span>
+						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
+							<span class="text-dim">Protocol</span><span class="font-mono">{{ provider.protocol }}</span>
+						</div>
+						<div
+							v-if="provider.source.type === 'custom-hosted'"
+							class="flex justify-between gap-3 border-b border-dimmer py-2 sm:col-span-2">
+							<span class="text-dim">Base URL</span
+							><span class="min-w-0 truncate font-mono">{{ provider.source.baseUrl }}</span>
 						</div>
 						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
 							<span class="text-dim">Auth Secret</span
-							><span>{{ provider.auth === null ? 'None' : provider.auth.secretId }}</span>
+							><span>{{ provider.auth === null ? 'None' : provider.auth.value.secretId }}</span>
 						</div>
 						<div class="flex justify-between gap-3 border-b border-dimmer py-2">
 							<span class="text-dim">Headers</span><span>{{ provider.headers.length }}</span>
@@ -83,15 +89,12 @@
 					<div>
 						<h2 class="m-0 text-sz-subsection font-semibold">Provider actions</h2>
 						<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-							Edit metadata and Secret references without changing the protocol.
+							Edit metadata, Secret references, and provider options without changing the immutable source.
 						</p>
 					</div>
 					<UiForm class="mt-3 grid gap-3" @submit.prevent="saveProvider()">
 						<UiFormGroup label="Provider name" for-id="provider-name" :error="providerForm.errors.name">
 							<UiInput id="provider-name" v-model="providerForm.name" :invalid="!!providerForm.errors.name" />
-						</UiFormGroup>
-						<UiFormGroup label="Base URL" for-id="provider-base-url" :error="providerForm.errors.baseUrl">
-							<UiInput id="provider-base-url" v-model="providerForm.baseUrl" :invalid="!!providerForm.errors.baseUrl" />
 						</UiFormGroup>
 						<UiFormGroup label="API key Secret" for-id="provider-auth-secret" :error="providerForm.errors.authSecretId">
 							<UiSelect
@@ -99,6 +102,16 @@
 								v-model="providerForm.authSecretId"
 								:options="authSecretOptions"
 								placeholder="No auth Secret" />
+						</UiFormGroup>
+						<UiFormGroup
+							label="Provider options JSON"
+							for-id="provider-options"
+							:error="providerForm.errors.providerOptionsText">
+							<UiTextarea
+								id="provider-options"
+								v-model="providerForm.providerOptionsText"
+								placeholder='{ "serviceTier": "flex" }'
+								:invalid="!!providerForm.errors.providerOptionsText" />
 						</UiFormGroup>
 						<div class="flex flex-wrap items-center gap-2">
 							<UiButton
@@ -158,6 +171,16 @@
 								placeholder="gpt-4.1"
 								:invalid="!!modelCreationForm.errors.providerModelId" />
 						</UiFormGroup>
+						<UiFormGroup
+							label="Model provider options JSON"
+							for-id="model-provider-options"
+							:error="modelCreationForm.errors.providerOptionsText">
+							<UiTextarea
+								id="model-provider-options"
+								v-model="modelCreationForm.providerOptionsText"
+								placeholder='{ "reasoningEffort": "high" }'
+								:invalid="!!modelCreationForm.errors.providerOptionsText" />
+						</UiFormGroup>
 						<UiButton
 							type="submit"
 							variant="secondary"
@@ -182,6 +205,8 @@ import UiFormGroup from '../../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../../components/ui/UiInput.vue'
 import UiSelect from '../../../../components/ui/UiSelect.vue'
 import UiText from '../../../../components/ui/UiText.vue'
+import UiTextarea from '../../../../components/ui/UiTextarea.vue'
+import type { ModelProviderSource } from '../../../../composables/core/server-api'
 import { useOverlay } from '../../../../composables/core/overlay'
 import {
 	useModelCreate,
@@ -210,6 +235,23 @@ const { modelCreationForm, isCreatingModel, createModelError, createModel } = us
 })
 
 const authSecretOptions = computed(() => [{ value: null, label: 'No auth Secret' }, ...secretOptions.value])
+
+function modelProviderSourceLabel(source: ModelProviderSource): string {
+	switch (source.type) {
+		case 'openai-responses':
+			return 'OpenAI Responses'
+		case 'anthropic':
+			return 'Anthropic'
+		case 'google':
+			return 'Google'
+		case 'groq':
+			return 'Groq'
+		case 'custom-hosted':
+			return 'Custom hosted'
+		default:
+			throw new Error(`Unexpected Model Provider Source: ${String(source satisfies never)}`)
+	}
+}
 
 async function requestProviderArchive(): Promise<void> {
 	const confirmed = await confirm({

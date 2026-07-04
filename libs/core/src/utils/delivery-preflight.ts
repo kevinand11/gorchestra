@@ -2,7 +2,12 @@ import { validateActiveSecret } from '../commands/utils/storage'
 import type { Id } from '../domain/commons'
 import type { ValidationEvidence } from '../domain/evidence'
 import type { Model } from '../domain/model'
-import type { ModelProvider, ModelProviderHeader } from '../domain/model-provider'
+import {
+	modelProviderProtocolForSource,
+	type ModelProvider,
+	type ModelProviderAccessValue,
+	type ModelProviderHeader,
+} from '../domain/model-provider'
 import type { Repository } from '../domain/repository'
 import type { InvalidCoreServiceOutputError, ResourceNotFoundError, SecretNotActiveError, StorageOperationFailedError } from '../errors'
 import type { CoreRuntime } from '../runtime'
@@ -167,7 +172,7 @@ async function readModelProviderAuthSecretCheck(
 > {
 	if (modelProvider.auth === null) return ok({ type: 'secrets', secrets: [] })
 
-	const secret = await validateActiveSecret(storage, modelProvider.auth.secretId)
+	const secret = await validateActiveSecret(storage, secretIdFromAccessValue(modelProvider.auth.value))
 	return secret.ok
 		? ok({ type: 'secrets', secrets: [secretValueRef(secret.value)] })
 		: mapModelProviderAuthSecretFailure(modelProvider, secret.error)
@@ -181,7 +186,7 @@ async function readModelProviderHeaderSecretPlan(
 > {
 	const secrets: ResolvableSecretValue[] = []
 	for (const header of modelProvider.headers) {
-		const secret = await validateActiveSecret(storage, header.valueSecretId)
+		const secret = await validateActiveSecret(storage, secretIdFromAccessValue(header.value))
 		if (!secret.ok) return mapModelProviderHeaderSecretFailure(modelProvider, header, secret.error)
 		secrets.push(secretValueRef(secret.value))
 	}
@@ -301,16 +306,28 @@ function modelSecretSummary(modelProvider: ModelProvider, secretKind: 'auth' | '
 	return `${providerName} model provider ${noun} is ${state === 'missing' ? 'missing' : 'not active'}.`
 }
 
+function secretIdFromAccessValue(value: ModelProviderAccessValue): Id {
+	switch (value.type) {
+		case 'secret':
+			return value.secretId
+		default:
+			throw new Error('Unexpected Model Provider access value.')
+	}
+}
+
 function protocolDisplayName(modelProvider: ModelProvider): string {
-	switch (modelProvider.protocol.type) {
+	const protocol = modelProviderProtocolForSource(modelProvider.source)
+	switch (protocol) {
 		case 'anthropic-messages':
 			return 'Anthropic Messages'
 		case 'openai-responses':
 			return 'OpenAI Responses'
+		case 'openai-chat-completions':
+			return 'OpenAI Chat Completions'
 		case 'google-generative-ai':
 			return 'Google Generative AI'
 		default:
-			throw new Error(`Unexpected Model Provider Protocol: ${String(modelProvider.protocol satisfies never)}`)
+			throw new Error(`Unexpected Model Provider Protocol: ${String(protocol satisfies never)}`)
 	}
 }
 

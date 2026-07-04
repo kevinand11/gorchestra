@@ -1,9 +1,17 @@
 import { FormDraft, formDraftPipe, type FormDraftArray } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
-import type { CreateModelProviderInput, ModelProviderHeader, ModelProviderProtocolType } from '../composables/core/server-api'
+import type {
+	CreateModelProviderInput,
+	ModelProviderHeader,
+	ModelProviderProtocolType,
+	ModelProviderSource,
+} from '../composables/core/server-api'
+import { isJsonObjectText, providerOptionsFromText, providerOptionsText } from '../utils/provider-options-text'
 
 export type ModelProviderFormModel = CreateModelProviderInput
+
+export type ModelProviderSourceType = ModelProviderSource['type']
 
 type ModelProviderHeaderFormFields = {
 	name: string
@@ -12,18 +20,21 @@ type ModelProviderHeaderFormFields = {
 
 type ModelProviderFormFields = {
 	name: string
-	protocol: ModelProviderProtocolType
-	baseUrl: string
+	sourceType: ModelProviderSourceType
+	customProtocol: ModelProviderProtocolType
+	customBaseUrl: string
 	authSecretId: string | null
 	headers: FormDraftArray<ModelProviderHeaderFormDraft>
+	providerOptionsText: string
 }
 
 const modelProviderNamePipe = v.string().pipe(v.min<string>(1, 'Enter a Model Provider name'))
-const modelProviderBaseUrlPipe = v.string().pipe(v.min<string>(1, 'Enter a base URL'))
-const modelProviderProtocolPipe = v.in(['anthropic-messages', 'openai-responses', 'google-generative-ai'])
+const modelProviderSourceTypePipe = v.in(['openai-responses', 'anthropic', 'google', 'groq', 'custom-hosted'])
+const modelProviderProtocolPipe = v.in(['openai-responses', 'openai-chat-completions', 'anthropic-messages', 'google-generative-ai'])
 const modelProviderAuthSecretIdPipe = v.nullable(v.string().pipe(v.min<string>(1, 'Select an auth Secret')))
 const modelProviderHeaderNamePipe = v.string().pipe(v.min<string>(1, 'Enter a header name'))
 const modelProviderHeaderSecretIdPipe = v.string().pipe(v.min<string>(1, 'Select a header Secret'))
+const providerOptionsTextPipe = v.string().pipe(v.custom(isJsonObjectText, 'Enter a JSON object or leave empty'))
 
 export class ModelProviderHeaderFormDraft extends FormDraft<ModelProviderHeader, ModelProviderHeader, ModelProviderHeaderFormFields> {
 	protected readonly rules = {
@@ -35,41 +46,86 @@ export class ModelProviderHeaderFormDraft extends FormDraft<ModelProviderHeader,
 		super({ name: '', valueSecretId: '' })
 	}
 
-	protected model = (): ModelProviderHeader => ({ name: this.name, valueSecretId: this.valueSecretId })
+	protected model = (): ModelProviderHeader => ({ name: this.name, value: { type: 'secret', secretId: this.valueSecretId } })
 
 	protected load = (entity: ModelProviderHeader): void => {
 		this.name = entity.name
-		this.valueSecretId = entity.valueSecretId
+		this.valueSecretId = entity.value.secretId
 	}
 }
 
 export class ModelProviderFormDraft extends FormDraft<ModelProviderFormModel, ModelProviderFormModel, ModelProviderFormFields> {
-	protected readonly rules = {
-		name: modelProviderNamePipe,
-		protocol: modelProviderProtocolPipe,
-		baseUrl: modelProviderBaseUrlPipe,
-		authSecretId: modelProviderAuthSecretIdPipe,
-		headers: formDraftPipe<FormDraftArray<ModelProviderHeaderFormDraft>>(),
+	protected override readonly onSet = {
+		sourceType: () => this.set('customBaseUrl', this.customBaseUrl),
 	}
 
-	constructor(protocol: ModelProviderProtocolType = 'openai-responses') {
-		super({ name: '', protocol, baseUrl: '', authSecretId: null, headers: FormDraft.asArray(() => new ModelProviderHeaderFormDraft()) })
+	protected readonly rules = {
+		name: modelProviderNamePipe,
+		sourceType: modelProviderSourceTypePipe,
+		customProtocol: modelProviderProtocolPipe,
+		customBaseUrl: v
+			.string()
+			.pipe(v.custom<string>((value) => this.sourceType !== 'custom-hosted' || value.trim().length > 0, 'Enter a base URL')),
+		authSecretId: modelProviderAuthSecretIdPipe,
+		headers: formDraftPipe<FormDraftArray<ModelProviderHeaderFormDraft>>(),
+		providerOptionsText: providerOptionsTextPipe,
+	}
+
+	constructor(sourceType: ModelProviderSourceType = 'openai-responses') {
+		super({
+			name: '',
+			sourceType,
+			customProtocol: 'openai-chat-completions',
+			customBaseUrl: '',
+			authSecretId: null,
+			headers: FormDraft.asArray(() => new ModelProviderHeaderFormDraft()),
+			providerOptionsText: '',
+		})
+		this.sourceType = sourceType
 	}
 
 	protected model = (): ModelProviderFormModel => ({
 		name: this.name,
-		protocol: { type: this.protocol },
-		baseUrl: this.baseUrl,
-		auth: this.authSecretId === null ? null : { type: 'apiKey', secretId: this.authSecretId },
+		source: this.sourceModel(),
+		auth: this.authSecretId === null ? null : { value: { type: 'secret', secretId: this.authSecretId } },
 		headers: this.headers.toModel(),
+		providerOptions: providerOptionsFromText(this.providerOptionsText),
 	})
 
 	protected load = (entity: ModelProviderFormModel): void => {
 		this.name = entity.name
-		this.protocol = entity.protocol.type
-		this.baseUrl = entity.baseUrl
-		this.authSecretId = entity.auth?.secretId ?? null
+		this.loadSource(entity.source)
+		this.authSecretId = entity.auth?.value.secretId ?? null
 		this.headers.loadEntity(entity.headers)
+		this.providerOptionsText = providerOptionsText(entity.providerOptions)
+	}
+
+	private sourceModel(): ModelProviderSource {
+		switch (this.sourceType) {
+			case 'openai-responses':
+				return { type: 'openai-responses' }
+			case 'anthropic':
+				return { type: 'anthropic' }
+			case 'google':
+				return { type: 'google' }
+			case 'groq':
+				return { type: 'groq' }
+			case 'custom-hosted':
+				return { type: 'custom-hosted', protocol: this.customProtocol, baseUrl: this.customBaseUrl }
+			default:
+				throw new Error(`Unexpected Model Provider Source type: ${String(this.sourceType satisfies never)}`)
+		}
+	}
+
+	private loadSource(source: ModelProviderSource): void {
+		this.sourceType = source.type
+		if (source.type === 'custom-hosted') {
+			this.customProtocol = source.protocol
+			this.customBaseUrl = source.baseUrl
+		} else {
+			this.customProtocol = 'openai-chat-completions'
+			this.customBaseUrl = ''
+		}
 	}
 }
 
@@ -82,26 +138,36 @@ if (import.meta.vitest) {
 			const header = factory.headers.add()
 
 			factory.name = '  OpenAI  '
-			factory.baseUrl = '  https://api.openai.com/v1  '
 			factory.authSecretId = 'secret-1'
+			factory.providerOptionsText = '{"store":true}'
 			header.name = ' X-Team '
 			header.valueSecretId = 'secret-2'
 
 			expect(factory.valid).toBe(true)
 			expect(factory.toModel()).toEqual({
 				name: '  OpenAI  ',
-				protocol: { type: 'openai-responses' },
-				baseUrl: '  https://api.openai.com/v1  ',
-				auth: { type: 'apiKey', secretId: 'secret-1' },
-				headers: [{ name: ' X-Team ', valueSecretId: 'secret-2' }],
+				source: { type: 'openai-responses' },
+				auth: { value: { type: 'secret', secretId: 'secret-1' } },
+				headers: [{ name: ' X-Team ', value: { type: 'secret', secretId: 'secret-2' } }],
+				providerOptions: { store: true },
 			})
 		})
 
-		it('does not prefill a base URL', () => {
-			const factory = new ModelProviderFormDraft('anthropic-messages')
+		it('requires a base URL only for custom-hosted sources', () => {
+			const factory = new ModelProviderFormDraft('custom-hosted')
 
-			expect(factory.protocol).toBe('anthropic-messages')
-			expect(factory.baseUrl).toBe('')
+			factory.name = 'Custom'
+			factory.customBaseUrl = ' '
+
+			expect(factory.valid).toBe(false)
+			expect(factory.errors.customBaseUrl).toBe('Enter a base URL')
+
+			factory.customBaseUrl = 'https://api.example.com/v1'
+
+			expect(factory.valid).toBe(true)
+			expect(factory.toModel()).toMatchObject({
+				source: { type: 'custom-hosted', protocol: 'openai-chat-completions', baseUrl: 'https://api.example.com/v1' },
+			})
 		})
 
 		it('loads existing provider input', () => {
@@ -109,18 +175,18 @@ if (import.meta.vitest) {
 
 			factory.loadEntity({
 				name: 'Provider',
-				protocol: { type: 'google-generative-ai' },
-				baseUrl: 'https://generativelanguage.googleapis.com',
+				source: { type: 'google' },
 				auth: null,
 				headers: [],
+				providerOptions: { structuredOutputs: false },
 			})
 
 			expect(factory.toModel()).toEqual({
 				name: 'Provider',
-				protocol: { type: 'google-generative-ai' },
-				baseUrl: 'https://generativelanguage.googleapis.com',
+				source: { type: 'google' },
 				auth: null,
 				headers: [],
+				providerOptions: { structuredOutputs: false },
 			})
 		})
 	})

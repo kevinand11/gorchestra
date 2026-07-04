@@ -13,6 +13,9 @@ export const nonNegativeIntegerPipe = integerPipe.pipe(v.gte(0))
 export const idPipe = nonEmptyTrimmedStringPipe
 export type Id = PipeOutput<typeof idPipe>
 
+export const jsonObjectPipe = v.record(v.string(), v.any<unknown>())
+export type JsonObject = PipeOutput<typeof jsonObjectPipe>
+
 export const isoDateTimePipe = v.time().pipe(v.asISOString()) as Pipe<string, string>
 export type IsoDateTime = PipeOutput<typeof isoDateTimePipe>
 
