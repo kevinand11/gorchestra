@@ -3,33 +3,28 @@ import { v, type PipeOutput } from 'valleyed'
 import type { CommandContext } from './types'
 import type { AgentRun } from '../domain/agent-run'
 import { idPipe, type AuditStamp, type Id, type RuntimeRecord } from '../domain/commons'
-import type { ModelUseConfig, PortfolioConfigRecord } from '../domain/config'
-import type { Delivery } from '../domain/delivery'
-import type { Project } from '../domain/project'
 import type { FetchedFeedback, ReviewSurface, ReviewSurfaceScope } from '../domain/review-surface'
 import type { RevisionGate, RevisionScope } from '../domain/revision'
-import type { AgentRunModelUseUnresolvedError, InvalidInputError, ReviewSurfaceAlreadyMergedError } from '../errors'
+import type { InvalidInputError, ReviewSurfaceAlreadyMergedError } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
-import { createModelAgentRunWithInitialModel } from '../utils/agent-run-events'
+import { createModelAgentRunWithProfileSnapshot } from '../utils/agent-run-events'
 import type { CoreRuntimeValues } from '../utils/runtime-values'
 import type { Result as CoreResult } from '../utils/types'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { buildCommandHandler } from './utils/handler'
 import {
+	agentRunProfileSnapshot,
 	auditStamp,
 	createRecordValue,
-	getPortfolioConfig,
 	getRequired,
-	loadSelectableModelFacts,
-	modelIdsFromModelUses,
+	loadSelectableAgentRunProfile,
 	nextId,
 	runtimeRecord,
-	validateModelUseConfigs,
 	withTransaction,
 } from './utils/storage'
 
-const openRevisionGateInputPipe = v.object({ reviewSurfaceId: idPipe })
+const openRevisionGateInputPipe = v.object({ reviewSurfaceId: idPipe, agentRunProfileId: idPipe })
 export type Input = PipeOutput<typeof openRevisionGateInputPipe>
 
 export interface Result {
@@ -40,13 +35,7 @@ export interface Result {
 	feedback: FetchedFeedback[]
 }
 
-export type Error =
-	| InvalidInputError
-	| ConfigCommandReferenceError
-	| ConfigCommandStorageError
-	| AgentRunModelUseUnresolvedError
-	| ReviewSurfaceAlreadyMergedError
-
+export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError | ReviewSurfaceAlreadyMergedError
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createOpenRevisionGateCommand(runtime: CoreRuntime): Operation {
@@ -67,8 +56,7 @@ type OpenRevisionGateFacts = {
 	revisionGate: RevisionGate
 	agentRunId: Id
 	started: RuntimeRecord
-	modelUse: ModelUseConfig
-	runtimeValues: CoreRuntimeValues
+	profile: ReturnType<typeof agentRunProfileSnapshot>
 }
 
 async function handleOpenRevisionGate(runtime: CoreRuntime, input: Input, context: CommandContext): Promise<CoreResult<Result, Error>> {
@@ -81,35 +69,26 @@ function openRevisionGateRuntimeValues(
 	context: CommandContext,
 ): CoreResult<OpenRevisionGateRuntimeValues, ConfigCommandStorageError> {
 	const stamp = auditStamp(runtime.values, context)
-	return stamp.ok ? openRevisionGateRuntimeValuesAfterStamp(runtime, stamp.value) : stamp
-}
+	if (!stamp.ok) return stamp
 
-function openRevisionGateRuntimeValuesAfterStamp(
-	runtime: CoreRuntime,
-	stamp: AuditStamp,
-): CoreResult<OpenRevisionGateRuntimeValues, ConfigCommandStorageError> {
 	const revisionGateId = nextId(runtime.values, 'revision-gate')
-	return revisionGateId.ok ? openRevisionGateRuntimeValuesAfterGateId(runtime, stamp, revisionGateId.value) : revisionGateId
-}
+	if (!revisionGateId.ok) return revisionGateId
 
-function openRevisionGateRuntimeValuesAfterGateId(
-	runtime: CoreRuntime,
-	stamp: AuditStamp,
-	revisionGateId: Id,
-): CoreResult<OpenRevisionGateRuntimeValues, ConfigCommandStorageError> {
 	const agentRunId = nextId(runtime.values, 'agent-run')
-	return agentRunId.ok ? openRevisionGateRuntimeValuesAfterAgentRunId(runtime, stamp, revisionGateId, agentRunId.value) : agentRunId
-}
+	if (!agentRunId.ok) return agentRunId
 
-function openRevisionGateRuntimeValuesAfterAgentRunId(
-	runtime: CoreRuntime,
-	stamp: AuditStamp,
-	revisionGateId: Id,
-	agentRunId: Id,
-): CoreResult<OpenRevisionGateRuntimeValues, ConfigCommandStorageError> {
 	const started = runtimeRecord(runtime.values)
 	return started.ok
-		? { ok: true, value: { stamp, revisionGateId, agentRunId, started: started.value, runtimeValues: runtime.values } }
+		? {
+				ok: true,
+				value: {
+					stamp: stamp.value,
+					revisionGateId: revisionGateId.value,
+					agentRunId: agentRunId.value,
+					started: started.value,
+					runtimeValues: runtime.values,
+				},
+			}
 		: started
 }
 
@@ -133,14 +112,16 @@ async function openRevisionGateFacts(
 	const notMerged = validateReviewSurfaceNotMerged(reviewSurface.value)
 	if (!notMerged.ok) return notMerged
 
-	const modelUse = await resolveRevisionPlanningModelUse(storage, values.revisionGateId, reviewSurface.value.scope)
-	return modelUse.ok ? { ok: true, value: openRevisionGateFactsValue(values, reviewSurface.value, modelUse.value) } : modelUse
+	const profile = await loadSelectableAgentRunProfile(storage, input.agentRunProfileId)
+	return profile.ok
+		? { ok: true, value: openRevisionGateFactsValue(values, reviewSurface.value, agentRunProfileSnapshot(profile.value)) }
+		: profile
 }
 
 function openRevisionGateFactsValue(
 	values: OpenRevisionGateRuntimeValues,
 	reviewSurface: ReviewSurface,
-	modelUse: ModelUseConfig,
+	profile: ReturnType<typeof agentRunProfileSnapshot>,
 ): OpenRevisionGateFacts {
 	return {
 		revisionGate: {
@@ -152,8 +133,7 @@ function openRevisionGateFactsValue(
 		},
 		agentRunId: values.agentRunId,
 		started: values.started,
-		modelUse,
-		runtimeValues: values.runtimeValues,
+		profile,
 	}
 }
 
@@ -164,12 +144,11 @@ async function writeOpenRevisionGateFacts(
 	const revisionGate = await createRecordValue('revision-gate', storage, facts.revisionGate)
 	if (!revisionGate.ok) return revisionGate
 
-	const agentRun = await createModelAgentRunWithInitialModel({ values: facts.runtimeValues }, storage, {
+	const agentRun = await createModelAgentRunWithProfileSnapshot(storage, {
 		agentRunId: facts.agentRunId,
 		purpose: { type: 'revision-planning', revisionGateId: revisionGate.value.id },
 		started: facts.started,
-		modelId: facts.modelUse.modelId,
-		thinkingLevel: facts.modelUse.thinkingLevel,
+		profile: facts.profile,
 	})
 	return agentRun.ok ? { ok: true, value: { revisionGate: revisionGate.value, agentRun: agentRun.value, feedback: [] } } : agentRun
 }
@@ -185,84 +164,15 @@ function revisionScopeFromReviewSurfaceScope(scope: ReviewSurfaceScope): Revisio
 	}
 }
 
-async function resolveRevisionPlanningModelUse(
-	storage: CoreStorage,
-	revisionGateId: Id,
-	scope: ReviewSurfaceScope,
-): Promise<CoreResult<ModelUseConfig, Exclude<Error, InvalidInputError | ReviewSurfaceAlreadyMergedError>>> {
-	const delivery = await reviewSurfaceDelivery(storage, scope)
-	return delivery.ok ? resolveRevisionPlanningModelUseForDelivery(storage, revisionGateId, delivery.value) : delivery
-}
-
-async function reviewSurfaceDelivery(
-	storage: CoreStorage,
-	scope: ReviewSurfaceScope,
-): Promise<CoreResult<Delivery, Exclude<Error, InvalidInputError | AgentRunModelUseUnresolvedError | ReviewSurfaceAlreadyMergedError>>> {
-	if (scope.type === 'delivery') return getRequired('delivery', storage, scope.deliveryId)
-
-	const slice = await getRequired('slice', storage, scope.sliceId)
-	return slice.ok ? getRequired('delivery', storage, slice.value.deliveryId) : slice
-}
-
-async function resolveRevisionPlanningModelUseForDelivery(
-	storage: CoreStorage,
-	revisionGateId: Id,
-	delivery: Delivery,
-): Promise<CoreResult<ModelUseConfig, Exclude<Error, InvalidInputError | ReviewSurfaceAlreadyMergedError>>> {
-	const project = await getRequired('project', storage, delivery.projectId)
-	return project.ok ? resolveRevisionPlanningModelUseForProject(storage, revisionGateId, project.value) : project
-}
-
-async function resolveRevisionPlanningModelUseForProject(
-	storage: CoreStorage,
-	revisionGateId: Id,
-	project: Project,
-): Promise<CoreResult<ModelUseConfig, Exclude<Error, InvalidInputError | ReviewSurfaceAlreadyMergedError>>> {
-	const portfolioConfig = await getPortfolioConfig(storage)
-	return portfolioConfig.ok
-		? validateResolvedRevisionPlanningModelUse(storage, revisionGateId, revisionPlanningModelUse(project, portfolioConfig.value))
-		: portfolioConfig
-}
-
-async function validateResolvedRevisionPlanningModelUse(
-	storage: CoreStorage,
-	revisionGateId: Id,
-	modelUse: ModelUseConfig | null,
-): Promise<CoreResult<ModelUseConfig, Exclude<Error, InvalidInputError | ReviewSurfaceAlreadyMergedError>>> {
-	if (modelUse === null) return agentRunModelUseUnresolved({ type: 'revision-planning', revisionGateId })
-
-	const facts = await loadSelectableModelFacts(storage, modelIdsFromModelUses([modelUse]))
-	if (!facts.ok) return facts
-
-	const modelUseValidation = validateModelUseConfigs(facts.value, [modelUse])
-	return modelUseValidation.ok ? { ok: true, value: modelUse } : modelUseValidation
-}
-
-function revisionPlanningModelUse(project: Project, portfolioConfig: PortfolioConfigRecord | null): ModelUseConfig | null {
-	return firstPresent([
-		project.config?.value?.model?.revisionPlanning,
-		portfolioConfig?.value.model.revisionPlanning,
-		portfolioConfig?.value.model.default,
-	])
-}
-
-function firstPresent<T>(values: Array<T | null | undefined>): T | null {
-	return values.find((candidate): candidate is T => candidate !== null && candidate !== undefined) ?? null
-}
-
 function validateReviewSurfaceNotMerged(reviewSurface: ReviewSurface): CoreResult<void, ReviewSurfaceAlreadyMergedError> {
 	return reviewSurface.closed?.type === 'merged'
 		? { ok: false, error: { type: 'review-surface-already-merged', reviewSurfaceId: reviewSurface.id } }
 		: { ok: true, value: undefined }
 }
 
-function agentRunModelUseUnresolved(purpose: AgentRun['purpose']): CoreResult<never, AgentRunModelUseUnresolvedError> {
-	return { ok: false, error: { type: 'agent-run-model-use-unresolved', purpose } }
-}
-
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedDelivery, seedSelectableModel, seedSlice, stamp } =
+	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedAgentRunProfile, seedDelivery, seedSlice } =
 		await import('../utils/test-helpers')
 
 	describe('openRevisionGate command', () => {
@@ -284,26 +194,21 @@ if (import.meta.vitest) {
 			const options = openDeliveryRevisionGateFixture()
 			const command = createOpenRevisionGateCommand(createTestCoreRuntime(options))
 
-			const result = await command({ reviewSurfaceId: 'review-surface-1' }, context)
+			const result = await command({ reviewSurfaceId: 'review-surface-1', agentRunProfileId: 'agent-run-profile-1' }, context)
 
 			const expectedGate = deliveryRevisionGate()
 			const expectedAgentRun = revisionPlanningAgentRun()
 			expect(result).toEqual({ ok: true, value: { revisionGate: expectedGate, agentRun: expectedAgentRun, feedback: [] } })
 			expect(options.tx.revisionGates.records.get('revision-gate-1')).toEqual(expectedGate)
 			expect(options.tx.agentRuns.records.get('agent-run-1')).toEqual(expectedAgentRun)
-			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toEqual({
-				type: 'agent-run-model-selected',
-				modelId: 'model-1',
-				thinkingLevel: 'none',
-				authorized: null,
-			})
+			expect(options.tx.agentRunEvents.records.size).toBe(0)
 		})
 
 		it('opens a Slice Revision Gate with empty fetched feedback until provider feedback fetching exists', async () => {
 			const options = openSliceRevisionGateFixture()
 			const command = createOpenRevisionGateCommand(createTestCoreRuntime(options))
 
-			const result = await command({ reviewSurfaceId: 'review-surface-1' }, context)
+			const result = await command({ reviewSurfaceId: 'review-surface-1', agentRunProfileId: 'agent-run-profile-1' }, context)
 
 			expect(result).toMatchObject({
 				ok: true,
@@ -316,13 +221,12 @@ if (import.meta.vitest) {
 					feedback: [],
 				},
 			})
-			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toMatchObject({ modelId: 'model-project' })
 		})
 
 		it('returns not-found when the Review Surface does not exist', async () => {
 			const command = createOpenRevisionGateCommand(createTestCoreRuntime(createTestCoreServices()))
 
-			const result = await command({ reviewSurfaceId: 'review-surface-1' }, context)
+			const result = await command({ reviewSurfaceId: 'review-surface-1', agentRunProfileId: 'agent-run-profile-1' }, context)
 
 			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'review-surface', id: 'review-surface-1' } })
 		})
@@ -341,7 +245,7 @@ if (import.meta.vitest) {
 			}
 			const command = createOpenRevisionGateCommand(createTestCoreRuntime(options))
 
-			const result = await command({ reviewSurfaceId: 'review-surface-1' }, context)
+			const result = await command({ reviewSurfaceId: 'review-surface-1', agentRunProfileId: 'agent-run-profile-1' }, context)
 
 			expect(result).toEqual({ ok: false, error: { type: 'review-surface-already-merged', reviewSurfaceId: 'review-surface-1' } })
 		})
@@ -350,8 +254,7 @@ if (import.meta.vitest) {
 	function openDeliveryRevisionGateFixture() {
 		const options = createTestCoreServices()
 		seedDelivery(options.tx, 'delivery-1')
-		seedSelectableModel(options.tx, 'model-1')
-		options.tx.portfolioConfig.record = portfolioConfig('model-1')
+		seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
 		options.tx.reviewSurfaces.records.set('review-surface-1', deliveryReviewSurface())
 		return options
 	}
@@ -360,21 +263,7 @@ if (import.meta.vitest) {
 		const options = createTestCoreServices()
 		seedDelivery(options.tx, 'delivery-1')
 		seedSlice(options.tx, 'slice-1', 'delivery-1')
-		seedSelectableModel(options.tx, 'model-1')
-		seedSelectableModel(options.tx, 'model-project')
-		options.tx.projects.records.get('project-1')!.config = {
-			configured: localStamp(),
-			value: {
-				model: {
-					planning: null,
-					revisionPlanning: { modelId: 'model-project', thinkingLevel: 'none' },
-					execution: null,
-					revisionExecution: null,
-				},
-				work: null,
-			},
-		}
-		options.tx.portfolioConfig.record = portfolioConfig('model-1')
+		seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
 		options.tx.reviewSurfaces.records.set('review-surface-1', sliceReviewSurface())
 		return options
 	}
@@ -394,6 +283,12 @@ if (import.meta.vitest) {
 			id: 'agent-run-1',
 			agent: { type: 'model' },
 			purpose: { type: 'revision-planning', revisionGateId: 'revision-gate-1' },
+			profile: {
+				agentRunProfileId: 'agent-run-profile-1',
+				name: 'Agent Run Profile',
+				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+			},
+			modelUseOverride: null,
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
 		}
@@ -430,22 +325,6 @@ if (import.meta.vitest) {
 			title: 'Slice',
 			closed: null,
 			created: { at: '2026-06-10T12:00:00.000Z' },
-		}
-	}
-
-	function portfolioConfig(defaultModelId: string): PortfolioConfigRecord {
-		return {
-			configured: stamp,
-			value: {
-				model: {
-					default: { modelId: defaultModelId, thinkingLevel: 'none' },
-					planning: null,
-					revisionPlanning: null,
-					execution: null,
-					revisionExecution: null,
-				},
-				work: null,
-			},
 		}
 	}
 }

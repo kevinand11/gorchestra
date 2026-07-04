@@ -1,117 +1,47 @@
 <template>
 	<NuxtLayout name="project" :project-id="projectId">
-		<UiForm @submit.prevent="createPlan()">
-			<header class="border-b border-dimmer px-3 py-3">
-				<div class="flex flex-wrap items-start justify-between gap-3">
-					<div>
-						<h1 class="m-0 text-sz-section font-semibold tracking-[-0.01em]">New Plan</h1>
-						<p class="m-0 mt-1 text-sz-helper text-dim">Start Planning with an initial operator message and model selection.</p>
-					</div>
-					<UiButton type="submit" :loading="isCreatingPlan" :disabled="!canCreatePlan">Create Plan</UiButton>
-				</div>
-			</header>
+		<header class="border-b border-dimmer px-3 pt-3 pb-4">
+			<h1 class="m-0 text-sz-section font-semibold tracking-[-0.01em]">New Plan</h1>
+			<p class="m-0 mt-1 text-sz-helper text-dim">Start a Planning Agent Run with a selected Agent Run Profile.</p>
+		</header>
 
-			<section class="border-b border-dimmer px-3 py-3">
-				<h2 class="m-0 text-sz-subsection font-semibold">Plan details</h2>
-				<div class="mt-3 grid gap-3">
-					<UiFormGroup label="Plan title" for-id="plan-title" :error="planCreationForm.errors.title">
-						<UiInput
-							id="plan-title"
-							v-model="planCreationForm.title"
-							required
-							placeholder="Plan Repository onboarding"
-							:invalid="!!planCreationForm.errors.title" />
-					</UiFormGroup>
-					<UiFormGroup
-						label="Initial planning message"
-						for-id="plan-initial-message"
-						:error="planCreationForm.errors.initialMessage">
-						<UiTextarea
-							id="plan-initial-message"
-							v-model="planCreationForm.initialMessage"
-							required
-							rows="7"
-							placeholder="Describe what you want the planning agent to explore."
-							:invalid="!!planCreationForm.errors.initialMessage" />
-					</UiFormGroup>
+		<section class="px-3 py-3">
+			<UiForm @submit.prevent="createPlan()">
+				<UiFormGroup label="Plan title" for-id="plan-title" :error="planCreationForm.errors.title">
+					<UiInput id="plan-title" v-model="planCreationForm.title" :invalid="!!planCreationForm.errors.title" />
+				</UiFormGroup>
+				<UiFormGroup label="Initial message" for-id="initial-message" :error="planCreationForm.errors.initialMessage">
+					<UiTextarea
+						id="initial-message"
+						v-model="planCreationForm.initialMessage"
+						:invalid="!!planCreationForm.errors.initialMessage" />
+				</UiFormGroup>
+				<UiFormGroup label="Agent Run Profile" for-id="plan-agent-run-profile" :error="planCreationForm.errors.agentRunProfileId">
+					<UiSelect
+						id="plan-agent-run-profile"
+						v-model="planCreationForm.agentRunProfileId"
+						:options="activeAgentRunProfileOptions"
+						:invalid="!!planCreationForm.errors.agentRunProfileId" />
+				</UiFormGroup>
+				<div class="mt-3 flex flex-wrap items-center gap-2">
+					<UiButton type="submit" :loading="isCreatingPlan" :disabled="!planCreationForm.valid">Create Plan</UiButton>
+					<UiText v-if="createPlanError" tone="error">{{ createPlanError }}</UiText>
 				</div>
-			</section>
-
-			<section class="border-b border-dimmer px-3 py-3">
-				<div class="flex flex-wrap items-start justify-between gap-3">
-					<div>
-						<h2 class="m-0 text-sz-subsection font-semibold">Planning Model</h2>
-						<p class="m-0 mt-1 text-sz-helper text-dim">Leave unset to inherit Project or Portfolio model configuration.</p>
-					</div>
-					<span v-if="inheritedPlanningModelLabel" class="text-sz-helper text-dim"
-						>Inherited: {{ inheritedPlanningModelLabel }}</span
-					>
-				</div>
-
-				<div v-if="providersError" class="mt-3 border-l-2 border-error py-2 pl-3 text-sz-helper text-error">
-					{{ providersError }}
-				</div>
-				<div v-else-if="!hasActiveModels" class="mt-3">
-					<UiCallout tone="notice">
-						No active Models are available. Create a Model before creating a Plan.
-						<NuxtLink class="ml-1 font-semibold text-primary hover:brightness-110" to="/models/providers"
-							>Go to Models.</NuxtLink
-						>
-					</UiCallout>
-				</div>
-				<UiCallout v-else-if="requiresPlanModelOverride" class="mt-3" tone="notice">
-					No active inherited Planning Model is configured. Select a Plan-level Planning Model below.
-				</UiCallout>
-
-				<div class="mt-4 grid gap-3 md:grid-cols-2 items-start">
-					<UiFormGroup label="Planning Model" for-id="planning-model" :error="planCreationForm.planningModelUse.errors.modelId">
-						<UiSelect
-							id="planning-model"
-							v-model="planCreationForm.planningModelUse.modelId.value"
-							:options="planningModelOptions"
-							placeholder="Use inherited/default"
-							search-placeholder="Search Models…"
-							empty-label="No active Models available"
-							:invalid="!!planCreationForm.planningModelUse.errors.modelId"
-							:disabled="!hasActiveModels" />
-					</UiFormGroup>
-					<UiFormGroup
-						label="Planning Thinking"
-						for-id="planning-thinking"
-						:error="planCreationForm.planningModelUse.errors.thinkingLevel">
-						<UiSelect
-							id="planning-thinking"
-							v-model="planCreationForm.planningModelUse.thinkingLevel.value"
-							placeholder="Use inherited/default"
-							:options="planningModelSelect.thinkingLevelOptions.value"
-							:disabled="planningModelSelect.thinkingLevelDisabled.value" />
-					</UiFormGroup>
-				</div>
-			</section>
-
-			<p v-if="createPlanError" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-error">{{ createPlanError }}</p>
-		</UiForm>
+			</UiForm>
+		</section>
 
 		<template #right>
-			<aside class="grid gap-4 p-3">
-				<UiCallout>
-					Creating a Plan writes the Plan, creates its Planning Agent Run, records the first input message, and dispatches the
-					Agent Run.
-				</UiCallout>
-				<UiCallout tone="notice">
-					Plan Config is immutable after creation. Use the Plan-level override only when this Plan should use a different Planning
-					Model.
-				</UiCallout>
-				<div class="border-t border-dimmer pt-3">
-					<h2 class="m-0 text-sz-helper font-semibold">Model setup</h2>
+			<aside>
+				<section class="border-b border-dimmer px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">Planning profile</h2>
 					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-						If inherited model resolution fails, select an active Plan-level Planning Model or configure Portfolio Config.
+						The selected profile is snapshotted onto the Planning Agent Run. Future profile edits do not change existing runs.
 					</p>
-					<div class="mt-2 flex flex-wrap gap-3 text-sz-helper">
-						<NuxtLink class="font-semibold text-primary hover:brightness-110" to="/models/providers">Models</NuxtLink>
-						<NuxtLink class="font-semibold text-primary hover:brightness-110" to="/portfolio-config">Portfolio Config</NuxtLink>
-					</div>
-				</div>
+				</section>
+				<section class="px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">Setup</h2>
+					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">Create active Agent Run Profiles before starting Plans.</p>
+				</section>
 			</aside>
 		</template>
 	</NuxtLayout>
@@ -121,94 +51,23 @@
 import { computed } from 'vue'
 
 import UiButton from '../../../../components/ui/UiButton.vue'
-import UiCallout from '../../../../components/ui/UiCallout.vue'
 import UiForm from '../../../../components/ui/UiForm.vue'
 import UiFormGroup from '../../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../../components/ui/UiInput.vue'
 import UiSelect from '../../../../components/ui/UiSelect.vue'
 import UiTextarea from '../../../../components/ui/UiTextarea.vue'
-import type { ModelUseConfig, ServerApi } from '../../../../composables/core/server-api'
-import { useSelectModel } from '../../../../composables/portfolio/models/select-model'
-import { modelOptionLabel, thinkingLevelLabel } from '../../../../utils/model-provider-options'
-import { usePortfolioConfig } from '../../../../composables/portfolio/config'
+import UiText from '../../../../components/ui/UiText.vue'
+import { useAgentRunProfilesList } from '../../../../composables/portfolio/agent-run-profiles'
 import { usePlansCreate } from '../../../../composables/portfolio/project/plans'
-import { useProjectDetail } from '../../../../composables/portfolio/projects'
 
 definePageMeta({ middleware: ['has-selection'] })
 
-type ProjectDetails = Awaited<ReturnType<ServerApi['getProject']>>
-type ProjectConfigRecord = ProjectDetails['config']
-type ProjectConfigValue = NonNullable<NonNullable<ProjectConfigRecord>['value']>
-type ProjectModelConfig = ProjectConfigValue['model']
-type PortfolioConfig = Awaited<ReturnType<ServerApi['getPortfolioConfig']>>
-
 const route = useRoute()
-const projectId = computed(() => route.params.projectId as string)
+const projectId = computed(() => String(route.params.projectId ?? ''))
+const { activeAgentRunProfileOptions } = useAgentRunProfilesList()
 const { planCreationForm, isCreatingPlan, createPlanError, createPlan } = usePlansCreate(projectId, {
 	onSuccess: async (plan) => {
 		await navigateTo(`/projects/${projectId.value}/plans/${plan.id}`)
 	},
 })
-
-const { project } = useProjectDetail(projectId)
-const { portfolioConfig } = usePortfolioConfig()
-const planningModelSelect = useSelectModel(planCreationForm.planningModelUse, { optionalLabel: 'Use inherited/default' })
-
-const activeModelOptionGroups = planningModelSelect.activeModelOptionGroups
-const planningModelOptions = planningModelSelect.optionalModelOptions
-const activeModelIds = planningModelSelect.activeModelIds
-const hasActiveModels = planningModelSelect.hasActiveModels
-const providersError = planningModelSelect.providersError
-const inheritedPlanningModelUse = computed(() => planningModelUseFromConfig(project.value, portfolioConfig.value))
-const inheritedPlanningModelId = computed(() => inheritedPlanningModelUse.value?.modelId ?? null)
-const inheritedPlanningModelIsActive = computed(
-	() => inheritedPlanningModelId.value !== null && activeModelIds.value.has(inheritedPlanningModelId.value),
-)
-const inheritedPlanningModelLabel = computed(() => activeInheritedModelLabel())
-const requiresPlanModelOverride = computed(() => !inheritedPlanningModelIsActive.value)
-const hasPlanModelOverride = computed(() => planCreationForm.planningModelUse.modelId.value !== null)
-const hasRequiredPlanningModel = computed(() => !requiresPlanModelOverride.value || hasPlanModelOverride.value)
-const canCreatePlan = computed(() =>
-	[planCreationForm.valid, hasActiveModels.value, hasRequiredPlanningModel.value, !isCreatingPlan.value].every(Boolean),
-)
-
-function planningModelUseFromConfig(projectDetails: ProjectDetails | null, config: PortfolioConfig): ModelUseConfig | null {
-	return firstPresent([projectPlanningModelUse(projectDetails), portfolioPlanningModelUse(config), portfolioDefaultModelUse(config)])
-}
-
-function firstPresent(values: Array<ModelUseConfig | null>): ModelUseConfig | null {
-	return values.find((value): value is ModelUseConfig => value !== null) ?? null
-}
-
-function projectPlanningModelUse(projectDetails: ProjectDetails | null): ModelUseConfig | null {
-	return projectDetails === null ? null : projectConfigPlanningModelUse(projectDetails.config)
-}
-
-function projectConfigPlanningModelUse(configRecord: ProjectConfigRecord): ModelUseConfig | null {
-	const config = projectConfigValue(configRecord)
-	return config === null ? null : projectModelPlanningModelUse(config.model)
-}
-
-function projectConfigValue(configRecord: ProjectConfigRecord): ProjectConfigValue | null {
-	return configRecord === null ? null : configRecord.value
-}
-
-function projectModelPlanningModelUse(model: ProjectModelConfig): ModelUseConfig | null {
-	return model === null ? null : model.planning
-}
-
-function portfolioPlanningModelUse(config: PortfolioConfig): ModelUseConfig | null {
-	return config === null ? null : config.value.model.planning
-}
-
-function portfolioDefaultModelUse(config: PortfolioConfig): ModelUseConfig | null {
-	return config === null ? null : config.value.model.default
-}
-
-function activeInheritedModelLabel(): string {
-	const modelUse = inheritedPlanningModelUse.value
-	return inheritedPlanningModelIsActive.value && modelUse !== null
-		? `${modelOptionLabel(activeModelOptionGroups.value, modelUse.modelId)} · ${thinkingLevelLabel(modelUse.thinkingLevel)}`
-		: ''
-}
 </script>

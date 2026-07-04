@@ -53,10 +53,10 @@
 					</nav>
 					<nav class="mt-auto border-t border-dimmer" aria-label="Selected Portfolio configuration navigation">
 						<NuxtLink
-							to="/portfolio-config"
+							to="/agent-run-profiles"
 							class="flex min-h-8 items-center justify-between gap-2 px-3 py-2 text-sz-helper font-semibold"
-							:class="navItemClass('/portfolio-config')">
-							<span>Portfolio Config</span>
+							:class="navItemClass('/agent-run-profiles')">
+							<span>Agent Run Profiles</span>
 						</NuxtLink>
 					</nav>
 				</div>

@@ -137,6 +137,12 @@ if (import.meta.vitest) {
 			id: 'agent-run-1',
 			agent: { type: 'model' },
 			purpose: { type: 'revision-planning', revisionGateId: 'revision-gate-1' },
+			profile: {
+				agentRunProfileId: 'agent-run-profile-1',
+				name: 'Agent Run Profile',
+				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+			},
+			modelUseOverride: null,
 			started: { at: stamp.at },
 			completed: null,
 		})

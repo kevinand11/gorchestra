@@ -1,205 +1,108 @@
-import { FormDraft, formDraftPipe } from '@gorchestra/form-draft'
+import { FormDraft } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
-import { ModelUseFormDraft } from './model-use'
 import type { DeliveryWorkConfigInput, ProjectConfigInput } from '../composables/core/server-api'
 
-export type ProjectConfigFormEntity = { config: ProjectConfigInput | null }
+export type ProjectConfigFormEntity = { config: ProjectConfigInput }
 export type ProjectConfigFormModel = { config: ProjectConfigInput }
 
 type ProjectConfigFormFields = {
-	planningModelUse: ModelUseFormDraft
-	revisionPlanningModelUse: ModelUseFormDraft
-	executionModelUse: ModelUseFormDraft
-	revisionExecutionModelUse: ModelUseFormDraft
-	overridesWork: boolean
+	executionAgentRunProfileId: string
+	revisionExecutionAgentRunProfileId: string | null
 	maxProcessableSliceSlots: number
 	maxCorrectionRetriesPerFailure: number
-	modelTimeoutMs: number
-}
-
-type ProjectModelConfigInput = ProjectConfigInput['model']
-type ProjectModelConfigFields = NonNullable<ProjectModelConfigInput>
-type ProjectConfigFields = {
-	model: ProjectModelConfigFields
-	overridesWork: boolean
-	work: DeliveryWorkConfigInput
 }
 
 const positiveIntegerFieldPipe = v.number().pipe(v.int(), v.gte(1))
 const nonNegativeIntegerFieldPipe = v.number().pipe(v.int(), v.gte(0))
+const requiredIdPipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Select an Agent Run Profile'))
 
 export class ProjectConfigFormDraft extends FormDraft<ProjectConfigFormEntity, ProjectConfigFormModel, ProjectConfigFormFields> {
 	protected readonly rules = {
-		planningModelUse: formDraftPipe<ModelUseFormDraft>(),
-		revisionPlanningModelUse: formDraftPipe<ModelUseFormDraft>(),
-		executionModelUse: formDraftPipe<ModelUseFormDraft>(),
-		revisionExecutionModelUse: formDraftPipe<ModelUseFormDraft>(),
-		overridesWork: v.boolean(),
+		executionAgentRunProfileId: requiredIdPipe,
+		revisionExecutionAgentRunProfileId: v.nullable(v.string().pipe(v.asTrimmed())),
 		maxProcessableSliceSlots: positiveIntegerFieldPipe,
 		maxCorrectionRetriesPerFailure: nonNegativeIntegerFieldPipe,
-		modelTimeoutMs: positiveIntegerFieldPipe,
 	}
 
 	constructor() {
-		super({
-			planningModelUse: new ModelUseFormDraft(),
-			revisionPlanningModelUse: new ModelUseFormDraft(),
-			executionModelUse: new ModelUseFormDraft(),
-			revisionExecutionModelUse: new ModelUseFormDraft(),
-			overridesWork: false,
-			...defaultDeliveryWorkConfig(),
-		})
+		super(defaultDeliveryWorkConfig())
 	}
 
-	enableWorkOverrideFrom(work: DeliveryWorkConfigInput): void {
-		this.setWorkFields(work)
-		this.overridesWork = true
-	}
-
-	clearOverrides(work: DeliveryWorkConfigInput = defaultDeliveryWorkConfig()): void {
-		this.planningModelUse.loadEntity(null)
-		this.revisionPlanningModelUse.loadEntity(null)
-		this.executionModelUse.loadEntity(null)
-		this.revisionExecutionModelUse.loadEntity(null)
-		this.setWorkFields(work)
-		this.overridesWork = false
-	}
-
-	protected model = (): ProjectConfigFormModel => ({
-		config: projectConfig(this.projectModelConfig(), this.projectWorkConfig()),
-	})
+	protected model = (): ProjectConfigFormModel => ({ config: { work: this.workConfig() } })
 
 	protected load = (entity: ProjectConfigFormEntity): void => {
-		const fields = projectConfigFields(entity.config)
-
-		this.planningModelUse.loadEntity(fields.model.planning)
-		this.revisionPlanningModelUse.loadEntity(fields.model.revisionPlanning)
-		this.executionModelUse.loadEntity(fields.model.execution)
-		this.revisionExecutionModelUse.loadEntity(fields.model.revisionExecution)
-		this.overridesWork = fields.overridesWork
-		this.setWorkFields(fields.work)
+		this.setWorkFields(entity.config.work)
 	}
 
-	private projectModelConfig(): ProjectModelConfigInput {
-		const model = {
-			planning: this.planningModelUse.toModel(),
-			revisionPlanning: this.revisionPlanningModelUse.toModel(),
-			execution: this.executionModelUse.toModel(),
-			revisionExecution: this.revisionExecutionModelUse.toModel(),
+	private workConfig(): DeliveryWorkConfigInput {
+		return {
+			maxProcessableSliceSlots: this.maxProcessableSliceSlots,
+			maxCorrectionRetriesPerFailure: this.maxCorrectionRetriesPerFailure,
+			executionAgentRunProfileId: this.executionAgentRunProfileId,
+			revisionExecutionAgentRunProfileId: emptyToNull(this.revisionExecutionAgentRunProfileId),
 		}
-		return Object.values(model).every((value) => value === null) ? null : model
-	}
-
-	private projectWorkConfig(): DeliveryWorkConfigInput | null {
-		return this.overridesWork
-			? {
-					maxProcessableSliceSlots: this.maxProcessableSliceSlots,
-					maxCorrectionRetriesPerFailure: this.maxCorrectionRetriesPerFailure,
-					modelTimeoutMs: this.modelTimeoutMs,
-				}
-			: null
 	}
 
 	private setWorkFields(work: DeliveryWorkConfigInput): void {
 		this.maxProcessableSliceSlots = work.maxProcessableSliceSlots
 		this.maxCorrectionRetriesPerFailure = work.maxCorrectionRetriesPerFailure
-		this.modelTimeoutMs = work.modelTimeoutMs
+		this.executionAgentRunProfileId = work.executionAgentRunProfileId
+		this.revisionExecutionAgentRunProfileId = work.revisionExecutionAgentRunProfileId
 	}
 }
 
-export function defaultDeliveryWorkConfig(): DeliveryWorkConfigInput {
-	return { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 }
+export function defaultDeliveryWorkConfig(agentRunProfileId = ''): DeliveryWorkConfigInput {
+	return {
+		maxProcessableSliceSlots: 1,
+		maxCorrectionRetriesPerFailure: 1,
+		executionAgentRunProfileId: agentRunProfileId,
+		revisionExecutionAgentRunProfileId: null,
+	}
 }
 
-function projectConfig(model: ProjectModelConfigInput, work: DeliveryWorkConfigInput | null): ProjectConfigInput {
-	return { model, work }
-}
-
-function projectConfigFields(config: ProjectConfigInput | null): ProjectConfigFields {
-	return config === null
-		? { model: emptyProjectModelConfig(), overridesWork: false, work: defaultDeliveryWorkConfig() }
-		: {
-				model: projectModelConfigFields(config.model),
-				overridesWork: config.work !== null,
-				work: config.work ?? defaultDeliveryWorkConfig(),
-			}
-}
-
-function projectModelConfigFields(model: ProjectModelConfigInput): ProjectModelConfigFields {
-	return model ?? emptyProjectModelConfig()
-}
-
-function emptyProjectModelConfig(): ProjectModelConfigFields {
-	return { planning: null, revisionPlanning: null, execution: null, revisionExecution: null }
+function emptyToNull(value: string | null): string | null {
+	return value === null || value.trim().length === 0 ? null : value
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
 	describe('ProjectConfigFormDraft', () => {
-		it('models all-inherited Project Config with null override fields', () => {
+		it('models required Project work config with Agent Run Profile ids', () => {
 			const draft = new ProjectConfigFormDraft()
-
-			expect(draft.toModel()).toEqual({ config: { model: null, work: null } })
-		})
-
-		it('folds all-null model overrides while retaining work overrides', () => {
-			const draft = new ProjectConfigFormDraft()
-
-			draft.enableWorkOverrideFrom({ maxProcessableSliceSlots: 2, maxCorrectionRetriesPerFailure: 0, modelTimeoutMs: 60_000 })
-
-			expect(draft.toModel()).toEqual({
-				config: { model: null, work: { maxProcessableSliceSlots: 2, maxCorrectionRetriesPerFailure: 0, modelTimeoutMs: 60_000 } },
-			})
-		})
-
-		it('models Project Model overrides independently from work inheritance', () => {
-			const draft = new ProjectConfigFormDraft()
-
-			draft.planningModelUse.modelId.value = 'model-planning'
-			draft.executionModelUse.modelId.value = 'model-execution'
+			draft.executionAgentRunProfileId = 'agent-run-profile-1'
+			draft.revisionExecutionAgentRunProfileId = 'agent-run-profile-2'
+			draft.maxProcessableSliceSlots = 2
+			draft.maxCorrectionRetriesPerFailure = 0
 
 			expect(draft.toModel()).toEqual({
 				config: {
-					model: {
-						planning: { modelId: 'model-planning', thinkingLevel: 'none' },
-						revisionPlanning: null,
-						execution: { modelId: 'model-execution', thinkingLevel: 'none' },
-						revisionExecution: null,
+					work: {
+						maxProcessableSliceSlots: 2,
+						maxCorrectionRetriesPerFailure: 0,
+						executionAgentRunProfileId: 'agent-run-profile-1',
+						revisionExecutionAgentRunProfileId: 'agent-run-profile-2',
 					},
-					work: null,
 				},
 			})
 		})
 
-		it('loads null Project Config as clean inherited fields', () => {
-			const draft = new ProjectConfigFormDraft()
-
-			draft.loadEntity({ config: null })
-
-			expect(draft.dirty).toBe(false)
-			expect(draft.toModel()).toEqual({ config: { model: null, work: null } })
-		})
-
-		it('clears loaded overrides back to all-inherited config', () => {
+		it('loads existing config and treats blank revision profile as null', () => {
 			const draft = new ProjectConfigFormDraft().loadEntity({
 				config: {
-					model: {
-						planning: { modelId: 'model-planning', thinkingLevel: 'none' },
-						revisionPlanning: null,
-						execution: null,
-						revisionExecution: null,
+					work: {
+						...defaultDeliveryWorkConfig('agent-run-profile-1'),
+						revisionExecutionAgentRunProfileId: 'agent-run-profile-2',
 					},
-					work: { maxProcessableSliceSlots: 2, maxCorrectionRetriesPerFailure: 0, modelTimeoutMs: 60_000 },
 				},
 			})
 
-			draft.clearOverrides({ maxProcessableSliceSlots: 3, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 45_000 })
+			draft.revisionExecutionAgentRunProfileId = ' '
 
-			expect(draft.dirty).toBe(true)
-			expect(draft.maxProcessableSliceSlots).toBe(3)
-			expect(draft.toModel()).toEqual({ config: { model: null, work: null } })
+			expect(draft.toModel()).toEqual({
+				config: { work: { ...defaultDeliveryWorkConfig('agent-run-profile-1'), revisionExecutionAgentRunProfileId: null } },
+			})
 		})
 	})
 }

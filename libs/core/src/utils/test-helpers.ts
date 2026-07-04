@@ -1,12 +1,14 @@
 import { Repo } from 'equipped/orm'
 import { InMemoryAdapter } from 'equipped/orm/adapters/in-memory'
 
+import type { CoreRuntimeValues } from './runtime-values'
 import type { CommandContext } from '../commands/types'
 import type { Action } from '../domain/action'
-import type { AgentRun, AgentRunEvent } from '../domain/agent-run'
+import type { AgentRun, AgentRunEvent, AgentRunProfileSnapshot } from '../domain/agent-run'
+import type { AgentRunProfile } from '../domain/agent-run-profile'
 import type { DeliveryArtifact, SliceArtifact } from '../domain/artifact'
 import type { AuditStamp, Id } from '../domain/commons'
-import type { PortfolioConfigRecord } from '../domain/config'
+import type { DeliveryWorkConfig } from '../domain/config'
 import type { Delivery } from '../domain/delivery'
 import type { ExternalOperation, ExternalOperationEvidence, ValidationEvidence, ValidationOperation } from '../domain/evidence'
 import type { Link } from '../domain/graph'
@@ -22,11 +24,11 @@ import type { Secret, SecretBinding } from '../domain/secret'
 import type { Slice } from '../domain/slice'
 import { createCoreProviders } from '../providers'
 import type { CoreRuntime } from '../runtime'
-import type { CoreRuntimeValues } from './runtime-values'
 import type { CoreServices, CoreStorage } from '../services'
 import {
 	actionSchema,
 	agentRunEventSchema,
+	agentRunProfileSchema,
 	agentRunSchema,
 	deliveryArtifactSchema,
 	deliverySchema,
@@ -36,8 +38,6 @@ import {
 	modelProviderSchema,
 	modelSchema,
 	planSchema,
-	portfolioConfigSchema,
-	portfolioConfigStorageId,
 	projectSchema,
 	repositorySchema,
 	reviewSurfaceSchema,
@@ -194,12 +194,12 @@ export function createTestCoreStorage(): CoreStorage {
 	return createTestCoreStorageWithView().service
 }
 
-export function seedProject(tx: TestStorageTransaction, id: string) {
+export function seedProject(tx: TestStorageTransaction, id: string, work: DeliveryWorkConfig = defaultDeliveryWorkConfig()) {
 	tx.projects.records.set(id, {
 		id,
 		title: 'Project',
 		source: { type: 'source-control' },
-		config: null,
+		config: { configured: stamp, value: { work } },
 		created: stamp,
 	})
 }
@@ -239,6 +239,39 @@ export function seedSlice(tx: TestStorageTransaction, id: string, deliveryId: st
 	})
 }
 
+export function seedAction(
+	tx: TestStorageTransaction,
+	id: string,
+	at: string,
+	result: Action['result'],
+	authorized: AuditStamp | null = localStamp(),
+) {
+	tx.actions.records.set(id, { id, deliveryId: 'delivery-1', performed: { at }, authorized, result })
+}
+
+export function testAgentRunProfileSnapshot(agentRunProfileId = 'agent-run-profile-1', modelId = 'model-1'): AgentRunProfileSnapshot {
+	return { agentRunProfileId, name: 'Agent Run Profile', modelUse: { modelId, thinkingLevel: 'none' } }
+}
+
+export function testModelAgentRun(
+	input: {
+		id?: string
+		purpose?: AgentRun['purpose']
+		profile?: AgentRunProfileSnapshot
+		completed?: AgentRun['completed']
+	} = {},
+): AgentRun {
+	return {
+		id: input.id ?? 'agent-run-1',
+		agent: { type: 'model' },
+		purpose: input.purpose ?? { type: 'planning', planId: 'plan-1' },
+		profile: input.profile ?? testAgentRunProfileSnapshot(),
+		modelUseOverride: null,
+		started: { at: '2026-06-10T12:00:00.000Z' },
+		completed: input.completed ?? null,
+	}
+}
+
 function nextSliceOrder(tx: TestStorageTransaction, deliveryId: string): number {
 	return [...tx.slices.records.values()].filter((slice) => slice.deliveryId === deliveryId).length
 }
@@ -275,6 +308,34 @@ export function seedSelectableModel(
 		updated: null,
 		archivePeriods: options.modelArchived ? [{ archived: stamp, unarchived: null }] : [],
 	})
+}
+
+export function seedAgentRunProfile(
+	tx: TestStorageTransaction,
+	id: string,
+	modelId = 'model-1',
+	options: { archived?: boolean } = {},
+): AgentRunProfile {
+	if (!tx.models.records.has(modelId)) seedSelectableModel(tx, modelId)
+	const profile: AgentRunProfile = {
+		id,
+		name: 'Agent Run Profile',
+		modelUse: { modelId, thinkingLevel: 'none' },
+		created: stamp,
+		updated: null,
+		archivePeriods: options.archived ? [{ archived: stamp, unarchived: null }] : [],
+	}
+	tx.agentRunProfiles.records.set(id, profile)
+	return profile
+}
+
+export function defaultDeliveryWorkConfig(agentRunProfileId = 'agent-run-profile-1'): DeliveryWorkConfig {
+	return {
+		maxProcessableSliceSlots: 1,
+		maxCorrectionRetriesPerFailure: 1,
+		executionAgentRunProfileId: agentRunProfileId,
+		revisionExecutionAgentRunProfileId: null,
+	}
 }
 
 export function seedSecret(tx: TestStorageTransaction, id: string, archived = false) {
@@ -328,11 +389,11 @@ function createTestCoreStorageWithView() {
 }
 
 export interface TestStorageTransaction extends CoreStorage {
-	portfolioConfig: TestPortfolioConfig
 	projects: TestTable<Project>
 	repositories: TestTable<Repository>
 	modelProviders: TestTable<ModelProvider>
 	models: TestTable<Model>
+	agentRunProfiles: TestTable<AgentRunProfile>
 	plans: TestTable<Plan>
 	deliveries: TestTable<Delivery>
 	slices: TestTable<Slice>
@@ -356,18 +417,13 @@ export interface TestTable<TRecord extends { id: Id }> {
 	fail: { get: boolean; put: boolean; list: boolean }
 }
 
-export interface TestPortfolioConfig {
-	record: PortfolioConfigRecord | null
-	fail: { get: boolean; put: boolean }
-}
-
 function testStorageTransaction(adapter: InMemoryAdapter): TestStorageTransaction {
 	return {
-		portfolioConfig: portfolioConfigView(adapter),
 		projects: tableView<Project>(adapter, projectSchema.name),
 		repositories: tableView<Repository>(adapter, repositorySchema.name),
 		modelProviders: tableView<ModelProvider>(adapter, modelProviderSchema.name),
 		models: tableView<Model>(adapter, modelSchema.name),
+		agentRunProfiles: tableView<AgentRunProfile>(adapter, agentRunProfileSchema.name),
 		plans: tableView<Plan>(adapter, planSchema.name),
 		deliveries: tableView<Delivery>(adapter, deliverySchema.name),
 		slices: tableView<Slice>(adapter, sliceSchema.name),
@@ -399,24 +455,6 @@ function tableView<TRecord extends { id: Id }>(adapter: InMemoryAdapter, table: 
 			return store(adapter, table) as Map<Id, TRecord>
 		},
 		fail: { get: false, put: false, list: false },
-	}
-}
-
-function portfolioConfigView(adapter: InMemoryAdapter): TestPortfolioConfig {
-	const records = () => store(adapter, portfolioConfigSchema.name) as Map<Id, PortfolioConfigRecord & { id: Id }>
-	return {
-		get record() {
-			const record = records().get(portfolioConfigStorageId)
-			return record === undefined ? null : { configured: record.configured, value: record.value }
-		},
-		set record(record: PortfolioConfigRecord | null) {
-			if (record === null) {
-				records().delete(portfolioConfigStorageId)
-			} else {
-				records().set(portfolioConfigStorageId, { id: portfolioConfigStorageId, ...record })
-			}
-		},
-		fail: { get: false, put: false },
 	}
 }
 
@@ -471,11 +509,11 @@ function patchAdapterFailures(adapter: InMemoryAdapter, tx: TestStorageTransacti
 
 function failureTables(tx: TestStorageTransaction): Map<string, { get?: boolean; put?: boolean; list?: boolean }> {
 	return new Map([
-		[portfolioConfigSchema.name, tx.portfolioConfig.fail],
 		[projectSchema.name, tx.projects.fail],
 		[repositorySchema.name, tx.repositories.fail],
 		[modelProviderSchema.name, tx.modelProviders.fail],
 		[modelSchema.name, tx.models.fail],
+		[agentRunProfileSchema.name, tx.agentRunProfiles.fail],
 		[planSchema.name, tx.plans.fail],
 		[deliverySchema.name, tx.deliveries.fail],
 		[sliceSchema.name, tx.slices.fail],

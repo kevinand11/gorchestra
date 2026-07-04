@@ -1,7 +1,7 @@
 import { Router } from 'equipped/server'
 
+import { createAgentRunProfilesApiRouter } from './agent-run-profiles'
 import { createAgentRunsApiRouter } from './agent-runs'
-import { createPortfolioConfigApiRouter } from './config'
 import { createDeliveriesApiRouter } from './deliveries'
 import { createMemoriesApiRouter } from './memories'
 import { createModelProvidersApiRouter } from './model-providers'
@@ -14,7 +14,7 @@ import type { ServerApiContext } from '../../context'
 const buildPortfolioApiRouter = (context: ServerApiContext) =>
 	new Router({ path: '/portfolio' })
 		.nest(createAgentRunsApiRouter(context))
-		.nest(createPortfolioConfigApiRouter(context))
+		.nest(createAgentRunProfilesApiRouter(context))
 		.nest(createModelProvidersApiRouter(context))
 		.nest(createProjectsApiRouter(context))
 		.nest(createPlansApiRouter(context))

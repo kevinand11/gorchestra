@@ -81,7 +81,7 @@ function invariant(message: string): Result<never, InvariantViolationError> {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { stamp } = await import('../../utils/test-helpers')
+	const { defaultDeliveryWorkConfig, stamp } = await import('../../utils/test-helpers')
 
 	describe('planningInstructionForProject', () => {
 		it('builds source-control Planning instructions', () => {
@@ -89,7 +89,7 @@ if (import.meta.vitest) {
 				id: 'project-1',
 				title: 'Project',
 				source: { type: 'source-control' },
-				config: null,
+				config: { configured: stamp, value: { work: defaultDeliveryWorkConfig() } },
 				created: stamp,
 			})
 

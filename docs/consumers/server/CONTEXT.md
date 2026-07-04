@@ -80,6 +80,10 @@ _Avoid_: Core Portfolio record, Portfolio metadata in Core
 The oldest Portfolio registered for a Workspace. The Default Portfolio is administered by the Workspace's Active Workspace Owners.
 _Avoid_: Personal Portfolio, Workspace data
 
+**Agent Run Profiles**:
+The selected-Portfolio Server Consumer surface for listing and managing Core Agent Run Profiles. Agent Run Profiles is a top-level Portfolio navigation item and replaces the old singleton Portfolio Config surface.
+_Avoid_: Portfolio Config, model settings, run settings
+
 **Brain**:
 The selected-Portfolio Server Consumer surface for exploring Portfolio context, including the Portfolio Graph and curated Portfolio Memory. Brain is UI/product language; Core domain language remains Portfolio Graph, Portfolio Memory, Memory, and Link.
 _Avoid_: Project Brain, Workspace Brain, knowledge base

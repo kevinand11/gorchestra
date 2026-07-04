@@ -2,16 +2,15 @@ import type { Action } from '../../domain/action'
 import type { AgentRun } from '../../domain/agent-run'
 import type { DeliveryArtifact, SliceArtifact } from '../../domain/artifact'
 import type { Id } from '../../domain/commons'
-import type { PortfolioConfigRecord, ProjectConfigRecord } from '../../domain/config'
 import type { Delivery } from '../../domain/delivery'
 import type { Link } from '../../domain/graph'
 import type { Project } from '../../domain/project'
 import type { Repository } from '../../domain/repository'
 import type { ReviewSurface } from '../../domain/review-surface'
 import type { Slice } from '../../domain/slice'
-import type { InvalidCoreServiceOutputError, InvariantViolationError, StorageOperationFailedError } from '../../errors'
+import type { InvariantViolationError } from '../../errors'
 import type { CoreStorage } from '../../services'
-import { getPortfolioConfig, getRequired, listRecords, notFound } from '../../storage/helpers'
+import { getRequired, listRecords, notFound } from '../../storage/helpers'
 import type { Result } from '../types'
 import type { DeliveryContext, DeliveryContextSlice, DeliveryDependencySummary } from './types'
 import { compareActions } from './work-state/actions'
@@ -36,8 +35,6 @@ interface DeliveryContextRoot {
 	delivery: Delivery
 	project: Project
 	repository: Repository
-	portfolioConfig: PortfolioConfigRecord | null
-	projectConfig: ProjectConfigRecord | null
 }
 
 interface DeliveryContextRecords {
@@ -72,29 +69,21 @@ async function readDeliveryContextRootForDelivery(
 	storage: CoreStorage,
 	delivery: Delivery,
 ): Promise<Result<DeliveryContextRoot, DeliveryContextError>> {
-	const [project, repository, portfolioConfig] = await Promise.all([
+	const [project, repository] = await Promise.all([
 		getRequired('project', storage, delivery.projectId),
 		getRequired('repository', storage, delivery.target.repositoryId),
-		readOptionalPortfolioConfig(storage),
 	])
-	const failure = firstFailure([project, repository, portfolioConfig])
+	const failure = firstFailure([project, repository])
 	if (failure !== null) return failure
 
 	const projectRecord = resultValue(project)
 	const repositoryRecord = resultValue(repository)
 	const projectBoundary = repositoryProjectBoundary(projectRecord, repositoryRecord)
-	return projectBoundary.ok
-		? { ok: true, value: deliveryContextRoot(delivery, projectRecord, repositoryRecord, resultValue(portfolioConfig)) }
-		: projectBoundary
+	return projectBoundary.ok ? { ok: true, value: deliveryContextRoot(delivery, projectRecord, repositoryRecord) } : projectBoundary
 }
 
-function deliveryContextRoot(
-	delivery: Delivery,
-	project: Project,
-	repository: Repository,
-	portfolioConfig: PortfolioConfigRecord | null,
-): DeliveryContextRoot {
-	return { delivery, project, repository, portfolioConfig, projectConfig: project.config }
+function deliveryContextRoot(delivery: Delivery, project: Project, repository: Repository): DeliveryContextRoot {
+	return { delivery, project, repository }
 }
 
 function repositoryProjectBoundary(project: Project, repository: Repository): Result<void, InvariantViolationError> {
@@ -104,15 +93,6 @@ function repositoryProjectBoundary(project: Project, repository: Repository): Re
 				ok: false,
 				error: { type: 'invariant-violation', message: `Repository ${repository.id} is outside Project ${project.id}.` },
 			}
-}
-
-async function readOptionalPortfolioConfig(
-	storage: CoreStorage,
-): Promise<Result<PortfolioConfigRecord | null, StorageOperationFailedError | InvalidCoreServiceOutputError>> {
-	const record = await getPortfolioConfig(storage)
-	if (!record.ok) return record
-
-	return { ok: true, value: record.value === null ? null : { configured: record.value.configured, value: record.value.value } }
 }
 
 async function readDeliveryContextRecords(
@@ -355,7 +335,7 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { getDeliveryState, getSliceState } = await import('./work-state')
 	const { resolveDeliveryWork } = await import('./work-resolution')
-	const { createTestCoreServices, localStamp, seedDelivery, seedProject, seedSecret, seedSelectableModel, seedSlice } =
+	const { createTestCoreServices, localStamp, seedAgentRunProfile, seedDelivery, seedProject, seedSecret, seedSlice } =
 		await import('../test-helpers')
 
 	describe('buildDeliveryContext', () => {
@@ -511,33 +491,19 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('returns failed preflight checks when Delivery work needs missing Portfolio Config', async () => {
+		it('returns an operation error when Delivery work references a missing Agent Run Profile', async () => {
 			const options = storedContextFixture()
 			const stored = await buildDeliveryContext(options.tx, 'delivery-1')
 			if (!stored.ok) throw new Error('Expected Delivery Context.')
 
 			const result = await resolveDeliveryWork(options.tx, stored.value)
 
-			expect(result).toMatchObject({
-				ok: true,
-				value: {
-					type: 'failed',
-					checks: [
-						{
-							type: 'validation',
-							operation: { type: 'delivery-preflight' },
-							passed: false,
-							summary: 'Portfolio Config is not configured.',
-						},
-					],
-				},
-			})
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'agent-run-profile', id: 'agent-run-profile-1' } })
 		})
 
 		it('resolves Delivery Work Resolution without provider access plaintext', async () => {
 			const options = storedContextFixture()
-			seedSelectableModel(options.tx, 'model-1')
-			seedPortfolioConfig(options)
+			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
 			const stored = await buildDeliveryContext(options.tx, 'delivery-1')
 			if (!stored.ok) throw new Error('Expected Delivery Context.')
 
@@ -548,7 +514,13 @@ if (import.meta.vitest) {
 				value: {
 					type: 'passed',
 					resolution: {
-						workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30000 },
+						workConfig: {
+							maxProcessableSliceSlots: 1,
+							maxCorrectionRetriesPerFailure: 1,
+							executionAgentRunProfileId: 'agent-run-profile-1',
+							revisionExecutionAgentRunProfileId: null,
+						},
+						executionProfile: { id: 'agent-run-profile-1' },
 						executionModel: { id: 'model-1' },
 						executionModelProvider: { id: 'model-1-provider' },
 					},
@@ -556,22 +528,6 @@ if (import.meta.vitest) {
 			})
 		})
 	})
-
-	function seedPortfolioConfig(options: ReturnType<typeof storedContextFixture>) {
-		options.tx.portfolioConfig.record = {
-			configured: localStamp(),
-			value: {
-				model: {
-					default: { modelId: 'model-1', thinkingLevel: 'none' },
-					planning: null,
-					revisionPlanning: null,
-					execution: null,
-					revisionExecution: null,
-				},
-				work: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30000 },
-			},
-		}
-	}
 
 	function storedContextFixture() {
 		const options = createTestCoreServices()

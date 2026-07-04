@@ -164,7 +164,6 @@ if (import.meta.vitest) {
 			id: input.id,
 			projectId: input.projectId,
 			title: input.title,
-			config: null,
 			created: { origin: 'imported', at: input.createdAt ?? stamp.at },
 			closed: null,
 		}
@@ -175,6 +174,12 @@ if (import.meta.vitest) {
 			id,
 			agent: { type: 'model' as const },
 			purpose: { type: 'planning' as const, planId },
+			profile: {
+				agentRunProfileId: 'agent-run-profile-1',
+				name: 'Agent Run Profile',
+				modelUse: { modelId: 'model-1', thinkingLevel: 'none' as const },
+			},
+			modelUseOverride: null,
 			started: { at: stamp.at },
 			completed: null,
 		}

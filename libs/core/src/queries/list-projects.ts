@@ -210,7 +210,17 @@ if (import.meta.vitest) {
 				id: input.id,
 				title: input.title,
 				source: { type: 'source-control' },
-				config: null,
+				config: {
+					configured: { origin: 'imported', at: input.createdAt ?? '2026-06-10T00:00:00.000Z' },
+					value: {
+						work: {
+							maxProcessableSliceSlots: 1,
+							maxCorrectionRetriesPerFailure: 1,
+							executionAgentRunProfileId: 'agent-run-profile-1',
+							revisionExecutionAgentRunProfileId: null,
+						},
+					},
+				},
 				created: { origin: 'imported', at: input.createdAt ?? '2026-06-10T00:00:00.000Z' },
 			}),
 			repository: (input: { id: string; projectId: string; owner: string; name: string; createdAt?: string }): Repository => ({

@@ -546,8 +546,6 @@ if (import.meta.vitest) {
 			delivery,
 			project: tx.projects.records.get(delivery.projectId)!,
 			repository: tx.repositories.records.get(delivery.target.repositoryId)!,
-			portfolioConfig: tx.portfolioConfig.record,
-			projectConfig: tx.projects.records.get(delivery.projectId)!.config,
 			deliveryArtifact: [...tx.deliveryArtifacts.records.values()].find((artifact) => artifact.deliveryId === delivery.id) ?? null,
 			slices,
 			actions: actions.filter((action) => action.deliveryId === delivery.id),

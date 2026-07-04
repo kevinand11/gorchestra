@@ -60,7 +60,7 @@ function createSelectedProjectPlan(
 ): Promise<Domain.Plan.PlanWithPlanningAgentRun> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
 		const plan = await core.commands.createPlan(
-			{ projectId, title: input.title, initialMessage: input.initialMessage, config: input.config },
+			{ projectId, title: input.title, initialMessage: input.initialMessage, agentRunProfileId: input.agentRunProfileId },
 			{ actor: { type: 'workspace-member', id: workspaceMember.id }, correlationId: null },
 		)
 		return plan.ok ? plan.value : throwCoreOperationError(plan.error)

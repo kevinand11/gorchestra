@@ -1,7 +1,7 @@
-import type { AgentRun, ExecutionMode } from '../../../domain/agent-run'
+import type { AgentRun, AgentRunProfileSnapshot, ExecutionMode } from '../../../domain/agent-run'
 import type { Id, RuntimeRecord } from '../../../domain/commons'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
-import { appendAgentRunEvent, createModelAgentRunWithInitialModel } from '../../../utils/agent-run-events'
+import { appendAgentRunEvent, createModelAgentRunWithProfileSnapshot } from '../../../utils/agent-run-events'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
 import type { Result as CoreResult } from '../../../utils/types'
 import type { DeliveryHandlerContext, DeliveryWorkResolution, RunDeliveryWorkHandlerResult } from '../types'
@@ -22,15 +22,14 @@ interface SliceExecutionAgentRunInput {
 	agentRunId: Id
 	purpose: Extract<AgentRun['purpose'], { type: 'execution' }>
 	started: RuntimeRecord
-	modelId: Id
-	thinkingLevel: DeliveryWorkResolution['executionModelUse']['thinkingLevel']
+	profile: AgentRunProfileSnapshot
 }
 
 async function writeSliceExecutionAgentRun(
 	context: DeliveryHandlerContext,
 	agentRun: SliceExecutionAgentRunInput,
 ): Promise<RunDeliveryWorkHandlerResult> {
-	const agentRunPut = await createModelAgentRunWithInitialModel({ values: context.values }, context.storage, agentRun)
+	const agentRunPut = await createModelAgentRunWithProfileSnapshot(context.storage, agentRun)
 	if (!agentRunPut.ok) return agentRunPut
 
 	const input = await appendAgentRunEvent({ values: context.values }, context.storage, agentRunPut.value.id, {
@@ -66,8 +65,11 @@ function sliceExecutionAgentRun(
 				mode: executionModeForState(state),
 			},
 			started: started.value,
-			modelId: resolution.executionModelUse.modelId,
-			thinkingLevel: resolution.executionModelUse.thinkingLevel,
+			profile: {
+				agentRunProfileId: resolution.executionProfile.id,
+				name: resolution.executionProfile.name,
+				modelUse: resolution.executionProfile.modelUse,
+			},
 		},
 	}
 }
@@ -84,7 +86,7 @@ if (import.meta.vitest) {
 	const { createTestCoreServices, seedDelivery, seedSlice, seedSelectableModel } = await import('../../../utils/test-helpers')
 
 	describe('handleSliceExecutable', () => {
-		it('claims initial executable Slice work with an Agent Run and initial model selection event', async () => {
+		it('claims initial executable Slice work with a profile-snapshotted Agent Run and input event', async () => {
 			const context = await executableHandlerContext()
 			const result = await handleSliceExecutable(
 				context,
@@ -99,16 +101,16 @@ if (import.meta.vitest) {
 				id: 'agent-run-1',
 				agent: { type: 'model' },
 				purpose: { type: 'execution', deliveryId: 'delivery-1', sliceId: 'slice-1', mode: { type: 'initial' } },
+				profile: {
+					agentRunProfileId: 'agent-run-profile-1',
+					name: 'Execution',
+					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				},
+				modelUseOverride: null,
 				started: { at: '2026-06-10T12:00:00.000Z' },
 				completed: null,
 			})
 			expect(context.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toEqual({
-				type: 'agent-run-model-selected',
-				modelId: 'model-1',
-				thinkingLevel: 'none',
-				authorized: null,
-			})
-			expect(context.tx.agentRunEvents.records.get('agent-run-event-2')?.body).toEqual({
 				type: 'input-message',
 				source: { type: 'runtime' },
 				content: [{ type: 'text', text: 'Execute Slice slice-1.' }],
@@ -139,7 +141,20 @@ if (import.meta.vitest) {
 	})
 
 	const resolution: DeliveryWorkResolution = {
-		workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
+		workConfig: {
+			maxProcessableSliceSlots: 1,
+			maxCorrectionRetriesPerFailure: 1,
+			executionAgentRunProfileId: 'agent-run-profile-1',
+			revisionExecutionAgentRunProfileId: null,
+		},
+		executionProfile: {
+			id: 'agent-run-profile-1',
+			name: 'Execution',
+			modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
+			updated: null,
+			archivePeriods: [],
+		},
 		executionModelUse: { modelId: 'model-1', thinkingLevel: 'none' },
 		executionModel: {
 			id: 'model-1',

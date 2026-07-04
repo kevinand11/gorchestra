@@ -114,6 +114,12 @@ if (import.meta.vitest) {
 			id: 'agent-run-1',
 			agent: { type: 'model' },
 			purpose: { type: 'planning', planId: 'plan-1' },
+			profile: {
+				agentRunProfileId: 'agent-run-profile-1',
+				name: 'Agent Run Profile',
+				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+			},
+			modelUseOverride: null,
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
 		})

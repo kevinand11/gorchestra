@@ -1,10 +1,19 @@
 import { buildDeliveryContext } from '../../../utils/delivery-context'
-import { createTestCoreServices, localStamp, seedDelivery, seedSelectableModel, seedSlice, stamp } from '../../../utils/test-helpers'
+import {
+	createTestCoreServices,
+	localStamp,
+	seedAgentRunProfile,
+	seedDelivery,
+	seedSelectableModel,
+	seedSlice,
+	stamp,
+} from '../../../utils/test-helpers'
 
 export async function createRunDeliveryWorkHandlerTestContext(options: { sliceId?: string } = {}) {
 	const services = createTestCoreServices()
 	seedDelivery(services.tx, 'delivery-1')
 	seedSelectableModel(services.tx, 'model-1')
+	const executionProfile = seedAgentRunProfile(services.tx, 'agent-run-profile-1', 'model-1')
 	if (options.sliceId !== undefined) seedSlice(services.tx, options.sliceId, 'delivery-1')
 
 	services.tx.deliveries.records.get('delivery-1')!.queued = localStamp()
@@ -19,7 +28,13 @@ export async function createRunDeliveryWorkHandlerTestContext(options: { sliceId
 	if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
 
 	const workResolution = {
-		workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
+		workConfig: {
+			maxProcessableSliceSlots: 1,
+			maxCorrectionRetriesPerFailure: 1,
+			executionAgentRunProfileId: executionProfile.id,
+			revisionExecutionAgentRunProfileId: null,
+		},
+		executionProfile,
 		executionModelUse: { modelId: 'model-1', thinkingLevel: 'none' as const },
 		executionModel: services.tx.models.records.get('model-1')!,
 		executionModelProvider: services.tx.modelProviders.records.get('model-1-provider')!,

@@ -1,5 +1,7 @@
 # AI SDK-backed Model Provider Protocols and Agent Run transcript cursors
 
+Superseded in part by [Agent Run Profiles and Project-scoped Delivery work config](./2026-07-04-1328-agent-run-profiles-and-delivery-work-config.md), which makes Agent Run profile snapshots and audited Agent Run Model Use Overrides authoritative instead of initial model-selection transcript events.
+
 Core Model Provider Protocol implementations use Vercel AI SDK as the language-model execution boundary for every model-backed interaction. Concrete protocol adapters resolve a stored Core Model Provider, Model, and resolved transient Secret access into an AI SDK `LanguageModel` plus any non-thinking provider-specific `providerOptions`; the Agent Run runtime and Model Preflight then call AI SDK `streamText`. Agent Run thinking control uses AI SDK's generic `reasoning` option after Core validates provider-protocol support. Consumers still do not provide Model Provider Protocol implementations, and Core continues to own Model Agent behavior, tool contracts, transcript persistence, provider error classification, and safe validation boundaries.
 
 Supported v1 Model Provider Protocols are `openai-responses`, `anthropic-messages`, and `google-generative-ai`. We dropped `openai-completions` with no legacy compatibility because it is legacy prompt/completions-shaped behavior that does not fit Gorchestra's message/tool/thinking Agent Run model. Existing pre-v1 records that use `openai-completions` are invalid and should be recreated with a supported protocol.

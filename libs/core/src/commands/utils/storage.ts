@@ -1,15 +1,7 @@
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './errors'
+import type { AgentRunProfile } from '../../domain/agent-run-profile'
 import type { ArchivePeriod, AuditStamp, Id } from '../../domain/commons'
-import type {
-	DeliveryConfig,
-	DeliveryConfigRecord,
-	ModelUseConfig,
-	PlanConfig,
-	PlanConfigRecord,
-	PortfolioConfig,
-	ProjectConfig,
-	ProjectConfigRecord,
-} from '../../domain/config'
+import type { DeliveryConfig, DeliveryConfigRecord, ModelUseConfig, ProjectConfig, ProjectConfigRecord } from '../../domain/config'
 import type { DeliveryWorkState } from '../../domain/delivery'
 import type { Model, ModelThinkingLevel } from '../../domain/model'
 import type { ModelProvider, ModelProviderAuth, ModelProviderHeader } from '../../domain/model-provider'
@@ -19,6 +11,7 @@ import type { Secret, SecretBindingScope } from '../../domain/secret'
 import type {
 	AlreadyArchivedError,
 	ArchivableCoreResource,
+	ArchivedAgentRunProfileReferenceError,
 	ArchivedModelProviderReferenceError,
 	ArchivedModelReferenceError,
 	ArchivedSecretReferenceError,
@@ -40,37 +33,20 @@ import type { CoreRuntime } from '../../runtime'
 import type { CoreStorage } from '../../services'
 import {
 	createRecord,
-	getPortfolioConfig,
 	getRecord,
 	getRequired,
-	getRequiredPortfolioConfig,
 	listRecords,
 	notFound,
-	setPortfolioConfig,
 	updateRecord,
 	withTransaction,
 	type StorageBoundaryError,
 } from '../../storage/helpers'
-import type { CoreIdStorageRecord, CoreStorageRecord } from '../../storage/schemas'
+import type { CoreIdStorageRecord } from '../../storage/schemas'
 import { auditStamp, nextId, runtimeRecord } from '../../utils/runtime-values'
 import type { Result } from '../../utils/types'
 import type { CommandContext } from '../types'
 
-export {
-	auditStamp,
-	createRecord,
-	getPortfolioConfig,
-	getRecord,
-	getRequired,
-	getRequiredPortfolioConfig,
-	listRecords,
-	nextId,
-	notFound,
-	runtimeRecord,
-	setPortfolioConfig,
-	updateRecord,
-	withTransaction,
-}
+export { auditStamp, createRecord, getRecord, getRequired, listRecords, nextId, notFound, runtimeRecord, updateRecord, withTransaction }
 
 export type { StorageBoundaryError }
 
@@ -84,7 +60,7 @@ export async function createRecordValue<Resource extends CoreIdResource>(
 	storage: CoreStorage,
 	record: CoreIdStorageRecord<Resource>,
 ): Promise<Result<CoreIdStorageRecord<Resource>, StorageBoundaryError | InvariantViolationError>> {
-	const stored = await createRecord(resource, storage, record as CoreStorageRecord<Resource>)
+	const stored = await createRecord(resource, storage, record)
 	return stored.ok ? { ok: true, value: stored.value } : stored
 }
 
@@ -225,6 +201,57 @@ export function validateModelThinkingLevel(
 	thinkingLevel: ModelThinkingLevel,
 ): Result<void, ModelThinkingLevelUnavailableError> {
 	return validateModelThinkingLevelForUse(model, provider.protocol, thinkingLevel)
+}
+
+export async function loadSelectableAgentRunProfile(
+	storage: CoreStorage,
+	agentRunProfileId: Id,
+): Promise<Result<AgentRunProfile, ConfigCommandReferenceError | ConfigCommandStorageError>> {
+	const profile = await getRequired('agent-run-profile', storage, agentRunProfileId)
+	if (!profile.ok) return profile
+	if (isArchived(profile.value.archivePeriods)) return archivedAgentRunProfileReference(agentRunProfileId)
+
+	const facts = await loadSelectableModelFacts(storage, [profile.value.modelUse.modelId])
+	if (!facts.ok) return facts
+
+	const modelUseValidation = validateModelUseConfigs(facts.value, [profile.value.modelUse])
+	return modelUseValidation.ok ? profile : modelUseValidation
+}
+
+export async function validateSelectableAgentRunProfiles(
+	storage: CoreStorage,
+	agentRunProfileIds: Id[],
+): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError>> {
+	for (const agentRunProfileId of uniqueIds(agentRunProfileIds)) {
+		const profile = await loadSelectableAgentRunProfile(storage, agentRunProfileId)
+		if (!profile.ok) return profile
+	}
+
+	return { ok: true, value: undefined }
+}
+
+export function agentRunProfileSnapshot(profile: AgentRunProfile) {
+	return { agentRunProfileId: profile.id, name: profile.name, modelUse: profile.modelUse }
+}
+
+export function agentRunProfileIdsFromProjectConfig(config: ProjectConfig): Id[] {
+	return agentRunProfileIdsFromDeliveryWorkConfig(config.work)
+}
+
+export function agentRunProfileIdsFromProjectConfigRecord(config: ProjectConfigRecord): Id[] {
+	return agentRunProfileIdsFromProjectConfig(config.value)
+}
+
+export function agentRunProfileIdsFromDeliveryConfig(config: DeliveryConfig | null): Id[] {
+	return config?.work === undefined || config.work === null ? [] : agentRunProfileIdsFromDeliveryWorkConfig(config.work)
+}
+
+export function agentRunProfileIdsFromDeliveryConfigRecord(config: DeliveryConfigRecord): Id[] {
+	return agentRunProfileIdsFromDeliveryConfig(config.value)
+}
+
+export function agentRunProfileIdsFromDeliveryWorkConfig(config: ProjectConfig['work']): Id[] {
+	return [config.executionAgentRunProfileId, config.revisionExecutionAgentRunProfileId].filter(isId)
 }
 
 async function loadSelectableModelProvider(
@@ -452,18 +479,7 @@ export function unarchiveStoredRecordWithAudit<Resource extends ArchivableCoreRe
 	)
 }
 
-export function normalizePortfolioConfig(config: PortfolioConfig): PortfolioConfig {
-	return {
-		model: { ...config.model },
-		work: config.work === null ? null : { ...config.work },
-	}
-}
-
-export function normalizeProjectConfigRecordForCreate(config: ProjectConfig | null, configured: AuditStamp): ProjectConfigRecord | null {
-	return config === null ? null : { configured, value: config }
-}
-
-export function normalizeProjectConfigRecord(config: ProjectConfig | null, configured: AuditStamp): ProjectConfigRecord {
+export function normalizeProjectConfigRecord(config: ProjectConfig, configured: AuditStamp): ProjectConfigRecord {
 	return { configured, value: config }
 }
 
@@ -471,57 +487,12 @@ export function normalizeDeliveryConfigRecord(config: DeliveryConfig | null, con
 	return { configured, value: config }
 }
 
-export function normalizePlanConfigRecord(config: PlanConfig | null, configured: AuditStamp): PlanConfigRecord | null {
-	return config === null ? null : { configured, value: config }
-}
-
 export function normalizeRepositoryConfig(config: RepositoryConfig): RepositoryConfig {
 	return { ...config }
 }
 
-export function modelUsesFromPortfolioConfig(config: PortfolioConfig): ModelUseConfig[] {
-	return [
-		config.model.default,
-		config.model.planning,
-		config.model.revisionPlanning,
-		config.model.execution,
-		config.model.revisionExecution,
-	].filter(isModelUseConfig)
-}
-
-export function modelUsesFromProjectConfigRecord(config: ProjectConfigRecord | null): ModelUseConfig[] {
-	const model = config?.value?.model ?? null
-	return model === null ? [] : [model.planning, model.revisionPlanning, model.execution, model.revisionExecution].filter(isModelUseConfig)
-}
-
-export function modelUsesFromPlanConfigRecord(config: PlanConfigRecord | null): ModelUseConfig[] {
-	const planning = config?.value?.model?.planning ?? null
-	return planning === null ? [] : [planning]
-}
-
-export function modelUsesFromDeliveryConfigRecord(config: DeliveryConfigRecord): ModelUseConfig[] {
-	const model = config.value?.model ?? null
-	return model === null ? [] : [model.execution, model.revisionExecution].filter(isModelUseConfig)
-}
-
 export function modelIdsFromModelUses(modelUses: ModelUseConfig[]): Id[] {
 	return modelUses.map((modelUse) => modelUse.modelId)
-}
-
-export function modelIdsFromPortfolioConfig(config: PortfolioConfig): Id[] {
-	return modelIdsFromModelUses(modelUsesFromPortfolioConfig(config))
-}
-
-export function modelIdsFromProjectConfigRecord(config: ProjectConfigRecord | null): Id[] {
-	return modelIdsFromModelUses(modelUsesFromProjectConfigRecord(config))
-}
-
-export function modelIdsFromPlanConfigRecord(config: PlanConfigRecord | null): Id[] {
-	return modelIdsFromModelUses(modelUsesFromPlanConfigRecord(config))
-}
-
-export function modelIdsFromDeliveryConfigRecord(config: DeliveryConfigRecord): Id[] {
-	return modelIdsFromModelUses(modelUsesFromDeliveryConfigRecord(config))
 }
 
 export function secretReferencesFromModelProviderConfig(auth: ModelProviderAuth | null, headers: ModelProviderHeader[]): Id[] {
@@ -569,8 +540,12 @@ export function archivedModelProviderReference(modelProviderId: Id): Result<neve
 	return { ok: false, error: { type: 'archived-model-provider-reference', modelProviderId } }
 }
 
-function isModelUseConfig(modelUse: ModelUseConfig | null): modelUse is ModelUseConfig {
-	return modelUse !== null
+export function archivedAgentRunProfileReference(agentRunProfileId: Id): Result<never, ArchivedAgentRunProfileReferenceError> {
+	return { ok: false, error: { type: 'archived-agent-run-profile-reference', agentRunProfileId } }
+}
+
+function isId(id: Id | null): id is Id {
+	return id !== null
 }
 
 function validateActiveModel(model: Model): Result<void, ArchivedModelProviderReferenceError | ArchivedModelReferenceError> {

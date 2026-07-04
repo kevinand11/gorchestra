@@ -2,7 +2,6 @@ import type { DeliveryDependencyLink, SliceDependencyLink } from './work-state/t
 import type { Action } from '../../domain/action'
 import type { AgentRun } from '../../domain/agent-run'
 import type { DeliveryArtifact, SliceArtifact } from '../../domain/artifact'
-import type { PortfolioConfigRecord, ProjectConfigRecord } from '../../domain/config'
 import type { Delivery } from '../../domain/delivery'
 import type { Project } from '../../domain/project'
 import type { Repository } from '../../domain/repository'
@@ -24,8 +23,6 @@ export interface DeliveryContext {
 	delivery: Delivery
 	project: Project
 	repository: Repository
-	portfolioConfig: PortfolioConfigRecord | null
-	projectConfig: ProjectConfigRecord | null
 	deliveryArtifact: DeliveryArtifact | null
 	slices: DeliveryContextSlice[]
 	actions: Action[]

@@ -61,12 +61,12 @@
 				<section class="px-3 py-3">
 					<h2 class="m-0 text-sz-helper font-semibold">Configuration</h2>
 					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-						Project-specific configuration is handled inside each Project. Portfolio-wide defaults live in Portfolio Config.
+						Project-specific configuration is handled inside each Project. Reusable run settings live in Agent Run Profiles.
 					</p>
 					<NuxtLink
 						class="mt-2 inline-flex text-sz-helper font-semibold text-primary hover:brightness-110"
-						to="/portfolio-config">
-						Open Portfolio Config
+						to="/agent-run-profiles">
+						Open Agent Run Profiles
 					</NuxtLink>
 				</section>
 			</aside>

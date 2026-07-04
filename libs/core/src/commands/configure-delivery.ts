@@ -1,7 +1,6 @@
 import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
-import type { Action } from '../domain/action'
 import { idPipe, type AuditStamp } from '../domain/commons'
 import { deliveryConfigPipe, type DeliveryConfigRecord } from '../domain/config'
 import type { Delivery, DeliveryWorkState } from '../domain/delivery'
@@ -13,14 +12,12 @@ import type { Result as CoreResult } from '../utils/types'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { buildCommandHandler } from './utils/handler'
 import {
+	agentRunProfileIdsFromDeliveryConfigRecord,
 	auditStamp,
 	deliveryWorkStateMismatch,
-	loadSelectableModelFacts,
-	modelIdsFromModelUses,
-	modelUsesFromDeliveryConfigRecord,
 	normalizeDeliveryConfigRecord,
 	updateRecordValue,
-	validateModelUseConfigs,
+	validateSelectableAgentRunProfiles,
 	withTransaction,
 } from './utils/storage'
 
@@ -29,7 +26,6 @@ export type Input = PipeInput<typeof configureDeliveryInputPipe>
 type ValidatedInput = PipeOutput<typeof configureDeliveryInputPipe>
 
 export type Result = Delivery
-
 export type Error =
 	| InvalidInputError
 	| ConfigCommandReferenceError
@@ -66,12 +62,8 @@ async function writeDeliveryConfig(
 	if (!deliveryResult.ok) return deliveryResult
 
 	const config = normalizeDeliveryConfigRecord(input.config, stamp)
-	const modelUses = modelUsesFromDeliveryConfigRecord(config)
-	const facts = await loadSelectableModelFacts(storage, modelIdsFromModelUses(modelUses))
-	if (!facts.ok) return facts
-
-	const modelUseValidation = validateModelUseConfigs(facts.value, modelUses)
-	if (!modelUseValidation.ok) return modelUseValidation
+	const profileValidation = await validateSelectableAgentRunProfiles(storage, agentRunProfileIdsFromDeliveryConfigRecord(config))
+	if (!profileValidation.ok) return profileValidation
 
 	return writeConfiguredDelivery(storage, deliveryResult.value, config)
 }
@@ -120,8 +112,17 @@ const openDeliveryStateTypes: Exclude<DeliveryWorkState['type'], 'closed'>[] = [
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedDelivery, seedSelectableModel, validationEvidence } =
-		await import('../utils/test-helpers')
+	const {
+		context,
+		createTestCoreRuntime,
+		createTestCoreServices,
+		defaultDeliveryWorkConfig,
+		localStamp,
+		seedAction,
+		seedAgentRunProfile,
+		seedDelivery,
+		validationEvidence,
+	} = await import('../utils/test-helpers')
 
 	describe('configureDelivery command', () => {
 		it('validates input before reading storage', async () => {
@@ -138,80 +139,60 @@ if (import.meta.vitest) {
 		it('returns not-found when the Delivery does not exist', async () => {
 			const command = createConfigureDeliveryCommand(createTestCoreRuntime())
 
-			const result = await command({ deliveryId: 'missing-delivery', config: allNullConfig() }, context)
+			const result = await command({ deliveryId: 'missing-delivery', config: { work: null } }, context)
 
 			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'delivery', id: 'missing-delivery' } })
 		})
 
-		it('sets Delivery config and validates referenced Models are selectable', async () => {
+		it('sets Delivery config and validates referenced Agent Run Profiles are selectable', async () => {
 			const options = createTestCoreServices()
 			seedDelivery(options.tx, 'delivery-1')
-			seedSelectableModel(options.tx, 'execution-model')
+			seedAgentRunProfile(options.tx, 'agent-run-profile-2', 'model-1')
 			const command = createConfigureDeliveryCommand(createTestCoreRuntime(options))
+			const config = { work: defaultDeliveryWorkConfig('agent-run-profile-2') }
 
-			const result = await command(
-				{
-					deliveryId: 'delivery-1',
-					config: {
-						model: deliveryModelConfig('execution-model'),
-						work: { maxProcessableSliceSlots: 2, maxCorrectionRetriesPerFailure: 3, modelTimeoutMs: 1000 },
-					},
-				},
-				context,
-			)
+			const result = await command({ deliveryId: 'delivery-1', config }, context)
 
 			expect(result).toEqual({
 				ok: true,
-				value: {
-					...options.tx.deliveries.records.get('delivery-1'),
-					config: {
-						configured: localStamp(),
-						value: {
-							model: deliveryModelConfig('execution-model'),
-							work: { maxProcessableSliceSlots: 2, maxCorrectionRetriesPerFailure: 3, modelTimeoutMs: 1000 },
-						},
-					},
-				},
+				value: { ...options.tx.deliveries.records.get('delivery-1'), config: { configured: localStamp(), value: config } },
 			})
 			expect(options.tx.deliveries.records.get('delivery-1')).toEqual(result.ok ? result.value : null)
 		})
 
-		it('folds all-null Delivery config to a retained null config record', async () => {
+		it('folds a cleared Delivery config override to a retained null config record', async () => {
 			const { command, options } = configureFixture()
 
-			const result = await command({ deliveryId: 'delivery-1', config: allNullConfig() }, context)
+			const result = await command({ deliveryId: 'delivery-1', config: { work: null } }, context)
 
 			expectNullDeliveryConfig(result)
 			expect(options.tx.deliveries.records.get('delivery-1')?.config).toEqual({ configured: localStamp(), value: null })
 		})
 
-		it('rejects missing Delivery Model references', async () => {
+		it('rejects missing Delivery Agent Run Profile references', async () => {
 			const { command } = configureFixture()
 
 			const result = await command(
-				{
-					deliveryId: 'delivery-1',
-					config: { model: deliveryModelConfig('missing-model'), work: null },
-				},
+				{ deliveryId: 'delivery-1', config: { work: defaultDeliveryWorkConfig('missing-profile') } },
 				context,
 			)
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'model', id: 'missing-model' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'agent-run-profile', id: 'missing-profile' } })
 		})
 
-		it('rejects archived Delivery Model references', async () => {
+		it('rejects archived Delivery Agent Run Profile references', async () => {
 			const { command, options } = configureFixture()
-			seedSelectableModel(options.tx, 'execution-model', { modelArchived: true })
+			seedAgentRunProfile(options.tx, 'agent-run-profile-2', 'model-1', { archived: true })
 
 			const result = await command(
-				{
-					deliveryId: 'delivery-1',
-					config: { model: deliveryModelConfig('execution-model'), work: null },
-				},
+				{ deliveryId: 'delivery-1', config: { work: defaultDeliveryWorkConfig('agent-run-profile-2') } },
 				context,
 			)
 
-			expect(result).toEqual({ ok: false, error: { type: 'archived-model-reference', modelId: 'execution-model' } })
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'archived-agent-run-profile-reference', agentRunProfileId: 'agent-run-profile-2' },
+			})
 		})
 
 		it('rejects closed Deliveries', async () => {
@@ -224,7 +205,7 @@ if (import.meta.vitest) {
 			}
 			const command = createConfigureDeliveryCommand(createTestCoreRuntime(options))
 
-			const result = await command({ deliveryId: 'delivery-1', config: allNullConfig() }, context)
+			const result = await command({ deliveryId: 'delivery-1', config: { work: null } }, context)
 
 			expect(result).toEqual({
 				ok: false,
@@ -245,7 +226,7 @@ if (import.meta.vitest) {
 				checks: [validationEvidence('delivery-preflight', false, 'Missing config.')],
 			})
 
-			const result = await command({ deliveryId: 'delivery-1', config: allNullConfig() }, context)
+			const result = await command({ deliveryId: 'delivery-1', config: { work: null } }, context)
 
 			expectNullDeliveryConfig(result)
 			expect(options.tx.actions.records.get('preflight-failed')).toMatchObject({ result: { type: 'validate-preflight' } })
@@ -261,23 +242,5 @@ if (import.meta.vitest) {
 		seedDelivery(options.tx, 'delivery-1')
 
 		return { options, command: createConfigureDeliveryCommand(createTestCoreRuntime(options)) }
-	}
-
-	function allNullConfig(): Input['config'] {
-		return { model: null, work: null }
-	}
-
-	function deliveryModelConfig(executionModelId: string): NonNullable<NonNullable<ValidatedInput['config']>['model']> {
-		return { execution: { modelId: executionModelId, thinkingLevel: 'none' }, revisionExecution: null }
-	}
-
-	function seedAction(
-		tx: ReturnType<typeof createTestCoreServices>['tx'],
-		id: string,
-		at: string,
-		result: Action['result'],
-		authorized: AuditStamp | null = localStamp(),
-	) {
-		tx.actions.records.set(id, { id, deliveryId: 'delivery-1', performed: { at }, authorized, result })
 	}
 }

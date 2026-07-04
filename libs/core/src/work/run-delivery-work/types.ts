@@ -5,7 +5,6 @@ import type {
 	InvariantViolationError,
 	NotImplementedError,
 	ResourceNotFoundError,
-	SingletonNotFoundError,
 	StorageOperationFailedError,
 } from '../../errors'
 import type { CoreServices, CoreStorage, ResolvableSecretValue } from '../../services'
@@ -40,7 +39,6 @@ export type Error =
 	| InvalidInputError
 	| InvalidCoreServiceOutputError
 	| ResourceNotFoundError
-	| SingletonNotFoundError
 	| StorageOperationFailedError
 	| InvariantViolationError
 	| NotImplementedError
@@ -68,6 +66,5 @@ export type RunDeliveryWorkHandlerResult = CoreResult<Result, Exclude<Error, Inv
 export type RunDeliveryWorkStorageError =
 	| InvalidCoreServiceOutputError
 	| ResourceNotFoundError
-	| SingletonNotFoundError
 	| StorageOperationFailedError
 	| InvariantViolationError

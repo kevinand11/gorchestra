@@ -486,6 +486,12 @@ if (import.meta.vitest) {
 				sliceId,
 				mode: mode === 'initial' ? { type: 'initial' } : { type: 'correction', failureChainRootActionId: 'failed-validation' },
 			},
+			profile: {
+				agentRunProfileId: 'agent-run-profile-1',
+				name: 'Agent Run Profile',
+				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+			},
+			modelUseOverride: null,
 			started: { at },
 			completed,
 		})
@@ -558,8 +564,6 @@ if (import.meta.vitest) {
 				delivery,
 				project: tx.projects.records.get(delivery.projectId)!,
 				repository: tx.repositories.records.get(delivery.target.repositoryId)!,
-				portfolioConfig: tx.portfolioConfig.record,
-				projectConfig: tx.projects.records.get(delivery.projectId)!.config,
 				deliveryArtifact:
 					[...tx.deliveryArtifacts.records.values()].find((artifact) => artifact.deliveryId === delivery.id) ?? null,
 				slices,

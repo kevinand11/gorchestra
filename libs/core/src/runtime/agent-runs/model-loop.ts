@@ -35,6 +35,7 @@ import type { ModelProvider } from '../../domain/model-provider'
 import type {
 	InvalidCoreServiceOutputError,
 	InvariantViolationError,
+	ModelNotSelectableError,
 	ModelThinkingLevelUnavailableError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
@@ -108,19 +109,6 @@ async function loadLoopState(storage: CoreStorage, agentRunId: Id): Promise<Resu
 	return { ok: true, value: { agentRun: agentRun.value, events: events.value, tools: toolsForAgentRunPurpose(agentRun.value.purpose) } }
 }
 
-function latestModelSelection(
-	events: AgentRunEvent[],
-	contextThroughCursor: AgentRunEventCursor | null,
-): Result<Extract<AgentRunEvent['body'], { type: 'agent-run-model-selected' }>, InvariantViolationError> {
-	const selection = [...events]
-		.filter((event) => contextThroughCursor !== null && event.cursor <= contextThroughCursor)
-		.reverse()
-		.find((event) => event.body.type === 'agent-run-model-selected')?.body
-	return selection?.type === 'agent-run-model-selected'
-		? { ok: true, value: selection }
-		: invariant('Model Agent Run has no selected Model event before the turn context boundary.')
-}
-
 function nextTurnClaim(events: AgentRunEvent[]): TurnReasonClaim | null {
 	return turnClaimForReason(nextInputTurnReason(events), events.at(-1)?.cursor ?? null)
 }
@@ -184,7 +172,7 @@ async function runStartedTurn(
 	turnStarted: AgentRunEvent,
 	options: RunModelAgentRunOptions,
 ): Promise<Result<TurnResult, AgentRunRuntimeError>> {
-	const turnModelUse = await loadTurnModelUse(runtime.services.storage, state.events, claim.contextThroughCursor)
+	const turnModelUse = await loadTurnModelUse(runtime.services.storage, state.agentRun)
 	if (!turnModelUse.ok) return handleTurnModelUseError(runtime, state.agentRun.id, turnStarted, turnModelUse.error, options)
 
 	const resolution = await runtime.providers.modelProviderProtocols.resolveLanguageModel({
@@ -226,11 +214,16 @@ async function handleTurnModelUseError(
 	runtime: ModelAgentRunRuntime,
 	agentRunId: Id,
 	turnStarted: AgentRunEvent,
-	error: AgentRunRuntimeError | ModelThinkingLevelUnavailableError,
+	error: AgentRunRuntimeError | ModelThinkingLevelUnavailableError | ModelNotSelectableError,
 	options: RunModelAgentRunOptions,
 ): Promise<Result<TurnResult, AgentRunRuntimeError>> {
-	if (error.type !== 'model-thinking-level-unavailable') return { ok: false, error }
-	return recordSyntheticModelOutcome(runtime, agentRunId, turnStarted, staleThinkingOutcome(error), options)
+	if (error.type === 'model-thinking-level-unavailable') {
+		return recordSyntheticModelOutcome(runtime, agentRunId, turnStarted, staleThinkingOutcome(error), options)
+	}
+	if (error.type === 'model-not-selectable') {
+		return recordSyntheticModelOutcome(runtime, agentRunId, turnStarted, staleModelOutcome(error), options)
+	}
+	return { ok: false, error }
 }
 
 async function recordSyntheticModelOutcome(
@@ -266,45 +259,40 @@ async function recordSyntheticModelOutcome(
 }
 
 type TurnModelUse = {
-	selection: Extract<AgentRunEvent['body'], { type: 'agent-run-model-selected' }>
 	model: Model
 	modelProvider: ModelProvider
 	thinking: ModelAgentTurnThinking
 }
 
-async function loadTurnModelUse(
-	storage: CoreStorage,
-	events: AgentRunEvent[],
-	contextThroughCursor: AgentRunEventCursor | null,
-): Promise<Result<TurnModelUse, AgentRunRuntimeError | ModelThinkingLevelUnavailableError>> {
-	const selection = latestModelSelection(events, contextThroughCursor)
-	return selection.ok ? loadTurnModelUseSelection(storage, selection.value) : selection
-}
+type TurnModelUseError = AgentRunRuntimeError | ModelThinkingLevelUnavailableError | ModelNotSelectableError
 
-async function loadTurnModelUseSelection(
-	storage: CoreStorage,
-	selection: Extract<AgentRunEvent['body'], { type: 'agent-run-model-selected' }>,
-): Promise<Result<TurnModelUse, AgentRunRuntimeError | ModelThinkingLevelUnavailableError>> {
-	const model = await getRequired('model', storage, selection.modelId)
-	return model.ok ? loadTurnModelUseModel(storage, selection, model.value) : model
+async function loadTurnModelUse(storage: CoreStorage, agentRun: AgentRun): Promise<Result<TurnModelUse, TurnModelUseError>> {
+	const modelUse = agentRun.modelUseOverride?.modelUse ?? agentRun.profile.modelUse
+	const model = await getRequired('model', storage, modelUse.modelId)
+	return model.ok ? loadTurnModelUseModel(storage, modelUse.thinkingLevel, model.value) : model
 }
 
 async function loadTurnModelUseModel(
 	storage: CoreStorage,
-	selection: Extract<AgentRunEvent['body'], { type: 'agent-run-model-selected' }>,
+	thinkingLevel: ModelThinkingLevel,
 	model: Model,
-): Promise<Result<TurnModelUse, AgentRunRuntimeError | ModelThinkingLevelUnavailableError>> {
+): Promise<Result<TurnModelUse, TurnModelUseError>> {
+	if (isArchived(model)) return { ok: false, error: { type: 'model-not-selectable', modelId: model.id, reason: 'model-archived' } }
+
 	const provider = await getRequired('model-provider', storage, model.providerId)
-	return provider.ok ? turnModelUseForProvider(selection, model, provider.value) : provider
+	return provider.ok ? turnModelUseForProvider(thinkingLevel, model, provider.value) : provider
 }
 
 function turnModelUseForProvider(
-	selection: Extract<AgentRunEvent['body'], { type: 'agent-run-model-selected' }>,
+	thinkingLevel: ModelThinkingLevel,
 	model: Model,
 	modelProvider: ModelProvider,
-): Result<TurnModelUse, ModelThinkingLevelUnavailableError> {
-	const thinking = resolveProviderTurnThinking(model, modelProvider, selection.thinkingLevel)
-	return thinking.ok ? { ok: true, value: { selection, model, modelProvider, thinking: thinking.value } } : thinking
+): Result<TurnModelUse, ModelThinkingLevelUnavailableError | ModelNotSelectableError> {
+	if (isArchived(modelProvider))
+		return { ok: false, error: { type: 'model-not-selectable', modelId: model.id, reason: 'provider-archived' } }
+
+	const thinking = resolveProviderTurnThinking(model, modelProvider, thinkingLevel)
+	return thinking.ok ? { ok: true, value: { model, modelProvider, thinking: thinking.value } } : thinking
 }
 
 function resolveProviderTurnThinking(
@@ -323,6 +311,19 @@ function staleThinkingOutcome(error: ModelThinkingLevelUnavailableError): AgentR
 		message: null,
 		summary: `Selected thinking level ${error.thinkingLevel} is unavailable for Model ${error.modelId}.`,
 	}
+}
+
+function staleModelOutcome(error: ModelNotSelectableError): AgentRunModelMessageOutcome {
+	return {
+		type: 'error',
+		reason: { type: 'runtime-error' },
+		message: null,
+		summary: `Selected Model ${error.modelId} is unavailable: ${error.reason}.`,
+	}
+}
+
+function isArchived(record: { archivePeriods: Array<{ unarchived: object | null }> }): boolean {
+	return record.archivePeriods.at(-1)?.unarchived === null
 }
 
 type AISDKTurnOutput = {
@@ -837,10 +838,6 @@ function toolOutputText(output: AgentRunToolOutput): string {
 	return output.content.map((part) => part.text).join('\n')
 }
 
-function invariant(message: string): Result<never, InvariantViolationError> {
-	return { ok: false, error: { type: 'invariant-violation', message } }
-}
-
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { createTestCoreServices, seedSelectableModel } = await import('../../utils/test-helpers')
@@ -895,6 +892,12 @@ if (import.meta.vitest) {
 			id: 'agent-run-1',
 			agent: { type: 'model' },
 			purpose: { type: 'planning', planId: 'plan-1' },
+			profile: {
+				agentRunProfileId: 'agent-run-profile-1',
+				name: 'Planning',
+				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+			},
+			modelUseOverride: null,
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
 		})
@@ -903,22 +906,10 @@ if (import.meta.vitest) {
 	}
 
 	function seedInitialEvents(services: ReturnType<typeof createTestCoreServices>) {
-		services.tx.agentRunEvents.records.set('model-selection', {
-			id: 'model-selection',
-			agentRunId: 'agent-run-1',
-			cursor: cursor(1),
-			occurred: { at: '2026-06-10T12:00:00.000Z' },
-			body: {
-				type: 'agent-run-model-selected',
-				modelId: 'model-1',
-				thinkingLevel: 'none',
-				authorized: null,
-			},
-		})
 		services.tx.agentRunEvents.records.set('input-1', {
 			id: 'input-1',
 			agentRunId: 'agent-run-1',
-			cursor: cursor(2),
+			cursor: cursor(1),
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
 			body: { type: 'input-message', source: { type: 'runtime' }, content: [{ type: 'text', text: 'start' }] },
 		})

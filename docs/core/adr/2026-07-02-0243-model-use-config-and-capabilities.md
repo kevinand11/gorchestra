@@ -1,5 +1,7 @@
 # Model use config and Model capability metadata
 
+Superseded in part by [Agent Run Profiles and Project-scoped Delivery work config](./2026-07-04-1328-agent-run-profiles-and-delivery-work-config.md), which replaces scoped Model Use Config inheritance with Agent Run Profiles, Project-scoped Delivery work defaults, and Agent Run Model Use Overrides.
+
 Core Models store provider-facing capability metadata such as supported inputs, context and output token limits, configured positive thinking support, and optional pricing, while scoped configuration stores atomic Model Use Config values that select a Model and Model Thinking Level together for an Agent Run purpose. We chose atomic Model Use Config over independently inherited model IDs and thinking levels so Core never represents a half-selected or incompatible model/thinking pair; narrower config either overrides the whole pair or inherits the whole pair.
 
 Model thinking metadata uses `capabilities.thinking: { supportedLevels } | null`. `supportedLevels` stores only positive Core Model Thinking Levels (`minimal`, `low`, `medium`, `high`, `xhigh`) that the Model supports; `none` is not stored because it is an implicit best-effort explicit-disable request and is always selectable. Core validates configured positive support against the Model Provider Protocol so protocol-impossible choices, such as `xhigh` for Google Generative AI, do not become selectable or runnable. Runtime `null` thinking still means Core sends no AI SDK reasoning option.

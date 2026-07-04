@@ -1,14 +1,10 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { idPipe, type Id } from '../domain/commons'
-import type { ModelUseConfig } from '../domain/config'
-import type { Delivery } from '../domain/delivery'
-import { modelReferencePipe, type ModelReference, type ModelReferencePurpose } from '../domain/model'
-import type { Plan } from '../domain/plan'
-import type { Project } from '../domain/project'
+import { idPipe, type ArchivePeriod, type Id } from '../domain/commons'
+import { modelReferencePipe, type ModelReference } from '../domain/model'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices, CoreStorage } from '../services'
-import { getPortfolioConfig, getRequired, listRecords, withTransaction, type StorageBoundaryError } from '../storage/helpers'
+import { getRequired, listRecords, withTransaction, type StorageBoundaryError } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
@@ -26,169 +22,34 @@ export function createListModelReferencesQuery(options: CoreServices): Operation
 			const model = await getRequired('model', storage, input.modelId)
 			if (!model.ok) return model
 
-			const references = await listModelReferencesForModel(storage, model.value.id)
+			const references = await listAgentRunProfileModelReferences(storage, model.value.id)
 			return references.ok ? { ok: true, value: sortModelReferences(references.value) } : references
 		}),
 	)
 }
 
-type ModelReferenceLoader = (storage: CoreStorage, modelId: Id) => Promise<CoreResult<ModelReference[], StorageBoundaryError>>
-
-const modelReferenceLoaders: readonly ModelReferenceLoader[] = [
-	listPortfolioConfigModelReferences,
-	listProjectConfigModelReferences,
-	listPlanConfigModelReferences,
-	listDeliveryConfigModelReferences,
-]
-
-async function listModelReferencesForModel(storage: CoreStorage, modelId: Id): Promise<CoreResult<ModelReference[], StorageBoundaryError>> {
-	const references: ModelReference[] = []
-	for (const loadReferences of modelReferenceLoaders) {
-		const result = await loadReferences(storage, modelId)
-		if (!result.ok) return result
-		references.push(...result.value)
-	}
-
-	return { ok: true, value: references }
-}
-
-async function listPortfolioConfigModelReferences(
+async function listAgentRunProfileModelReferences(
 	storage: CoreStorage,
 	modelId: Id,
 ): Promise<CoreResult<ModelReference[], StorageBoundaryError>> {
-	const record = await getPortfolioConfig(storage)
-	if (!record.ok) return record
-	if (record.value === null) return { ok: true, value: [] }
-
-	const config = record.value.value.model
-	return {
-		ok: true,
-		value: [
-			...modelUseConfigReferences(config.default, modelId, () => ({ type: 'portfolio-config', active: true, purpose: 'default' })),
-			...modelUseConfigReferences(config.planning, modelId, () => ({ type: 'portfolio-config', active: true, purpose: 'planning' })),
-			...modelUseConfigReferences(config.revisionPlanning, modelId, () => ({
-				type: 'portfolio-config',
-				active: true,
-				purpose: 'revision-planning',
-			})),
-			...modelUseConfigReferences(config.execution, modelId, () => ({
-				type: 'portfolio-config',
-				active: true,
-				purpose: 'execution',
-			})),
-			...modelUseConfigReferences(config.revisionExecution, modelId, () => ({
-				type: 'portfolio-config',
-				active: true,
-				purpose: 'revision-execution',
-			})),
-		],
-	}
-}
-
-async function listProjectConfigModelReferences(
-	storage: CoreStorage,
-	modelId: Id,
-): Promise<CoreResult<ModelReference[], StorageBoundaryError>> {
-	const projects = await listRecords('project', storage)
-	return projects.ok ? { ok: true, value: projects.value.flatMap((project) => projectModelReferences(project, modelId)) } : projects
-}
-
-function projectModelReferences(project: Project, modelId: Id): ModelReference[] {
-	const config = project.config?.value?.model ?? null
-	if (config === null) return []
-
-	return [
-		...modelUseConfigReferences(config.planning, modelId, () => ({
-			type: 'project-config',
-			active: true,
-			projectId: project.id,
-			projectTitle: project.title,
-			purpose: 'planning',
-		})),
-		...modelUseConfigReferences(config.revisionPlanning, modelId, () => ({
-			type: 'project-config',
-			active: true,
-			projectId: project.id,
-			projectTitle: project.title,
-			purpose: 'revision-planning',
-		})),
-		...modelUseConfigReferences(config.execution, modelId, () => ({
-			type: 'project-config',
-			active: true,
-			projectId: project.id,
-			projectTitle: project.title,
-			purpose: 'execution',
-		})),
-		...modelUseConfigReferences(config.revisionExecution, modelId, () => ({
-			type: 'project-config',
-			active: true,
-			projectId: project.id,
-			projectTitle: project.title,
-			purpose: 'revision-execution',
-		})),
-	]
-}
-
-async function listPlanConfigModelReferences(
-	storage: CoreStorage,
-	modelId: Id,
-): Promise<CoreResult<ModelReference[], StorageBoundaryError>> {
-	const plans = await listRecords('plan', storage)
-	return plans.ok ? { ok: true, value: plans.value.flatMap((plan) => planModelReferences(plan, modelId)) } : plans
-}
-
-function planModelReferences(plan: Plan, modelId: Id): ModelReference[] {
-	const planning = plan.config?.value?.model?.planning ?? null
-	return modelUseConfigReferences(planning, modelId, () => ({
-		type: 'plan-config',
-		active: true,
-		projectId: plan.projectId,
-		planId: plan.id,
-		planTitle: plan.title,
-		purpose: 'planning',
-	}))
-}
-
-async function listDeliveryConfigModelReferences(
-	storage: CoreStorage,
-	modelId: Id,
-): Promise<CoreResult<ModelReference[], StorageBoundaryError>> {
-	const deliveries = await listRecords('delivery', storage)
-	return deliveries.ok
-		? { ok: true, value: deliveries.value.flatMap((delivery) => deliveryModelReferences(delivery, modelId)) }
-		: deliveries
-}
-
-function deliveryModelReferences(delivery: Delivery, modelId: Id): ModelReference[] {
-	const config = delivery.config?.value?.model ?? null
-	if (config === null) return []
-
-	return [
-		...modelUseConfigReferences(config.execution, modelId, () => ({
-			type: 'delivery-config',
-			active: delivery.closed === null,
-			projectId: delivery.projectId,
-			deliveryId: delivery.id,
-			deliveryTitle: delivery.title,
-			purpose: 'execution',
-		})),
-		...modelUseConfigReferences(config.revisionExecution, modelId, () => ({
-			type: 'delivery-config',
-			active: delivery.closed === null,
-			projectId: delivery.projectId,
-			deliveryId: delivery.id,
-			deliveryTitle: delivery.title,
-			purpose: 'revision-execution',
-		})),
-	]
-}
-
-function modelUseConfigReferences<TReference extends ModelReference>(
-	config: ModelUseConfig | null,
-	modelId: Id,
-	build: () => TReference,
-): TReference[] {
-	return config?.modelId === modelId ? [build()] : []
+	const profiles = await listRecords('agent-run-profile', storage)
+	return profiles.ok
+		? {
+				ok: true,
+				value: profiles.value.flatMap((profile) =>
+					profile.modelUse.modelId === modelId
+						? [
+								{
+									type: 'agent-run-profile' as const,
+									active: !isArchived(profile.archivePeriods),
+									agentRunProfileId: profile.id,
+									agentRunProfileName: profile.name,
+								},
+							]
+						: [],
+				),
+			}
+		: profiles
 }
 
 function sortModelReferences(references: ModelReference[]): ModelReference[] {
@@ -197,11 +58,9 @@ function sortModelReferences(references: ModelReference[]): ModelReference[] {
 
 function compareModelReferences(left: ModelReference, right: ModelReference): number {
 	return firstNonZero([
-		referenceTypeOrder[left.type] - referenceTypeOrder[right.type],
 		referenceActiveRank(left) - referenceActiveRank(right),
-		referenceLabel(left).localeCompare(referenceLabel(right)),
-		referencePurposeOrder[left.purpose] - referencePurposeOrder[right.purpose],
-		referenceId(left).localeCompare(referenceId(right)),
+		left.agentRunProfileName.localeCompare(right.agentRunProfileName),
+		left.agentRunProfileId.localeCompare(right.agentRunProfileId),
 	])
 }
 
@@ -209,58 +68,17 @@ function firstNonZero(values: number[]): number {
 	return values.find((value) => value !== 0) ?? 0
 }
 
-const referenceTypeOrder: Record<ModelReference['type'], number> = {
-	'portfolio-config': 0,
-	'project-config': 1,
-	'plan-config': 2,
-	'delivery-config': 3,
-}
-
-const referencePurposeOrder: Record<ModelReferencePurpose, number> = {
-	default: 0,
-	planning: 1,
-	'revision-planning': 2,
-	execution: 3,
-	'revision-execution': 4,
-}
-
 function referenceActiveRank(reference: Pick<ModelReference, 'active'>): number {
 	return reference.active ? 0 : 1
 }
 
-function referenceLabel(reference: ModelReference): string {
-	switch (reference.type) {
-		case 'portfolio-config':
-			return 'Portfolio Config'
-		case 'project-config':
-			return reference.projectTitle
-		case 'plan-config':
-			return reference.planTitle
-		case 'delivery-config':
-			return reference.deliveryTitle
-		default:
-			throw new Error(`Unexpected Model Reference type: ${String(reference satisfies never)}`)
-	}
-}
-
-function referenceId(reference: ModelReference): string {
-	switch (reference.type) {
-		case 'portfolio-config':
-			return ''
-		case 'project-config':
-			return reference.projectId
-		case 'plan-config':
-			return reference.planId
-		case 'delivery-config':
-			return reference.deliveryId
-		default:
-			throw new Error(`Unexpected Model Reference type: ${String(reference satisfies never)}`)
-	}
+function isArchived(archivePeriods: ArchivePeriod[]): boolean {
+	return archivePeriods.at(-1)?.unarchived === null
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreServices, seedProject, seedSelectableModel, stamp } = await import('../utils/test-helpers')
+	const { createTestCoreServices, seedAgentRunProfile, seedSelectableModel } = await import('../utils/test-helpers')
 
 	describe('listModelReferences query', () => {
 		it('validates input before reading storage', async () => {
@@ -295,75 +113,13 @@ if (import.meta.vitest) {
 			expect(result).toEqual({ ok: true, value: [] })
 		})
 
-		it('returns direct config references ordered by config scope and active state', async () => {
+		it('returns Agent Run Profile references ordered by active state and profile name', async () => {
 			const options = createTestCoreServices()
 			seedSelectableModel(options.tx, 'model-1')
-			seedProject(options.tx, 'project-1')
-			options.tx.projects.records.set('project-1', {
-				...options.tx.projects.records.get('project-1')!,
-				title: 'Project One',
-				config: {
-					configured: stamp,
-					value: {
-						model: {
-							planning: { modelId: 'model-1', thinkingLevel: 'none' },
-							revisionPlanning: null,
-							execution: null,
-							revisionExecution: null,
-						},
-						work: null,
-					},
-				},
-			})
-			options.tx.portfolioConfig.record = {
-				configured: stamp,
-				value: {
-					model: {
-						default: { modelId: 'model-1', thinkingLevel: 'none' },
-						planning: null,
-						revisionPlanning: null,
-						execution: null,
-						revisionExecution: null,
-					},
-					work: null,
-				},
-			}
-			options.tx.plans.records.set('plan-1', {
-				id: 'plan-1',
-				projectId: 'project-1',
-				title: 'Plan One',
-				config: { configured: stamp, value: { model: { planning: { modelId: 'model-1', thinkingLevel: 'none' } } } },
-				created: stamp,
-				closed: null,
-			})
-			options.tx.deliveries.records.set('delivery-active', {
-				id: 'delivery-active',
-				projectId: 'project-1',
-				planId: 'plan-1',
-				title: 'Active Delivery',
-				target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
-				config: {
-					configured: stamp,
-					value: { model: { execution: { modelId: 'model-1', thinkingLevel: 'none' }, revisionExecution: null }, work: null },
-				},
-				accepted: stamp,
-				queued: null,
-				closed: null,
-			})
-			options.tx.deliveries.records.set('delivery-closed', {
-				id: 'delivery-closed',
-				projectId: 'project-1',
-				planId: 'plan-1',
-				title: 'Closed Delivery',
-				target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
-				config: {
-					configured: stamp,
-					value: { model: { execution: { modelId: 'model-1', thinkingLevel: 'none' }, revisionExecution: null }, work: null },
-				},
-				accepted: stamp,
-				queued: null,
-				closed: { type: 'abandoned', abandoned: stamp, reason: 'Done.' },
-			})
+			const archived = seedAgentRunProfile(options.tx, 'agent-run-profile-archived', 'model-1', { archived: true })
+			archived.name = 'A Archived'
+			const active = seedAgentRunProfile(options.tx, 'agent-run-profile-active', 'model-1')
+			active.name = 'B Active'
 			const query = createListModelReferencesQuery(options)
 
 			const result = await query({ modelId: 'model-1' })
@@ -371,99 +127,70 @@ if (import.meta.vitest) {
 			expect(result).toEqual({
 				ok: true,
 				value: [
-					{ type: 'portfolio-config', active: true, purpose: 'default' },
 					{
-						type: 'project-config',
+						type: 'agent-run-profile',
 						active: true,
-						projectId: 'project-1',
-						projectTitle: 'Project One',
-						purpose: 'planning',
+						agentRunProfileId: 'agent-run-profile-active',
+						agentRunProfileName: 'B Active',
 					},
 					{
-						type: 'plan-config',
-						active: true,
-						projectId: 'project-1',
-						planId: 'plan-1',
-						planTitle: 'Plan One',
-						purpose: 'planning',
-					},
-					{
-						type: 'delivery-config',
-						active: true,
-						projectId: 'project-1',
-						deliveryId: 'delivery-active',
-						deliveryTitle: 'Active Delivery',
-						purpose: 'execution',
-					},
-					{
-						type: 'delivery-config',
+						type: 'agent-run-profile',
 						active: false,
-						projectId: 'project-1',
-						deliveryId: 'delivery-closed',
-						deliveryTitle: 'Closed Delivery',
-						purpose: 'execution',
+						agentRunProfileId: 'agent-run-profile-archived',
+						agentRunProfileName: 'A Archived',
 					},
 				],
 			})
 		})
 
-		it('excludes inherited config and Agent Run transcript selection history', async () => {
+		it('excludes Agent Run profile snapshots, current overrides, and override history events', async () => {
 			const options = createTestCoreServices()
 			seedSelectableModel(options.tx, 'model-1')
-			seedProject(options.tx, 'project-1')
-			options.tx.portfolioConfig.record = {
-				configured: stamp,
-				value: {
-					model: {
-						default: { modelId: 'model-1', thinkingLevel: 'none' },
-						planning: null,
-						revisionPlanning: null,
-						execution: null,
-						revisionExecution: null,
-					},
-					work: null,
-				},
-			}
-			options.tx.plans.records.set('plan-inherited', {
-				id: 'plan-inherited',
-				projectId: 'project-1',
-				title: 'Inherited Plan',
-				config: null,
-				created: stamp,
-				closed: null,
-			})
 			options.tx.agentRuns.records.set('agent-run-1', {
 				id: 'agent-run-1',
 				agent: { type: 'model' },
-				purpose: { type: 'planning', planId: 'plan-inherited' },
-				started: { at: stamp.at },
+				purpose: { type: 'planning', planId: 'plan-1' },
+				profile: {
+					agentRunProfileId: 'snapshot-profile',
+					name: 'Snapshot',
+					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				},
+				modelUseOverride: {
+					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+					selected: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
+				},
+				started: { at: '2026-06-01T00:00:00.000Z' },
 				completed: null,
 			})
 			options.tx.agentRunEvents.records.set('agent-run-event-1', {
 				id: 'agent-run-event-1',
 				agentRunId: 'agent-run-1',
 				cursor: '01J00000000000000000000001',
-				occurred: { at: stamp.at },
-				body: { type: 'agent-run-model-selected', modelId: 'model-1', thinkingLevel: 'none', authorized: null },
+				occurred: { at: '2026-06-01T00:00:00.000Z' },
+				body: {
+					type: 'agent-run-model-use-override-changed',
+					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+					authorized: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
+				},
 			})
 			const query = createListModelReferencesQuery(options)
 
 			const result = await query({ modelId: 'model-1' })
 
-			expect(result).toEqual({ ok: true, value: [{ type: 'portfolio-config', active: true, purpose: 'default' }] })
+			expect(result).toEqual({ ok: true, value: [] })
 		})
 
 		it('returns storage errors when reference reads fail', async () => {
 			const options = createTestCoreServices()
 			seedSelectableModel(options.tx, 'model-1')
-			options.tx.projects.fail.list = true
+			options.tx.agentRunProfiles.fail.list = true
 			const query = createListModelReferencesQuery(options)
 
 			const result = await query({ modelId: 'model-1' })
 
 			expect(result).toEqual({
 				ok: false,
-				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'project' } },
+				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'agent-run-profile' } },
 			})
 		})
 	})

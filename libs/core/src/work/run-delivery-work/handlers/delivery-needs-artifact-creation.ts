@@ -147,8 +147,7 @@ function deliveryArtifactRecord(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { buildDeliveryContext } = await import('../../../utils/delivery-context')
-	const { createTestCoreServices, localStamp, seedDelivery, seedSelectableModel } = await import('../../../utils/test-helpers')
+	const { createRunDeliveryWorkHandlerTestContext } = await import('./test-utils')
 
 	describe('Delivery Artifact creation handler', () => {
 		it('builds deterministic provider input from the Delivery target branch', async () => {
@@ -227,27 +226,6 @@ if (import.meta.vitest) {
 	})
 
 	async function handlerContext() {
-		const options = createTestCoreServices()
-		seedDelivery(options.tx, 'delivery-1')
-		seedSelectableModel(options.tx, 'model-1')
-		options.tx.deliveries.records.get('delivery-1')!.queued = localStamp()
-
-		const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
-		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
-
-		return {
-			services: options,
-			storage: options.tx,
-			values: options.values,
-			tx: options.tx,
-			deliveryContext: deliveryContext.value,
-			workResolution: {
-				workConfig: { maxProcessableSliceSlots: 1, maxCorrectionRetriesPerFailure: 1, modelTimeoutMs: 30_000 },
-				executionModelUse: { modelId: 'model-1', thinkingLevel: 'none' as const },
-				executionModel: options.tx.models.records.get('model-1')!,
-				executionModelProvider: options.tx.modelProviders.records.get('model-1-provider')!,
-			},
-			repositoryAccessSecret: { secretId: 'secret-1', valueRef: 'protected-ref' },
-		}
+		return createRunDeliveryWorkHandlerTestContext()
 	}
 }

@@ -52,7 +52,7 @@ async function createSelectedPortfolioProject(
 ): Promise<Queries.ListProjects.ListedProject> {
 	return withSelectedPortfolioOwnerCore(context, cookies, async ({ core, workspaceMember }) => {
 		const project = await core.commands.createProject(
-			{ title: input.title, source: { type: 'source-control' }, config: null },
+			{ title: input.title, source: { type: 'source-control' }, config: input.config },
 			{ actor: { type: 'workspace-member', id: workspaceMember.id }, correlationId: null },
 		)
 		return project.ok ? listedProjectFromCreatedProject(project.value) : throwCoreOperationError(project.error)
@@ -78,7 +78,7 @@ function setSelectedProjectConfig(
 ): Promise<Queries.GetProject.Result> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
 		const saved = await core.commands.setProjectConfig(
-			{ projectId, config: input.config ?? { model: null, work: null } },
+			{ projectId, config: input.config },
 			{ actor: { type: 'workspace-member', id: workspaceMember.id }, correlationId: null },
 		)
 		if (!saved.ok) return throwCoreOperationError(saved.error)
@@ -101,7 +101,17 @@ if (import.meta.vitest) {
 				id: 'project-1',
 				title: 'Delivery Ops',
 				source: { type: 'source-control' },
-				config: null,
+				config: {
+					configured: { origin: 'imported', at: '2026-06-21T00:00:00.000Z' },
+					value: {
+						work: {
+							maxProcessableSliceSlots: 1,
+							maxCorrectionRetriesPerFailure: 1,
+							executionAgentRunProfileId: 'agent-run-profile-1',
+							revisionExecutionAgentRunProfileId: null,
+						},
+					},
+				},
 				created: { origin: 'imported', at: '2026-06-21T00:00:00.000Z' },
 			}
 

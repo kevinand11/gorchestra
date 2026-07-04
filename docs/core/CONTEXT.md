@@ -112,21 +112,17 @@ _Avoid_: Project Config, source config, target type
 The kind of Project Source a Project uses, such as source control. Core owns Project Source Type behavior; provider operations perform that behavior on Core's behalf without deciding workflow semantics.
 _Avoid_: Project kind, target type
 
-**Portfolio Config**:
-Portfolio-wide orchestration settings that provide defaults for Planning and Delivery work across Projects unless overridden by narrower configuration. A Portfolio may have no Portfolio Config until configured; Portfolio Config belongs to the Core Portfolio, not to a Server Consumer Workspace.
-_Avoid_: Workspace Settings, global settings, account settings
-
 **Model Use Config**:
-A scoped configuration value that selects a Model and Model Thinking Level together for one Agent Run purpose. Model Use Config is inherited atomically; a narrower scope either overrides both the Model and Model Thinking Level or inherits both from a broader scope.
+An atomic configuration value that selects a Model and Model Thinking Level together for an Agent Run. Model Use Config appears inside Agent Run Profiles and Agent Run Model Use Overrides so Core never represents a half-selected or incompatible model/thinking pair.
 _Avoid_: model id config, thinking override, partial model selection
 
 **Model Reference**:
-A direct Core-owned Portfolio usage of a Model by a stored data model that may use that Model for future Planning or Delivery work. Model References report whether the referring data model is active and do not expand inherited, effective, or historical transcript usage.
+A direct Core-owned Portfolio usage of a Model by a stored reusable configuration model, such as an Agent Run Profile, that may select that Model for future Agent Runs. Model References report whether the referring data model is active and do not expand Agent Run Profile Snapshots, Agent Run Model Use Overrides, inherited/effective selections, or historical transcript usage.
 _Avoid_: Model Binding, model usage link, selected model pointer, inherited model usage, Agent Run transcript selection
 
 **Project Config**:
-Project-level orchestration settings that apply to Plans and Deliveries in a Project unless overridden at a narrower scope. Project Config does not change the Project Source.
-_Avoid_: scheduler settings
+Required Project-level source-agnostic orchestration settings shared across Project Source Types. In v1, Project Config supplies the Project's default Delivery Work Config; it does not change the Project Source or carry source-control-specific setup.
+_Avoid_: scheduler settings, source config, project type config
 
 **Source Control Project**:
 A Project whose Project Source is source control. In v1, Source Control Projects manage one or more GitHub Repositories.
@@ -145,12 +141,8 @@ An observational validation operation that checks whether Core can currently res
 _Avoid_: Repository status, Repository health state, Repository readiness, access lifecycle event
 
 **Plan**:
-A Project-level reusable planning and discovery artifact. A Plan belongs to exactly one Project, captures research, analysis, requirements, and architectural discussion, starts exactly one Planning Agent Run when created, and may produce zero, one, or many Plan Outputs for its Project. Closing a Plan records consumer-authorized intent to stop further Planning input and model turns without deleting the Plan or invalidating pending Plan Output review.
+A Project-level reusable planning and discovery artifact. A Plan belongs to exactly one Project, captures research, analysis, requirements, and architectural discussion, starts exactly one Planning Agent Run with a selected Agent Run Profile when created, and may produce zero, one, or many Plan Outputs for its Project. Closing a Plan records consumer-authorized intent to stop further Planning input and model turns without deleting the Plan or invalidating pending Plan Output review.
 _Avoid_: Grill
-
-**Plan Config**:
-Immutable Plan-level orchestration settings for Planning, set only when the Plan is created. Plan Config may leave Plan-level Model Use Config unset so Planning inherits Project or Portfolio Model Use Config, and it does not control accepted Delivery execution.
-_Avoid_: Delivery Config, Project Config
 
 **Planning**:
 The read-only activity of exploring a problem and refining a Plan, plus creating, reviewing, and materializing Plan Output proposals. Planning does not implement Delivery or Slice work; implementation happens later through accepted Delivery execution.
@@ -200,8 +192,12 @@ _Avoid_: retry group, attempt series, error thread
 Immutable stored instructions used by Agent Runs to perform accepted Slice or Revision work.
 _Avoid_: Plan Output, Revision Output, prompt
 
+**Delivery Work Config**:
+Source-agnostic settings for executable Delivery work, including scheduler-processable Slice work slots, correction retry limits per Failure Chain, and execution/revision-execution Agent Run Profile selection. A null revision-execution Agent Run Profile selection means revision execution uses the execution Agent Run Profile, not that revision execution is disabled.
+_Avoid_: Execution Config, model config, agent run config, scheduler settings
+
 **Delivery Config**:
-Scoped configuration for a Delivery's executable work. Delivery Config covers scheduler-processable Slice work slots, correction retry limits per failure chain, Model Use Config and Model timeout for execution and revision-execution Actions, and other Delivery work behavior. Revision planning uses planning configuration captured when revision planning is created rather than Delivery Config. Delivery Config may be configured at Portfolio, Project, or Delivery scope and inherited by a Delivery. Delivery Config is resolved on demand when work needs it, so changing a Delivery's config affects future work. Invalid Delivery Config is rejected when set. An unresolved Delivery Work Config is a failed Delivery preflight condition, not an unimplemented work state.
+Delivery-scoped configuration for future executable work on one Delivery. In v1, Delivery Config may provide a full Delivery Work Config override; it is not inherited per field and does not apply to revision planning.
 _Avoid_: Execution Config, Execution Policy, scheduler settings
 
 **Delivery Work State**:
@@ -209,11 +205,11 @@ A derived state describing the current execution state of a Delivery. Delivery W
 _Avoid_: Execution state, job state, stored work state
 
 **Delivery Context**:
-A transient, never-stored context Gorchestra prepares around one Delivery from stored Portfolio facts. Delivery Context contains scoped, validated Portfolio facts needed to derive Delivery and Slice Work States for that Delivery, including the Delivery Artifact when present, each Slice with its Slice Artifact and direct Slice dependency links, direct Delivery dependency summaries, and Delivery Actions sorted by performed time. Delivery Context does not include resolved Delivery Config, selected Models, selected Model Providers, or plaintext provider access.
+A transient, never-stored context Gorchestra prepares around one Delivery from stored Portfolio facts. Delivery Context contains scoped, validated Portfolio facts needed to derive Delivery and Slice Work States for that Delivery, including the Delivery Artifact when present, each Slice with its Slice Artifact and direct Slice dependency links, direct Delivery dependency summaries, and Delivery Actions sorted by performed time. Delivery Context does not include resolved Delivery Work Config, selected Agent Run Profiles, selected Models, selected Model Providers, or plaintext provider access.
 _Avoid_: Runtime Delivery Work Context, scheduler context, stored execution context, Agent Run context, facts bag
 
 **Delivery Work Resolution**:
-A transient, never-stored resolution of the Delivery Config and selected execution Model identity needed for one scheduler-actionable Delivery work pass. Delivery Work Resolution does not contain plaintext provider access; provider families resolve provider access on demand for the specific preflight or external operation that needs it.
+A transient, never-stored resolution of the effective Delivery Work Config and selected execution Agent Run Profile needed for one scheduler-actionable Delivery work pass. Delivery Work Resolution does not contain plaintext provider access; provider families resolve provider access on demand for the specific preflight or external operation that needs it.
 _Avoid_: Runtime Delivery Work Context, scheduler context, execution context
 
 **Agent**:
@@ -233,7 +229,7 @@ The stable Core-owned wire/API protocol variant Gorchestra uses to call a Model 
 _Avoid_: provider brand, model type, API key type
 
 **Model**:
-A named Portfolio-owned selectable language model under a Model Provider, with a provider-facing model identifier and capability metadata such as supported inputs, context and output limits, positive thinking support, and pricing. A Model describes what the language model can do; scoped configuration describes how Gorchestra uses it for a Plan, Delivery, or Agent Run. Model thinking capability stores only configured positive Model Thinking Levels (`minimal`, `low`, `medium`, `high`, `xhigh`); `none` is implicit and always selectable. Core validates configured positive thinking support against the Model Provider Protocol so provider-impossible levels do not become selectable. Models may be archived, which makes them unavailable for new work while retaining them for historical references. Archived Models may be updated before being unarchived.
+A named Portfolio-owned selectable language model under a Model Provider, with a provider-facing model identifier and capability metadata such as supported inputs, context and output limits, positive thinking support, and pricing. A Model describes what the language model can do; Agent Run Profiles and Agent Run Model Use Overrides describe how Gorchestra uses it for Agent Runs. Model thinking capability stores only configured positive Model Thinking Levels (`minimal`, `low`, `medium`, `high`, `xhigh`); `none` is implicit and always selectable. Core validates configured positive thinking support against the Model Provider Protocol so provider-impossible levels do not become selectable. Models may be archived, which makes them unavailable for new work while retaining them for historical references. Archived Models may be updated before being unarchived.
 _Avoid_: provider/model string, model slug, runtime model policy
 
 **Model Preflight**:
@@ -245,15 +241,27 @@ A Core canonical level for requesting or explicitly disabling provider reasoning
 _Avoid_: reasoning effort, thinking budget, provider reasoning value
 
 **Model Agent**:
-An Agent Type where Gorchestra's Core-owned agent loop uses selected Models to perform goal-directed work consistently across consumers. Core uses AI SDK `streamText` for model-backed turns while preserving Core-owned tool contracts and transcript events. Model selection is Agent Run transcript state rather than part of the Agent value itself.
+An Agent Type where Gorchestra's Core-owned agent loop uses selected Models to perform goal-directed work consistently across consumers. Core uses AI SDK `streamText` for model-backed turns while preserving Core-owned tool contracts and transcript events. Model selection comes from the Agent Run Profile Snapshot unless the Agent Run has a Model Use Override.
 _Avoid_: LLM Loop Agent, Pi Agent, Codex Agent, external harness, consumer agent adapter
 
+**Agent Run Profile**:
+A Portfolio-owned archivable reusable configuration surface for new Agent Runs. Selecting an Agent Run Profile supplies Core-owned run behavior such as Model Use Config; archived Agent Run Profiles remain historical records but are not selectable for new work.
+_Avoid_: agent config, runtime profile, provider profile, model provider profile
+
+**Agent Run Profile Snapshot**:
+The copied profile selection stored on an Agent Run when it is created, containing the selected Agent Run Profile id, profile name, and Model Use Config. Agent Run Profile Snapshots make profile edits apply only to future Agent Runs.
+_Avoid_: live profile pointer, model selection event, profile reference
+
+**Agent Run Model Use Override**:
+A consumer-authorized current Model Use Config stored on an Agent Run that supersedes the Agent Run Profile Snapshot for later turns without changing the selected Agent Run Profile. Transcript events may preserve model switch history, but the override is the current runtime selection.
+_Avoid_: profile switch, transcript-selected model, live profile edit
+
 **Agent Run**:
-One concrete application-managed session where an agent carries out goal-directed work for Gorchestra. An Agent Run is the session boundary; do not introduce a separate Agent Run Session concept or checkpoint record in v1. Runtime resumability and debugging facts belong in Agent Run Events. An Agent Run records its agent as a discriminated value and records its purpose with the domain target it works on, such as a Planning purpose for a Plan or a Slice execution purpose with Delivery, Slice, and an execution mode union. Initial Slice execution has no correction root; correction Slice execution records the Failure Chain root it is correcting. Agent Runs may gather information, use tools, edit code, run tests, produce outputs, or request human decisions. Core owns Agent Run behavior; an Agent Run does not own authoritative Delivery or Slice Work State.
+One concrete application-managed session where an agent carries out goal-directed work for Gorchestra. An Agent Run is the session boundary; do not introduce a separate Agent Run Session concept or checkpoint record in v1. Runtime resumability and debugging facts belong in Agent Run Events. An Agent Run records its agent, purpose, Agent Run Profile Snapshot, and optional Agent Run Model Use Override. It records its purpose with the domain target it works on, such as a Planning purpose for a Plan or a Slice execution purpose with Delivery, Slice, and an execution mode union. Initial Slice execution has no correction root; correction Slice execution records the Failure Chain root it is correcting. Agent Runs may gather information, use tools, edit code, run tests, produce outputs, or request human decisions. Core owns Agent Run behavior; an Agent Run does not own authoritative Delivery or Slice Work State.
 _Avoid_: Mission, Turn, AgentAttempt, Agent Run Session, Agent Run Checkpoint, actor
 
 **Agent Run Event**:
-An ordered event in an Agent Run transcript. Agent Run Events record input messages, turn context boundaries, per-model-call and tool-call boundaries with final or aborted content, interrupt requests, proposed outputs, proposal review, and compaction summaries so an Agent Run can be reconstructed without a separate session model. Each Agent Run Event has a Core storage id and a Core-generated Agent Run Event Cursor; stored event bodies reference other Agent Run Events by cursor while public commands use event ids. One Core turn encloses one AI SDK `streamText` multi-step operation, and each AI SDK language-model call inside that turn becomes its own model-message start/end pair. Live model or tool update deltas may stream to subscribers without becoming durable Agent Run Events. Aborted model and tool call content may contribute explicitly marked partial context to later model calls.
+An ordered event in an Agent Run transcript. Agent Run Events record input messages, Agent Run Model Use Override history, turn context boundaries, per-model-call and tool-call boundaries with final or aborted content, interrupt requests, proposed outputs, proposal review, and compaction summaries so an Agent Run can be reconstructed without a separate session model. Each Agent Run Event has a Core storage id and a Core-generated Agent Run Event Cursor; stored event bodies reference other Agent Run Events by cursor while public commands use event ids. One Core turn encloses one AI SDK `streamText` multi-step operation, and each AI SDK language-model call inside that turn becomes its own model-message start/end pair. Live model or tool update deltas may stream to subscribers without becoming durable Agent Run Events. Aborted model and tool call content may contribute explicitly marked partial context to later model calls.
 _Avoid_: Session Entry, transcript row, checkpoint
 
 **Agent Run Event Cursor**:
@@ -345,7 +353,7 @@ The relationship-defining part of a Link: its source and target Graph Node Refs 
 _Avoid_: link metadata, link payload, loose endpoint fields
 
 **Preflight**:
-A readiness validation performed before Gorchestra begins or resumes work. Top-level Core preflight is an opened-Core API that checks required deployment mechanics such as storage, Secrets, and Agent Run Sandbox. Its storage check verifies that Core can reach the configured storage boundary without auditing all stored Portfolio facts. It returns a transient readiness report for consumers and does not check optional logger/event publishing, Core-owned time/identifier mechanics, or provider-specific readiness. Delivery preflight runs before each bounded scheduler-actionable pass, after cheap closed, unqueued, dependency-blocked, and preflight-failed gates, and produces Delivery Work Resolution as transient scheduler data. Provider-backed Delivery preflight checks the Delivery target Repository and the selected execution Model before Delivery work runs or resumes. Successful Delivery preflight is normally not stored, except when explicit retry supersedes the latest failed Delivery preflight Action; failed Delivery preflight is recorded as a validate-preflight Action whose component checks determine whether the preflight passed. Explicit Delivery preflight retry records both passing and expected failed readiness outcomes as Delivery preflight Actions; setup-incomplete readiness, such as missing Portfolio Config, is preflight evidence, while storage failures, invalid Core Service Outputs, and missing referenced Portfolio facts that should exist remain operation errors rather than preflight evidence. A runDeliveryWork pass records scheduler work from the Delivery Context and Delivery Work Resolution it read at the start of the pass; later changes apply to later passes, and the scheduler or consumer runtime must ensure only one worker processes a Delivery at a time. A Delivery whose latest Delivery preflight Action failed is preflight-failed until an explicit retry records a later passing Delivery preflight Action. Other preflight results, such as explicit Repository preflight, may be returned to consumers as safe validation evidence without storing Actions or authoritative Portfolio facts. Preflight may check Project, Repository, Model Provider, Model, Secret Binding, or execution target readiness.
+A readiness validation performed before Gorchestra begins or resumes work. Top-level Core preflight is an opened-Core API that checks required deployment mechanics such as storage, Secrets, and Agent Run Sandbox. Its storage check verifies that Core can reach the configured storage boundary without auditing all stored Portfolio facts. It returns a transient readiness report for consumers and does not check optional logger/event publishing, Core-owned time/identifier mechanics, or provider-specific readiness. Delivery preflight runs before each bounded scheduler-actionable pass, after cheap closed, unqueued, dependency-blocked, and preflight-failed gates, and produces Delivery Work Resolution as transient scheduler data. Provider-backed Delivery preflight checks the Delivery target Repository and the selected execution Model before Delivery work runs or resumes. Successful Delivery preflight is normally not stored, except when explicit retry supersedes the latest failed Delivery preflight Action; failed Delivery preflight is recorded as a validate-preflight Action whose component checks determine whether the preflight passed. Explicit Delivery preflight retry records both passing and expected failed readiness outcomes as Delivery preflight Actions; setup-incomplete readiness, such as missing or inactive Agent Run Profile selection, is preflight evidence, while storage failures, invalid Core Service Outputs, and missing referenced Portfolio facts that should exist remain operation errors rather than preflight evidence. A runDeliveryWork pass records scheduler work from the Delivery Context and Delivery Work Resolution it read at the start of the pass; later changes apply to later passes, and the scheduler or consumer runtime must ensure only one worker processes a Delivery at a time. A Delivery whose latest Delivery preflight Action failed is preflight-failed until an explicit retry records a later passing Delivery preflight Action. Other preflight results, such as explicit Repository preflight, may be returned to consumers as safe validation evidence without storing Actions or authoritative Portfolio facts. Preflight may check Project, Repository, Model Provider, Model, Secret Binding, Agent Run Profile, or execution target readiness.
 _Avoid_: Doctor, health check
 
 **Timeline**:
@@ -369,7 +377,7 @@ A Review Surface for a Delivery Artifact. For Source Control Projects, this is a
 _Avoid_: Delivery PR, review target
 
 **Revision Gate**:
-Human-controlled artifact-scoped authorization that allows Gorchestra to plan revision work in response to fetched Feedback for a Slice Artifact or Delivery Artifact. Opening a Revision Gate starts revision planning while the gate is open, and accepting a Revision Output consumes the gate. A Revision Gate remains open until it is explicitly closed without a Revision or consumed by an accepted Revision; gate closure or consumption completes the associated Revision Planning Agent Run when it is still open. Revision Gate does not create or reopen Slices.
+Human-controlled artifact-scoped authorization that allows Gorchestra to plan revision work in response to fetched Feedback for a Slice Artifact or Delivery Artifact. Opening a Revision Gate starts revision planning with a selected Agent Run Profile while the gate is open, and accepting a Revision Output consumes the gate. A Revision Gate remains open until it is explicitly closed without a Revision or consumed by an accepted Revision; gate closure or consumption completes the associated Revision Planning Agent Run when it is still open. Revision Gate does not create or reopen Slices.
 _Avoid_: revisionAllowed, needs-revision, changes-requested, per-comment approval
 
 **Revision Output**:

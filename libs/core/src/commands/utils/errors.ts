@@ -1,4 +1,5 @@
 import type {
+	ArchivedAgentRunProfileReferenceError,
 	ArchivedModelProviderReferenceError,
 	ArchivedModelReferenceError,
 	DeliveryWorkStateMismatchError,
@@ -16,6 +17,7 @@ export type ConfigCommandReferenceError =
 	| ResourceNotFoundError
 	| ArchivedModelReferenceError
 	| ArchivedModelProviderReferenceError
+	| ArchivedAgentRunProfileReferenceError
 	| ModelThinkingLevelUnavailableError
 export type ConfigCommandStorageError = StorageOperationFailedError | InvalidCoreServiceOutputError | InvariantViolationError
 export type RepositoryCommandReferenceError = ResourceNotFoundError | SecretNotActiveError | ProjectSourceTypeMismatchError

@@ -37,13 +37,12 @@ export type OpenCoreError = InvalidInputError
 
 export type DeliveryWorkStateType = DeliveryWorkState['type']
 
-export type CoreSingletonResource = 'portfolio-config'
-
 export type CoreIdResource =
 	| 'project'
 	| 'repository'
 	| 'model-provider'
 	| 'model'
+	| 'agent-run-profile'
 	| 'plan'
 	| 'delivery'
 	| 'slice'
@@ -61,19 +60,14 @@ export type CoreIdResource =
 	| 'secret'
 	| 'secret-binding'
 
-export type CoreResource = CoreSingletonResource | CoreIdResource
+export type CoreResource = CoreIdResource
 
-export type ArchivableCoreResource = Extract<CoreIdResource, 'model-provider' | 'model' | 'secret' | 'secret-binding'>
+export type ArchivableCoreResource = Extract<CoreIdResource, 'model-provider' | 'model' | 'agent-run-profile' | 'secret' | 'secret-binding'>
 
 export interface ResourceNotFoundError {
 	type: 'not-found'
 	resource: CoreIdResource
 	id: Id
-}
-
-export interface SingletonNotFoundError {
-	type: 'not-found-singleton'
-	resource: CoreSingletonResource
 }
 
 export interface AlreadyArchivedError {
@@ -120,6 +114,11 @@ export interface ArchivedModelReferenceError {
 export interface ArchivedModelProviderReferenceError {
 	type: 'archived-model-provider-reference'
 	modelProviderId: Id
+}
+
+export interface ArchivedAgentRunProfileReferenceError {
+	type: 'archived-agent-run-profile-reference'
+	agentRunProfileId: Id
 }
 
 export interface InvariantViolationError {
@@ -294,7 +293,6 @@ export type CoreError =
 	| InvalidCoreServiceOutputError
 	| NotImplementedError
 	| ResourceNotFoundError
-	| SingletonNotFoundError
 	| AlreadyArchivedError
 	| NotArchivedError
 	| StorageOperationFailedError
@@ -303,6 +301,7 @@ export type CoreError =
 	| ArchivedSecretReferenceError
 	| ArchivedModelReferenceError
 	| ArchivedModelProviderReferenceError
+	| ArchivedAgentRunProfileReferenceError
 	| InvariantViolationError
 	| ModelPreflightFailedError
 	| ModelNotSelectableError

@@ -15,6 +15,44 @@
 						placeholder="Delivery Ops"
 						:invalid="!!projectCreationForm.errors.title" />
 				</UiFormGroup>
+				<UiFormGroup
+					label="Execution Agent Run Profile"
+					for-id="project-execution-profile"
+					:error="projectCreationForm.errors.executionAgentRunProfileId">
+					<UiSelect
+						id="project-execution-profile"
+						v-model="projectCreationForm.executionAgentRunProfileId"
+						:options="activeAgentRunProfileOptions"
+						:invalid="!!projectCreationForm.errors.executionAgentRunProfileId" />
+				</UiFormGroup>
+				<UiFormGroup
+					label="Revision execution profile"
+					for-id="project-revision-execution-profile"
+					:error="projectCreationForm.errors.revisionExecutionAgentRunProfileId">
+					<UiSelect
+						id="project-revision-execution-profile"
+						v-model="projectCreationForm.revisionExecutionAgentRunProfileId"
+						:options="[{ value: null, label: 'Use execution profile' }, ...activeAgentRunProfileOptions]"
+						:invalid="!!projectCreationForm.errors.revisionExecutionAgentRunProfileId" />
+				</UiFormGroup>
+				<div class="grid gap-3 md:grid-cols-2">
+					<UiFormGroup
+						label="Max processable Slice slots"
+						for-id="project-slots"
+						:error="projectCreationForm.errors.maxProcessableSliceSlots">
+						<UiInput id="project-slots" v-model.number="projectCreationForm.maxProcessableSliceSlots" type="number" min="1" />
+					</UiFormGroup>
+					<UiFormGroup
+						label="Max correction retries"
+						for-id="project-retries"
+						:error="projectCreationForm.errors.maxCorrectionRetriesPerFailure">
+						<UiInput
+							id="project-retries"
+							v-model.number="projectCreationForm.maxCorrectionRetriesPerFailure"
+							type="number"
+							min="0" />
+					</UiFormGroup>
+				</div>
 				<div class="flex flex-wrap items-center gap-2">
 					<UiButton type="submit" :loading="isCreatingProject" :disabled="!projectCreationForm.valid">Create Project</UiButton>
 				</div>
@@ -50,13 +88,16 @@ import UiButton from '../../components/ui/UiButton.vue'
 import UiForm from '../../components/ui/UiForm.vue'
 import UiFormGroup from '../../components/ui/UiFormGroup.vue'
 import UiInput from '../../components/ui/UiInput.vue'
+import UiSelect from '../../components/ui/UiSelect.vue'
 import UiText from '../../components/ui/UiText.vue'
 import { useSelectedPortfolio } from '../../composables/auth/session'
+import { useAgentRunProfilesList } from '../../composables/portfolio/agent-run-profiles'
 import { useProjectsCreate } from '../../composables/portfolio/projects'
 
 definePageMeta({ middleware: ['has-selection'] })
 
 const { portfolio } = useSelectedPortfolio()
+const { activeAgentRunProfileOptions } = useAgentRunProfilesList()
 const { projectCreationForm, isCreatingProject, createProjectError, createProject } = useProjectsCreate({
 	onSuccess: async (project) => {
 		await navigateTo(`/projects/${project.id}`)

@@ -1,4 +1,4 @@
-import { v, type PipeInput, type PipeOutput } from 'valleyed'
+import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
 import { idPipe } from '../domain/commons'
@@ -10,28 +10,23 @@ import type { Result as CoreResult } from '../utils/types'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { buildCommandHandler } from './utils/handler'
 import {
+	agentRunProfileIdsFromProjectConfig,
 	getRequired,
-	loadSelectableModelFacts,
-	modelIdsFromModelUses,
-	modelUsesFromProjectConfigRecord,
 	normalizeProjectConfigRecord,
 	updateRecordValue,
-	validateModelUseConfigs,
+	validateSelectableAgentRunProfiles,
 	withAuditStampTransaction,
 } from './utils/storage'
 
 const setProjectConfigInputPipe = v.object({ projectId: idPipe, config: projectConfigPipe })
-export type Input = PipeInput<typeof setProjectConfigInputPipe>
-type ValidatedInput = PipeOutput<typeof setProjectConfigInputPipe>
+export type Input = PipeOutput<typeof setProjectConfigInputPipe>
 
 export type Result = Project
-
 export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
-
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createSetProjectConfigCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('setProjectConfig', setProjectConfigInputPipe, (input: ValidatedInput, context) =>
+	return buildCommandHandler('setProjectConfig', setProjectConfigInputPipe, (input, context) =>
 		withAuditStampTransaction(
 			runtime,
 			context,
@@ -39,15 +34,15 @@ export function createSetProjectConfigCommand(runtime: CoreRuntime): Operation {
 				const projectResult = await getRequired('project', storage, input.projectId)
 				if (!projectResult.ok) return projectResult
 
-				const config = normalizeProjectConfigRecord(input.config, stamp)
-				const modelUses = modelUsesFromProjectConfigRecord(config)
-				const facts = await loadSelectableModelFacts(storage, modelIdsFromModelUses(modelUses))
-				if (!facts.ok) return facts
+				const profileValidation = await validateSelectableAgentRunProfiles(
+					storage,
+					agentRunProfileIdsFromProjectConfig(input.config),
+				)
+				if (!profileValidation.ok) return profileValidation
 
-				const modelUseValidation = validateModelUseConfigs(facts.value, modelUses)
-				if (!modelUseValidation.ok) return modelUseValidation
-
-				return updateRecordValue('project', storage, projectResult.value.id, { config })
+				return updateRecordValue('project', storage, projectResult.value.id, {
+					config: normalizeProjectConfigRecord(input.config, stamp),
+				})
 			},
 		),
 	)
@@ -55,15 +50,25 @@ export function createSetProjectConfigCommand(runtime: CoreRuntime): Operation {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedProject, stamp } = await import('../utils/test-helpers')
+	const {
+		context,
+		createTestCoreRuntime,
+		createTestCoreServices,
+		defaultDeliveryWorkConfig,
+		localStamp,
+		seedAgentRunProfile,
+		seedProject,
+	} = await import('../utils/test-helpers')
 
 	describe('setProjectConfig command', () => {
-		it('sets Project config as a retained config record that can fold to null', async () => {
+		it('sets Project config as a required retained config record', async () => {
 			const options = createTestCoreServices()
 			seedProject(options.tx, 'project-1')
+			seedAgentRunProfile(options.tx, 'agent-run-profile-2', 'model-1')
 			const command = createSetProjectConfigCommand(createTestCoreRuntime(options))
 
-			const result = await command({ projectId: 'project-1', config: { model: null, work: null } }, context)
+			const config = { work: defaultDeliveryWorkConfig('agent-run-profile-2') }
+			const result = await command({ projectId: 'project-1', config }, context)
 
 			expect(result).toEqual({
 				ok: true,
@@ -71,11 +76,11 @@ if (import.meta.vitest) {
 					id: 'project-1',
 					title: 'Project',
 					source: { type: 'source-control' },
-					config: { configured: localStamp(), value: null },
-					created: stamp,
+					config: { configured: localStamp(), value: config },
+					created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				},
 			})
-			expect(options.tx.projects.records.get('project-1')?.config).toEqual({ configured: localStamp(), value: null })
+			expect(options.tx.projects.records.get('project-1')?.config).toEqual({ configured: localStamp(), value: config })
 		})
 	})
 }

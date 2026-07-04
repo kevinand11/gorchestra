@@ -1,45 +1,39 @@
-import { FormDraft, formDraftPipe } from '@gorchestra/form-draft'
+import { FormDraft } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
-
-import { ModelUseFormDraft } from './model-use'
-import type { PlanConfigInput } from '../composables/core/server-api'
 
 type PlanCreationFormFields = {
 	title: string
 	initialMessage: string
-	planningModelUse: ModelUseFormDraft
+	agentRunProfileId: string
 }
 
 type PlanCreationFormModel = {
 	title: string
 	initialMessage: string
-	config: PlanConfigInput
+	agentRunProfileId: string
 }
 
 const planTitlePipe = v.string().pipe(v.min<string>(1, 'Enter a Plan title'))
 const initialMessagePipe = v.string().pipe(v.min<string>(1, 'Enter an initial planning message'))
+const agentRunProfileIdPipe = v.string().pipe(v.asTrimmed(), v.min<string>(1, 'Select an Agent Run Profile'))
 
 export class PlanCreationFormDraft extends FormDraft<PlanCreationFormModel, PlanCreationFormModel, PlanCreationFormFields> {
-	protected readonly rules = {
-		title: planTitlePipe,
-		initialMessage: initialMessagePipe,
-		planningModelUse: formDraftPipe<ModelUseFormDraft>(),
-	}
+	protected readonly rules = { title: planTitlePipe, initialMessage: initialMessagePipe, agentRunProfileId: agentRunProfileIdPipe }
 
 	constructor() {
-		super({ title: '', initialMessage: '', planningModelUse: new ModelUseFormDraft() })
+		super({ title: '', initialMessage: '', agentRunProfileId: '' })
 	}
 
 	protected model = (): PlanCreationFormModel => ({
 		title: this.title,
 		initialMessage: this.initialMessage,
-		config: { model: { planning: this.planningModelUse.toModel() } },
+		agentRunProfileId: this.agentRunProfileId,
 	})
 
 	protected load = (entity: PlanCreationFormModel): void => {
 		this.title = entity.title
 		this.initialMessage = entity.initialMessage
-		this.planningModelUse.loadEntity(entity.config.model?.planning ?? null)
+		this.agentRunProfileId = entity.agentRunProfileId
 	}
 }
 
@@ -52,26 +46,13 @@ if (import.meta.vitest) {
 
 			factory.title = '  Repository setup plan  '
 			factory.initialMessage = '  Please plan repository onboarding.  '
+			factory.agentRunProfileId = 'agent-run-profile-1'
 
 			expect(factory.valid).toBe(true)
 			expect(factory.toModel()).toEqual({
 				title: '  Repository setup plan  ',
 				initialMessage: '  Please plan repository onboarding.  ',
-				config: { model: { planning: null } },
-			})
-		})
-
-		it('models explicit Planning Model overrides', () => {
-			const factory = new PlanCreationFormDraft()
-
-			factory.title = 'Plan'
-			factory.initialMessage = 'Plan this.'
-			factory.planningModelUse.modelId.value = 'model-1'
-
-			expect(factory.toModel()).toEqual({
-				title: 'Plan',
-				initialMessage: 'Plan this.',
-				config: { model: { planning: { modelId: 'model-1', thinkingLevel: 'none' } } },
+				agentRunProfileId: 'agent-run-profile-1',
 			})
 		})
 
@@ -79,15 +60,17 @@ if (import.meta.vitest) {
 			const factory = new PlanCreationFormDraft().loadEntity({
 				title: 'Plan',
 				initialMessage: 'Plan this.',
-				config: { model: { planning: null } },
+				agentRunProfileId: 'agent-run-profile-1',
 			})
 
 			factory.title = ''
 			factory.initialMessage = ''
+			factory.agentRunProfileId = ''
 
 			expect(factory.valid).toBe(false)
 			expect(factory.errors.title).toBe('Enter a Plan title')
 			expect(factory.errors.initialMessage).toBe('Enter an initial planning message')
+			expect(factory.errors.agentRunProfileId).toBe('Select an Agent Run Profile')
 		})
 	})
 }
