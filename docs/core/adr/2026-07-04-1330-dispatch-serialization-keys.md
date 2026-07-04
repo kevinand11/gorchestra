@@ -1,0 +1,5 @@
+# Dispatch requests carry serialization keys
+
+Core Agent Run Dispatch Requests carry a plain string `serializationKey` that declares the runtime mutual-exclusion group for dispatch processing. Consumers must not run two readied dispatch requests with the same key concurrently. The key is not an idempotency or coalescing key: every readied request is an independent execution attempt, same-key requests run FIFO, and a failed attempt does not cancel later same-key work. Different keys may run concurrently, and v1 does not impose a separate global dispatch concurrency cap.
+
+In multi-Portfolio runtimes, Consumers scope the Core-supplied key by the Portfolio storage namespace before enforcing serialization. The v1 Server Consumer therefore serializes by `coreStorageNamespace + serializationKey`. We chose a plain string instead of a typed key because collisions intentionally serialize; future dispatch request kinds can share a key when they must not overlap, while any idempotency or capacity policy remains explicit and separate.
