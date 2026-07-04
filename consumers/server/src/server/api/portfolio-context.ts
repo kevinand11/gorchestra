@@ -6,7 +6,6 @@ import { throwCoreOperationError, throwNotAuthorized, throwSelectionRequired, th
 import { authenticateApiSession, getSessionToken, type ApiSessionAuthentication } from './session'
 import { createCoreServices } from '../core/services'
 import { openCorePortfolioStorage } from '../core/storage'
-import { parseSecretEncryptionKey } from '../modules/secret-protection'
 import { resolveSelectionAccess, type SelectionAccessResult } from '../modules/selection-access'
 import { selectionCookieName, type SelectedPortfolio } from '../modules/selection-cookie'
 import type { ServerSession } from '../modules/sessions'
@@ -41,7 +40,7 @@ export async function withSelectedPortfolioCore<T>(
 ): Promise<T> {
 	const resolved = await resolveSelectedPortfolioRequest(context, cookies)
 	const coreStorage = await openCorePortfolioStorage({
-		dataDir: context.dataDir,
+		config: context.corePortfolioStorage,
 		coreStorageNamespace: resolved.selectionAccess.portfolio.coreStorageNamespace,
 	})
 	try {
@@ -87,7 +86,7 @@ async function requireSelectionAccess(
 		userId: authentication.session.userId,
 		selectionToken: cookies[selectionCookieName] ?? null,
 		now: context.now(),
-		signingKey: context.selectionSigningKey,
+		signingKey: context.security.selectionSigningKey,
 	})
 	if (!selectionAccess.selected) throwSelectionRequired()
 	return selectionAccess
@@ -100,7 +99,7 @@ function openSelectedPortfolioCore(
 ): GorchestraCore {
 	const openedCore = openCore(
 		createCoreServices(storage, {
-			secretEncryptionKey: context.secretEncryptionKey,
+			secretEncryptionKey: context.security.secretEncryptionKey,
 			dispatcher: {
 				preflight: () => context.dispatcher.preflight(),
 				request: (request) => context.dispatcher.request({ coreStorageNamespace, request }),
@@ -144,7 +143,7 @@ if (import.meta.vitest) {
 	const now = new Date('2026-06-21T00:00:00.000Z')
 	const sessionSigningKey = 'test-portfolio-context-session-key'
 	const selectionSigningKey = 'test-portfolio-context-selection-key'
-	const secretEncryptionKey = Buffer.alloc(32, 1).toString('base64url')
+	const secretEncryptionKey = Buffer.alloc(32, 1)
 
 	afterEach(cleanupTempServerStorage)
 
@@ -250,12 +249,11 @@ if (import.meta.vitest) {
 		const apiContext = createServerApiContext({
 			serverStorage,
 			serverCache,
-			env: {
-				GORCHESTRA_PORT: 0,
-				GORCHESTRA_DATA_DIR: dataDir,
-				GORCHESTRA_SESSION_JWT_SIGNING_KEY: sessionSigningKey,
-				GORCHESTRA_SELECTION_COOKIE_SIGNING_KEY: selectionSigningKey,
-				GORCHESTRA_SECRET_ENCRYPTION_KEY: parseSecretEncryptionKey(secretEncryptionKey),
+			corePortfolioStorage: { type: 'json', dataDir },
+			security: {
+				sessionSigningKey,
+				selectionSigningKey,
+				secretEncryptionKey,
 			},
 			now: () => now,
 		})
@@ -273,9 +271,9 @@ if (import.meta.vitest) {
 			userId: user.id,
 			workspaceDisplayName: 'Workspace',
 			portfolioDisplayName: 'Portfolio',
-			dataDir,
+			corePortfolioStorage: apiContext.corePortfolioStorage,
 			now,
-			secretEncryptionKey: apiContext.secretEncryptionKey,
+			secretEncryptionKey: apiContext.security.secretEncryptionKey,
 			coreStorageNamespaceFactory: () => `portfolios/${crypto.randomUUID()}`,
 		})
 		const selection = buildSelectionCookie({

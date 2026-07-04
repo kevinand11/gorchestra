@@ -54,7 +54,7 @@ export function createSelectionApiRouter(context: ServerApiContext) {
 				userId: authentication.session.userId,
 				selectionToken: req.cookies[selectionCookieName] ?? null,
 				now: context.now(),
-				signingKey: context.selectionSigningKey,
+				signingKey: context.security.selectionSigningKey,
 			})
 		})
 		.post('/', {
@@ -79,7 +79,7 @@ export function createSelectionApiRouter(context: ServerApiContext) {
 				workspaceId: access.workspace.id,
 				portfolioId: access.portfolio.id,
 				now: context.now(),
-				signingKey: context.selectionSigningKey,
+				signingKey: context.security.selectionSigningKey,
 			})
 			return req.res({
 				body: {

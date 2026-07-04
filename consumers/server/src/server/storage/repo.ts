@@ -23,7 +23,7 @@ let activeServerStorageStartup: Promise<ServerStorage> | null = null
 
 export async function startServerStorage(input: OpenServerStorageInput): Promise<ServerStorage> {
 	if (activeServerStorage) return activeServerStorage
-	activeServerStorageStartup ??= openServerStorage(input)
+	activeServerStorageStartup ??= createServerStorage(input)
 		.then((storage) => {
 			activeServerStorage = storage
 			return storage
@@ -42,16 +42,35 @@ export function getServerStorage(): ServerStorage {
 
 export async function stopServerStorage(): Promise<void> {
 	const storage = activeServerStorage
-	activeServerStorage = null
-	activeServerStorageStartup = null
+	resetStartedServerStorage()
 	await storage?.close()
 }
 
+export function resetStartedServerStorage(): void {
+	activeServerStorage = null
+	activeServerStorageStartup = null
+}
+
 export async function openServerStorage(input: OpenServerStorageInput): Promise<ServerStorage> {
+	const storage = await createServerStorage(input)
+	try {
+		await storage.adapter.connect?.()
+		await migrateServerStorage(storage)
+		return storage
+	} catch (error) {
+		await storage.close().catch(() => {})
+		throw error
+	}
+}
+
+export async function migrateServerStorage(storage: ServerStorage): Promise<void> {
+	await Migrator.from<ServerStorageAdapter>(storage.repo, storage.adapter).migrations(serverStorageMigrations).build().up()
+}
+
+async function createServerStorage(input: OpenServerStorageInput): Promise<ServerStorage> {
 	ensureServerInstance()
 	const backend = await (input.adapterFactory ?? createDefaultServerStorageBackend)({ dataDir: input.dataDir })
 	const repo = createServerStorageRepo(backend)
-	await Migrator.from<ServerStorageAdapter>(repo, backend.adapter).migrations(serverStorageMigrations).build().up()
 
 	return {
 		adapter: backend.adapter,

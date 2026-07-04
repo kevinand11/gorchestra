@@ -14,6 +14,7 @@ import { v } from 'valleyed'
 
 import { createDefaultCorePortfolioStorageBackend } from './json-adapter'
 import { createCoreServices } from './services'
+import type { ServerConsumerCorePortfolioStorageConfig } from '../config'
 import type { SecretEncryptionKey } from '../modules/secret-protection'
 
 export type CorePortfolioStorageAdapter = GorchestraCoreStorageAdapter &
@@ -48,7 +49,7 @@ export type CorePortfolioStorageAdapterFactory<A extends CorePortfolioStorageAda
 ) => CorePortfolioStorageBackend<A> | Promise<CorePortfolioStorageBackend<A>>
 
 export type OpenCorePortfolioStorageInput = {
-	dataDir: string
+	config: ServerConsumerCorePortfolioStorageConfig
 	coreStorageNamespace: string
 	adapterFactory?: CorePortfolioStorageAdapterFactory
 }
@@ -97,10 +98,11 @@ export async function initializeCorePortfolioStorage(
 }
 
 export async function openCorePortfolioStorage(input: OpenCorePortfolioStorageInput): Promise<CorePortfolioStorage> {
-	const storageDirectory = getCorePortfolioStorageDirectory(input.dataDir, input.coreStorageNamespace)
-	const backend = await (input.adapterFactory ?? createDefaultCorePortfolioStorageBackend)({ storageDirectory })
+	const storageDirectory = getCorePortfolioStorageDirectory(input.config, input.coreStorageNamespace)
+	const backend = await corePortfolioStorageBackend(input.config, input.adapterFactory, storageDirectory)
 	const storage = createCorePortfolioStorageRepo(backend)
 	try {
+		await backend.adapter.connect?.()
 		await Migrator.from(storage, backend.adapter).migrations(coreStorageMigrations).build().up()
 		return {
 			adapter: backend.adapter,
@@ -116,11 +118,29 @@ export async function openCorePortfolioStorage(input: OpenCorePortfolioStorageIn
 }
 
 export async function removeCorePortfolioStorage(input: OpenCorePortfolioStorageInput): Promise<void> {
-	await rm(getCorePortfolioStorageDirectory(input.dataDir, input.coreStorageNamespace), { recursive: true, force: true })
+	await rm(getCorePortfolioStorageDirectory(input.config, input.coreStorageNamespace), { recursive: true, force: true })
 }
 
-export function getCorePortfolioStorageDirectory(dataDir: string, coreStorageNamespace: string): string {
-	return join(dataDir, 'core', parseCoreStorageNamespace(coreStorageNamespace))
+export function getCorePortfolioStorageDirectory(config: ServerConsumerCorePortfolioStorageConfig, coreStorageNamespace: string): string {
+	switch (config.type) {
+		case 'json':
+			return join(config.dataDir, 'core', parseCoreStorageNamespace(coreStorageNamespace))
+		default:
+			throw new Error(`Unexpected Core Portfolio storage config: ${JSON.stringify(config)}`)
+	}
+}
+
+function corePortfolioStorageBackend(
+	config: ServerConsumerCorePortfolioStorageConfig,
+	adapterFactory: CorePortfolioStorageAdapterFactory | undefined,
+	storageDirectory: string,
+): CorePortfolioStorageBackend | Promise<CorePortfolioStorageBackend> {
+	switch (config.type) {
+		case 'json':
+			return (adapterFactory ?? createDefaultCorePortfolioStorageBackend)({ storageDirectory })
+		default:
+			throw new Error(`Unexpected Core Portfolio storage config: ${JSON.stringify(config)}`)
+	}
 }
 
 function createCorePortfolioStorageRepo<A extends CorePortfolioStorageAdapter>(backend: CorePortfolioStorageBackend<A>): RepoSurface<A> {
@@ -173,25 +193,27 @@ if (import.meta.vitest) {
 	describe('Server Core storage', () => {
 		it('creates safe per-Portfolio Core storage namespaces', () => {
 			const namespace = createCoreStorageNamespace()
+			const config = { type: 'json' as const, dataDir: '/tmp/gorchestra' }
 
 			expect(namespace).toMatch(/^portfolios\/[0-9a-f-]+$/)
-			expect(getCorePortfolioStorageDirectory('/tmp/gorchestra', namespace)).toBe(`/tmp/gorchestra/core/${namespace}`)
-			expect(() => getCorePortfolioStorageDirectory('/tmp/gorchestra', '../escape')).toThrow('Core storage namespace is not valid')
+			expect(getCorePortfolioStorageDirectory(config, namespace)).toBe(`/tmp/gorchestra/core/${namespace}`)
+			expect(() => getCorePortfolioStorageDirectory(config, '../escape')).toThrow('Core storage namespace is not valid')
 		})
 
 		it('runs Core migrations and verifies an empty Portfolio can open', async () => {
 			const dataDir = await createTempDataDir()
+			const config = { type: 'json' as const, dataDir }
 			const coreStorageNamespace = createCoreStorageNamespace()
 
-			const initialized = await initializeCorePortfolioStorage({ dataDir, coreStorageNamespace, secretEncryptionKey })
+			const initialized = await initializeCorePortfolioStorage({ config, coreStorageNamespace, secretEncryptionKey })
 
 			expect(initialized.coreStorageNamespace).toBe(coreStorageNamespace)
 			expect(initialized.preflightReport.passed).toBe(true)
-			expect(
-				existsSync(getDefaultCorePortfolioStorageFilePath(getCorePortfolioStorageDirectory(dataDir, coreStorageNamespace))),
-			).toBe(true)
+			expect(existsSync(getDefaultCorePortfolioStorageFilePath(getCorePortfolioStorageDirectory(config, coreStorageNamespace)))).toBe(
+				true,
+			)
 
-			const reopened = await openCorePortfolioStorage({ dataDir, coreStorageNamespace })
+			const reopened = await openCorePortfolioStorage({ config, coreStorageNamespace })
 			try {
 				expect(await reopened.adapter.loadMigrations()).toEqual([
 					expect.objectContaining({ id: '2026-06-16-0001-create-core-storage' }),

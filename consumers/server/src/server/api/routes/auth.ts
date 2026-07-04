@@ -70,7 +70,7 @@ export function createAuthApiRouter(context: ServerApiContext) {
 				email: req.body.email,
 				code: req.body.code,
 				now: context.now(),
-				signingKey: context.sessionSigningKey,
+				signingKey: context.security.sessionSigningKey,
 			})
 			if (!result.signedIn) throwBadRequest(`Email OTP Sign-in failed: ${result.reason}`)
 			return req.res({

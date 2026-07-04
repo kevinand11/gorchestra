@@ -2,6 +2,7 @@ import { openCore, type CoreDispatchRequest, type CoreServices } from '@gorchest
 import { Instance } from 'equipped'
 
 import type { SecretEncryptionKey } from './secret-protection'
+import type { ServerConsumerCorePortfolioStorageConfig } from '../config'
 import { createCoreServices } from '../core/services'
 import { openCorePortfolioStorage } from '../core/storage'
 
@@ -18,7 +19,7 @@ export type ServerAgentRunDispatchItem = {
 }
 
 export type CreateServerDispatcherInput = {
-	dataDir: string
+	corePortfolioStorage: ServerConsumerCorePortfolioStorageConfig
 	secretEncryptionKey: SecretEncryptionKey
 	runAgentRun?: (item: ServerAgentRunDispatchItem) => Promise<void>
 }
@@ -100,7 +101,10 @@ export function createServerDispatcher(input: CreateServerDispatcherInput) {
 	async function runItem(item: ServerAgentRunDispatchItem): Promise<void> {
 		if (input.runAgentRun !== undefined) return input.runAgentRun(item)
 
-		const coreStorage = await openCorePortfolioStorage({ dataDir: input.dataDir, coreStorageNamespace: item.coreStorageNamespace })
+		const coreStorage = await openCorePortfolioStorage({
+			config: input.corePortfolioStorage,
+			coreStorageNamespace: item.coreStorageNamespace,
+		})
 		try {
 			const services = createCoreServices(coreStorage.storage, {
 				secretEncryptionKey: input.secretEncryptionKey,
@@ -137,11 +141,13 @@ export function createServerDispatcher(input: CreateServerDispatcherInput) {
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
+	const testCorePortfolioStorage = { type: 'json' as const, dataDir: '/tmp/gorchestra-test' }
+
 	describe('Server Agent Run dispatcher', () => {
 		it('does not process accepted requests until their marker is ready', async () => {
 			const started: string[] = []
 			const dispatcher = createServerDispatcher({
-				dataDir: '/tmp/gorchestra-test',
+				corePortfolioStorage: testCorePortfolioStorage,
 				secretEncryptionKey: Buffer.alloc(32, 1),
 				runAgentRun: (item) => {
 					started.push(item.agentRunId)
@@ -166,7 +172,7 @@ if (import.meta.vitest) {
 				releaseFirst = resolve
 			})
 			const dispatcher = createServerDispatcher({
-				dataDir: '/tmp/gorchestra-test',
+				corePortfolioStorage: testCorePortfolioStorage,
 				secretEncryptionKey: Buffer.alloc(32, 1),
 				runAgentRun: async (item) => {
 					started.push(item.agentRunId)
@@ -232,7 +238,7 @@ if (import.meta.vitest) {
 			const completed: string[] = []
 			const errors = await withCapturedConsoleErrors(async () => {
 				const dispatcher = createServerDispatcher({
-					dataDir: '/tmp/gorchestra-test',
+					corePortfolioStorage: testCorePortfolioStorage,
 					secretEncryptionKey: Buffer.alloc(32, 1),
 					runAgentRun: (item) => {
 						started.push(item.agentRunId)
@@ -257,7 +263,7 @@ if (import.meta.vitest) {
 		it('ignores unknown or already readied dispatch markers', async () => {
 			const started: string[] = []
 			const dispatcher = createServerDispatcher({
-				dataDir: '/tmp/gorchestra-test',
+				corePortfolioStorage: testCorePortfolioStorage,
 				secretEncryptionKey: Buffer.alloc(32, 1),
 				runAgentRun: (item) => {
 					started.push(item.agentRunId)
@@ -293,7 +299,7 @@ if (import.meta.vitest) {
 		const started: string[] = []
 		const completed: string[] = []
 		const dispatcher = createServerDispatcher({
-			dataDir: '/tmp/gorchestra-test',
+			corePortfolioStorage: testCorePortfolioStorage,
 			secretEncryptionKey: Buffer.alloc(32, 1),
 			runAgentRun: async (item) => {
 				const itemKey = recordKey(item)

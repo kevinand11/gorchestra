@@ -56,8 +56,8 @@ The `consumers/server/` package implements the v1 deployed Server Consumer: Nuxt
 
 ## Verification
 
-- From repo root, run `pnpm --filter @gorchestra/server test`.
-- From repo root, run `pnpm --filter @gorchestra/server typecheck` if package script exists.
+- From repo root, run `pnpm --filter @gorchestra/consumer-server test`.
+- From repo root, run `pnpm --filter @gorchestra/consumer-server typecheck` if package script exists.
 - From repo root, run `pnpm typecheck`, `pnpm lint`, and `pnpm format` before claiming completion.
 
 ## Child DOX Index

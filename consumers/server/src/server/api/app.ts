@@ -1,7 +1,6 @@
 import { Router } from 'equipped/server'
 import { FastifyServer } from 'equipped/server/adapters/fastify'
 
-import type { ServerEnv } from '../env'
 import { ensureServerInstance } from '../instance'
 import type { ServerApiContext } from './context'
 import { createAuthApiRouter } from './routes/auth'
@@ -22,10 +21,10 @@ export function createServerApiRouter(context: ServerApiContext): ServerApiRoute
 	return buildServerApiRouter(context)
 }
 
-const buildServerApiServer = (context: ServerApiContext, env: ServerEnv) => {
+const buildServerApiServer = (context: ServerApiContext, port: number) => {
 	ensureServerInstance()
 	return FastifyServer.create({
-		port: env.GORCHESTRA_PORT,
+		port,
 		cors: { origin: true, credentials: true },
 		healthPath: '/api/health',
 		openapi: { docsPath: '/api/__docs' },
@@ -39,6 +38,6 @@ const buildServerApiServer = (context: ServerApiContext, env: ServerEnv) => {
 
 export type ServerApiServer = ReturnType<typeof buildServerApiServer>
 
-export function createServerApiServer(context: ServerApiContext, env: ServerEnv): ServerApiServer {
-	return buildServerApiServer(context, env)
+export function createServerApiServer(context: ServerApiContext, port: number): ServerApiServer {
+	return buildServerApiServer(context, port)
 }

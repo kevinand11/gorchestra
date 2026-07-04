@@ -50,7 +50,7 @@ function createSelectedPortfolioSecret(
 	input: CreateSecretRequest,
 ): Promise<Queries.GetSecret.Result> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
-		const valueRef = protectSecretPlaintext(input.value, context.secretEncryptionKey)
+		const valueRef = protectSecretPlaintext(input.value, context.security.secretEncryptionKey)
 		const secret = await core.commands.createSecret(
 			{ name: input.name, valueRef },
 			{ actor: { type: 'workspace-member', id: workspaceMember.id }, correlationId: null },

@@ -28,7 +28,7 @@ export async function authenticateApiSession(context: ServerApiContext, token?: 
 		serverCache: context.serverCache,
 		token: token ?? null,
 		now: context.now(),
-		signingKey: context.sessionSigningKey,
+		signingKey: context.security.sessionSigningKey,
 	})
 	if (!result.authenticated) return result
 	return {
@@ -41,7 +41,12 @@ export async function authenticateApiSession(context: ServerApiContext, token?: 
 
 export async function refreshApiSession(context: ServerApiContext, token?: string | null): Promise<RefreshSessionTokenResult> {
 	if (!token) return { refreshed: false, reason: 'not-authenticated' }
-	return refreshSessionToken({ serverCache: context.serverCache, token, now: context.now(), signingKey: context.sessionSigningKey })
+	return refreshSessionToken({
+		serverCache: context.serverCache,
+		token,
+		now: context.now(),
+		signingKey: context.security.sessionSigningKey,
+	})
 }
 
 export async function revokeApiSessionIfAuthenticated(context: ServerApiContext, token?: string | null): Promise<void> {

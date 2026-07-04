@@ -2,6 +2,7 @@ import { v } from 'valleyed'
 
 import type { SecretEncryptionKey } from './secret-protection'
 import { assignWorkspaceOwnerRole, createPortfolioRegistryEntry, createWorkspace, createWorkspaceMember } from './workspaces'
+import type { ServerConsumerCorePortfolioStorageConfig } from '../config'
 import {
 	createCoreStorageNamespace,
 	initializeCorePortfolioStorage,
@@ -16,7 +17,7 @@ export type ProvisionWorkspaceWithDefaultPortfolioInput = {
 	userId: string
 	workspaceDisplayName: string
 	portfolioDisplayName: string
-	dataDir: string
+	corePortfolioStorage: ServerConsumerCorePortfolioStorageConfig
 	now: Date
 	secretEncryptionKey: SecretEncryptionKey
 	coreStorageNamespaceFactory?: () => string
@@ -40,7 +41,7 @@ export async function provisionWorkspaceWithDefaultPortfolio(
 	const coreStorageNamespace = (input.coreStorageNamespaceFactory ?? createCoreStorageNamespace)()
 
 	const coreStorageInput = {
-		dataDir: input.dataDir,
+		config: input.corePortfolioStorage,
 		coreStorageNamespace,
 		...(input.coreStorageAdapterFactory ? { adapterFactory: input.coreStorageAdapterFactory } : {}),
 	}
@@ -75,7 +76,7 @@ export async function provisionWorkspaceWithDefaultPortfolio(
 			return { workspace, workspaceMember, workspaceOwnerRole, portfolio }
 		})
 	} catch (error) {
-		await removeCorePortfolioStorage({ dataDir: input.dataDir, coreStorageNamespace }).catch(() => {})
+		await removeCorePortfolioStorage({ config: input.corePortfolioStorage, coreStorageNamespace }).catch(() => {})
 		throw error
 	}
 }
@@ -117,6 +118,7 @@ if (import.meta.vitest) {
 	async function testProvisionsDefaultWorkspacePortfolio(): Promise<void> {
 		await withProvisioningStorage(async ({ serverStorage, dataDir }) => {
 			const user = await createUser({ serverStorage, now: testNow })
+			const corePortfolioStorage = { type: 'json' as const, dataDir }
 			const coreStorageNamespace = 'portfolios/provisioned-default'
 
 			const result = await provisionWorkspaceWithDefaultPortfolio({
@@ -124,7 +126,7 @@ if (import.meta.vitest) {
 				userId: user.id,
 				workspaceDisplayName: '  Delivery Ops  ',
 				portfolioDisplayName: '  Main Portfolio  ',
-				dataDir,
+				corePortfolioStorage,
 				now: testNow,
 				secretEncryptionKey,
 				coreStorageNamespaceFactory: () => coreStorageNamespace,
@@ -159,7 +161,7 @@ if (import.meta.vitest) {
 				activeWorkspaceOwnerRole: result.workspaceOwnerRole,
 			})
 
-			const coreStorage = await openCorePortfolioStorage({ dataDir, coreStorageNamespace })
+			const coreStorage = await openCorePortfolioStorage({ config: corePortfolioStorage, coreStorageNamespace })
 			try {
 				expect(await coreStorage.adapter.loadMigrations()).toEqual([
 					expect.objectContaining({ id: '2026-06-16-0001-create-core-storage' }),
@@ -173,6 +175,7 @@ if (import.meta.vitest) {
 	async function testRejectsEmptyDisplayNamesBeforeCreatingCoreStorage(): Promise<void> {
 		await withProvisioningStorage(async ({ serverStorage, dataDir }) => {
 			const user = await createUser({ serverStorage, now: testNow })
+			const corePortfolioStorage = { type: 'json' as const, dataDir }
 			const coreStorageNamespace = 'portfolios/empty-name'
 
 			await expect(
@@ -181,18 +184,19 @@ if (import.meta.vitest) {
 					userId: user.id,
 					workspaceDisplayName: '  ',
 					portfolioDisplayName: 'Main Portfolio',
-					dataDir,
+					corePortfolioStorage,
 					now: testNow,
 					secretEncryptionKey,
 					coreStorageNamespaceFactory: () => coreStorageNamespace,
 				}),
 			).rejects.toThrow('Workspace display name is required')
-			expect(existsSync(getCorePortfolioStorageDirectory(dataDir, coreStorageNamespace))).toBe(false)
+			expect(existsSync(getCorePortfolioStorageDirectory(corePortfolioStorage, coreStorageNamespace))).toBe(false)
 		})
 	}
 
 	async function testCleansCoreStorageWhenServerRegistryFails(): Promise<void> {
 		await withProvisioningStorage(async ({ serverStorage, dataDir }) => {
+			const corePortfolioStorage = { type: 'json' as const, dataDir }
 			const coreStorageNamespace = 'portfolios/server-registry-failure'
 
 			await expect(
@@ -201,14 +205,14 @@ if (import.meta.vitest) {
 					userId: 'missing-user',
 					workspaceDisplayName: 'Delivery Ops',
 					portfolioDisplayName: 'Main Portfolio',
-					dataDir,
+					corePortfolioStorage,
 					now: testNow,
 					secretEncryptionKey,
 					coreStorageNamespaceFactory: () => coreStorageNamespace,
 				}),
 			).rejects.toThrow()
 
-			expect(existsSync(getCorePortfolioStorageDirectory(dataDir, coreStorageNamespace))).toBe(false)
+			expect(existsSync(getCorePortfolioStorageDirectory(corePortfolioStorage, coreStorageNamespace))).toBe(false)
 			expect(await serverStorage.repo.on(workspaceSchema).all().find()).toEqual([])
 		})
 	}

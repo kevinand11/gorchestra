@@ -15,7 +15,7 @@ export default tseslint.config(
 		},
 	},
 	{
-		files: ['libs/**/*.ts', 'consumers/**/*.ts'],
+		files: ['src/**/*.ts', 'libs/**/*.ts', 'consumers/**/*.ts'],
 		languageOptions: {
 			parserOptions: {
 				project: './tsconfig.eslint.json',

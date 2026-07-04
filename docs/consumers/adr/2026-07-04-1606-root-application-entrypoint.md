@@ -1,0 +1,3 @@
+# Root application entrypoint owns process boot
+
+The root `gorchestra` package is the product process entrypoint: it owns command-line and environment parsing, loads the root `.env`, and starts Consumers with explicit typed configuration. Consumer packages such as `@gorchestra/consumer-server` expose reusable startup APIs, validate their package-boundary config, and own their app/runtime assembly without reading `process.env` or `process.argv`. This preserves the single product package direction while keeping Server Consumer runtime concerns reusable and separate from deployment boot concerns.

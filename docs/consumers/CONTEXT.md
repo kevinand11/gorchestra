@@ -12,6 +12,10 @@ Gorchestra consumers are application layers that use the reusable Portfolio-leve
 An application layer that uses the Gorchestra core. Consumers provide user experience, authorization, Secret protection mechanics, and runtime integration around Portfolio orchestration. Consumers authorize operations before calling core.
 _Avoid_: Core
 
+**Root Application Entrypoint**:
+The product process boot boundary that owns command-line and environment parsing, process lifecycle concerns, deployment wiring, and starting one or more Consumers with explicit configuration and dependencies.
+_Avoid_: Server Consumer, Consumer package, Core
+
 **Portfolio Owner**:
 The actor a Consumer treats as authorized to administer a Portfolio. Each Consumer defines how Portfolio Owner authority is granted or inferred.
 _Avoid_: portfolio createdBy

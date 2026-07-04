@@ -24,7 +24,7 @@ The `consumers/` tree contains application packages that consume Gorchestra Core
 
 ## Verification
 
-- From repo root, run `pnpm --filter @gorchestra/server test` for Server Consumer package tests.
+- From repo root, run `pnpm --filter @gorchestra/consumer-server test` for Server Consumer package tests.
 - From repo root, run `pnpm typecheck`, `pnpm lint`, and `pnpm format` after consumer package changes.
 
 ## Child DOX Index

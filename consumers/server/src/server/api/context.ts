@@ -1,18 +1,22 @@
 import type { ServerCache } from '../cache'
-import type { ServerEnv } from '../env'
+import type { ServerConsumerCorePortfolioStorageConfig } from '../config'
 import { createServerDispatcher, type ServerDispatcher } from '../modules/dispatcher'
 import type { SecretEncryptionKey } from '../modules/secret-protection'
 import type { ServerStorage } from '../storage/repo'
 
 export type ServerApiClock = () => Date
 
-export type ServerApiContext = {
-	serverStorage: ServerStorage
-	serverCache: ServerCache
-	dataDir: string
+export type ServerApiSecurity = {
 	sessionSigningKey: string
 	selectionSigningKey: string
 	secretEncryptionKey: SecretEncryptionKey
+}
+
+export type ServerApiContext = {
+	serverStorage: ServerStorage
+	serverCache: ServerCache
+	corePortfolioStorage: ServerConsumerCorePortfolioStorageConfig
+	security: ServerApiSecurity
 	dispatcher: ServerDispatcher
 	now: ServerApiClock
 }
@@ -20,7 +24,8 @@ export type ServerApiContext = {
 export type CreateServerApiContextInput = {
 	serverStorage: ServerStorage
 	serverCache: ServerCache
-	env: ServerEnv
+	corePortfolioStorage: ServerConsumerCorePortfolioStorageConfig
+	security: ServerApiSecurity
 	dispatcher?: ServerDispatcher
 	now?: ServerApiClock
 }
@@ -29,17 +34,15 @@ export function createServerApiContext(input: CreateServerApiContextInput): Serv
 	const dispatcher =
 		input.dispatcher ??
 		createServerDispatcher({
-			dataDir: input.env.GORCHESTRA_DATA_DIR,
-			secretEncryptionKey: input.env.GORCHESTRA_SECRET_ENCRYPTION_KEY,
+			corePortfolioStorage: input.corePortfolioStorage,
+			secretEncryptionKey: input.security.secretEncryptionKey,
 		})
 
 	return {
 		serverStorage: input.serverStorage,
 		serverCache: input.serverCache,
-		dataDir: input.env.GORCHESTRA_DATA_DIR,
-		sessionSigningKey: input.env.GORCHESTRA_SESSION_JWT_SIGNING_KEY,
-		selectionSigningKey: input.env.GORCHESTRA_SELECTION_COOKIE_SIGNING_KEY,
-		secretEncryptionKey: input.env.GORCHESTRA_SECRET_ENCRYPTION_KEY,
+		corePortfolioStorage: input.corePortfolioStorage,
+		security: input.security,
 		dispatcher,
 		now: input.now ?? (() => new Date()),
 	}
@@ -59,19 +62,18 @@ if (import.meta.vitest) {
 			const context = createServerApiContext({
 				serverStorage: {} as ServerStorage,
 				serverCache: {} as ServerCache,
-				env: {
-					GORCHESTRA_PORT: 0,
-					GORCHESTRA_DATA_DIR: '/tmp/gorchestra-test',
-					GORCHESTRA_SESSION_JWT_SIGNING_KEY: 'session-key',
-					GORCHESTRA_SELECTION_COOKIE_SIGNING_KEY: 'selection-key',
-					GORCHESTRA_SECRET_ENCRYPTION_KEY: Buffer.alloc(32, 1),
+				corePortfolioStorage: { type: 'json', dataDir: '/tmp/gorchestra-test' },
+				security: {
+					sessionSigningKey: 'session-key',
+					selectionSigningKey: 'selection-key',
+					secretEncryptionKey: Buffer.alloc(32, 1),
 				},
 				dispatcher,
 				now: () => new Date('2026-06-21T00:00:00.000Z'),
 			})
 
 			expect(context.dispatcher).toBe(dispatcher)
-			expect(context.secretEncryptionKey).toEqual(Buffer.alloc(32, 1))
+			expect(context.security.secretEncryptionKey).toEqual(Buffer.alloc(32, 1))
 		})
 	})
 }

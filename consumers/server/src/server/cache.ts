@@ -39,12 +39,20 @@ export async function startServerCache(input: StartServerCacheInput): Promise<Se
 }
 
 export async function openServerCache(input: StartServerCacheInput): Promise<ServerCacheRuntime> {
-	const instance = ensureServerInstance()
+	ensureServerInstance()
 	const filePath = getDefaultServerCacheFilePath(input.dataDir)
 	await mkdir(dirname(filePath), { recursive: true })
 	const adapter = JsonCache.create({ filePath })
-	await instance.start()
 	return { adapter, ...createServerCacheFromAdapter(adapter) }
+}
+
+export function stopServerCache(): void {
+	resetStartedServerCache()
+}
+
+export function resetStartedServerCache(): void {
+	activeServerCache = null
+	activeServerCacheStartup = null
 }
 
 export function createServerCacheFromAdapter(adapter: Cache): ServerCache {
@@ -72,6 +80,7 @@ if (import.meta.vitest) {
 	const tempDataDirs: string[] = []
 
 	afterAll(async () => {
+		stopServerCache()
 		await Promise.all(tempDataDirs.map((path) => rm(path, { recursive: true, force: true })))
 	})
 
@@ -88,6 +97,7 @@ if (import.meta.vitest) {
 
 		it('stores, reads, and deletes JSON values through the Server cache', async () => {
 			const cache = await startServerCache({ dataDir: await createTempDataDir() })
+			await ensureServerInstance().start()
 			const key = `cache-test:${crypto.randomUUID()}`
 			await cache.setJson(key, { value: 'cached' }, 60)
 			await expect(cache.getJson<{ value: string }>(key)).resolves.toEqual({ value: 'cached' })
