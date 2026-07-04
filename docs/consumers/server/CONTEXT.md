@@ -9,7 +9,7 @@ The v1 Gorchestra consumer: a deployed server app that registers Portfolios insi
 _Avoid_: Core
 
 **Agent Run Dispatcher**:
-The Server Consumer capability that receives Core Agent Run Dispatch Requests and arranges Agent Run runtime execution for the selected Portfolio. The dispatcher is responsible for execution arrangement, not for deciding Core Agent Run behavior. The v1 dispatcher returns opaque markers for accepted requests and starts processing only when the marker is readied after the Core command transaction succeeds.
+The Server Consumer capability that receives Core Agent Run Dispatch Requests and arranges Agent Run runtime execution for the selected Portfolio. The dispatcher is responsible for execution arrangement, not for deciding Core Agent Run behavior. The v1 dispatcher returns opaque markers for accepted requests and starts processing only when the marker is readied after the Core command transaction succeeds. It scopes Core Dispatch Serialization Keys by Portfolio storage namespace, runs readied same-key requests serially without coalescing them, and allows readied different-key requests to run concurrently.
 _Avoid_: Scheduler, worker agent, Core runtime
 
 **User**:

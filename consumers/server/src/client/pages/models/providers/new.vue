@@ -17,24 +17,34 @@
 								placeholder="OpenAI production"
 								:invalid="!!providerForm.errors.name" />
 						</UiFormGroup>
-						<UiFormGroup label="Protocol" for-id="provider-protocol" :error="providerForm.errors.protocol">
+						<UiFormGroup label="Source" for-id="provider-source" :error="providerForm.errors.sourceType">
 							<UiSelect
-								id="provider-protocol"
-								v-model="providerForm.protocol"
-								:options="protocolOptions"
-								placeholder="Select protocol"
-								:invalid="!!providerForm.errors.protocol" />
+								id="provider-source"
+								v-model="providerForm.sourceType"
+								:options="sourceOptions"
+								placeholder="Select source"
+								:invalid="!!providerForm.errors.sourceType" />
 						</UiFormGroup>
 					</div>
 					<div class="mt-3 grid gap-3">
-						<UiFormGroup label="Base URL" for-id="provider-base-url" :error="providerForm.errors.baseUrl">
-							<UiInput
-								id="provider-base-url"
-								v-model="providerForm.baseUrl"
-								required
-								placeholder="https://api.example.com"
-								:invalid="!!providerForm.errors.baseUrl" />
-						</UiFormGroup>
+						<template v-if="providerForm.sourceType === 'custom-hosted'">
+							<UiFormGroup label="Custom protocol" for-id="provider-protocol" :error="providerForm.errors.customProtocol">
+								<UiSelect
+									id="provider-protocol"
+									v-model="providerForm.customProtocol"
+									:options="protocolOptions"
+									placeholder="Select protocol"
+									:invalid="!!providerForm.errors.customProtocol" />
+							</UiFormGroup>
+							<UiFormGroup label="Base URL" for-id="provider-base-url" :error="providerForm.errors.customBaseUrl">
+								<UiInput
+									id="provider-base-url"
+									v-model="providerForm.customBaseUrl"
+									required
+									placeholder="https://api.example.com/v1"
+									:invalid="!!providerForm.errors.customBaseUrl" />
+							</UiFormGroup>
+						</template>
 						<UiFormGroup label="API key Secret" for-id="provider-auth-secret" :error="providerForm.errors.authSecretId">
 							<UiSelect
 								id="provider-auth-secret"
@@ -42,6 +52,16 @@
 								:options="authSecretOptions"
 								placeholder="No auth Secret"
 								:invalid="!!providerForm.errors.authSecretId" />
+						</UiFormGroup>
+						<UiFormGroup
+							label="Provider options JSON"
+							for-id="provider-options"
+							:error="providerForm.errors.providerOptionsText">
+							<UiTextarea
+								id="provider-options"
+								v-model="providerForm.providerOptionsText"
+								placeholder='{ "serviceTier": "flex" }'
+								:invalid="!!providerForm.errors.providerOptionsText" />
 						</UiFormGroup>
 					</div>
 				</section>
@@ -139,14 +159,25 @@ import UiFormGroup from '../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../components/ui/UiInput.vue'
 import UiSelect from '../../../components/ui/UiSelect.vue'
 import UiText from '../../../components/ui/UiText.vue'
+import UiTextarea from '../../../components/ui/UiTextarea.vue'
 import type { ModelProviderProtocolType } from '../../../composables/core/server-api'
+import type { ModelProviderSourceType } from '../../../forms/model-provider'
 import { useModelProviderCreate } from '../../../composables/portfolio/models/providers'
 import { useActiveSecretSelectOptions } from '../../../composables/portfolio/secrets'
 
 definePageMeta({ middleware: ['has-selection'] })
 
+const sourceOptions: Array<{ value: ModelProviderSourceType; label: string }> = [
+	{ value: 'openai-responses', label: 'OpenAI Responses' },
+	{ value: 'anthropic', label: 'Anthropic' },
+	{ value: 'google', label: 'Google Generative AI' },
+	{ value: 'groq', label: 'Groq' },
+	{ value: 'custom-hosted', label: 'Custom hosted' },
+]
+
 const protocolOptions: Array<{ value: ModelProviderProtocolType; label: string }> = [
 	{ value: 'openai-responses', label: 'OpenAI Responses' },
+	{ value: 'openai-chat-completions', label: 'OpenAI Chat Completions' },
 	{ value: 'anthropic-messages', label: 'Anthropic Messages' },
 	{ value: 'google-generative-ai', label: 'Google Generative AI' },
 ]

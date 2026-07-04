@@ -11,9 +11,10 @@ import type { ModelThinkingLevelUnavailableError } from '../../errors'
 import type { Result } from '../../utils/types'
 
 export function configurableThinkingLevelsForProtocol(protocol: ModelProviderProtocol): PositiveModelThinkingLevel[] {
-	switch (protocol.type) {
+	switch (protocol) {
 		case 'anthropic-messages':
 		case 'openai-responses':
+		case 'openai-chat-completions':
 			return [...positiveModelThinkingLevels]
 		case 'google-generative-ai':
 			return positiveModelThinkingLevels.filter((level) => level !== 'xhigh')
@@ -39,7 +40,7 @@ export function validateModelThinkingCapabilityForProtocol(
 		? { ok: true, value: undefined }
 		: modelThinkingLevelUnavailable(model.id, unsupportedLevel, {
 				type: 'provider-thinking-level-unsupported',
-				protocol: protocol.type,
+				protocol,
 			})
 }
 
@@ -65,7 +66,7 @@ function thinkingLevelUnavailableReason(
 ): ModelThinkingLevelUnavailableError['reason'] {
 	if (model.capabilities.thinking === null) return { type: 'model-thinking-unconfigured' }
 	if (!model.capabilities.thinking.supportedLevels.includes(thinkingLevel)) return { type: 'thinking-level-unconfigured' }
-	return { type: 'provider-thinking-level-unsupported', protocol: protocol.type }
+	return { type: 'provider-thinking-level-unsupported', protocol }
 }
 
 function modelThinkingLevelUnavailable(
@@ -83,17 +84,16 @@ if (import.meta.vitest) {
 	describe('Model Provider Protocol thinking support', () => {
 		it('derives Model thinking levels from implicit none, configured support, and protocol support', () => {
 			expect(
-				availableThinkingLevelsForModel(model({ thinking: { supportedLevels: ['low', 'xhigh'] } }), {
-					type: 'google-generative-ai',
-				}),
+				availableThinkingLevelsForModel(model({ thinking: { supportedLevels: ['low', 'xhigh'] } }), 'google-generative-ai'),
 			).toEqual(['none', 'low'])
+			expect(
+				availableThinkingLevelsForModel(model({ thinking: { supportedLevels: ['minimal', 'xhigh'] } }), 'openai-chat-completions'),
+			).toEqual(['none', 'minimal', 'xhigh'])
 		})
 
 		it('rejects configured thinking support that the provider protocol cannot map', () => {
 			expect(
-				validateModelThinkingCapabilityForProtocol(model({ thinking: { supportedLevels: ['xhigh'] } }), {
-					type: 'google-generative-ai',
-				}),
+				validateModelThinkingCapabilityForProtocol(model({ thinking: { supportedLevels: ['xhigh'] } }), 'google-generative-ai'),
 			).toEqual({
 				ok: false,
 				error: {
@@ -112,6 +112,7 @@ if (import.meta.vitest) {
 			providerId: 'model-provider-1',
 			name: 'Model',
 			providerModelId: 'provider-model',
+			providerOptions: null,
 			capabilities: { ...defaultModelCapabilities, thinking: input.thinking },
 			pricing: null,
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },

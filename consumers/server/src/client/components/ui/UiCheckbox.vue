@@ -1,6 +1,6 @@
 <template>
 	<label
-		class="inline-flex max-w-full cursor-pointer items-start gap-2 text-sz-helper disabled:cursor-not-allowed"
+		class="relative inline-flex max-w-full cursor-pointer items-start gap-2 text-sz-helper disabled:cursor-not-allowed"
 		:class="[disabled ? 'cursor-not-allowed opacity-60' : '', reverse ? 'flex-row-reverse' : '']">
 		<input class="peer sr-only" type="checkbox" :checked="isSelected" :disabled="disabled" @change="toggle" />
 		<span v-if="type === 'checkbox'" aria-hidden="true" :class="checkboxClass">

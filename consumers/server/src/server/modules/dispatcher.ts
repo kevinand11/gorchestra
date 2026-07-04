@@ -14,6 +14,7 @@ export type ServerAgentRunDispatchItem = {
 	type: 'agent-run'
 	coreStorageNamespace: string
 	agentRunId: string
+	serializationKey: string
 }
 
 export type CreateServerDispatcherInput = {
@@ -25,12 +26,9 @@ export type CreateServerDispatcherInput = {
 export type ServerDispatcher = ReturnType<typeof createServerDispatcher>
 
 export function createServerDispatcher(input: CreateServerDispatcherInput) {
-	const queue: string[] = []
 	const pending = new Map<string, ServerAgentRunDispatchItem>()
-	const queued = new Map<string, ServerAgentRunDispatchItem>()
-	const running = new Map<string, ServerAgentRunDispatchItem>()
-	const rerunRequested = new Set<string>()
-	let drainScheduled = false
+	const queuesBySerializationKey = new Map<string, ServerAgentRunDispatchItem[]>()
+	const runningSerializationKeys = new Set<string>()
 
 	function preflight(): Promise<{ ok: true }> {
 		return Promise.resolve({ ok: true })
@@ -50,42 +48,37 @@ export function createServerDispatcher(input: CreateServerDispatcherInput) {
 	}
 
 	function agentRunItem(request: ServerDispatchRequest): ServerAgentRunDispatchItem {
-		return { type: 'agent-run', coreStorageNamespace: request.coreStorageNamespace, agentRunId: request.request.agentRunId }
+		return {
+			type: 'agent-run',
+			coreStorageNamespace: request.coreStorageNamespace,
+			agentRunId: request.request.agentRunId,
+			serializationKey: request.request.serializationKey,
+		}
 	}
 
 	function enqueue(item: ServerAgentRunDispatchItem): void {
-		const itemKey = key(item)
-		if (running.has(itemKey)) {
-			rerunRequested.add(itemKey)
+		const itemKey = scopedSerializationKey(item)
+		const queue = queuesBySerializationKey.get(itemKey) ?? []
+		queue.push(item)
+		queuesBySerializationKey.set(itemKey, queue)
+		if (!runningSerializationKeys.has(itemKey)) scheduleNextForSerializationKey(itemKey)
+	}
+
+	function scheduleNextForSerializationKey(itemKey: string): void {
+		if (runningSerializationKeys.has(itemKey)) return
+
+		const queue = queuesBySerializationKey.get(itemKey)
+		if (queue === undefined) return
+
+		const item = queue.shift()
+		if (item === undefined) {
+			queuesBySerializationKey.delete(itemKey)
 			return
 		}
-		if (queued.has(itemKey)) return
-		queued.set(itemKey, item)
-		queue.push(itemKey)
-		scheduleDrain()
-	}
 
-	function scheduleDrain(): void {
-		if (drainScheduled) return
-		drainScheduled = true
-		setTimeout(() => void drain(), 0)
-	}
-
-	async function drain(): Promise<void> {
-		drainScheduled = false
-		const item = claimNextQueuedItem()
-		if (item === null) return scheduleNextIfNeeded()
-		await runClaimedItem(item)
-	}
-
-	function claimNextQueuedItem(): ServerAgentRunDispatchItem | null {
-		const itemKey = queue.shift()
-		if (itemKey === undefined) return null
-		const item = queued.get(itemKey)
-		if (item === undefined) return null
-		queued.delete(itemKey)
-		running.set(itemKey, item)
-		return item
+		if (queue.length === 0) queuesBySerializationKey.delete(itemKey)
+		runningSerializationKeys.add(itemKey)
+		setTimeout(() => void runClaimedItem(item), 0)
 	}
 
 	async function runClaimedItem(item: ServerAgentRunDispatchItem): Promise<void> {
@@ -99,14 +92,9 @@ export function createServerDispatcher(input: CreateServerDispatcherInput) {
 	}
 
 	function releaseClaimedItem(item: ServerAgentRunDispatchItem): void {
-		const itemKey = key(item)
-		running.delete(itemKey)
-		if (rerunRequested.delete(itemKey)) enqueue(item)
-		scheduleNextIfNeeded()
-	}
-
-	function scheduleNextIfNeeded(): void {
-		if (queue.length > 0) scheduleDrain()
+		const itemKey = scopedSerializationKey(item)
+		runningSerializationKeys.delete(itemKey)
+		scheduleNextForSerializationKey(itemKey)
 	}
 
 	async function runItem(item: ServerAgentRunDispatchItem): Promise<void> {
@@ -139,8 +127,8 @@ export function createServerDispatcher(input: CreateServerDispatcherInput) {
 		return request({ coreStorageNamespace, request: coreRequest })
 	}
 
-	function key(item: ServerAgentRunDispatchItem): string {
-		return `${item.coreStorageNamespace}:${item.agentRunId}`
+	function scopedSerializationKey(item: ServerAgentRunDispatchItem): string {
+		return JSON.stringify([item.coreStorageNamespace, item.serializationKey])
 	}
 
 	return { preflight, request, ready }
@@ -170,27 +158,7 @@ if (import.meta.vitest) {
 			expect(started).toEqual(['agent-run-1'])
 		})
 
-		it('coalesces queued duplicate requests for the same AgentRun', async () => {
-			const started: string[] = []
-			const dispatcher = createServerDispatcher({
-				dataDir: '/tmp/gorchestra-test',
-				secretEncryptionKey: Buffer.alloc(32, 1),
-				runAgentRun: (item) => {
-					started.push(`${item.coreStorageNamespace}:${item.agentRunId}`)
-					return Promise.resolve()
-				},
-			})
-
-			const first = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-1'))
-			const second = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-1'))
-			dispatcher.ready(first)
-			dispatcher.ready(second)
-			await waitFor(() => started.length === 1)
-
-			expect(started).toEqual(['portfolio-a:agent-run-1'])
-		})
-
-		it('does not run two dispatches for the same AgentRun concurrently and reruns after current run', async () => {
+		it('runs same-key readied requests serially without coalescing them', async () => {
 			const started: string[] = []
 			const completed: string[] = []
 			let releaseFirst!: () => void
@@ -207,17 +175,83 @@ if (import.meta.vitest) {
 				},
 			})
 
-			const first = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-1'))
+			const first = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-1', 'serial-a'))
+			const second = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-1', 'serial-a'))
 			dispatcher.ready(first)
-			await waitFor(() => started.length === 1)
-			const second = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-1'))
 			dispatcher.ready(second)
-			await new Promise((resolve) => setTimeout(resolve, 0))
-			expect(started).toEqual(['agent-run-1'])
+			await waitFor(() => started.length === 1)
+			expect(completed).toEqual([])
 
 			releaseFirst()
 			await waitFor(() => completed.length === 2)
 			expect(started).toEqual(['agent-run-1', 'agent-run-1'])
+			expect(completed).toEqual(['agent-run-1', 'agent-run-1'])
+		})
+
+		it('allows different serialization keys in the same Portfolio to run concurrently', async () => {
+			const { completed, dispatcher, releaseFirst, releaseSecond, started } = concurrentDispatchFixture(
+				(item) => item.serializationKey,
+				'serial-a',
+				'serial-b',
+			)
+
+			const first = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-1', 'serial-a'))
+			const second = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-2', 'serial-b'))
+			dispatcher.ready(first)
+			dispatcher.ready(second)
+			await waitFor(() => started.length === 2)
+			expect(completed).toEqual([])
+
+			releaseFirst()
+			releaseSecond()
+			await waitFor(() => completed.length === 2)
+			expect(started).toEqual(['serial-a', 'serial-b'])
+		})
+
+		it('scopes serialization keys by Portfolio storage namespace', async () => {
+			const { completed, dispatcher, releaseFirst, releaseSecond, started } = concurrentDispatchFixture(
+				(item) => item.coreStorageNamespace,
+				'portfolio-a',
+				'portfolio-b',
+			)
+
+			const first = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-1', 'serial-a'))
+			const second = await dispatcher.request(agentRunDispatch('portfolio-b', 'agent-run-2', 'serial-a'))
+			dispatcher.ready(first)
+			dispatcher.ready(second)
+			await waitFor(() => started.length === 2)
+			expect(started).toEqual(['portfolio-a', 'portfolio-b'])
+
+			releaseFirst()
+			releaseSecond()
+			await waitFor(() => completed.length === 2)
+		})
+
+		it('continues same-key queued dispatches after a failed attempt', async () => {
+			const started: string[] = []
+			const completed: string[] = []
+			const errors = await withCapturedConsoleErrors(async () => {
+				const dispatcher = createServerDispatcher({
+					dataDir: '/tmp/gorchestra-test',
+					secretEncryptionKey: Buffer.alloc(32, 1),
+					runAgentRun: (item) => {
+						started.push(item.agentRunId)
+						if (started.length === 1) throw new Error('first dispatch failed')
+						completed.push(item.agentRunId)
+						return Promise.resolve()
+					},
+				})
+
+				const first = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-1', 'serial-a'))
+				const second = await dispatcher.request(agentRunDispatch('portfolio-a', 'agent-run-2', 'serial-a'))
+				dispatcher.ready(first)
+				dispatcher.ready(second)
+				await waitFor(() => started.length === 2 && completed.length === 1)
+			})
+
+			expect(started).toEqual(['agent-run-1', 'agent-run-2'])
+			expect(completed).toEqual(['agent-run-2'])
+			expect(errors).toHaveLength(1)
 		})
 
 		it('ignores unknown or already readied dispatch markers', async () => {
@@ -241,11 +275,43 @@ if (import.meta.vitest) {
 		})
 	})
 
-	function agentRunDispatch(coreStorageNamespace: string, agentRunId: string): ServerDispatchRequest {
+	function agentRunDispatch(coreStorageNamespace: string, agentRunId: string, serializationKey = agentRunId): ServerDispatchRequest {
 		return {
 			coreStorageNamespace,
-			request: { type: 'agent-run', agentRunId, reason: { type: 'input-appended', inputEventId: 'event-1' } },
+			request: {
+				type: 'agent-run',
+				agentRunId,
+				serializationKey,
+				reason: { type: 'input-appended', inputEventId: 'event-1' },
+			},
 		}
+	}
+
+	function concurrentDispatchFixture(recordKey: (item: ServerAgentRunDispatchItem) => string, firstKey: string, secondKey: string) {
+		const firstGate = releaseGate()
+		const secondGate = releaseGate()
+		const started: string[] = []
+		const completed: string[] = []
+		const dispatcher = createServerDispatcher({
+			dataDir: '/tmp/gorchestra-test',
+			secretEncryptionKey: Buffer.alloc(32, 1),
+			runAgentRun: async (item) => {
+				const itemKey = recordKey(item)
+				started.push(itemKey)
+				if (itemKey === firstKey) await firstGate.promise
+				if (itemKey === secondKey) await secondGate.promise
+				completed.push(itemKey)
+			},
+		})
+		return { completed, dispatcher, releaseFirst: firstGate.release, releaseSecond: secondGate.release, started }
+	}
+
+	function releaseGate(): { promise: Promise<void>; release: () => void } {
+		let release!: () => void
+		const promise = new Promise<void>((resolve) => {
+			release = resolve
+		})
+		return { promise, release }
 	}
 
 	async function waitFor(predicate: () => boolean): Promise<void> {
@@ -254,5 +320,19 @@ if (import.meta.vitest) {
 			await new Promise((resolve) => setTimeout(resolve, 0))
 		}
 		throw new Error('Timed out waiting for condition')
+	}
+
+	async function withCapturedConsoleErrors(run: () => Promise<void>): Promise<unknown[][]> {
+		const originalError = globalThis.console.error
+		const errors: unknown[][] = []
+		globalThis.console.error = (...args: unknown[]) => {
+			errors.push(args)
+		}
+		try {
+			await run()
+			return errors
+		} finally {
+			globalThis.console.error = originalError
+		}
 	}
 }

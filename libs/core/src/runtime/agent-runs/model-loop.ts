@@ -31,7 +31,7 @@ import {
 } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
 import type { Model, ModelThinkingLevel, ModelTokenPricing } from '../../domain/model'
-import type { ModelProvider } from '../../domain/model-provider'
+import { modelProviderProtocolForSource, type ModelProvider } from '../../domain/model-provider'
 import type {
 	InvalidCoreServiceOutputError,
 	InvariantViolationError,
@@ -300,7 +300,7 @@ function resolveProviderTurnThinking(
 	modelProvider: ModelProvider,
 	thinkingLevel: ModelThinkingLevel,
 ): Result<ModelAgentTurnThinking, ModelThinkingLevelUnavailableError> {
-	const validation = validateModelThinkingLevelForUse(model, modelProvider.protocol, thinkingLevel)
+	const validation = validateModelThinkingLevelForUse(model, modelProviderProtocolForSource(modelProvider.source), thinkingLevel)
 	return validation.ok ? { ok: true, value: { level: thinkingLevel } } : validation
 }
 

@@ -215,6 +215,7 @@ async function writeInitialPlanningInput(
 	const dispatchMarker = await acceptDispatchRequest(runtime.services.dispatcher, {
 		type: 'agent-run',
 		agentRunId: agentRun.id,
+		serializationKey: agentRun.id,
 		reason: { type: 'input-appended', inputEventId: input.value.id },
 	})
 	if (!dispatchMarker.ok) return dispatchMarker
@@ -295,7 +296,12 @@ if (import.meta.vitest) {
 
 			expect(result).toMatchObject({ ok: true })
 			expect(dispatches).toEqual([
-				{ type: 'agent-run', agentRunId: 'agent-run-1', reason: { type: 'input-appended', inputEventId: 'agent-run-event-2' } },
+				{
+					type: 'agent-run',
+					agentRunId: 'agent-run-1',
+					serializationKey: 'agent-run-1',
+					reason: { type: 'input-appended', inputEventId: 'agent-run-event-2' },
+				},
 			])
 			expect(readyMarkers).toEqual(['marker-1'])
 			expect(options.tx.agentRunEvents.records.get('agent-run-event-2')?.body.type).toBe('input-message')

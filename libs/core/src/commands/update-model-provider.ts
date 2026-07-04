@@ -2,7 +2,7 @@ import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
 import { idPipe, nonEmptyTrimmedStringPipe } from '../domain/commons'
-import { modelProviderAuthPipe, modelProviderBaseUrlPipe, modelProviderHeadersPipe, type ModelProvider } from '../domain/model-provider'
+import { modelProviderAuthPipe, modelProviderHeadersPipe, modelProviderOptionsPipe, type ModelProvider } from '../domain/model-provider'
 import type {
 	ArchivedSecretReferenceError,
 	InvalidCoreServiceOutputError,
@@ -19,9 +19,9 @@ import { auditStamp, getRequired, updateRecordValue, validateActiveModelProvider
 const updateModelProviderInputPipe = v.object({
 	modelProviderId: idPipe,
 	name: nonEmptyTrimmedStringPipe,
-	baseUrl: modelProviderBaseUrlPipe,
 	auth: v.nullable(modelProviderAuthPipe),
 	headers: modelProviderHeadersPipe,
+	providerOptions: v.nullable(modelProviderOptionsPipe),
 })
 export type Input = PipeOutput<typeof updateModelProviderInputPipe>
 
@@ -51,9 +51,9 @@ export function createUpdateModelProviderCommand(runtime: CoreRuntime): Operatio
 
 			return updateRecordValue('model-provider', storage, existing.value.id, {
 				name: input.name,
-				baseUrl: input.baseUrl,
 				auth: input.auth,
 				headers: input.headers,
+				providerOptions: input.providerOptions,
 				updated: stamp.value,
 			})
 		})
@@ -65,15 +65,15 @@ if (import.meta.vitest) {
 	const { context, createTestCoreRuntime, createTestCoreServices, localStamp } = await import('../utils/test-helpers')
 
 	describe('updateModelProvider command', () => {
-		it('updates Model Provider mutable config while preserving protocol', async () => {
+		it('updates Model Provider mutable config while preserving source', async () => {
 			const options = createTestCoreServices()
 			options.tx.modelProviders.records.set('provider-1', {
 				id: 'provider-1',
 				name: 'Provider',
-				protocol: { type: 'anthropic-messages' },
-				baseUrl: 'https://old.example.com',
+				source: { type: 'anthropic' },
 				auth: null,
 				headers: [],
+				providerOptions: null,
 				created: localStamp(),
 				updated: null,
 				archivePeriods: [],
@@ -81,13 +81,13 @@ if (import.meta.vitest) {
 			const command = createUpdateModelProviderCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ modelProviderId: 'provider-1', name: 'Updated', baseUrl: 'https://new.example.com', auth: null, headers: [] },
+				{ modelProviderId: 'provider-1', name: 'Updated', auth: null, headers: [], providerOptions: { beta: true } },
 				context,
 			)
 
 			expect(result).toMatchObject({
 				ok: true,
-				value: { id: 'provider-1', name: 'Updated', protocol: { type: 'anthropic-messages' } },
+				value: { id: 'provider-1', name: 'Updated', source: { type: 'anthropic' }, providerOptions: { beta: true } },
 			})
 		})
 	})

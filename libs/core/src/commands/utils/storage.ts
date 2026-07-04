@@ -4,7 +4,13 @@ import type { ArchivePeriod, AuditStamp, Id } from '../../domain/commons'
 import type { DeliveryConfig, DeliveryConfigRecord, ModelUseConfig, ProjectConfig, ProjectConfigRecord } from '../../domain/config'
 import type { DeliveryWorkState } from '../../domain/delivery'
 import type { Model, ModelThinkingLevel } from '../../domain/model'
-import type { ModelProvider, ModelProviderAuth, ModelProviderHeader } from '../../domain/model-provider'
+import {
+	modelProviderProtocolForSource,
+	type ModelProvider,
+	type ModelProviderAccessValue,
+	type ModelProviderAuth,
+	type ModelProviderHeader,
+} from '../../domain/model-provider'
 import type { Project } from '../../domain/project'
 import type { RepositoryConfig } from '../../domain/repository'
 import type { Secret, SecretBindingScope } from '../../domain/secret'
@@ -200,7 +206,7 @@ export function validateModelThinkingLevel(
 	provider: ModelProvider,
 	thinkingLevel: ModelThinkingLevel,
 ): Result<void, ModelThinkingLevelUnavailableError> {
-	return validateModelThinkingLevelForUse(model, provider.protocol, thinkingLevel)
+	return validateModelThinkingLevelForUse(model, modelProviderProtocolForSource(provider.source), thinkingLevel)
 }
 
 export async function loadSelectableAgentRunProfile(
@@ -496,17 +502,19 @@ export function modelIdsFromModelUses(modelUses: ModelUseConfig[]): Id[] {
 }
 
 export function secretReferencesFromModelProviderConfig(auth: ModelProviderAuth | null, headers: ModelProviderHeader[]): Id[] {
-	const references: Id[] = []
+	return uniqueIds([
+		...(auth === null ? [] : secretReferencesFromModelProviderAccessValue(auth.value)),
+		...headers.flatMap((header) => secretReferencesFromModelProviderAccessValue(header.value)),
+	])
+}
 
-	if (auth !== null) {
-		references.push(auth.secretId)
+function secretReferencesFromModelProviderAccessValue(value: ModelProviderAccessValue): Id[] {
+	switch (value.type) {
+		case 'secret':
+			return [value.secretId]
+		default:
+			throw new Error('Unexpected Model Provider access value.')
 	}
-
-	for (const header of headers) {
-		references.push(header.valueSecretId)
-	}
-
-	return references
 }
 
 export function scopesEqual(left: SecretBindingScope, right: SecretBindingScope): boolean {

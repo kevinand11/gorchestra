@@ -174,10 +174,10 @@ if (import.meta.vitest) {
 			options.tx.modelProviders.records.set('model-provider-with-missing-secret', {
 				id: 'model-provider-with-missing-secret',
 				name: 'Provider',
-				protocol: { type: 'anthropic-messages' },
-				baseUrl: 'https://api.example.com',
-				auth: { type: 'apiKey', secretId: 'missing-model-secret' },
+				source: { type: 'anthropic' },
+				auth: { value: { type: 'secret', secretId: 'missing-model-secret' } },
 				headers: [],
+				providerOptions: null,
 				created: localStamp(),
 				updated: null,
 				archivePeriods: [],

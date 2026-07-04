@@ -20,6 +20,7 @@ import {
 	archivePeriodPipe,
 	auditStampPipe,
 	idPipe,
+	jsonObjectPipe,
 	nonEmptyTrimmedStringPipe,
 	nonNegativeIntegerPipe,
 	runtimeRecordPipe,
@@ -30,7 +31,7 @@ import { deliveryClosedPipe, deliveryTargetPipe, type Delivery } from '../domain
 import { linkDefPipe, type Link } from '../domain/graph'
 import { currentMemoryRevisionPipe, memoryBodyPipe, memoryTitlePipe, type Memory, type MemoryRevision } from '../domain/memory'
 import { modelCapabilitiesPipe, modelTokenPricingPipe, type Model } from '../domain/model'
-import { modelProviderAuthPipe, modelProviderHeaderPipe, modelProviderProtocolPipe, type ModelProvider } from '../domain/model-provider'
+import { modelProviderAuthPipe, modelProviderHeaderPipe, modelProviderSourcePipe, type ModelProvider } from '../domain/model-provider'
 import { instructionSourcePipe, type Plan } from '../domain/plan'
 import { projectSourcePipe, type Project } from '../domain/project'
 import { repositoryConfigPipe, type Repository } from '../domain/repository'
@@ -65,10 +66,10 @@ export const repositorySchema = Schema.from('repositories')
 export const modelProviderSchema = Schema.from('model_providers')
 	.pk('id', idPipe, explicitCoreIdRequired)
 	.field('name', nonEmptyTrimmedStringPipe)
-	.field('protocol', modelProviderProtocolPipe)
-	.field('baseUrl', nonEmptyTrimmedStringPipe)
+	.field('source', modelProviderSourcePipe)
 	.field('auth', v.nullable(modelProviderAuthPipe))
 	.field('headers', v.array(modelProviderHeaderPipe))
+	.field('providerOptions', v.nullable(jsonObjectPipe))
 	.field('created', auditStampPipe)
 	.field('updated', v.nullable(auditStampPipe))
 	.field('archivePeriods', archivePeriodsPipe)
@@ -79,6 +80,7 @@ export const modelSchema = Schema.from('models')
 	.field('providerId', idPipe)
 	.field('name', nonEmptyTrimmedStringPipe)
 	.field('providerModelId', nonEmptyTrimmedStringPipe)
+	.field('providerOptions', v.nullable(jsonObjectPipe))
 	.field('capabilities', modelCapabilitiesPipe)
 	.field('pricing', v.nullable(modelTokenPricingPipe))
 	.field('created', auditStampPipe)

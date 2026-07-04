@@ -1,5 +1,6 @@
 import { createGoogle } from '@ai-sdk/google'
 
+import { resolveProviderOptions } from './options'
 import type { AISDKLanguageModelResolution, ModelProviderProtocolAccess, ModelProviderProtocolProvider } from './types'
 import type { ModelProvider } from '../../domain/model-provider'
 
@@ -19,7 +20,7 @@ export function createGoogleGenerativeAIModelProviderProtocolProvider(
 				ok: true,
 				value: {
 					languageModel: providerFactory(input).languageModel(input.model.providerModelId),
-					providerOptions: undefined,
+					providerOptions: resolveProviderOptions('google', null, input.modelProvider, input.model),
 				},
 			}
 		},
@@ -29,9 +30,24 @@ export function createGoogleGenerativeAIModelProviderProtocolProvider(
 function createGoogleGenerativeAIProvider(input: { modelProvider: ModelProvider; access: ModelProviderProtocolAccess }) {
 	return createGoogle({
 		apiKey: input.access.auth?.plaintext ?? '',
-		baseURL: googleBaseURL(input.modelProvider.baseUrl),
+		...baseUrlConfig(input.modelProvider),
 		headers: Object.fromEntries(input.access.headers.map((header) => [header.name, header.plaintext])),
 	})
+}
+
+function baseUrlConfig(modelProvider: ModelProvider): { baseURL?: string } {
+	switch (modelProvider.source.type) {
+		case 'google':
+			return {}
+		case 'custom-hosted':
+			return { baseURL: googleBaseURL(modelProvider.source.baseUrl) }
+		case 'openai-responses':
+		case 'anthropic':
+		case 'groq':
+			throw new Error(`Unexpected Google Generative AI source: ${modelProvider.source.type}`)
+		default:
+			throw new Error(`Unexpected Model Provider Source: ${String(modelProvider.source satisfies never)}`)
+	}
 }
 
 function googleBaseURL(baseUrl: string): string {
@@ -43,18 +59,14 @@ if (import.meta.vitest) {
 	const { defaultModelCapabilities } = await import('../../domain/model')
 
 	describe('Google Generative AI SDK resolver', () => {
-		it('resolves language models with v1beta base URL and leaves thinking control to AI SDK reasoning', () => {
+		it('resolves language models and leaves thinking control to AI SDK reasoning', () => {
 			let modelId: string | null = null
-			let observedBaseUrl: string | null = null
-			const provider = createGoogleGenerativeAIModelProviderProtocolProvider((input) => {
-				observedBaseUrl = googleBaseURL(input.modelProvider.baseUrl)
-				return {
-					languageModel(id) {
-						modelId = id
-						return 'language-model'
-					},
-				}
-			})
+			const provider = createGoogleGenerativeAIModelProviderProtocolProvider(() => ({
+				languageModel(id) {
+					modelId = id
+					return 'language-model'
+				},
+			}))
 
 			const result = provider.resolveLanguageModel({ ...input(), thinking: { level: 'low' } })
 
@@ -63,6 +75,28 @@ if (import.meta.vitest) {
 				value: { languageModel: 'language-model', providerOptions: undefined },
 			})
 			expect(modelId).toBe('gemini-2.5-pro')
+		})
+
+		it('uses v1beta base URL for custom-hosted Google-compatible sources', () => {
+			let observedBaseUrl: string | null = null
+			const provider = createGoogleGenerativeAIModelProviderProtocolProvider((input) => {
+				observedBaseUrl = baseUrlConfig(input.modelProvider).baseURL ?? null
+				return { languageModel: () => 'language-model' }
+			})
+
+			const result = provider.resolveLanguageModel({
+				...input(),
+				modelProvider: {
+					...input().modelProvider,
+					source: {
+						type: 'custom-hosted',
+						protocol: 'google-generative-ai',
+						baseUrl: 'https://generativelanguage.googleapis.com',
+					},
+				},
+			})
+
+			expect(result).toMatchObject({ ok: true })
 			expect(observedBaseUrl).toBe('https://generativelanguage.googleapis.com/v1beta')
 		})
 	})
@@ -70,11 +104,13 @@ if (import.meta.vitest) {
 	function input(): Extract<GoogleGenerativeAIInput, { mode: 'agent-run' }> {
 		return {
 			mode: 'agent-run',
+			protocol: 'google-generative-ai',
 			model: {
 				id: 'model-1',
 				providerId: 'model-provider-1',
 				name: 'Gemini Pro',
 				providerModelId: 'gemini-2.5-pro',
+				providerOptions: null,
 				capabilities: defaultModelCapabilities,
 				pricing: null,
 				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
@@ -84,10 +120,10 @@ if (import.meta.vitest) {
 			modelProvider: {
 				id: 'model-provider-1',
 				name: 'Google',
-				protocol: { type: 'google-generative-ai' },
-				baseUrl: 'https://generativelanguage.googleapis.com',
+				source: { type: 'google' },
 				auth: null,
 				headers: [],
+				providerOptions: null,
 				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				updated: null,
 				archivePeriods: [],

@@ -3,7 +3,7 @@ import type { JSONValue, LanguageModel } from 'ai'
 import type { AgentRunModelMessageOutcome, ModelProviderGenerationFailureReason } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
 import type { Model } from '../../domain/model'
-import type { ModelProvider, ModelProviderProtocolType } from '../../domain/model-provider'
+import type { ModelProvider, ModelProviderProtocol } from '../../domain/model-provider'
 import type { InvalidCoreServiceOutputError, ModelThinkingLevelUnavailableError, StorageOperationFailedError } from '../../errors'
 import type { ModelAgentTurnThinking } from '../../runtime/agent-runs/types'
 import type { ResolvableSecretValue } from '../../services'
@@ -72,11 +72,11 @@ export interface ModelProviderProtocolProviders {
 	>
 }
 
-export type ModelProviderProtocolProviderResolveInput<Protocol extends ModelProviderProtocolType> = AISDKLanguageModelResolutionInput & {
-	modelProvider: ModelProvider & { protocol: { type: Protocol } }
+export type ModelProviderProtocolProviderResolveInput<Protocol extends ModelProviderProtocol> = AISDKLanguageModelResolutionInput & {
+	protocol: Protocol
 }
 
-export interface ModelProviderProtocolProvider<Protocol extends ModelProviderProtocolType> {
+export interface ModelProviderProtocolProvider<Protocol extends ModelProviderProtocol> {
 	resolveLanguageModel(
 		input: ModelProviderProtocolProviderResolveInput<Protocol>,
 	): Result<AISDKLanguageModelResolution, ResolveAISDKLanguageModelError>

@@ -30,6 +30,24 @@
 					</section>
 
 					<section class="border-b border-dimmer px-3 py-3">
+						<h2 class="m-0 text-sz-subsection font-semibold">Provider options</h2>
+						<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+							Optional model-local AI SDK provider options override provider-level options for this Model.
+						</p>
+						<UiFormGroup
+							class="mt-3"
+							label="Provider options JSON"
+							for-id="model-provider-options"
+							:error="modelUpdateForm.errors.providerOptionsText">
+							<UiTextarea
+								id="model-provider-options"
+								v-model="modelUpdateForm.providerOptionsText"
+								placeholder='{ "reasoningEffort": "high" }'
+								:invalid="!!modelUpdateForm.errors.providerOptionsText" />
+						</UiFormGroup>
+					</section>
+
+					<section class="border-b border-dimmer px-3 py-3">
 						<h2 class="m-0 text-sz-subsection font-semibold">Capability limits</h2>
 						<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
 							Context window is setup metadata until token counting lands. Max output tokens are passed to provider calls as
@@ -151,7 +169,7 @@
 							<span class="text-dim">Provider</span><span class="min-w-0 truncate">{{ model.provider.name }}</span>
 						</div>
 						<div class="flex justify-between gap-3 border-t border-dimmer px-3 py-2">
-							<span class="text-dim">Protocol</span><span class="font-mono">{{ model.provider.protocol.type }}</span>
+							<span class="text-dim">Protocol</span><span class="font-mono">{{ model.provider.protocol }}</span>
 						</div>
 						<div class="flex justify-between gap-3 border-t border-dimmer px-3 py-2">
 							<span class="text-dim">Provider status</span
@@ -260,6 +278,7 @@ import UiForm from '../../../../../components/ui/UiForm.vue'
 import UiFormGroup from '../../../../../components/ui/UiFormGroup.vue'
 import UiInput from '../../../../../components/ui/UiInput.vue'
 import UiText from '../../../../../components/ui/UiText.vue'
+import UiTextarea from '../../../../../components/ui/UiTextarea.vue'
 import { useOverlay } from '../../../../../composables/core/overlay'
 import type { PositiveModelThinkingLevel, ServerApi } from '../../../../../composables/core/server-api'
 import { thinkingLevelLabel } from '../../../../../utils/model-provider-options'

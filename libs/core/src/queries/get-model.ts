@@ -74,13 +74,14 @@ if (import.meta.vitest) {
 			options.tx.modelProviders.records.set('provider-1', {
 				...options.tx.modelProviders.records.get('provider-1')!,
 				name: 'Provider One',
-				protocol: { type: 'openai-responses' },
+				source: { type: 'openai-responses' },
 			})
 			options.tx.models.records.set('model-1', {
 				id: 'model-1',
 				providerId: 'provider-1',
 				name: 'Model One',
 				providerModelId: 'provider-model-1',
+				providerOptions: { serviceTier: 'flex' },
 				capabilities: { ...defaultModelCapabilities, thinking: { supportedLevels: ['high'] } },
 				pricing: null,
 				created: stamp,
@@ -98,6 +99,7 @@ if (import.meta.vitest) {
 					providerId: 'provider-1',
 					name: 'Model One',
 					providerModelId: 'provider-model-1',
+					providerOptions: { serviceTier: 'flex' },
 					capabilities: { ...defaultModelCapabilities, thinking: { supportedLevels: ['high'] } },
 					pricing: null,
 					availableThinkingLevels: ['none', 'high'],
@@ -107,8 +109,8 @@ if (import.meta.vitest) {
 					provider: {
 						id: 'provider-1',
 						name: 'Provider One',
-						protocol: { type: 'openai-responses' },
-						baseUrl: 'https://api.example.com',
+						source: { type: 'openai-responses' },
+						protocol: 'openai-responses',
 						archived: true,
 						configurableThinkingLevels: ['minimal', 'low', 'medium', 'high', 'xhigh'],
 					},

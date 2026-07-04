@@ -1,5 +1,6 @@
 import { createAnthropic } from '@ai-sdk/anthropic'
 
+import { resolveProviderOptions } from './options'
 import type { AISDKLanguageModelResolution, ModelProviderProtocolAccess, ModelProviderProtocolProvider } from './types'
 import type { ModelProvider } from '../../domain/model-provider'
 
@@ -19,7 +20,7 @@ export function createAnthropicMessagesModelProviderProtocolProvider(
 				ok: true,
 				value: {
 					languageModel: providerFactory(input).messages(input.model.providerModelId),
-					providerOptions: undefined,
+					providerOptions: resolveProviderOptions('anthropic', null, input.modelProvider, input.model),
 				},
 			}
 		},
@@ -29,9 +30,24 @@ export function createAnthropicMessagesModelProviderProtocolProvider(
 function createAnthropicMessagesProvider(input: { modelProvider: ModelProvider; access: ModelProviderProtocolAccess }) {
 	return createAnthropic({
 		apiKey: input.access.auth?.plaintext ?? '',
-		baseURL: input.modelProvider.baseUrl,
+		...baseUrlConfig(input.modelProvider),
 		headers: Object.fromEntries(input.access.headers.map((header) => [header.name, header.plaintext])),
 	})
+}
+
+function baseUrlConfig(modelProvider: ModelProvider): { baseURL?: string } {
+	switch (modelProvider.source.type) {
+		case 'anthropic':
+			return {}
+		case 'custom-hosted':
+			return { baseURL: modelProvider.source.baseUrl }
+		case 'openai-responses':
+		case 'google':
+		case 'groq':
+			throw new Error(`Unexpected Anthropic Messages source: ${modelProvider.source.type}`)
+		default:
+			throw new Error(`Unexpected Model Provider Source: ${String(modelProvider.source satisfies never)}`)
+	}
 }
 
 if (import.meta.vitest) {
@@ -61,11 +77,13 @@ if (import.meta.vitest) {
 	function input(): Extract<AnthropicMessagesInput, { mode: 'agent-run' }> {
 		return {
 			mode: 'agent-run',
+			protocol: 'anthropic-messages',
 			model: {
 				id: 'model-1',
 				providerId: 'model-provider-1',
 				name: 'Claude Sonnet',
 				providerModelId: 'claude-sonnet-4-5',
+				providerOptions: null,
 				capabilities: defaultModelCapabilities,
 				pricing: null,
 				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
@@ -75,10 +93,10 @@ if (import.meta.vitest) {
 			modelProvider: {
 				id: 'model-provider-1',
 				name: 'Anthropic',
-				protocol: { type: 'anthropic-messages' },
-				baseUrl: 'https://api.anthropic.com',
+				source: { type: 'anthropic' },
 				auth: null,
 				headers: [],
+				providerOptions: null,
 				created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				updated: null,
 				archivePeriods: [],

@@ -1,8 +1,9 @@
 import { v, type PipeInput } from 'valleyed'
 
 import type { CommandContext } from './types'
-import { idPipe, nonEmptyTrimmedStringPipe } from '../domain/commons'
+import { idPipe, jsonObjectPipe, nonEmptyTrimmedStringPipe } from '../domain/commons'
 import { defaultModelCapabilities, modelCapabilitiesPipe, modelTokenPricingPipe, type Model } from '../domain/model'
+import { modelProviderProtocolForSource } from '../domain/model-provider'
 import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
@@ -20,6 +21,7 @@ import { getRequired, updateRecordValue, withAuditStampTransaction } from './uti
 const updateModelInputPipe = v.object({
 	modelId: idPipe,
 	name: nonEmptyTrimmedStringPipe,
+	providerOptions: v.nullable(jsonObjectPipe),
 	capabilities: modelCapabilitiesPipe,
 	pricing: v.nullable(modelTokenPricingPipe),
 })
@@ -52,11 +54,13 @@ export function createUpdateModelCommand(runtime: CoreRuntime): Operation {
 				const updated = {
 					...existing.value,
 					name: input.name,
+					providerOptions: input.providerOptions,
 					capabilities: input.capabilities,
 					pricing: input.pricing,
 					updated: stamp,
 				}
-				const capabilityValidation = validateModelThinkingCapabilityForProtocol(updated, provider.value.protocol)
+				const protocol = modelProviderProtocolForSource(provider.value.source)
+				const capabilityValidation = validateModelThinkingCapabilityForProtocol(updated, protocol)
 				if (!capabilityValidation.ok) return capabilityValidation
 
 				return updateRecordValue('model', storage, input.modelId, updated)
@@ -78,11 +82,21 @@ if (import.meta.vitest) {
 			const capabilities = { ...defaultModelCapabilities, maxOutputTokens: 8192 }
 			const pricing = { unit: 'micro-usd-per-million-tokens' as const, input: 1, output: 2, cacheRead: 0, cacheWrite: 0 }
 
-			const result = await command({ modelId: 'model-1', name: ' Updated ', capabilities, pricing }, context)
+			const result = await command(
+				{ modelId: 'model-1', name: ' Updated ', providerOptions: { serviceTier: 'flex' }, capabilities, pricing },
+				context,
+			)
 
 			expect(result).toMatchObject({
 				ok: true,
-				value: { id: 'model-1', name: 'Updated', capabilities, pricing, updated: localStamp() },
+				value: {
+					id: 'model-1',
+					name: 'Updated',
+					providerOptions: { serviceTier: 'flex' },
+					capabilities,
+					pricing,
+					updated: localStamp(),
+				},
 			})
 		})
 
@@ -91,7 +105,7 @@ if (import.meta.vitest) {
 			seedSelectableModel(options.tx, 'model-1')
 			options.tx.modelProviders.records.set('model-1-provider', {
 				...options.tx.modelProviders.records.get('model-1-provider')!,
-				protocol: { type: 'google-generative-ai' },
+				source: { type: 'google' },
 			})
 			const command = createUpdateModelCommand(createTestCoreRuntime(options))
 
@@ -99,6 +113,7 @@ if (import.meta.vitest) {
 				{
 					modelId: 'model-1',
 					name: 'Gemini',
+					providerOptions: null,
 					capabilities: { ...defaultModelCapabilities, thinking: { supportedLevels: ['xhigh'] } },
 					pricing: null,
 				},

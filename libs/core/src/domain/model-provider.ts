@@ -1,15 +1,11 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { archivePeriodPipe, auditStampPipe, idPipe, nonEmptyTrimmedStringPipe } from './commons'
+import { archivePeriodPipe, auditStampPipe, idPipe, jsonObjectPipe, nonEmptyTrimmedStringPipe, type JsonObject } from './commons'
 import { listedModelPipe, positiveModelThinkingLevelPipe } from './model'
 
-export const modelProviderProtocolPipe = v.discriminate((value) => value.type, {
-	'anthropic-messages': v.object({ type: v.eq('anthropic-messages') }),
-	'openai-responses': v.object({ type: v.eq('openai-responses') }),
-	'google-generative-ai': v.object({ type: v.eq('google-generative-ai') }),
-})
+export const modelProviderProtocolPipe = v.in(['openai-responses', 'openai-chat-completions', 'anthropic-messages', 'google-generative-ai'])
 export type ModelProviderProtocol = PipeOutput<typeof modelProviderProtocolPipe>
-export type ModelProviderProtocolType = ModelProviderProtocol['type']
+export type ModelProviderProtocolType = ModelProviderProtocol
 
 export const modelProviderBaseUrlPipe = nonEmptyTrimmedStringPipe
 	.pipe((value) => value.replace(/\/+$/, ''))
@@ -27,18 +23,59 @@ function isLocalHttpUrl(url: URL): boolean {
 	return url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname.toLowerCase())
 }
 
-export const modelProviderApiKeyAuthPipe = v.object({ type: v.eq('apiKey'), secretId: idPipe })
-export type ModelProviderApiKeyAuth = PipeOutput<typeof modelProviderApiKeyAuthPipe>
-
-export const modelProviderAuthPipe = v.discriminate((value) => value.type, {
-	apiKey: modelProviderApiKeyAuthPipe,
+export const builtInModelProviderSourcePipe = v.discriminate((value) => value.type, {
+	'openai-responses': v.object({ type: v.eq('openai-responses') }),
+	anthropic: v.object({ type: v.eq('anthropic') }),
+	google: v.object({ type: v.eq('google') }),
+	groq: v.object({ type: v.eq('groq') }),
 })
+export type BuiltInModelProviderSource = PipeOutput<typeof builtInModelProviderSourcePipe>
+
+export const customHostedModelProviderSourcePipe = v.object({
+	type: v.eq('custom-hosted'),
+	protocol: modelProviderProtocolPipe,
+	baseUrl: modelProviderBaseUrlPipe,
+})
+export type CustomHostedModelProviderSource = PipeOutput<typeof customHostedModelProviderSourcePipe>
+
+export const modelProviderSourcePipe = v.discriminate((value) => value.type, {
+	'openai-responses': v.object({ type: v.eq('openai-responses') }),
+	anthropic: v.object({ type: v.eq('anthropic') }),
+	google: v.object({ type: v.eq('google') }),
+	groq: v.object({ type: v.eq('groq') }),
+	'custom-hosted': customHostedModelProviderSourcePipe,
+})
+export type ModelProviderSource = PipeOutput<typeof modelProviderSourcePipe>
+
+export function modelProviderProtocolForSource(source: ModelProviderSource): ModelProviderProtocol {
+	switch (source.type) {
+		case 'openai-responses':
+			return 'openai-responses'
+		case 'anthropic':
+			return 'anthropic-messages'
+		case 'google':
+			return 'google-generative-ai'
+		case 'groq':
+			return 'openai-chat-completions'
+		case 'custom-hosted':
+			return source.protocol
+		default:
+			throw new Error(`Unexpected Model Provider Source: ${String(source satisfies never)}`)
+	}
+}
+
+export const modelProviderAccessValuePipe = v.discriminate((value) => value.type, {
+	secret: v.object({ type: v.eq('secret'), secretId: idPipe }),
+})
+export type ModelProviderAccessValue = PipeOutput<typeof modelProviderAccessValuePipe>
+
+export const modelProviderAuthPipe = v.object({ value: modelProviderAccessValuePipe })
 export type ModelProviderAuth = PipeOutput<typeof modelProviderAuthPipe>
 
 export const modelProviderHeaderNamePipe = nonEmptyTrimmedStringPipe.pipe(
 	v.custom((value) => /^[A-Za-z0-9-]+$/.test(value), 'Expected an HTTP header name.'),
 )
-export const modelProviderHeaderPipe = v.object({ name: modelProviderHeaderNamePipe, valueSecretId: idPipe })
+export const modelProviderHeaderPipe = v.object({ name: modelProviderHeaderNamePipe, value: modelProviderAccessValuePipe })
 export type ModelProviderHeader = PipeOutput<typeof modelProviderHeaderPipe>
 
 export const modelProviderHeadersPipe = v
@@ -57,13 +94,16 @@ function hasUniqueHeaderNames(headers: ModelProviderHeader[]): boolean {
 	return true
 }
 
+export const modelProviderOptionsPipe = jsonObjectPipe
+export type ModelProviderOptions = JsonObject
+
 export const modelProviderPipe = v.object({
 	id: idPipe,
 	name: nonEmptyTrimmedStringPipe,
-	protocol: modelProviderProtocolPipe,
-	baseUrl: nonEmptyTrimmedStringPipe,
+	source: modelProviderSourcePipe,
 	auth: v.nullable(modelProviderAuthPipe),
 	headers: v.array(modelProviderHeaderPipe),
+	providerOptions: v.nullable(modelProviderOptionsPipe),
 	created: auditStampPipe,
 	updated: v.nullable(auditStampPipe),
 	archivePeriods: v.array(archivePeriodPipe),
@@ -73,10 +113,11 @@ export type ModelProvider = PipeOutput<typeof modelProviderPipe>
 export const listedModelProviderPipe = v.object({
 	id: idPipe,
 	name: nonEmptyTrimmedStringPipe,
+	source: modelProviderSourcePipe,
 	protocol: modelProviderProtocolPipe,
-	baseUrl: nonEmptyTrimmedStringPipe,
 	auth: v.nullable(modelProviderAuthPipe),
 	headers: v.array(modelProviderHeaderPipe),
+	providerOptions: v.nullable(modelProviderOptionsPipe),
 	created: auditStampPipe,
 	updated: v.nullable(auditStampPipe),
 	archived: v.boolean(),
@@ -88,8 +129,8 @@ export type ListedModelProvider = PipeOutput<typeof listedModelProviderPipe>
 export const modelProviderSummaryPipe = v.object({
 	id: idPipe,
 	name: nonEmptyTrimmedStringPipe,
+	source: modelProviderSourcePipe,
 	protocol: modelProviderProtocolPipe,
-	baseUrl: nonEmptyTrimmedStringPipe,
 	archived: v.boolean(),
 	configurableThinkingLevels: v.array(positiveModelThinkingLevelPipe),
 })
@@ -102,9 +143,23 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
 	describe('ModelProvider domain pipes', () => {
-		it('accepts object protocol variants and rejects legacy strings', () => {
-			expect(v.validate(modelProviderProtocolPipe, { type: 'openai-responses' })).toMatchObject({ valid: true })
-			expect(v.validate(modelProviderProtocolPipe, 'openai-responses')).toMatchObject({ valid: false })
+		it('accepts flat protocol values and rejects legacy object variants', () => {
+			expect(v.validate(modelProviderProtocolPipe, 'openai-responses')).toMatchObject({ valid: true })
+			expect(v.validate(modelProviderProtocolPipe, { type: 'openai-responses' })).toMatchObject({ valid: false })
+		})
+
+		it('derives protocol from source', () => {
+			expect(modelProviderProtocolForSource({ type: 'openai-responses' })).toBe('openai-responses')
+			expect(modelProviderProtocolForSource({ type: 'anthropic' })).toBe('anthropic-messages')
+			expect(modelProviderProtocolForSource({ type: 'google' })).toBe('google-generative-ai')
+			expect(modelProviderProtocolForSource({ type: 'groq' })).toBe('openai-chat-completions')
+			expect(
+				modelProviderProtocolForSource({
+					type: 'custom-hosted',
+					protocol: 'openai-chat-completions',
+					baseUrl: 'https://api.example.com/v1',
+				}),
+			).toBe('openai-chat-completions')
 		})
 	})
 }
