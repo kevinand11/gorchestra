@@ -86,7 +86,7 @@ type UiSelectOptions<TValue extends string = string> = readonly (UiSelectOption<
 - Model Provider rows do not show `Open`, `Archive`, or `Preflight` actions.
 - Model Provider detail pages own Provider metadata/actions, Provider lifecycle, Model creation, and a flat linked list of Models under that Provider.
 - Model detail pages own Model metadata, capability/pricing editing, Model References, Model Preflight, and Model lifecycle actions.
-- The top-level `Agent Run Profiles` surface lives at `/agent-run-profiles` and manages reusable selected-Portfolio run profiles.
+- The top-level `Agent Run Profiles` surface lives at `/agent-run-profiles` and lists reusable selected-Portfolio run profiles; creation lives on `/agent-run-profiles/new`, while profile rows link to `/agent-run-profiles/:agentRunProfileId` detail pages for viewing metadata, editing, lifecycle actions, and direct config references.
 - Agent Run Profiles should be the last item in the left rail and visually separated at the bottom of the rail.
 - Agent Run Profiles should not be presented as generic Workspace or account settings.
 - Agent Run Profile forms should keep model and thinking selection together so users understand the atomic Model Use Config that future runs snapshot.

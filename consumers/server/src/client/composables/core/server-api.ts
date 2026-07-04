@@ -193,6 +193,11 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async getAgentRunProfile(agentRunProfileId: string) {
 			return routes.request('get', '/api/portfolio/agent-run-profiles/:agentRunProfileId', { params: { agentRunProfileId } })
 		},
+		async listAgentRunProfileReferences(agentRunProfileId: string) {
+			return routes.request('get', '/api/portfolio/agent-run-profiles/:agentRunProfileId/references', {
+				params: { agentRunProfileId },
+			})
+		},
 		async updateAgentRunProfile(agentRunProfileId: string, input: AgentRunProfileInput) {
 			return routes.request('put', '/api/portfolio/agent-run-profiles/:agentRunProfileId', {
 				params: { agentRunProfileId },

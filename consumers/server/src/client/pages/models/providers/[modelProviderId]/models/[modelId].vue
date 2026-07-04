@@ -349,7 +349,7 @@ function modelReferenceSubtitle(reference: ModelReference): string {
 function modelReferenceLocation(reference: ModelReference): string {
 	switch (reference.type) {
 		case 'agent-run-profile':
-			return '/agent-run-profiles'
+			return `/agent-run-profiles/${reference.agentRunProfileId}`
 		default:
 			throw new Error(`Unexpected Model Reference type: ${String(reference.type satisfies never)}`)
 	}

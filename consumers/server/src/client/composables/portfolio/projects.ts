@@ -71,6 +71,7 @@ export function useProjectsCreate(options: ProjectsCreateOptions = {}) {
 		const project = await serverApi.createProject(projectCreationForm.toModel())
 		queryCache.set(queryKeys.portfolio.project(portfolio.value.id, project.id), project)
 		queryCache.invalidate(queryKeys.portfolio.projects(portfolio.value.id), { exact: true })
+		queryCache.invalidate(queryKeys.portfolio.agentRunProfiles(portfolio.value.id))
 		toast.success({ title: 'Project created.', body: project.title })
 		await options.onSuccess?.(project)
 		return project

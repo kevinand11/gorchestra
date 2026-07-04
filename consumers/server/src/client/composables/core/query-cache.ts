@@ -79,6 +79,9 @@ const queryKeys = {
 		agentRunProfile(portfolioId: string, agentRunProfileId: string): QueryKey {
 			return ['portfolio', portfolioId, 'agent-run-profiles', agentRunProfileId]
 		},
+		agentRunProfileReferences(portfolioId: string, agentRunProfileId: string): QueryKey {
+			return ['portfolio', portfolioId, 'agent-run-profiles', agentRunProfileId, 'references']
+		},
 		modelProviders(portfolioId: string): QueryKey {
 			return ['portfolio', portfolioId, 'model-providers']
 		},
@@ -448,6 +451,13 @@ if (import.meta.vitest) {
 				'portfolio-1',
 				'agent-run-profiles',
 				'agent-run-profile-1',
+			])
+			expect(queryKeys.portfolio.agentRunProfileReferences('portfolio-1', 'agent-run-profile-1')).toEqual([
+				'portfolio',
+				'portfolio-1',
+				'agent-run-profiles',
+				'agent-run-profile-1',
+				'references',
 			])
 			expect(queryKeys.portfolio.modelProviders('portfolio-1')).toEqual(['portfolio', 'portfolio-1', 'model-providers'])
 			expect(queryKeys.portfolio.modelProvider('portfolio-1', 'model-provider-1')).toEqual([
