@@ -2,7 +2,7 @@ import { v } from 'valleyed'
 import { describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 
-import { FormDraft, FormDraftMultiSelect, FormDraftSelect, formDraftPipe } from './index'
+import { FormDraft, FormDraftMultiSelect, FormDraftSelect, nestedFormDraftPipe } from './index'
 
 type NameFields = { name: string }
 type NameModel = { name: string }
@@ -28,7 +28,7 @@ type ParentModel = { child: NameModel; label: string }
 
 class ParentFormDraft extends FormDraft<ParentModel, ParentModel, ParentFields> {
 	protected readonly rules = {
-		child: formDraftPipe<NameFormDraft>(),
+		child: nestedFormDraftPipe<NameFormDraft>(),
 		label: v.string().pipe(v.min<string>(1, 'Label is required')),
 	}
 
@@ -148,11 +148,49 @@ describe('FormDraft', () => {
 		expect(factory.dirty).toBe(false)
 		expect(factory.toModel()).toEqual({ child: { name: 'Loaded child' }, label: 'Loaded parent' })
 	})
+
+	it('lets Valleyed wrappers control nested draft validity', async () => {
+		type ConditionalParentFields = { active: boolean; child: NameFormDraft }
+
+		class ConditionalParentFormDraft extends FormDraft<NameModel, NameModel | null, ConditionalParentFields> {
+			protected override readonly onSet = { active: () => this.revalidate('child') }
+
+			protected readonly rules = {
+				active: v.boolean(),
+				child: v.conditional(nestedFormDraftPipe<NameFormDraft>(), () => this.active),
+			}
+
+			constructor() {
+				super({ active: false, child: new NameFormDraft() })
+			}
+
+			protected model = (): NameModel | null => (this.active ? this.child.toModel() : null)
+
+			protected load = (entity: NameModel): void => {
+				this.child.loadEntity(entity)
+			}
+		}
+
+		const factory = new ConditionalParentFormDraft()
+
+		await nextTick()
+
+		expect(factory.child.valid).toBe(false)
+		expect(factory.valid).toBe(true)
+
+		factory.active = true
+
+		expect(factory.valid).toBe(false)
+
+		factory.child.name = 'Ready'
+
+		expect(factory.valid).toBe(true)
+	})
 })
 
 describe('FormDraftSelect', () => {
 	it('loads, resets, and models a single selected value', () => {
-		const draft = new FormDraftSelect<string | null>({ initialValue: null })
+		const draft = new FormDraftSelect<string | null>({ initialValue: null, pipe: v.nullable(v.string()) })
 
 		draft.loadEntity('model-1')
 		expect(draft.value).toBe('model-1')
@@ -168,7 +206,7 @@ describe('FormDraftSelect', () => {
 	})
 
 	it('skips option membership validation while options are unknown', () => {
-		const draft = new FormDraftSelect<string>({ initialValue: 'model-stale' })
+		const draft = new FormDraftSelect<string>({ initialValue: 'model-stale', pipe: v.string() })
 
 		draft.clearOptions()
 
@@ -177,7 +215,7 @@ describe('FormDraftSelect', () => {
 	})
 
 	it('shows loaded-option membership errors immediately for pristine values', () => {
-		const draft = new FormDraftSelect<string>({ initialValue: 'model-stale' })
+		const draft = new FormDraftSelect<string>({ initialValue: 'model-stale', pipe: v.string() })
 
 		draft.loadEntity('model-stale')
 		draft.setOptions(['model-1'])
@@ -188,7 +226,7 @@ describe('FormDraftSelect', () => {
 	})
 
 	it('uses differ equality when checking loaded options', () => {
-		const draft = new FormDraftSelect<{ id: string }>({ initialValue: { id: 'model-1' } })
+		const draft = new FormDraftSelect<{ id: string }>({ initialValue: { id: 'model-1' }, pipe: v.object({ id: v.string() }) })
 
 		draft.setOptions([{ id: 'model-1' }])
 
@@ -198,11 +236,11 @@ describe('FormDraftSelect', () => {
 	it('keeps caller pipe errors dirty-gated', async () => {
 		const pristineInvalidDraft = new FormDraftSelect<string | null>({
 			initialValue: null,
-			pipe: (base) => base.pipe(v.custom((value) => value !== null, 'Select an option')),
+			pipe: v.nullable(v.string()).pipe(v.custom((value) => value !== null, 'Select an option')),
 		})
 		const changedInvalidDraft = new FormDraftSelect<string | null>({
 			initialValue: 'model-1',
-			pipe: (base) => base.pipe(v.custom((value) => value !== null, 'Select an option')),
+			pipe: v.nullable(v.string()).pipe(v.custom((value) => value !== null, 'Select an option')),
 		})
 
 		await nextTick()
@@ -214,11 +252,38 @@ describe('FormDraftSelect', () => {
 		expect(changedInvalidDraft.valid).toBe(false)
 		expect(changedInvalidDraft.errors.value).toBe('Select an option')
 	})
+
+	it('runs caller validation before option membership validation', () => {
+		const draft = new FormDraftSelect<string>({
+			initialValue: 'model-1',
+			initialOptions: [],
+			pipe: v.string().pipe(v.min<string>(1, 'Select a Secret')),
+		})
+
+		draft.value = ''
+
+		expect(draft.valid).toBe(false)
+		expect(draft.errors.value).toBe('Select a Secret')
+	})
+
+	it('clears options to unknown and resets options to constructor options', () => {
+		const draft = new FormDraftSelect<string>({ initialValue: 'none', initialOptions: ['none'], pipe: v.string() })
+
+		draft.setOptions(['low'])
+		expect(draft.valid).toBe(false)
+
+		draft.clearOptions()
+		expect(draft.valid).toBe(true)
+
+		draft.setOptions(['low'])
+		draft.resetOptions()
+		expect(draft.valid).toBe(true)
+	})
 })
 
 describe('FormDraftMultiSelect', () => {
 	it('loads, resets, and models selected values', () => {
-		const draft = new FormDraftMultiSelect<string>({ initialValue: [] })
+		const draft = new FormDraftMultiSelect<string>({ initialValue: [], pipe: v.array(v.string()) })
 
 		draft.loadEntity(['model-1'])
 		expect(draft.value).toEqual(['model-1'])
@@ -234,7 +299,7 @@ describe('FormDraftMultiSelect', () => {
 	})
 
 	it('validates every selected value against loaded options', () => {
-		const draft = new FormDraftMultiSelect<string>({ initialValue: ['model-1', 'model-stale'] })
+		const draft = new FormDraftMultiSelect<string>({ initialValue: ['model-1', 'model-stale'], pipe: v.array(v.string()) })
 
 		draft.setOptions(['model-1'])
 
@@ -245,11 +310,11 @@ describe('FormDraftMultiSelect', () => {
 	it('supports required multi-select validation through the caller pipe', async () => {
 		const draft = new FormDraftMultiSelect<string>({
 			initialValue: [],
-			pipe: (base) => base.pipe(v.custom((value) => value.length > 0, 'Select at least one option')),
+			pipe: v.array(v.string()).pipe(v.custom((value) => value.length > 0, 'Select at least one option')),
 		})
 		const changedInvalidDraft = new FormDraftMultiSelect<string>({
 			initialValue: ['model-1'],
-			pipe: (base) => base.pipe(v.custom((value) => value.length > 0, 'Select at least one option')),
+			pipe: v.array(v.string()).pipe(v.custom((value) => value.length > 0, 'Select at least one option')),
 		})
 
 		await nextTick()
@@ -264,7 +329,7 @@ describe('FormDraftMultiSelect', () => {
 
 describe('FormDraftArray', () => {
 	it('adds, deletes, iterates, validates, and models child drafts', async () => {
-		const factories = FormDraft.asArray(() => new NameFormDraft())
+		const factories = FormDraft.array(() => new NameFormDraft())
 
 		expect(factories.valid).toBe(true)
 		expect(factories.dirty).toBe(false)
@@ -289,7 +354,7 @@ describe('FormDraftArray', () => {
 	})
 
 	it('loads arrays as clean originals and resets to the loaded entities', () => {
-		const factories = FormDraft.asArray(() => new NameFormDraft())
+		const factories = FormDraft.array(() => new NameFormDraft())
 
 		factories.loadEntity([{ name: 'One' }, { name: 'Two' }])
 

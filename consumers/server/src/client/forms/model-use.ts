@@ -1,4 +1,4 @@
-import { FormDraft, FormDraftSelect, formDraftPipe } from '@gorchestra/form-draft'
+import { FormDraft, FormDraftSelect, nestedFormDraftPipe } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
 import type { ModelThinkingLevel, ModelUseConfig } from '../composables/core/server-api'
@@ -16,14 +16,13 @@ type ModelUseFormDraftOptions = {
 
 const thinkingLevelValues: ModelThinkingLevel[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
 const modelRequiredMessage = 'Select a Model'
-const thinkingLevelMessage = 'Select a Thinking Level'
 
 export class ModelUseFormDraft extends FormDraft<ModelUseFormModel, ModelUseFormModel, ModelUseFormFields> {
 	readonly requiresModel: boolean
 
 	protected readonly rules = {
-		modelId: formDraftPipe<FormDraftSelect<string | null>>(),
-		thinkingLevel: formDraftPipe<FormDraftSelect<ModelThinkingLevel>>(),
+		modelId: nestedFormDraftPipe<FormDraftSelect<string | null>>(),
+		thinkingLevel: nestedFormDraftPipe<FormDraftSelect<ModelThinkingLevel>>(),
 	}
 
 	constructor(options: ModelUseFormDraftOptions = {}) {
@@ -31,11 +30,11 @@ export class ModelUseFormDraft extends FormDraft<ModelUseFormModel, ModelUseForm
 		super({
 			modelId: new FormDraftSelect<string | null>({
 				initialValue: null,
-				pipe: (base) => base.pipe(v.custom((value) => modelIdIsValid(value, requiresModel), modelRequiredMessage)),
+				pipe: v.nullable(v.string()).pipe(v.custom((value) => modelIdIsValid(value, requiresModel), modelRequiredMessage)),
 			}),
 			thinkingLevel: new FormDraftSelect<ModelThinkingLevel>({
 				initialValue: 'none',
-				pipe: (base) => base.pipe(v.custom((value) => thinkingLevelValues.includes(value), thinkingLevelMessage)),
+				pipe: v.in(thinkingLevelValues),
 			}),
 		})
 		this.requiresModel = requiresModel

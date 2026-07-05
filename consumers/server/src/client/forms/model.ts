@@ -1,4 +1,4 @@
-import { FormDraft, formDraftPipe } from '@gorchestra/form-draft'
+import { FormDraft, nestedFormDraftPipe } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
 import type {
@@ -123,7 +123,7 @@ export class ModelCapabilitiesFormDraft extends FormDraft<ModelCapabilities, Mod
 		inputs: modelInputsPipe,
 		contextWindowTokens: positiveIntegerPipe,
 		maxOutputTokens: positiveIntegerPipe,
-		thinking: formDraftPipe<ModelThinkingFormDraft>(),
+		thinking: nestedFormDraftPipe<ModelThinkingFormDraft>(),
 	}
 
 	constructor() {
@@ -196,8 +196,8 @@ export class ModelUpdateFormDraft extends FormDraft<ModelUpdateFormModel, ModelU
 	protected readonly rules = {
 		name: modelNamePipe,
 		providerOptionsText: providerOptionsTextPipe,
-		capabilities: formDraftPipe<ModelCapabilitiesFormDraft>(),
-		pricing: formDraftPipe<ModelPricingFormDraft>(),
+		capabilities: nestedFormDraftPipe<ModelCapabilitiesFormDraft>(),
+		pricing: nestedFormDraftPipe<ModelPricingFormDraft>(),
 	}
 
 	constructor() {

@@ -63,6 +63,8 @@
 				class="border-t border-dimmer px-3 py-3"
 				:form="agentRunProfileForm"
 				:model-select="modelSelect"
+				:secret-options="secretOptions"
+				:secret-options-loaded="hasLoadedSecrets"
 				submit-label="Save Agent Run Profile"
 				:loading="isUpdatingAgentRunProfile"
 				:disabled="!agentRunProfileForm.valid || !agentRunProfileForm.dirty"
@@ -150,6 +152,7 @@ import {
 	useAgentRunProfileUpdate,
 } from '../../composables/portfolio/agent-run-profiles'
 import { useSelectModel } from '../../composables/portfolio/models/select-model'
+import { useActiveSecretSelectOptions } from '../../composables/portfolio/secrets'
 import { formatDate } from '../../utils/time'
 
 definePageMeta({ middleware: ['has-selection'] })
@@ -170,6 +173,7 @@ const {
 const { agentRunProfileForm, isUpdatingAgentRunProfile, updateAgentRunProfileError, updateAgentRunProfile } =
 	useAgentRunProfileUpdate(agentRunProfileId)
 const modelSelect = useSelectModel(agentRunProfileForm.modelUse)
+const { activeSecretOptions: secretOptions, hasLoadedSecrets } = useActiveSecretSelectOptions()
 const {
 	isArchivingAgentRunProfile,
 	archiveAgentRunProfileError,

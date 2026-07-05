@@ -47,6 +47,9 @@
 					<strong>Pipes:</strong> prefer direct argv alternatives such as <code>grep hello a.txt</code>; <code>|</code> is not
 					interpreted in v1.
 				</p>
+				<p v-if="secretOptionsLoaded && secretOptions.length === 0">
+					Create Secrets first before selecting environment or command-scoped Secrets.
+				</p>
 			</div>
 
 			<div v-if="form.runtimeRequirements.length === 0" class="mt-4 border-t border-card-border py-4">
@@ -81,14 +84,15 @@
 								:invalid="!!requirement.errors.envName" />
 						</UiFormGroup>
 						<UiFormGroup
-							label="Secret id"
+							label="Secret"
 							:for-id="`runtime-requirement-${index}-secret-id`"
-							:error="requirement.errors.secretId">
-							<UiInput
+							:error="requirement.secretId.errors.value">
+							<UiSelect
 								:id="`runtime-requirement-${index}-secret-id`"
-								v-model="requirement.secretId"
-								placeholder="secret-id"
-								:invalid="!!requirement.errors.secretId" />
+								v-model="requirement.secretId.value"
+								:options="secretOptions"
+								placeholder="Select Secret"
+								:invalid="!!requirement.secretId.errors.value" />
 						</UiFormGroup>
 					</template>
 
@@ -117,26 +121,45 @@
 								placeholder="/workspace/repos/repository-id"
 								:invalid="!!requirement.errors.cwdText" />
 						</UiFormGroup>
-						<UiFormGroup
-							class="md:col-span-3"
-							label="Args, one per line"
-							:for-id="`runtime-requirement-${index}-args`"
-							:error="requirement.errors.argsText">
-							<UiTextarea
-								:id="`runtime-requirement-${index}-args`"
-								v-model="requirement.argsText"
-								placeholder="install&#10;--frozen-lockfile"
-								:invalid="!!requirement.errors.argsText" />
-						</UiFormGroup>
+						<div class="md:col-span-3">
+							<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+								<div>
+									<UiText class="font-medium">Args</UiText>
+									<UiText tone="muted" size="helper"
+										>One row per argv entry. Blank rows are sent as empty-string args.</UiText
+									>
+								</div>
+								<UiButton type="button" variant="secondary" @click="requirement.args.add()">Add arg</UiButton>
+							</div>
+							<div v-if="[...requirement.args].length === 0">
+								<UiText tone="muted" size="helper">No args.</UiText>
+							</div>
+							<div
+								v-for="(arg, argIndex) in [...requirement.args]"
+								:key="argIndex"
+								class="grid gap-3 py-2 md:grid-cols-[1fr_auto]">
+								<UiFormGroup
+									:label="`Arg ${argIndex + 1}`"
+									:for-id="`runtime-requirement-${index}-arg-${argIndex}`"
+									:error="arg.errors.value">
+									<UiInput
+										:id="`runtime-requirement-${index}-arg-${argIndex}`"
+										v-model="arg.value"
+										placeholder="--frozen-lockfile"
+										:invalid="!!arg.errors.value" />
+								</UiFormGroup>
+								<div class="flex items-end">
+									<UiButton type="button" variant="secondary" @click="requirement.args.delete(argIndex)">Remove</UiButton>
+								</div>
+							</div>
+						</div>
 					</template>
 				</div>
 
 				<div v-if="requirement.type === 'run-command'" class="mt-4 border-t border-card-border pt-3">
 					<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
 						<UiText class="font-medium">Command-scoped Secrets</UiText>
-						<UiButton type="button" variant="secondary" @click="requirement.commandSecretEnv.add()"
-							>Add command Secret</UiButton
-						>
+						<UiButton type="button" variant="secondary" @click="addCommandSecret(requirement)">Add command Secret</UiButton>
 					</div>
 					<div v-if="[...requirement.commandSecretEnv].length === 0">
 						<UiText tone="muted" size="helper">No command-scoped Secrets.</UiText>
@@ -156,14 +179,15 @@
 								:invalid="!!secretEnv.errors.envName" />
 						</UiFormGroup>
 						<UiFormGroup
-							label="Secret id"
+							label="Secret"
 							:for-id="`runtime-requirement-${index}-command-secret-${secretIndex}-secret`"
-							:error="secretEnv.errors.secretId">
-							<UiInput
+							:error="secretEnv.secretId.errors.value">
+							<UiSelect
 								:id="`runtime-requirement-${index}-command-secret-${secretIndex}-secret`"
-								v-model="secretEnv.secretId"
-								placeholder="secret-id"
-								:invalid="!!secretEnv.errors.secretId" />
+								v-model="secretEnv.secretId.value"
+								:options="secretOptions"
+								placeholder="Select Secret"
+								:invalid="!!secretEnv.secretId.errors.value" />
 						</UiFormGroup>
 						<div class="flex items-end">
 							<UiButton type="button" variant="secondary" @click="requirement.commandSecretEnv.delete(secretIndex)"
@@ -183,19 +207,24 @@
 </template>
 
 <script setup lang="ts">
+import { computed, watch } from 'vue'
+
 import UiButton from '../../ui/UiButton.vue'
 import UiForm from '../../ui/UiForm.vue'
 import UiFormGroup from '../../ui/UiFormGroup.vue'
 import UiInput from '../../ui/UiInput.vue'
 import UiSelect from '../../ui/UiSelect.vue'
 import UiText from '../../ui/UiText.vue'
-import UiTextarea from '../../ui/UiTextarea.vue'
+import type { UiSelectOptionInput } from '../../ui/select-options'
 import type { useSelectModel } from '../../../composables/portfolio/models/select-model'
 import type { AgentRunProfileFormDraft } from '../../../forms/agent-run-profile'
+import type { RuntimeRequirementFormDraft } from '../../../forms/agent-run-runtime-requirements'
 
 const props = defineProps<{
 	form: AgentRunProfileFormDraft
 	modelSelect: ReturnType<typeof useSelectModel>
+	secretOptions: readonly UiSelectOptionInput<string>[]
+	secretOptionsLoaded: boolean
 	submitLabel: string
 	loading: boolean
 	disabled: boolean
@@ -208,17 +237,46 @@ const runtimeRequirementTypeOptions = [
 	{ value: 'environment-secret', label: 'Environment Secret' },
 	{ value: 'run-command', label: 'Run Command' },
 ]
+const secretOptionValues = computed(() => selectOptionValues(props.secretOptions))
+
+watch(
+	() => [props.secretOptionsLoaded, props.secretOptions] as const,
+	() => syncFormSecretOptions(),
+	{ immediate: true },
+)
 
 function addEnvironmentSecretRequirement(): void {
-	props.form.runtimeRequirements.add().type = 'environment-secret'
+	const requirement = props.form.runtimeRequirements.add()
+	requirement.type = 'environment-secret'
+	syncRequirementSecretOptions(requirement)
 }
 
 function addRunCommandRequirement(): void {
-	props.form.runtimeRequirements.add().loadEntity({
+	const requirement = props.form.runtimeRequirements.add().loadEntity({
 		type: 'run-command',
 		label: '',
 		command: { executable: '', args: [], cwd: null },
 		commandSecretEnv: {},
 	})
+	syncRequirementSecretOptions(requirement)
+}
+
+function addCommandSecret(requirement: RuntimeRequirementFormDraft): void {
+	const commandSecret = requirement.commandSecretEnv.add()
+	if (props.secretOptionsLoaded) commandSecret.setSecretOptions(secretOptionValues.value)
+}
+
+function syncFormSecretOptions(): void {
+	if (props.secretOptionsLoaded) props.form.setSecretOptions(secretOptionValues.value)
+	else props.form.clearSecretOptions()
+}
+
+function syncRequirementSecretOptions(requirement: RuntimeRequirementFormDraft): void {
+	if (props.secretOptionsLoaded) requirement.setSecretOptions(secretOptionValues.value)
+	else requirement.clearSecretOptions()
+}
+
+function selectOptionValues(options: readonly UiSelectOptionInput<string>[]): string[] {
+	return options.flatMap((option) => ('options' in option ? option.options.map((groupOption) => groupOption.value) : [option.value]))
 }
 </script>

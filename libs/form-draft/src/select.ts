@@ -3,130 +3,140 @@ import { differ, v, type Pipe } from 'valleyed'
 import { FormDraft } from './form-draft'
 
 type FormDraftSelectFields<TValue> = { value: TValue }
-export type FormDraftSelectPipeBuilder<TValue> = (base: Pipe<unknown, TValue>) => Pipe<unknown, TValue>
 export type FormDraftSelectOptions<TValue> = {
 	initialValue: TValue
-	pipe?: FormDraftSelectPipeBuilder<TValue>
+	initialOptions?: readonly TValue[]
+	pipe: Pipe<unknown, TValue>
 }
 
-type FormDraftMultiSelectFields<TValue> = { value: TValue[] }
-export type FormDraftMultiSelectPipeBuilder<TValue> = (base: Pipe<unknown, TValue[]>) => Pipe<unknown, TValue[]>
 export type FormDraftMultiSelectOptions<TValue> = {
 	initialValue: TValue[]
-	pipe?: FormDraftMultiSelectPipeBuilder<TValue>
+	initialOptions?: readonly TValue[]
+	pipe: Pipe<unknown, TValue[]>
+}
+
+type BaseSelectOptions<TOptionValue, TSelectedValue> = {
+	initialValue: TSelectedValue
+	initialOptions?: readonly TOptionValue[]
+	pipe: Pipe<unknown, TSelectedValue>
 }
 
 const selectedOptionUnavailableMessage = 'Selected option is unavailable'
 const selectedOptionsUnavailableMessage = 'One or more selected options are unavailable'
 
-export class FormDraftSelect<TValue> extends FormDraft<TValue, TValue, FormDraftSelectFields<TValue>> {
-	#options: readonly TValue[] | null = null
+class SelectOptionMembership<TValue> {
+	#options: readonly TValue[] | null
 
-	protected readonly rules = {
-		value: v.lazy(() => this.valuePipe()),
+	constructor(private readonly initialOptions: readonly TValue[] | undefined) {
+		this.#options = initialOptionsValue(initialOptions)
 	}
 
-	constructor(private readonly options: FormDraftSelectOptions<TValue>) {
-		super({ value: options.initialValue })
-	}
-
-	setOptions(values: readonly TValue[]): void {
+	set(values: readonly TValue[]): void {
 		this.#options = [...values]
-		this.set('value', this.value)
 	}
 
-	clearOptions(): void {
+	clear(): void {
 		this.#options = null
-		this.set('value', this.value)
 	}
 
-	override get errors(): Record<keyof FormDraftSelectFields<TValue>, string> {
-		return { value: this.immediateOptionError() || super.errors.value }
+	reset(): void {
+		this.#options = initialOptionsValue(this.initialOptions)
 	}
 
-	protected model = (): TValue => this.value
-
-	protected load = (entity: TValue): void => {
-		this.value = entity
-	}
-
-	private valuePipe(): Pipe<unknown, TValue> {
-		const base = v.any<TValue>()
-		const customPipe = this.options.pipe?.(base) ?? base
-		return customPipe.pipe(v.custom((value) => this.optionContains(value), selectedOptionUnavailableMessage))
-	}
-
-	private optionContains(value: TValue): boolean {
+	contains(value: TValue): boolean {
 		return this.#options === null || this.#options.some((option) => differ.equal(option, value))
 	}
 
-	private immediateOptionError(): string {
-		if (this.#options === null) return ''
-		if (!this.optionContains(this.value) && this.callerPipeAcceptsCurrentValue()) return selectedOptionUnavailableMessage
-		return ''
-	}
-
-	private callerPipeAcceptsCurrentValue(): boolean {
-		const base = v.any<TValue>()
-		const customPipe = this.options.pipe?.(base) ?? base
-		return v.validate(customPipe, this.value).valid
+	get known(): boolean {
+		return this.#options !== null
 	}
 }
 
-export class FormDraftMultiSelect<TValue> extends FormDraft<TValue[], TValue[], FormDraftMultiSelectFields<TValue>> {
-	#options: readonly TValue[] | null = null
+abstract class BaseSelectFormDraft<TOptionValue, TSelectedValue> extends FormDraft<
+	TSelectedValue,
+	TSelectedValue,
+	FormDraftSelectFields<TSelectedValue>
+> {
+	readonly #membership: SelectOptionMembership<TOptionValue>
 
 	protected readonly rules = {
 		value: v.lazy(() => this.valuePipe()),
 	}
 
-	constructor(private readonly options: FormDraftMultiSelectOptions<TValue>) {
+	protected constructor(
+		private readonly options: BaseSelectOptions<TOptionValue, TSelectedValue>,
+		private readonly unavailableMessage: string,
+	) {
 		super({ value: options.initialValue })
+		this.#membership = new SelectOptionMembership(options.initialOptions)
 	}
 
-	setOptions(values: readonly TValue[]): void {
-		this.#options = [...values]
+	setOptions(values: readonly TOptionValue[]): void {
+		this.#membership.set(values)
 		this.set('value', this.value)
 	}
 
 	clearOptions(): void {
-		this.#options = null
+		this.#membership.clear()
 		this.set('value', this.value)
 	}
 
-	override get errors(): Record<keyof FormDraftMultiSelectFields<TValue>, string> {
+	resetOptions(): void {
+		this.#membership.reset()
+		this.set('value', this.value)
+	}
+
+	override get errors(): Record<keyof FormDraftSelectFields<TSelectedValue>, string> {
 		return { value: this.immediateOptionError() || super.errors.value }
 	}
 
-	protected model = (): TValue[] => this.value
+	protected model = (): TSelectedValue => this.value
 
-	protected load = (entity: TValue[]): void => {
+	protected load = (entity: TSelectedValue): void => {
 		this.value = entity
 	}
 
-	private valuePipe(): Pipe<unknown, TValue[]> {
-		const base = v.array(v.any<TValue>())
-		const customPipe = this.options.pipe?.(base) ?? base
-		return customPipe.pipe(v.custom((value) => this.optionsContainAll(value), selectedOptionsUnavailableMessage))
+	protected optionContains(value: TOptionValue): boolean {
+		return this.#membership.contains(value)
 	}
 
-	private optionsContainAll(values: TValue[]): boolean {
-		return this.#options === null || values.every((value) => this.optionContains(value))
-	}
+	protected abstract selectedOptionsAvailable(value: TSelectedValue): boolean
 
-	private optionContains(value: TValue): boolean {
-		return this.#options === null || this.#options.some((option) => differ.equal(option, value))
+	private valuePipe(): Pipe<unknown, TSelectedValue> {
+		return this.options.pipe.pipe(v.custom((value) => this.selectedOptionsAvailable(value), this.unavailableMessage))
 	}
 
 	private immediateOptionError(): string {
-		if (this.#options === null) return ''
-		if (!this.optionsContainAll(this.value) && this.callerPipeAcceptsCurrentValue()) return selectedOptionsUnavailableMessage
+		if (!this.#membership.known) return ''
+		if (!this.selectedOptionsAvailable(this.value) && this.callerPipeAcceptsCurrentValue()) return this.unavailableMessage
 		return ''
 	}
 
 	private callerPipeAcceptsCurrentValue(): boolean {
-		const base = v.array(v.any<TValue>())
-		const customPipe = this.options.pipe?.(base) ?? base
-		return v.validate(customPipe, this.value).valid
+		return v.validate(this.options.pipe, this.value).valid
 	}
+}
+
+export class FormDraftSelect<TValue> extends BaseSelectFormDraft<TValue, TValue> {
+	constructor(options: FormDraftSelectOptions<TValue>) {
+		super(options, selectedOptionUnavailableMessage)
+	}
+
+	protected selectedOptionsAvailable(value: TValue): boolean {
+		return this.optionContains(value)
+	}
+}
+
+export class FormDraftMultiSelect<TValue> extends BaseSelectFormDraft<TValue, TValue[]> {
+	constructor(options: FormDraftMultiSelectOptions<TValue>) {
+		super(options, selectedOptionsUnavailableMessage)
+	}
+
+	protected selectedOptionsAvailable(values: TValue[]): boolean {
+		return values.every((value) => this.optionContains(value))
+	}
+}
+
+function initialOptionsValue<TValue>(initialOptions: readonly TValue[] | undefined): readonly TValue[] | null {
+	return initialOptions === undefined ? null : [...initialOptions]
 }

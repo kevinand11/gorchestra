@@ -2,6 +2,7 @@ import { differ } from 'valleyed'
 import { markRaw, toRaw } from 'vue'
 
 import { FormDraft } from './form-draft'
+import { attachNestedFormDraftMetadata } from './nested'
 import type { FormDraftLike, InferEntity, InferFields, InferModel } from './types'
 import { copy, deepToRaw, makeReactive } from './utils'
 
@@ -30,7 +31,10 @@ export class FormDraftArray<T extends FormDraftLike> extends FormDraft<InferEnti
 	model = (): InferModel<T>[] => this.childModels()
 
 	override get listenerValue(): InferFields<T>[] {
-		return this.#children.value.map((instance) => instance.listenerValue as InferFields<T>)
+		return attachNestedFormDraftMetadata(
+			this.#children.value.map((instance) => instance.listenerValue as InferFields<T>),
+			this,
+		)
 	}
 
 	override reset(): void {

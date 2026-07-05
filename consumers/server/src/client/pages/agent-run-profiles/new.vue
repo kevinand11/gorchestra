@@ -19,6 +19,8 @@
 				class="border-t border-dimmer px-3 py-3"
 				:form="agentRunProfileForm"
 				:model-select="modelSelect"
+				:secret-options="secretOptions"
+				:secret-options-loaded="hasLoadedSecrets"
 				submit-label="Create Agent Run Profile"
 				:loading="isCreatingAgentRunProfile"
 				:disabled="!agentRunProfileForm.valid || isCreatingAgentRunProfile"
@@ -57,6 +59,7 @@
 import AgentRunProfileForm from '../../components/portfolio/agent-run-profiles/AgentRunProfileForm.vue'
 import { useAgentRunProfileCreate } from '../../composables/portfolio/agent-run-profiles'
 import { useSelectModel } from '../../composables/portfolio/models/select-model'
+import { useActiveSecretSelectOptions } from '../../composables/portfolio/secrets'
 
 definePageMeta({ middleware: ['has-selection'] })
 
@@ -66,4 +69,5 @@ const { agentRunProfileForm, isCreatingAgentRunProfile, createAgentRunProfileErr
 	},
 })
 const modelSelect = useSelectModel(agentRunProfileForm.modelUse)
+const { activeSecretOptions: secretOptions, hasLoadedSecrets } = useActiveSecretSelectOptions()
 </script>

@@ -70,7 +70,7 @@ class ProjectFormDraft extends FormDraft<ProjectFormModel, ProjectFormModel, Pro
 If the UI edits object fields individually, model that object as its own draft.
 
 ```ts
-import { FormDraft, formDraftPipe } from '@gorchestra/form-draft'
+import { FormDraft, nestedFormDraftPipe } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
 type LimitsModel = { contextWindowTokens: number; maxOutputTokens: number }
@@ -103,7 +103,7 @@ type ModelFormFields = { name: string; limits: LimitsFormDraft }
 class ModelFormDraft extends FormDraft<ModelFormModel, ModelFormModel, ModelFormFields> {
 	protected readonly rules = {
 		name: v.string().pipe(v.min<string>(1, 'Enter a Model name')),
-		limits: formDraftPipe<LimitsFormDraft>(),
+		limits: nestedFormDraftPipe<LimitsFormDraft>(),
 	}
 
 	constructor() {
@@ -119,14 +119,18 @@ class ModelFormDraft extends FormDraft<ModelFormModel, ModelFormModel, ModelForm
 }
 ```
 
-Nested drafts contribute validity and dirty state to their parent automatically.
+Nested drafts contribute validity and dirty state to their parent through `nestedFormDraftPipe()`. Because nested validation is part of the field pipe, Valleyed wrappers can control it:
+
+```ts
+address: v.conditional(nestedFormDraftPipe<AddressFormDraft>(), () => this.hasAddress)
+```
 
 ## Array draft example
 
-If the UI edits array items, use `FormDraft.asArray()` with an item draft.
+If the UI edits array items, use `FormDraft.array()` with an item draft.
 
 ```ts
-import { FormDraft, FormDraftArray, formDraftPipe } from '@gorchestra/form-draft'
+import { FormDraft, FormDraftArray, nestedFormDraftPipe } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
 type HeaderModel = { name: string; valueSecretId: string }
@@ -154,10 +158,10 @@ type ProviderModel = { headers: HeaderModel[] }
 type ProviderFields = { headers: FormDraftArray<HeaderFormDraft> }
 
 class ProviderFormDraft extends FormDraft<ProviderModel, ProviderModel, ProviderFields> {
-	protected readonly rules = { headers: formDraftPipe<FormDraftArray<HeaderFormDraft>>() }
+	protected readonly rules = { headers: v.array(nestedFormDraftPipe<HeaderFormDraft>()) }
 
 	constructor() {
-		super({ headers: FormDraft.asArray(() => new HeaderFormDraft()) })
+		super({ headers: FormDraft.array(() => new HeaderFormDraft()) })
 	}
 
 	protected model = (): ProviderModel => ({ headers: this.headers.toModel() })
@@ -282,9 +286,9 @@ Use `FormDraftSelect` for single-select controls whose selectable values load as
 import { FormDraftSelect } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
-const modelSelect = new FormDraftSelect<string | null>({
-	initialValue: null,
-	pipe: (base) => base.pipe(v.custom((value) => value !== null, 'Select a Model')),
+const modelSelect = new FormDraftSelect<string>({
+	initialValue: '',
+	pipe: v.string().pipe(v.min<string>(1, 'Select a Model')),
 })
 
 modelSelect.clearOptions() // options unknown; membership validation is skipped
@@ -300,27 +304,33 @@ import { v } from 'valleyed'
 
 const selectedTags = new FormDraftMultiSelect<string>({
 	initialValue: [],
-	pipe: (base) => base.pipe(v.custom((values) => values.length > 0, 'Select at least one option')),
+	pipe: v.array(v.string()).pipe(v.min<string>(1, 'Select at least one option')),
 })
 
 selectedTags.setOptions(['bug', 'feature', 'docs'])
 selectedTags.value = ['feature']
 ```
 
-`setOptions(values)` means options are loaded and known. `clearOptions()` means options are unknown, so option-membership validation is skipped until options load. Option-membership validation uses `differ.equal`, so object-valued options are compared structurally rather than by object identity.
+`setOptions(values)` means options are loaded and known. `clearOptions()` means options are unknown, so option-membership validation is skipped until options load. `resetOptions()` restores constructor `initialOptions` when provided, or returns to unknown options when no initial options were provided. Option-membership validation is chained after the required caller `pipe`, and uses `differ.equal`, so object-valued options are compared structurally rather than by object identity.
 
-When a select is embedded in another `FormDraft`, parent validity, dirty state, reset behavior, and first child error propagation work like other nested drafts:
+When a select is embedded in another `FormDraft`, parent validity, dirty state, reset behavior, and first child error propagation work through `nestedFormDraftPipe()` like other nested drafts:
 
 ```ts
-import { FormDraft, FormDraftSelect, formDraftPipe } from '@gorchestra/form-draft'
+import { FormDraft, FormDraftSelect, nestedFormDraftPipe } from '@gorchestra/form-draft'
+import { v } from 'valleyed'
 
 type ModelUse = { modelId: string | null }
 
 class ModelUseDraft extends FormDraft<ModelUse, string | null, { modelId: FormDraftSelect<string | null> }> {
-	protected readonly rules = { modelId: formDraftPipe<FormDraftSelect<string | null>>() }
+	protected readonly rules = { modelId: nestedFormDraftPipe<FormDraftSelect<string | null>>() }
 
 	constructor() {
-		super({ modelId: new FormDraftSelect<string | null>({ initialValue: null }) })
+		super({
+			modelId: new FormDraftSelect<string | null>({
+				initialValue: null,
+				pipe: v.nullable(v.string()),
+			}),
+		})
 	}
 
 	protected model = () => this.modelId.toModel()

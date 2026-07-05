@@ -1,4 +1,4 @@
-import { FormDraft, formDraftPipe, type FormDraftArray } from '@gorchestra/form-draft'
+import { FormDraft, nestedFormDraftPipe, type FormDraftArray } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
 import type { RuntimeRequirementFormDraft } from './agent-run-runtime-requirements'
@@ -13,14 +13,26 @@ type AgentRunProfileFormFields = {
 }
 
 export class AgentRunProfileFormDraft extends FormDraft<AgentRunProfileInput, AgentRunProfileInput, AgentRunProfileFormFields> {
+	#secretOptions: readonly string[] | null = null
+
 	protected readonly rules = {
 		name: v.string().pipe(v.asTrimmed(), v.min<string>(1)),
-		modelUse: formDraftPipe<ModelUseFormDraft>(),
-		runtimeRequirements: formDraftPipe<FormDraftArray<RuntimeRequirementFormDraft>>(),
+		modelUse: nestedFormDraftPipe<ModelUseFormDraft>(),
+		runtimeRequirements: v.array(nestedFormDraftPipe<RuntimeRequirementFormDraft>()),
 	}
 
 	constructor() {
 		super({ name: '', modelUse: new ModelUseFormDraft({ required: true }), runtimeRequirements: runtimeRequirementFormArray() })
+	}
+
+	setSecretOptions(secretIds: readonly string[]): void {
+		this.#secretOptions = [...secretIds]
+		this.applySecretOptions()
+	}
+
+	clearSecretOptions(): void {
+		this.#secretOptions = null
+		this.applySecretOptions()
 	}
 
 	protected model = (): AgentRunProfileInput => ({
@@ -33,6 +45,14 @@ export class AgentRunProfileFormDraft extends FormDraft<AgentRunProfileInput, Ag
 		this.name = entity.name
 		this.modelUse.loadEntity(entity.modelUse)
 		this.runtimeRequirements.loadEntity(entity.runtimeRequirements)
+		this.applySecretOptions()
+	}
+
+	private applySecretOptions(): void {
+		for (const requirement of this.runtimeRequirements) {
+			if (this.#secretOptions === null) requirement.clearSecretOptions()
+			else requirement.setSecretOptions(this.#secretOptions)
+		}
 	}
 }
 

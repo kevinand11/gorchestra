@@ -1,13 +1,15 @@
 import { isProxy, isReactive, isRef, reactive, toRaw } from 'vue'
 
+import { copyNestedFormDraftMetadata, copyNestedFormDraftMetadataTree } from './nested'
+
 type InitialValidationResult = { valid: true; value: undefined }
 type InvalidValidationResult = { error: { messages: Array<{ message: string }> } }
 
 export function deepToRaw<T>(input: T): T {
-	if (Array.isArray(input)) return deepArrayToRaw(input) as T
-	if (isVueWrapped(input)) return deepToRaw(toRaw(input as object) as T)
-	if (isPlainObject(input)) return deepObjectToRaw(input) as T
-	return input
+	const rawInput = isVueWrapped(input) ? (toRaw(input as object) as T) : input
+	if (Array.isArray(rawInput)) return copyNestedFormDraftMetadata(rawInput, deepArrayToRaw(rawInput)) as T
+	if (isPlainObject(rawInput)) return copyNestedFormDraftMetadata(rawInput, deepObjectToRaw(rawInput)) as T
+	return rawInput
 }
 
 function deepArrayToRaw(input: unknown[]): unknown[] {
@@ -26,7 +28,8 @@ function isVueWrapped(input: unknown): boolean {
 }
 
 export function copy<T>(input: T): T {
-	return structuredClone(deepToRaw(input))
+	const raw = deepToRaw(input)
+	return copyNestedFormDraftMetadataTree(raw, structuredClone(raw))
 }
 
 export function makeReactive<T extends object>(input: T): T {

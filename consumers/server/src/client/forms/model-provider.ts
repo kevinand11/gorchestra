@@ -1,4 +1,4 @@
-import { FormDraft, formDraftPipe, type FormDraftArray } from '@gorchestra/form-draft'
+import { FormDraft, nestedFormDraftPipe, type FormDraftArray } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
 import type {
@@ -67,7 +67,7 @@ export class ModelProviderFormDraft extends FormDraft<ModelProviderFormModel, Mo
 			.string()
 			.pipe(v.custom<string>((value) => this.sourceType !== 'custom-hosted' || value.trim().length > 0, 'Enter a base URL')),
 		authSecretId: modelProviderAuthSecretIdPipe,
-		headers: formDraftPipe<FormDraftArray<ModelProviderHeaderFormDraft>>(),
+		headers: v.array(nestedFormDraftPipe<ModelProviderHeaderFormDraft>()),
 		providerOptionsText: providerOptionsTextPipe,
 	}
 
@@ -78,7 +78,7 @@ export class ModelProviderFormDraft extends FormDraft<ModelProviderFormModel, Mo
 			customProtocol: 'openai-chat-completions',
 			customBaseUrl: '',
 			authSecretId: null,
-			headers: FormDraft.asArray(() => new ModelProviderHeaderFormDraft()),
+			headers: FormDraft.array(() => new ModelProviderHeaderFormDraft()),
 			providerOptionsText: '',
 		})
 		this.sourceType = sourceType

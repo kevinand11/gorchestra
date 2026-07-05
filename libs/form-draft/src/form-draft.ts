@@ -3,7 +3,8 @@ import { nextTick } from 'vue'
 
 import type { FormDraftArray } from './array'
 import { LocalDataClass } from './data-class'
-import type { FlatKeys, FormDraftLike, FormDraftRules, InferFields } from './types'
+import { attachNestedFormDraftMetadata } from './nested'
+import type { FlatKeys, FormDraftLike, FormDraftRules } from './types'
 import { copy, createInitialValidities, deepToRaw, firstErrorMessage, firstNonEmptyError, makeReactive } from './utils'
 
 type ValidationResult = ReturnType<typeof v.validate>
@@ -98,9 +99,6 @@ export abstract class FormDraft<Entity, Model, Fields extends object> extends Lo
 	}
 
 	private fieldError(key: keyof Fields): string {
-		const child = this.#embeds[key]
-		if (child !== undefined) return child.firstError
-
 		const validity = this.visibleInvalidity(key)
 		return validity === undefined ? '' : firstErrorMessage(validity)
 	}
@@ -108,7 +106,7 @@ export abstract class FormDraft<Entity, Model, Fields extends object> extends Lo
 	private visibleInvalidity(key: keyof Fields): InvalidValidationResult | undefined {
 		const validity = this.validities[key]
 		if (validity.valid) return undefined
-		return this.fieldIsDirty(key) ? validity : undefined
+		return this.isKeyDirty(key) ? validity : undefined
 	}
 
 	private fieldIsDirty(key: keyof Fields): boolean {
@@ -125,13 +123,7 @@ export abstract class FormDraft<Entity, Model, Fields extends object> extends Lo
 	}
 
 	private isKeyValid(key: keyof Fields): boolean {
-		const child = this.#embeds[key]
-		return child === undefined ? this.fieldIsValid(key) : this.fieldAndChildAreValid(key, child)
-	}
-
-	private fieldAndChildAreValid(key: keyof Fields, child: FormDraftLike): boolean {
-		if (!this.fieldIsValid(key)) return false
-		return child.valid
+		return this.fieldIsValid(key)
 	}
 
 	private fieldIsValid(key: keyof Fields): boolean {
@@ -171,7 +163,17 @@ export abstract class FormDraft<Entity, Model, Fields extends object> extends Lo
 	}
 
 	private validateInitialValues(): void {
-		;(this.keys as (keyof Fields)[]).forEach((key) => this.set(key, this.values[key]))
+		;(this.keys as (keyof Fields)[]).forEach((key) => this.revalidateKey(key))
+	}
+
+	protected revalidate(...keys: (keyof Fields)[]): void {
+		const keysToValidate = keys.length ? keys : (this.keys as (keyof Fields)[])
+		keysToValidate.forEach((key) => this.revalidateKey(key))
+	}
+
+	private revalidateKey(key: keyof Fields): void {
+		const child = this.#embeds[key]
+		this.set(key, (child === undefined ? this.values[key] : child.listenerValue) as Fields[typeof key])
 	}
 
 	reset(...keys: (keyof Fields)[]): void {
@@ -180,14 +182,19 @@ export abstract class FormDraft<Entity, Model, Fields extends object> extends Lo
 		keysToReset
 			.filter((key) => !reserved.includes(key))
 			.forEach((key) => {
-				this.#embeds[key]?.reset()
-				this.set(key, this.#originals[key])
+				const child = this.#embeds[key]
+				if (child === undefined) this.set(key, this.#originals[key])
+				else {
+					child.reset()
+					this.revalidateKey(key)
+				}
 			})
 	}
 
 	loadEntity(entity: Entity): this {
 		this.load(entity)
 		const loadedKeys = this.keys as (keyof Fields)[]
+		loadedKeys.forEach((key) => this.revalidateKey(key))
 		loadedKeys.forEach((key) => {
 			this.#originals[key] = copy(this.values[key])
 		})
@@ -200,7 +207,11 @@ export abstract class FormDraft<Entity, Model, Fields extends object> extends Lo
 	}
 
 	get listenerValue(): Fields {
-		return copy(this.values)
+		const value = copy(this.values)
+		;(Object.entries(this.#embeds) as Array<[keyof Fields, FormDraftLike]>).forEach(([key, child]) => {
+			value[key] = child.listenerValue as Fields[typeof key]
+		})
+		return attachNestedFormDraftMetadata(value, this)
 	}
 
 	listen(callback: () => void): void {
@@ -227,10 +238,8 @@ export abstract class FormDraft<Entity, Model, Fields extends object> extends Lo
 		return this.constructor.name.toLowerCase().replace('formdraft', '').replace('draft', '')
 	}
 
-	static asArray<T extends FormDraftLike>(factory: () => T): FormDraftArray<T> {
+	static array<T extends FormDraftLike>(factory: () => T): FormDraftArray<T> {
 		if (formDraftArrayFactory === null) throw new Error('FormDraftArray factory is not registered')
 		return formDraftArrayFactory(factory)
 	}
 }
-
-export const formDraftPipe = <T extends FormDraftLike>() => v.any<InferFields<T>>()
