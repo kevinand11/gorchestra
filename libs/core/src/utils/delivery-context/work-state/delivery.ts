@@ -1,4 +1,4 @@
-import { compareActions, latestAction, latestKnownAction } from './actions'
+import { compareActions, latestAction, latestInTransitDispatchForOperation, latestKnownAction } from './actions'
 import { compareAcceptedThenId } from './dependencies'
 import { firstSyncState, ok, stateOrElseSync } from './result'
 import { currentScopedReviewSurface } from './review-surfaces'
@@ -21,6 +21,7 @@ export function getDeliveryState(context: DeliveryContext): Result<DeliveryWorkS
 	const deliveryActions = deliveryActionsFor(context)
 	const earlyState = firstSyncState([
 		() => immediateDeliveryLifecycleState(context),
+		() => deliveryDispatchState(deliveryActions),
 		() => deliveryDependencyState(context),
 		() => deliveryPreflightState(deliveryActions),
 	])
@@ -65,6 +66,15 @@ function immediateDeliveryLifecycleState(context: DeliveryContext): WorkStateRes
 	if (context.delivery.closed !== null) return ok({ type: 'closed', outcome: context.delivery.closed.type })
 
 	return context.delivery.queued === null ? ok({ type: 'unqueued' }) : ok(null)
+}
+
+function deliveryDispatchState(deliveryActions: Action[]): WorkStateResult<DeliveryWorkState | null> {
+	const inTransit = latestInTransitDispatchForOperation(deliveryActions, (operation) => operation.scope === 'delivery')
+	if (inTransit === null) return ok(null)
+
+	return inTransit.type === 'running'
+		? ok({ type: 'operation-running', operation: inTransit.action.result.operation, startedActionId: inTransit.action.id })
+		: ok({ type: 'operation-queued', operation: inTransit.action.result.operation, queuedActionId: inTransit.action.id })
 }
 
 function deliveryDependencyState(context: DeliveryContext): WorkStateResult<DeliveryWorkState | null> {

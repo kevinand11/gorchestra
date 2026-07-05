@@ -1,5 +1,7 @@
 # Phased Delivery Context
 
+Superseded in part by [Dispatch coordination claims and Delivery work scheduling](./2026-07-04-2022-dispatch-coordination-claims-and-delivery-work.md), which replaces the monolithic `runDeliveryWork` worker-pool direction with dispatch-coordinated Delivery scheduler passes and concrete Delivery Work Operations.
+
 Delivery queries and commands prepare a transient Delivery Context instead of independently reloading and reinterpreting required Portfolio facts. Delivery Context contains scoped validated Portfolio facts needed to derive Delivery and Slice Work States for one Delivery; the Work States are derived from the context and are not fields on the context. The context stores at most one Delivery Artifact as a singular field, stores each Slice with its optional Slice Artifact and direct Slice dependency links, and provides Delivery Actions sorted by performed time so downstream derivation can preserve ordering without resorting. Delivery Context does not include Delivery Work Resolution, selected Model records, selected Model Provider records, or provider access plaintext.
 
 Delivery Work Resolution is resolved separately for scheduler-actionable Delivery work. It contains the resolved Delivery Config and selected execution Model identity needed for a scheduler pass, but not provider access plaintext. Secret plaintext is resolved only on demand by provider-family façades for the specific preflight or external operation that needs it, and must not be written to Actions, Artifact records, logs, or other durable facts.

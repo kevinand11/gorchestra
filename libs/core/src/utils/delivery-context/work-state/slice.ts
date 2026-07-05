@@ -1,4 +1,11 @@
-import { actionAffectsSlice, compareActions, latestAction, latestPassedSlicePromotion, latestSliceDeliveryValidationAfter } from './actions'
+import {
+	actionAffectsSlice,
+	compareActions,
+	latestAction,
+	latestInTransitDispatchForOperation,
+	latestPassedSlicePromotion,
+	latestSliceDeliveryValidationAfter,
+} from './actions'
 import { compareAcceptedThenId } from './dependencies'
 import { firstSyncState, invariant, ok, stateOrElseSync } from './result'
 import { currentScopedReviewSurface } from './review-surfaces'
@@ -19,11 +26,33 @@ export function getSliceState(context: DeliveryContext, sliceId: Id): Result<Sli
 function deriveSliceState(context: DeliveryContext, storedSlice: DeliveryContextSlice): WorkStateResult<SliceWorkState> {
 	const sliceActions = context.actions.filter((action) => actionAffectsSlice(action, storedSlice.slice.id))
 	const earlyState = firstSyncState([
+		() => completeSliceState(storedSlice.slice, sliceActions),
+		() => sliceDispatchState(context, storedSlice.slice),
 		() => promotedSliceState(context, storedSlice.slice, sliceActions),
 		() => sliceDependencyState(context, storedSlice),
 	])
 
 	return stateOrElseSync(earlyState, () => deriveSliceStateAfterEarlyGates(context, storedSlice, sliceActions))
+}
+
+function completeSliceState(slice: Slice, sliceActions: Action[]): WorkStateResult<SliceWorkState | null> {
+	const promotion = latestPassedSlicePromotion(slice.id, sliceActions)
+	if (promotion === null) return ok(null)
+
+	const validation = latestSliceDeliveryValidationAfter(slice.id, sliceActions, promotion)
+	return validation?.result.evidence.passed === true ? ok({ type: 'complete', actionId: validation.id }) : ok(null)
+}
+
+function sliceDispatchState(context: DeliveryContext, slice: Slice): WorkStateResult<SliceWorkState | null> {
+	const inTransit = latestInTransitDispatchForOperation(
+		context.actions,
+		(operation) => operation.scope === 'slice' && operation.sliceId === slice.id,
+	)
+	if (inTransit === null) return ok(null)
+
+	return inTransit.type === 'running'
+		? ok({ type: 'operation-running', operation: inTransit.action.result.operation, startedActionId: inTransit.action.id })
+		: ok({ type: 'operation-queued', operation: inTransit.action.result.operation, queuedActionId: inTransit.action.id })
 }
 
 function promotedSliceState(context: DeliveryContext, slice: Slice, sliceActions: Action[]): WorkStateResult<SliceWorkState | null> {

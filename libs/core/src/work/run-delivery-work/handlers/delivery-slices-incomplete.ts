@@ -20,6 +20,12 @@ interface SliceStateCandidate {
 	key: string
 }
 
+export interface SliceWorkOperationCandidate {
+	slice: Slice
+	state: ActionableSliceWorkState
+	key: string
+}
+
 interface SliceWorkSelection {
 	deliveryContext: ResolvedDeliveryHandlerContext['deliveryContext']
 	slice: Slice
@@ -27,7 +33,7 @@ interface SliceWorkSelection {
 	key: string
 }
 
-type ActionableSliceWorkState = Extract<
+export type ActionableSliceWorkState = Extract<
 	SliceWorkState,
 	{ type: 'needs-delivery-validation' | 'needs-artifact-validation' | 'needs-review-surface' | 'needs-artifact-creation' | 'executable' }
 >
@@ -40,6 +46,20 @@ interface SliceWorkerPool {
 	workResolution: DeliveryWorkResolution
 	repositoryAccessSecret: ResolvedDeliveryHandlerContext['repositoryAccessSecret']
 	claimedKeys: Set<string>
+}
+
+export function selectActionableSliceWorkOperationCandidates(
+	deliveryContext: ResolvedDeliveryHandlerContext['deliveryContext'],
+	limit: number,
+): CoreResult<SliceWorkOperationCandidate[], Exclude<Error, InvalidInputError>> {
+	const candidates = actionableSliceCandidates(deliveryContext, new Set())
+	return candidates.ok
+		? { ok: true, value: candidates.value.slice(0, Math.max(0, limit)).map((candidate) => sliceWorkOperationCandidate(candidate)) }
+		: candidates
+}
+
+function sliceWorkOperationCandidate(candidate: SliceStateCandidate): SliceWorkOperationCandidate {
+	return { slice: candidate.slice, state: candidate.state, key: candidate.key }
 }
 
 export async function handleDeliverySlicesIncomplete(
@@ -177,6 +197,8 @@ function sliceActionPriority(state: SliceWorkState): SliceActionPriority | null 
 		case 'executable':
 			return 4
 		case 'complete':
+		case 'operation-running':
+		case 'operation-queued':
 		case 'dependency-blocked':
 		case 'correction-blocked':
 		case 'awaiting-review':

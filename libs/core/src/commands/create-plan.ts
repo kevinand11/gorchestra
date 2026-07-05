@@ -12,7 +12,7 @@ import type { CoreDispatchRequest, CoreStorage } from '../services'
 import { appendAgentRunEvent, createModelAgentRunWithProfileSnapshot } from '../utils/agent-run-events'
 import type { CoreRuntimeValues } from '../utils/runtime-values'
 import type { Result as CoreResult } from '../utils/types'
-import { acceptDispatchRequest } from './utils/dispatch'
+import { acceptDispatchRequest, exclusiveAgentRunClaim } from './utils/dispatch'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { buildCommandHandler } from './utils/handler'
 import {
@@ -215,7 +215,7 @@ async function writeInitialPlanningInput(
 	const dispatchMarker = await acceptDispatchRequest(runtime.services.dispatcher, {
 		type: 'agent-run',
 		agentRunId: agentRun.id,
-		serializationKey: agentRun.id,
+		coordinationClaims: [exclusiveAgentRunClaim(agentRun.id)],
 		reason: { type: 'input-appended', inputEventId: input.value.id },
 	})
 	if (!dispatchMarker.ok) return dispatchMarker
@@ -299,7 +299,12 @@ if (import.meta.vitest) {
 				{
 					type: 'agent-run',
 					agentRunId: 'agent-run-1',
-					serializationKey: 'agent-run-1',
+					coordinationClaims: [
+						{
+							scope: [{ type: 'agent-run', id: 'agent-run-1' }],
+							mode: { type: 'exclusive' },
+						},
+					],
 					reason: { type: 'input-appended', inputEventId: 'agent-run-event-2' },
 				},
 			])

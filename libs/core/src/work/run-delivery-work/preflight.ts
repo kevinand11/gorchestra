@@ -125,7 +125,15 @@ async function schedulerPreflightForState(
 }
 
 function isSchedulerPreflightState(state: DeliveryWorkState): boolean {
-	return !['closed', 'unqueued', 'dependency-blocked', 'preflight-failed', 'ready-to-ship'].includes(state.type)
+	return ![
+		'closed',
+		'unqueued',
+		'operation-running',
+		'operation-queued',
+		'dependency-blocked',
+		'preflight-failed',
+		'ready-to-ship',
+	].includes(state.type)
 }
 
 function applyCurrentSchedulerPreflight(

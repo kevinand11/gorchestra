@@ -12,7 +12,17 @@ import type { DeliveryHandlerContext, ResolvedDeliveryHandlerContext, RunDeliver
 
 type NoWorkDeliveryState = Extract<
 	DeliveryWorkState,
-	{ type: 'closed' | 'unqueued' | 'dependency-blocked' | 'preflight-failed' | 'needs-artifact-creation' | 'ready-to-ship' }
+	{
+		type:
+			| 'closed'
+			| 'unqueued'
+			| 'operation-running'
+			| 'operation-queued'
+			| 'dependency-blocked'
+			| 'preflight-failed'
+			| 'needs-artifact-creation'
+			| 'ready-to-ship'
+	}
 >
 
 type FailedDeliveryState = Extract<
@@ -28,6 +38,8 @@ type RemainingDeliveryState = ArtifactOrSliceDeliveryState | ReviewDeliveryState
 const noWorkDeliveryStateTypes = new Set<DeliveryWorkState['type']>([
 	'closed',
 	'unqueued',
+	'operation-running',
+	'operation-queued',
 	'dependency-blocked',
 	'preflight-failed',
 	'needs-artifact-creation',
@@ -78,7 +90,15 @@ function resolvedContextForState(context: DeliveryHandlerContext, state: Deliver
 }
 
 function requiresDeliveryWorkResolution(state: DeliveryWorkState): boolean {
-	return !['closed', 'unqueued', 'dependency-blocked', 'preflight-failed', 'ready-to-ship'].includes(state.type)
+	return ![
+		'closed',
+		'unqueued',
+		'operation-running',
+		'operation-queued',
+		'dependency-blocked',
+		'preflight-failed',
+		'ready-to-ship',
+	].includes(state.type)
 }
 
 function handleFailedDeliveryWorkState(state: FailedDeliveryState): RunDeliveryWorkHandlerResult {

@@ -1,5 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import type { DeliveryWorkOperation } from './action'
 import { auditStampPipe, freeFormStringPipe, idPipe, nonEmptyTrimmedStringPipe, type Id } from './commons'
 import {
 	deliveryConfigRecordPipe,
@@ -12,8 +13,8 @@ import { repositoryPipe } from './repository'
 import { slicePipe } from './slice'
 
 /**
- * Derived in priority order: closed, unqueued, dependency-blocked,
- * preflight-failed, needs-artifact-creation, slices-incomplete,
+ * Derived in priority order: closed, unqueued, operation-running,
+ * operation-queued, dependency-blocked, preflight-failed, needs-artifact-creation, slices-incomplete,
  * delivery-operation-failed, delivery-validation-failed, delivery-review-failed,
  * needs-artifact-validation, needs-review-surface, awaiting-review, then
  * ready-to-ship.
@@ -21,6 +22,8 @@ import { slicePipe } from './slice'
 export type DeliveryWorkState =
 	| { type: 'closed'; outcome: DeliveryClosedOutcome }
 	| { type: 'unqueued' }
+	| { type: 'operation-running'; operation: DeliveryWorkOperation; startedActionId: Id }
+	| { type: 'operation-queued'; operation: DeliveryWorkOperation; queuedActionId: Id }
 	/** blockedBy contains direct unmet Delivery dependencies only, ordered by dependency accepted time then delivery id. */
 	| { type: 'dependency-blocked'; blockedBy: Id[] }
 	| { type: 'preflight-failed'; actionId: Id }

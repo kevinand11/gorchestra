@@ -16,8 +16,8 @@ import type {
 import type { CoreRuntime } from '../runtime'
 import type { CoreDispatchRequest } from '../services'
 import { appendAgentRunEvent } from '../utils/agent-run-events'
-import { acceptDispatchRequest } from './utils/dispatch'
 import { requireInteractiveAgentRunTargetOpen } from '../utils/agent-run-targets'
+import { acceptDispatchRequest, exclusiveAgentRunClaim } from './utils/dispatch'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
 import { withAuditStampTransaction } from './utils/storage'
@@ -65,7 +65,7 @@ export function createSendAgentRunMessageCommand(runtime: CoreRuntime): Operatio
 				const dispatchMarker = await acceptDispatchRequest(runtime.services.dispatcher, {
 					type: 'agent-run',
 					agentRunId: input.agentRunId,
-					serializationKey: input.agentRunId,
+					coordinationClaims: [exclusiveAgentRunClaim(input.agentRunId)],
 					reason: { type: 'input-appended', inputEventId: event.value.id },
 				})
 				if (!dispatchMarker.ok) return dispatchMarker
@@ -140,7 +140,12 @@ if (import.meta.vitest) {
 				{
 					type: 'agent-run',
 					agentRunId: 'agent-run-1',
-					serializationKey: 'agent-run-1',
+					coordinationClaims: [
+						{
+							scope: [{ type: 'agent-run', id: 'agent-run-1' }],
+							mode: { type: 'exclusive' },
+						},
+					],
 					reason: { type: 'input-appended', inputEventId: 'agent-run-event-1' },
 				},
 			])

@@ -8,9 +8,9 @@ The Server Consumer is the v1 Gorchestra app layer. It uses the Portfolio-level 
 The v1 Gorchestra consumer: a deployed server app that registers Portfolios inside Workspaces and supports multi-user tenancy.
 _Avoid_: Core
 
-**Agent Run Dispatcher**:
-The Server Consumer capability that receives Core Agent Run Dispatch Requests and arranges Agent Run runtime execution for the selected Portfolio. The dispatcher is responsible for execution arrangement, not for deciding Core Agent Run behavior. The v1 dispatcher returns opaque markers for accepted requests and starts processing only when the marker is readied after the Core command transaction succeeds. It scopes Core Dispatch Serialization Keys by Portfolio storage namespace, runs readied same-key requests serially without coalescing them, and allows readied different-key requests to run concurrently.
-_Avoid_: Scheduler, worker agent, Core runtime
+**Server Dispatcher**:
+The Server Consumer capability that receives Core Dispatch Requests and arranges runtime execution for the selected Portfolio. The dispatcher is responsible for execution arrangement, not for deciding Core Agent Run or Delivery work behavior. The v1 dispatcher returns opaque markers for accepted requests and starts processing only when the marker is readied after the Core transaction succeeds. It scopes Core Dispatch Coordination Claims by Portfolio storage namespace and runs readied requests only when all claims can be acquired.
+_Avoid_: Scheduler, worker agent, Core runtime, Agent Run Dispatcher
 
 **User**:
 A global app identity in the Server Consumer. A User may have separate Workspace Member identities in different Workspaces.

@@ -9,7 +9,15 @@ import { handleSliceOperationFailed } from './slice-operation-failed'
 
 type NoWorkSliceState = Extract<
 	SliceWorkState,
-	{ type: 'complete' | 'dependency-blocked' | 'correction-blocked' | 'needs-artifact-creation' }
+	{
+		type:
+			| 'complete'
+			| 'operation-running'
+			| 'operation-queued'
+			| 'dependency-blocked'
+			| 'correction-blocked'
+			| 'needs-artifact-creation'
+	}
 >
 
 type ValidationSliceState = Extract<SliceWorkState, { type: 'needs-delivery-validation' | 'needs-artifact-validation' }>
@@ -19,6 +27,8 @@ type RemainingSliceState = Exclude<SliceWorkState, NoWorkSliceState | Validation
 
 const noWorkSliceStateTypes = new Set<SliceWorkState['type']>([
 	'complete',
+	'operation-running',
+	'operation-queued',
 	'dependency-blocked',
 	'correction-blocked',
 	'needs-artifact-creation',
