@@ -3,7 +3,7 @@ import type { Action } from '../../../domain/action'
 import type { ValidationEvidence, ValidationOperation } from '../../../domain/evidence'
 import { createRecord } from '../../../storage/helpers'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
-import type { DeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
+import type { DeliveryHandlerContext, ScheduleDeliveryWorkHandlerResult } from '../types'
 
 export function noConfiguredValidationEvidence(operation: ValidationOperation['type'], summary: string): ValidationEvidence {
 	return { type: 'validation', operation: { type: operation }, passed: true, summary }
@@ -12,7 +12,7 @@ export function noConfiguredValidationEvidence(operation: ValidationOperation['t
 export async function writeValidationAction(
 	context: DeliveryHandlerContext,
 	result: Action['result'],
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const id = nextId(context.values, 'action')
 	if (!id.ok) return id
 

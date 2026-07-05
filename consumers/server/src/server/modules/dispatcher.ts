@@ -177,7 +177,10 @@ export function createServerDispatcher(input: CreateServerDispatcherInput) {
 					return
 				}
 				case 'delivery-work-scheduler': {
-					const result = await opened.value.work.runDeliveryWork({ deliveryId: item.request.deliveryId }, { correlationId: null })
+					const result = await opened.value.work.scheduleDeliveryWork(
+						{ deliveryId: item.request.deliveryId },
+						{ correlationId: null },
+					)
 					if (!result.ok) globalThis.console.error('Delivery work scheduler failed', result.error)
 					return
 				}

@@ -1,8 +1,8 @@
 import { notImplemented } from './result'
-import type { RunDeliveryWorkHandlerResult } from '../types'
+import type { ScheduleDeliveryWorkHandlerResult } from '../types'
 
-export function handleSliceOperationFailed(): RunDeliveryWorkHandlerResult {
-	return notImplemented('runDeliveryWork.slice.slice-operation-failed')
+export function handleSliceOperationFailed(): ScheduleDeliveryWorkHandlerResult {
+	return notImplemented('scheduleDeliveryWork.slice.slice-operation-failed')
 }
 
 if (import.meta.vitest) {
@@ -12,7 +12,7 @@ if (import.meta.vitest) {
 		it('is a Slice external-operation failure recovery stub', () => {
 			expect(handleSliceOperationFailed()).toEqual({
 				ok: false,
-				error: { type: 'not-implemented', operation: 'runDeliveryWork.slice.slice-operation-failed' },
+				error: { type: 'not-implemented', operation: 'scheduleDeliveryWork.slice.slice-operation-failed' },
 			})
 		})
 	})

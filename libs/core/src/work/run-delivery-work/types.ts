@@ -14,16 +14,16 @@ import type { Result as CoreResult } from '../../utils/types'
 
 export interface Result {
 	processedCount: number
-	failures: RunDeliveryWorkFailure[]
+	failures: ScheduleDeliveryWorkFailure[]
 }
 
-export interface RunDeliveryWorkFailure {
+export interface ScheduleDeliveryWorkFailure {
 	scope: { type: 'delivery' } | { type: 'slice'; sliceId: Id }
-	operation: RunDeliveryWorkFailureOperation
+	operation: ScheduleDeliveryWorkFailureOperation
 	summary: string
 }
 
-export type RunDeliveryWorkFailureOperation =
+export type ScheduleDeliveryWorkFailureOperation =
 	| 'preflight'
 	| 'create-artifact'
 	| 'agent-run'
@@ -31,7 +31,7 @@ export type RunDeliveryWorkFailureOperation =
 	| 'validate-delivery-artifact'
 	| 'review-surface'
 
-export type RunDeliveryWorkNoObservedChangeTarget =
+export type ScheduleDeliveryWorkNoObservedChangeTarget =
 	| { type: 'slice-review-surface'; sliceId: Id; reviewSurfaceId: Id }
 	| { type: 'delivery-review-surface'; reviewSurfaceId: Id }
 
@@ -43,14 +43,14 @@ export type Error =
 	| InvariantViolationError
 	| NotImplementedError
 
-export interface RunDeliveryWorkContext {
+export interface ScheduleDeliveryWorkContext {
 	services: CoreServices
 	storage: CoreStorage
 	values: CoreRuntimeValues
 	tx?: unknown
 }
 
-export interface DeliveryHandlerContext extends RunDeliveryWorkContext {
+export interface DeliveryHandlerContext extends ScheduleDeliveryWorkContext {
 	deliveryContext: DeliveryContext
 }
 
@@ -61,9 +61,9 @@ export interface ResolvedDeliveryHandlerContext extends DeliveryHandlerContext {
 
 export type { DeliveryWorkResolution }
 
-export type RunDeliveryWorkHandlerResult = CoreResult<Result, Exclude<Error, InvalidInputError>>
+export type ScheduleDeliveryWorkHandlerResult = CoreResult<Result, Exclude<Error, InvalidInputError>>
 
-export type RunDeliveryWorkStorageError =
+export type ScheduleDeliveryWorkStorageError =
 	| InvalidCoreServiceOutputError
 	| ResourceNotFoundError
 	| StorageOperationFailedError

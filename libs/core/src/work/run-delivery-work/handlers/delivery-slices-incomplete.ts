@@ -10,7 +10,7 @@ import type { CoreStorage } from '../../../services'
 import { withTransaction } from '../../../storage/helpers'
 import { buildDeliveryContext, getDeliveryState, getSliceState, resolveDeliveryWork } from '../../../utils/delivery-context'
 import type { Result as CoreResult } from '../../../utils/types'
-import type { DeliveryWorkResolution, Error, ResolvedDeliveryHandlerContext, Result, RunDeliveryWorkHandlerResult } from '../types'
+import type { DeliveryWorkResolution, Error, ResolvedDeliveryHandlerContext, Result, ScheduleDeliveryWorkHandlerResult } from '../types'
 
 interface SliceStateCandidate {
 	slice: Slice
@@ -68,7 +68,7 @@ export async function handleDeliverySlicesIncomplete(
 		ResolvedDeliveryHandlerContext,
 		'services' | 'storage' | 'values' | 'deliveryContext' | 'workResolution' | 'repositoryAccessSecret'
 	>,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const pool: SliceWorkerPool = {
 		runtime,
 		deliveryId: context.deliveryContext.delivery.id,
@@ -83,7 +83,7 @@ export async function handleDeliverySlicesIncomplete(
 	return combineSliceWorkerResults(results)
 }
 
-async function runSliceWorkerSlot(pool: SliceWorkerPool): Promise<RunDeliveryWorkHandlerResult> {
+async function runSliceWorkerSlot(pool: SliceWorkerPool): Promise<ScheduleDeliveryWorkHandlerResult> {
 	let processedCount = 0
 	const failures: Result['failures'] = []
 
@@ -238,7 +238,7 @@ function executableKeyDetail(state: Extract<ActionableSliceWorkState, { type: 'e
 	return state.mode === 'correction' ? `correction:${state.failureChain.rootActionId}` : 'current'
 }
 
-async function processSliceSelection(pool: SliceWorkerPool, selection: SliceWorkSelection): Promise<RunDeliveryWorkHandlerResult> {
+async function processSliceSelection(pool: SliceWorkerPool, selection: SliceWorkSelection): Promise<ScheduleDeliveryWorkHandlerResult> {
 	if (selection.state.type === 'needs-artifact-creation') {
 		return handleSliceNeedsArtifactCreation(pool.runtime, selectionContext(pool, selection), selection.slice, selection.state)
 	}
@@ -267,18 +267,18 @@ function selectionContext(
 	}
 }
 
-function combineSliceWorkerResults(results: RunDeliveryWorkHandlerResult[]): RunDeliveryWorkHandlerResult {
+function combineSliceWorkerResults(results: ScheduleDeliveryWorkHandlerResult[]): ScheduleDeliveryWorkHandlerResult {
 	const failed = results.find((result) => !result.ok)
 	if (failed !== undefined) return failed
 
 	return completedSliceWorkerResult(successfulSliceWorkerResults(results))
 }
 
-function successfulSliceWorkerResults(results: RunDeliveryWorkHandlerResult[]): Result[] {
+function successfulSliceWorkerResults(results: ScheduleDeliveryWorkHandlerResult[]): Result[] {
 	return results.flatMap((result) => (result.ok ? [result.value] : []))
 }
 
-function completedSliceWorkerResult(results: Result[]): RunDeliveryWorkHandlerResult {
+function completedSliceWorkerResult(results: Result[]): ScheduleDeliveryWorkHandlerResult {
 	const processedCount = results.reduce((total, result) => total + result.processedCount, 0)
 	const failures = results.flatMap((result) => result.failures)
 	return processedCount === 0 && failures.length === 0 ? noEligibleWork() : { ok: true, value: { processedCount, failures } }

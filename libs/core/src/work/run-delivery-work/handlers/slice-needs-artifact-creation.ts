@@ -11,7 +11,7 @@ import { createRecord, withTransaction } from '../../../storage/helpers'
 import { getSliceState } from '../../../utils/delivery-context'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
 import type { Result as CoreResult } from '../../../utils/types'
-import type { ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
+import type { ResolvedDeliveryHandlerContext, ScheduleDeliveryWorkHandlerResult } from '../types'
 
 interface SliceStateCandidate {
 	slice: Slice
@@ -25,7 +25,10 @@ export type SliceArtifactCreationInput = SourceControlCreateArtifactBranchInput 
 
 export function sliceArtifactCreationInput(
 	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'workResolution' | 'repositoryAccessSecret'>,
-): CoreResult<SliceArtifactCreationInput | null, RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
+): CoreResult<
+	SliceArtifactCreationInput | null,
+	ScheduleDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
+> {
 	const candidates = sliceStateCandidates(context)
 	if (!candidates.ok) return candidates
 	if (sliceCapacityFull(candidates.value, context)) return { ok: true, value: null }
@@ -41,7 +44,7 @@ export async function handleSliceNeedsArtifactCreation(
 	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'workResolution' | 'repositoryAccessSecret'>,
 	slice: Slice,
 	_state: Extract<SliceWorkState, { type: 'needs-artifact-creation' }>,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const input = sliceArtifactCreationInputForSlice(context, slice)
 	if (!input.ok) return input
 
@@ -70,7 +73,7 @@ export async function recordSliceArtifactCreationResult(
 	_deliveryState: DeliveryWorkState,
 	input: SliceArtifactCreationInput,
 	creation: SourceControlArtifactCreation,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	return creation.type === 'passed'
 		? writePassedSliceArtifactCreation(context, input)
 		: writeFailedSliceArtifactCreation(context, input.sliceId, creation.summary)
@@ -78,7 +81,7 @@ export async function recordSliceArtifactCreationResult(
 
 function sliceStateCandidates(
 	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext'>,
-): CoreResult<SliceStateCandidate[], RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
+): CoreResult<SliceStateCandidate[], ScheduleDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
 	const candidates: SliceStateCandidate[] = []
 	for (const slice of context.deliveryContext.slices) {
 		const state = getSliceState(context.deliveryContext, slice.slice.id)
@@ -126,7 +129,7 @@ function sliceArtifactCreationInputForSlice(
 async function writePassedSliceArtifactCreation(
 	context: ResolvedDeliveryHandlerContext,
 	input: SliceArtifactCreationInput,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const records = sliceArtifactCreationRecords(context, input)
 	return records.ok ? putSliceArtifactCreationRecords(context, records.value) : records
 }
@@ -136,7 +139,7 @@ function sliceArtifactCreationRecords(
 	input: SliceArtifactCreationInput,
 ): CoreResult<
 	{ artifact: SliceArtifact; action: Action },
-	RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
+	ScheduleDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
 > {
 	const artifact = sliceArtifactRecord(context, input)
 	if (!artifact.ok) return artifact
@@ -152,7 +155,7 @@ function sliceArtifactCreationRecords(
 async function putSliceArtifactCreationRecords(
 	context: ResolvedDeliveryHandlerContext,
 	records: { artifact: SliceArtifact; action: Action },
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const artifactPut = await createRecord('slice-artifact', context.storage, records.artifact)
 	if (!artifactPut.ok) return artifactPut
 
@@ -166,7 +169,7 @@ async function writeFailedSliceArtifactCreation(
 	context: ResolvedDeliveryHandlerContext,
 	sliceId: string,
 	summary: string,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const action = actionRecord(context, {
 		type: 'record-slice-external-operation-failure',
 		sliceId,
@@ -189,7 +192,7 @@ async function writeFailedSliceArtifactCreation(
 function sliceArtifactRecord(
 	context: ResolvedDeliveryHandlerContext,
 	input: SliceArtifactCreationInput,
-): CoreResult<SliceArtifact, RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
+): CoreResult<SliceArtifact, ScheduleDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
 	const id = nextId(context.values, 'slice-artifact')
 	if (!id.ok) return id
 
@@ -209,7 +212,7 @@ function sliceArtifactRecord(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createRunDeliveryWorkHandlerTestContext } = await import('./test-utils')
+	const { createScheduleDeliveryWorkHandlerTestContext } = await import('./test-utils')
 
 	describe('Slice Artifact creation handler', () => {
 		it('builds deterministic provider input from the Delivery Branch', async () => {
@@ -291,6 +294,6 @@ if (import.meta.vitest) {
 	})
 
 	async function handlerContext() {
-		return createRunDeliveryWorkHandlerTestContext({ sliceId: 'slice-1' })
+		return createScheduleDeliveryWorkHandlerTestContext({ sliceId: 'slice-1' })
 	}
 }

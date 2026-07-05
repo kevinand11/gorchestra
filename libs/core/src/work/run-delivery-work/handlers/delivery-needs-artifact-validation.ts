@@ -1,11 +1,11 @@
 import type { DeliveryWorkState } from '../../../domain/delivery'
-import type { DeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
+import type { DeliveryHandlerContext, ScheduleDeliveryWorkHandlerResult } from '../types'
 import { noConfiguredValidationEvidence, writeValidationAction } from './artifact-validation-recording'
 
 export function handleDeliveryNeedsArtifactValidation(
 	context: DeliveryHandlerContext,
 	_state: Extract<DeliveryWorkState, { type: 'needs-artifact-validation' }>,
-): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
+): Promise<ScheduleDeliveryWorkHandlerResult> | ScheduleDeliveryWorkHandlerResult {
 	return writeValidationAction(context, {
 		type: 'validate-delivery-artifact',
 		evidence: noConfiguredValidationEvidence('delivery-branch-validation', 'No Delivery Artifact validation is configured.'),

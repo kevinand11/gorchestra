@@ -10,7 +10,7 @@ import { createRecord, withTransaction } from '../../../storage/helpers'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
 import type { Result as CoreResult } from '../../../utils/types'
 import { resolvedSchedulerHandlerContext, schedulerHandlerContextFromClaim, type ProviderBackedSchedulerPreflightClaim } from '../preflight'
-import type { ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
+import type { ResolvedDeliveryHandlerContext, ScheduleDeliveryWorkHandlerResult } from '../types'
 
 export type DeliveryArtifactCreationInput = SourceControlCreateArtifactBranchInput & {
 	deliveryId: string
@@ -37,7 +37,7 @@ function deliveryArtifactCreationInput(
 export async function handleDeliveryNeedsArtifactCreation(
 	runtime: CoreRuntime,
 	preflight: ProviderBackedSchedulerPreflightClaim,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const context = schedulerHandlerContextFromClaim(preflight)
 	if (!context.ok) return context
 
@@ -58,7 +58,7 @@ export async function recordDeliveryArtifactCreationResult(
 	_state: DeliveryWorkState,
 	input: DeliveryArtifactCreationInput,
 	creation: SourceControlArtifactCreation,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	return creation.type === 'passed'
 		? writePassedDeliveryArtifactCreation(context, input.artifactBranch)
 		: writeFailedDeliveryArtifactCreation(context, creation.summary)
@@ -67,7 +67,7 @@ export async function recordDeliveryArtifactCreationResult(
 async function writePassedDeliveryArtifactCreation(
 	context: ResolvedDeliveryHandlerContext,
 	deliveryBranch: string,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const records = deliveryArtifactCreationRecords(context, deliveryBranch)
 	return records.ok ? putDeliveryArtifactCreationRecords(context, records.value) : records
 }
@@ -77,7 +77,7 @@ function deliveryArtifactCreationRecords(
 	deliveryBranch: string,
 ): CoreResult<
 	{ artifact: DeliveryArtifact; action: Action },
-	RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
+	ScheduleDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
 > {
 	const artifact = deliveryArtifactRecord(context, deliveryBranch)
 	if (!artifact.ok) return artifact
@@ -92,7 +92,7 @@ function deliveryArtifactCreationRecords(
 async function putDeliveryArtifactCreationRecords(
 	context: ResolvedDeliveryHandlerContext,
 	records: { artifact: DeliveryArtifact; action: Action },
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const artifactPut = await createRecord('delivery-artifact', context.storage, records.artifact)
 	if (!artifactPut.ok) return artifactPut
 
@@ -105,7 +105,7 @@ async function putDeliveryArtifactCreationRecords(
 async function writeFailedDeliveryArtifactCreation(
 	context: ResolvedDeliveryHandlerContext,
 	summary: string,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const action = actionRecord(context, {
 		type: 'record-delivery-external-operation-failure',
 		evidence: externalOperationEvidence(summary),
@@ -127,7 +127,7 @@ async function writeFailedDeliveryArtifactCreation(
 function deliveryArtifactRecord(
 	context: ResolvedDeliveryHandlerContext,
 	deliveryBranch: string,
-): CoreResult<DeliveryArtifact, RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
+): CoreResult<DeliveryArtifact, ScheduleDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
 	const id = nextId(context.values, 'delivery-artifact')
 	if (!id.ok) return id
 
@@ -147,7 +147,7 @@ function deliveryArtifactRecord(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createRunDeliveryWorkHandlerTestContext } = await import('./test-utils')
+	const { createScheduleDeliveryWorkHandlerTestContext } = await import('./test-utils')
 
 	describe('Delivery Artifact creation handler', () => {
 		it('builds deterministic provider input from the Delivery target branch', async () => {
@@ -226,6 +226,6 @@ if (import.meta.vitest) {
 	})
 
 	async function handlerContext() {
-		return createRunDeliveryWorkHandlerTestContext()
+		return createScheduleDeliveryWorkHandlerTestContext()
 	}
 }

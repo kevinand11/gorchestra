@@ -1,12 +1,12 @@
 import type { Slice, SliceWorkState } from '../../../domain/slice'
-import type { DeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
+import type { DeliveryHandlerContext, ScheduleDeliveryWorkHandlerResult } from '../types'
 import { noConfiguredValidationEvidence, writeValidationAction } from './artifact-validation-recording'
 
 export function handleSliceNeedsArtifactValidation(
 	context: DeliveryHandlerContext,
 	slice: Slice,
 	_state: Extract<SliceWorkState, { type: 'needs-artifact-validation' }>,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	return writeValidationAction(context, {
 		type: 'validate-slice-artifact',
 		sliceId: slice.id,

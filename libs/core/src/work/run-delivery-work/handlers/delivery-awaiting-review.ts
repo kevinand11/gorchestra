@@ -1,8 +1,10 @@
 import { noObservedChange } from './result'
 import type { DeliveryWorkState } from '../../../domain/delivery'
-import type { RunDeliveryWorkHandlerResult } from '../types'
+import type { ScheduleDeliveryWorkHandlerResult } from '../types'
 
-export function handleDeliveryAwaitingReview(state: Extract<DeliveryWorkState, { type: 'awaiting-review' }>): RunDeliveryWorkHandlerResult {
+export function handleDeliveryAwaitingReview(
+	state: Extract<DeliveryWorkState, { type: 'awaiting-review' }>,
+): ScheduleDeliveryWorkHandlerResult {
 	return noObservedChange({ type: 'delivery-review-surface', reviewSurfaceId: state.reviewSurfaceId })
 }
 

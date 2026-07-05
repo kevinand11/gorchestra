@@ -1,8 +1,8 @@
 import { notImplemented } from './result'
-import type { RunDeliveryWorkHandlerResult } from '../types'
+import type { ScheduleDeliveryWorkHandlerResult } from '../types'
 
-export function handleDeliveryReviewFailed(): RunDeliveryWorkHandlerResult {
-	return notImplemented('runDeliveryWork.delivery.delivery-review-failed')
+export function handleDeliveryReviewFailed(): ScheduleDeliveryWorkHandlerResult {
+	return notImplemented('scheduleDeliveryWork.delivery.delivery-review-failed')
 }
 
 if (import.meta.vitest) {
@@ -12,7 +12,7 @@ if (import.meta.vitest) {
 		it('is a Delivery Review Surface failure recovery stub', () => {
 			expect(handleDeliveryReviewFailed()).toEqual({
 				ok: false,
-				error: { type: 'not-implemented', operation: 'runDeliveryWork.delivery.delivery-review-failed' },
+				error: { type: 'not-implemented', operation: 'scheduleDeliveryWork.delivery.delivery-review-failed' },
 			})
 		})
 	})

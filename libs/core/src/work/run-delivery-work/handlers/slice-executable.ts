@@ -4,14 +4,14 @@ import type { Slice, SliceWorkState } from '../../../domain/slice'
 import { appendAgentRunEvent, createModelAgentRunWithProfileSnapshot } from '../../../utils/agent-run-events'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
 import type { Result as CoreResult } from '../../../utils/types'
-import type { DeliveryHandlerContext, DeliveryWorkResolution, RunDeliveryWorkHandlerResult } from '../types'
+import type { DeliveryHandlerContext, DeliveryWorkResolution, ScheduleDeliveryWorkHandlerResult } from '../types'
 
 export async function handleSliceExecutable(
 	context: DeliveryHandlerContext,
 	slice: Slice,
 	state: Extract<SliceWorkState, { type: 'executable' }>,
 	resolution: DeliveryWorkResolution,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const agentRun = sliceExecutionAgentRun(context, slice, state, resolution)
 	if (!agentRun.ok) return agentRun
 
@@ -28,7 +28,7 @@ interface SliceExecutionAgentRunInput {
 async function writeSliceExecutionAgentRun(
 	context: DeliveryHandlerContext,
 	agentRun: SliceExecutionAgentRunInput,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const agentRunPut = await createModelAgentRunWithProfileSnapshot(context.storage, agentRun)
 	if (!agentRunPut.ok) return agentRunPut
 
@@ -47,7 +47,7 @@ function sliceExecutionAgentRun(
 	slice: Slice,
 	state: Extract<SliceWorkState, { type: 'executable' }>,
 	resolution: DeliveryWorkResolution,
-): CoreResult<SliceExecutionAgentRunInput, RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
+): CoreResult<SliceExecutionAgentRunInput, ScheduleDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
 	const agentRunId = nextId(context.values, 'agent-run')
 	if (!agentRunId.ok) return agentRunId
 

@@ -8,7 +8,7 @@ import type { CoreRuntime } from '../../../runtime'
 import { createRecord, withTransaction } from '../../../storage/helpers'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
 import type { Result as CoreResult } from '../../../utils/types'
-import type { ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
+import type { ResolvedDeliveryHandlerContext, ScheduleDeliveryWorkHandlerResult } from '../types'
 
 type SliceNeedsReviewSurfaceState = Extract<SliceWorkState, { type: 'needs-review-surface' }>
 
@@ -23,7 +23,7 @@ export async function handleSliceNeedsReviewSurface(
 	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'workResolution' | 'repositoryAccessSecret'>,
 	slice: Slice,
 	state: SliceNeedsReviewSurfaceState,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const input = sliceReviewSurfaceInput(context, slice, state)
 	if (!input.ok) return input
 
@@ -102,7 +102,7 @@ async function recordSliceReviewSurfaceCreationResult(
 	_state: SliceNeedsReviewSurfaceState,
 	input: SliceReviewSurfaceInput,
 	creation: SourceControlReviewSurfaceCreation,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	switch (creation.type) {
 		case 'integrated':
 			return writeIntegratedSliceArtifactPromotion(context, slice.id, creation.summary)
@@ -119,7 +119,7 @@ async function writeIntegratedSliceArtifactPromotion(
 	context: ResolvedDeliveryHandlerContext,
 	sliceId: string,
 	summary: string,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const action = actionRecord(context, {
 		type: 'promote-slice-artifact',
 		sliceId,
@@ -135,7 +135,7 @@ async function writeSliceReviewSurface(
 	context: ResolvedDeliveryHandlerContext,
 	input: SliceReviewSurfaceInput,
 	creation: Extract<SourceControlReviewSurfaceCreation, { type: 'review-surface' }>,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const records = sliceReviewSurfaceRecords(context, input, creation.pullRequestNumber)
 	return records.ok ? putSliceReviewSurfaceRecords(context, records.value) : records
 }
@@ -146,7 +146,7 @@ function sliceReviewSurfaceRecords(
 	pullRequestNumber: number,
 ): CoreResult<
 	{ reviewSurface: ReviewSurface; action: Action },
-	RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
+	ScheduleDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
 > {
 	const identifiers = sliceReviewSurfaceIdentifiers(context)
 	if (!identifiers.ok) return identifiers
@@ -163,7 +163,7 @@ function sliceReviewSurfaceIdentifiers(
 	context: ResolvedDeliveryHandlerContext,
 ): CoreResult<
 	{ reviewSurfaceId: string; actionId: string },
-	RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
+	ScheduleDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
 > {
 	const reviewSurfaceId = nextId(context.values, 'review-surface')
 	if (!reviewSurfaceId.ok) return reviewSurfaceId
@@ -175,7 +175,7 @@ function sliceReviewSurfaceIdentifiers(
 async function putSliceReviewSurfaceRecords(
 	context: ResolvedDeliveryHandlerContext,
 	records: { reviewSurface: ReviewSurface; action: Action },
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const actionPut = await createRecord('action', context.storage, records.action)
 	if (!actionPut.ok) return actionPut
 
@@ -226,7 +226,7 @@ async function writeFailedSliceReviewSurfaceCreation(
 	context: ResolvedDeliveryHandlerContext,
 	sliceId: string,
 	summary: string,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<ScheduleDeliveryWorkHandlerResult> {
 	const action = actionRecord(context, {
 		type: 'record-slice-external-operation-failure',
 		sliceId,
@@ -249,7 +249,7 @@ async function writeFailedSliceReviewSurfaceCreation(
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { stamp } = await import('../../../utils/test-helpers')
-	const { createRunDeliveryWorkHandlerTestContext } = await import('./test-utils')
+	const { createScheduleDeliveryWorkHandlerTestContext } = await import('./test-utils')
 
 	describe('Slice Review Surface creation handler', () => {
 		it('stores a Slice Review Surface and Action after provider creation', async () => {
@@ -341,7 +341,7 @@ if (import.meta.vitest) {
 	})
 
 	async function handlerFixture() {
-		const context = await createRunDeliveryWorkHandlerTestContext({ sliceId: 'slice-1' })
+		const context = await createScheduleDeliveryWorkHandlerTestContext({ sliceId: 'slice-1' })
 		const sliceArtifact = {
 			id: 'slice-artifact-1',
 			sliceId: 'slice-1',

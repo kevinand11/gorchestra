@@ -22,10 +22,16 @@ import { buildWorkHandler } from '../utils/handler'
 import { handleDeliveryNeedsArtifactCreation } from './handlers/delivery-needs-artifact-creation'
 import { handleDeliverySlicesIncomplete } from './handlers/delivery-slices-incomplete'
 
-export type { Error, Result, RunDeliveryWorkFailure, RunDeliveryWorkFailureOperation, RunDeliveryWorkNoObservedChangeTarget } from './types'
+export type {
+	Error,
+	Result,
+	ScheduleDeliveryWorkFailure,
+	ScheduleDeliveryWorkFailureOperation,
+	ScheduleDeliveryWorkNoObservedChangeTarget,
+} from './types'
 
-const runDeliveryWorkInputPipe = v.object({ deliveryId: idPipe })
-export type Input = PipeOutput<typeof runDeliveryWorkInputPipe>
+const scheduleDeliveryWorkInputPipe = v.object({ deliveryId: idPipe })
+export type Input = PipeOutput<typeof scheduleDeliveryWorkInputPipe>
 
 /**
  * Performs one bounded scheduler step for one available processing slot. It does
@@ -38,11 +44,14 @@ export type Input = PipeOutput<typeof runDeliveryWorkInputPipe>
  */
 export type Operation = (input: Input, context: WorkContext) => Promise<CoreResult<Result, Error>>
 
-export function createRunDeliveryWorkOperation(runtime: CoreRuntime): Operation {
-	return buildWorkHandler('runDeliveryWork', runDeliveryWorkInputPipe, (input) => handleRunDeliveryWork(runtime, input))
+export function createScheduleDeliveryWorkOperation(runtime: CoreRuntime): Operation {
+	return buildWorkHandler('scheduleDeliveryWork', scheduleDeliveryWorkInputPipe, (input) => handleScheduleDeliveryWork(runtime, input))
 }
 
-async function handleRunDeliveryWork(runtime: CoreRuntime, input: Input): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+async function handleScheduleDeliveryWork(
+	runtime: CoreRuntime,
+	input: Input,
+): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const preflight = await withTransaction(runtime.services, (storage) => readSchedulerPreflight(runtime, storage, input.deliveryId))
 	if (!preflight.ok) return preflight
 
@@ -132,20 +141,23 @@ if (import.meta.vitest) {
 
 	const workContext: WorkContext = { correlationId: 'correlation-1' }
 
-	describe('runDeliveryWork work operation', () => {
+	describe('scheduleDeliveryWork work operation', () => {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
-			const operation = createRunDeliveryWorkOperation(createTestCoreRuntime(options))
+			const operation = createScheduleDeliveryWorkOperation(createTestCoreRuntime(options))
 
 			const result = await operation({} as never, workContext)
 
-			expect(result).toMatchObject({ ok: false, error: { type: 'invalid-input', boundary: 'work', operation: 'runDeliveryWork' } })
+			expect(result).toMatchObject({
+				ok: false,
+				error: { type: 'invalid-input', boundary: 'work', operation: 'scheduleDeliveryWork' },
+			})
 			expect(options.transactionCalls()).toBe(0)
 		})
 
 		it('records all failed provider-backed Delivery preflight checks before scheduler work', async () => {
 			const options = providerPreflightFixture()
-			const operation = createRunDeliveryWorkOperation(
+			const operation = createScheduleDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: failingProviderBackedPreflightProviders() }),
 			)
 
@@ -182,7 +194,7 @@ if (import.meta.vitest) {
 				updated: null,
 				archivePeriods: [],
 			})
-			const operation = createRunDeliveryWorkOperation(
+			const operation = createScheduleDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: neverCalledProviderBackedPreflightProviders() }),
 			)
 
@@ -207,7 +219,7 @@ if (import.meta.vitest) {
 						pipeError: null as never,
 					},
 				})
-			const operation = createRunDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
+			const operation = createScheduleDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
 
 			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
@@ -221,7 +233,7 @@ if (import.meta.vitest) {
 		it('does not call providers for non-scheduler-actionable Deliveries', async () => {
 			const options = createTestCoreServices()
 			seedDelivery(options.tx, 'delivery-1')
-			const operation = createRunDeliveryWorkOperation(
+			const operation = createScheduleDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: neverCalledProviderBackedPreflightProviders() }),
 			)
 
@@ -233,7 +245,7 @@ if (import.meta.vitest) {
 		it('records failed preflight evidence when the selected execution Agent Run Profile is archived', async () => {
 			const options = providerPreflightFixture()
 			options.tx.agentRunProfiles.records.get('agent-run-profile-1')!.archivePeriods = [{ archived: localStamp(), unarchived: null }]
-			const operation = createRunDeliveryWorkOperation(
+			const operation = createScheduleDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: neverCalledProviderBackedPreflightProviders() }),
 			)
 
@@ -253,7 +265,7 @@ if (import.meta.vitest) {
 				expect(input.artifactBranch).toBe('gorchestra/deliveries/d-ZGVsaXZlcnktMQ')
 				return Promise.resolve({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } })
 			}
-			const operation = createRunDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
+			const operation = createScheduleDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
 
 			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
@@ -280,7 +292,7 @@ if (import.meta.vitest) {
 						summary: 'GitHub artifact source branch was not found.',
 					},
 				})
-			const operation = createRunDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
+			const operation = createScheduleDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
 
 			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
@@ -319,7 +331,7 @@ if (import.meta.vitest) {
 				expect(input.artifactBranch).toBe('gorchestra/deliveries/d-ZGVsaXZlcnktMQ/slices/s-c2xpY2UtMQ')
 				return Promise.resolve({ ok: true, value: { type: 'passed', mode: 'created', summary: 'created' } })
 			}
-			const operation = createRunDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
+			const operation = createScheduleDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
 
 			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
@@ -341,7 +353,7 @@ if (import.meta.vitest) {
 			seedSlice(options.tx, 'slice-1', 'delivery-1')
 			seedSliceArtifact(options, 'slice-1')
 			seedCompletedSliceExecution(options, 'slice-1')
-			const operation = createRunDeliveryWorkOperation(
+			const operation = createScheduleDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: passingProviderBackedPreflightProviders() }),
 			)
 
@@ -361,7 +373,7 @@ if (import.meta.vitest) {
 			seedSlice(options.tx, 'slice-1', 'delivery-1')
 			seedSliceArtifact(options, 'slice-1')
 			seedPromotedSlice(options, 'slice-1')
-			const operation = createRunDeliveryWorkOperation(
+			const operation = createScheduleDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: passingProviderBackedPreflightProviders() }),
 			)
 
@@ -381,7 +393,7 @@ if (import.meta.vitest) {
 			seedSlice(options.tx, 'slice-1', 'delivery-1')
 			seedSliceArtifact(options, 'slice-1')
 			seedPromotedSlice(options, 'slice-1')
-			const operation = createRunDeliveryWorkOperation(
+			const operation = createScheduleDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: failingProviderBackedPreflightProviders() }),
 			)
 
@@ -396,7 +408,7 @@ if (import.meta.vitest) {
 		it('records no-op Delivery Artifact validation after provider-backed preflight passes', async () => {
 			const options = providerPreflightFixture()
 			seedCompletedDelivery(options)
-			const operation = createRunDeliveryWorkOperation(
+			const operation = createScheduleDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: passingProviderBackedPreflightProviders() }),
 			)
 
@@ -412,7 +424,7 @@ if (import.meta.vitest) {
 		it('records failed provider-backed preflight instead of no-op artifact validation', async () => {
 			const options = providerPreflightFixture()
 			seedCompletedDelivery(options)
-			const operation = createRunDeliveryWorkOperation(
+			const operation = createScheduleDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: failingProviderBackedPreflightProviders() }),
 			)
 
@@ -439,7 +451,7 @@ if (import.meta.vitest) {
 					value: { type: 'review-surface', mode: 'created', pullRequestNumber: 12, summary: 'created' },
 				})
 			}
-			const operation = createRunDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
+			const operation = createScheduleDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
 
 			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
@@ -462,7 +474,7 @@ if (import.meta.vitest) {
 			const providers = passingProviderBackedPreflightProviders()
 			providers.sourceControl.createReviewSurface = () =>
 				Promise.resolve({ ok: true, value: { type: 'integrated', summary: 'Already integrated.' } })
-			const operation = createRunDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
+			const operation = createScheduleDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
 
 			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
@@ -496,7 +508,7 @@ if (import.meta.vitest) {
 					value: { type: 'review-surface', mode: 'created', pullRequestNumber: 13, summary: 'created' },
 				})
 			}
-			const operation = createRunDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
+			const operation = createScheduleDeliveryWorkOperation(createTestCoreRuntime(options, { providers }))
 
 			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
 
