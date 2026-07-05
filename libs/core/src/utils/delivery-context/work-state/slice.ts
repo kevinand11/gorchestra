@@ -428,7 +428,12 @@ if (import.meta.vitest) {
 				deliveryId: 'delivery-1',
 				performed: { at: '2026-06-10T12:00:00.000Z' },
 				authorized: null,
-				result: { type: 'record-slice-external-operation-failure', sliceId: 'slice-1', evidence: externalFailure },
+				result: {
+					type: 'record-slice-external-operation-failure',
+					sliceId: 'slice-1',
+					evidence: externalFailure,
+					dispatchStartedActionId: null,
+				},
 			})
 
 			expect(sliceState(tx, 'slice-1')).toEqual({
@@ -471,7 +476,7 @@ if (import.meta.vitest) {
 				deliveryId: 'delivery-1',
 				performed: { at: '2026-06-10T12:01:00.000Z' },
 				authorized: null,
-				result: { type: 'validate-delivery-artifact', evidence: passedValidation },
+				result: { type: 'validate-delivery-artifact', evidence: passedValidation, dispatchStartedActionId: null },
 			})
 
 			expect(sliceState(tx, 'slice-1')).toEqual({
@@ -532,7 +537,12 @@ if (import.meta.vitest) {
 			deliveryId: 'delivery-1',
 			performed: { at: '2026-06-10T12:00:00.000Z' },
 			authorized: null,
-			result: { type: 'validate-slice-artifact', sliceId, evidence: passed ? passedValidation : failedValidation },
+			result: {
+				type: 'validate-slice-artifact',
+				sliceId,
+				evidence: passed ? passedValidation : failedValidation,
+				dispatchStartedActionId: null,
+			},
 		})
 	}
 
@@ -542,7 +552,7 @@ if (import.meta.vitest) {
 			deliveryId: 'delivery-1',
 			performed: { at: '2026-06-10T12:00:00.000Z' },
 			authorized: null,
-			result: { type: 'promote-slice-artifact', sliceId, evidence: externalPassed },
+			result: { type: 'promote-slice-artifact', sliceId, evidence: externalPassed, dispatchStartedActionId: null },
 		})
 	}
 
@@ -552,7 +562,12 @@ if (import.meta.vitest) {
 			deliveryId: 'delivery-1',
 			performed: { at: '2026-06-10T12:01:00.000Z' },
 			authorized: null,
-			result: { type: 'validate-slice-delivery-artifact', sliceId, evidence: passed ? passedValidation : failedValidation },
+			result: {
+				type: 'validate-slice-delivery-artifact',
+				sliceId,
+				evidence: passed ? passedValidation : failedValidation,
+				dispatchStartedActionId: null,
+			},
 		})
 	}
 

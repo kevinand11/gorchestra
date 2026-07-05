@@ -34,12 +34,33 @@ export function startedDeliveryWorkDispatchAction(input: {
 	}
 }
 
+export function processedDeliveryWorkDispatchAction(input: {
+	actionId: Id
+	deliveryId: Id
+	performed: RuntimeRecord
+	startedActionId: Id
+	operation: DeliveryWorkOperation
+}): Action {
+	return finishDeliveryWorkDispatchAction({ ...input, outcome: { type: 'processed' } })
+}
+
 export function staleNoopDeliveryWorkDispatchAction(input: {
 	actionId: Id
 	deliveryId: Id
 	performed: RuntimeRecord
 	startedActionId: Id
 	operation: DeliveryWorkOperation
+}): Action {
+	return finishDeliveryWorkDispatchAction({ ...input, outcome: { type: 'stale-no-op' } })
+}
+
+function finishDeliveryWorkDispatchAction(input: {
+	actionId: Id
+	deliveryId: Id
+	performed: RuntimeRecord
+	startedActionId: Id
+	operation: DeliveryWorkOperation
+	outcome: Extract<Action['result'], { type: 'finish-delivery-work-operation' }>['outcome']
 }): Action {
 	return {
 		id: input.actionId,
@@ -50,7 +71,7 @@ export function staleNoopDeliveryWorkDispatchAction(input: {
 			type: 'finish-delivery-work-operation',
 			startedActionId: input.startedActionId,
 			operation: input.operation,
-			outcome: { type: 'stale-no-op' },
+			outcome: input.outcome,
 		},
 	}
 }
@@ -60,7 +81,6 @@ export function deliveryOperationFromState(state: DeliveryWorkState): DeliveryWo
 		case 'needs-artifact-creation':
 		case 'needs-artifact-validation':
 		case 'needs-review-surface':
-		case 'awaiting-review':
 			return { scope: 'delivery', state: state.type }
 		case 'closed':
 		case 'unqueued':
@@ -72,6 +92,7 @@ export function deliveryOperationFromState(state: DeliveryWorkState): DeliveryWo
 		case 'delivery-operation-failed':
 		case 'delivery-validation-failed':
 		case 'delivery-review-failed':
+		case 'awaiting-review':
 		case 'ready-to-ship':
 			return null
 		default:
@@ -88,7 +109,7 @@ export function sliceOperationFromState(sliceId: Id, state: SliceWorkState): Del
 		case 'needs-review-surface':
 			return { scope: 'slice', sliceId, state: state.type, detail: { type: 'artifact', artifactId: state.sliceArtifactId } }
 		case 'needs-artifact-creation':
-			return { scope: 'slice', sliceId, state: state.type }
+			return { scope: 'slice', sliceId, state: state.type, detail: null }
 		case 'executable':
 			return state.mode === 'correction'
 				? {
@@ -97,7 +118,7 @@ export function sliceOperationFromState(sliceId: Id, state: SliceWorkState): Del
 						state: state.type,
 						detail: { type: 'correction-root', actionId: state.failureChain.rootActionId },
 					}
-				: { scope: 'slice', sliceId, state: state.type }
+				: { scope: 'slice', sliceId, state: state.type, detail: null }
 		case 'complete':
 		case 'operation-running':
 		case 'operation-queued':

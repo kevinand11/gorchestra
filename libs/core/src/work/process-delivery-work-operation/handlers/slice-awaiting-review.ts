@@ -1,11 +1,11 @@
 import { noObservedChange } from './result'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
-import type { ScheduleDeliveryWorkHandlerResult } from '../types'
+import type { DeliveryWorkHandlerResult } from '../../delivery-work/types'
 
 export function handleSliceAwaitingReview(
 	slice: Slice,
 	state: Extract<SliceWorkState, { type: 'awaiting-review' }>,
-): ScheduleDeliveryWorkHandlerResult {
+): DeliveryWorkHandlerResult {
 	return noObservedChange({ type: 'slice-review-surface', sliceId: slice.id, reviewSurfaceId: state.reviewSurfaceId })
 }
 

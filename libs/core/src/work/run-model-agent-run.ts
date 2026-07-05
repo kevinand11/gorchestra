@@ -11,12 +11,12 @@ import type {
 import type { CoreRuntime } from '../runtime'
 import type { WorkContext } from './types'
 import { runModelAgentRun } from '../runtime/agent-runs/model-loop'
-import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
+import type { Result as CoreResult } from '../utils/types'
 import { buildWorkHandler } from './utils/handler'
 
 const inputPipe = v.object({ agentRunId: idPipe })
 type ParsedInput = PipeOutput<typeof inputPipe>
-export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
+export type Input = PipeInput<typeof inputPipe>
 export type Result = void
 export type Error =
 	| InvalidInputError

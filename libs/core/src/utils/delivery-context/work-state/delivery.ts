@@ -354,7 +354,7 @@ if (import.meta.vitest) {
 			seedAction(tx, {
 				id: 'delivery-operation-failed',
 				at: '2026-06-10T12:04:00.000Z',
-				result: { type: 'record-delivery-external-operation-failure', evidence: externalFailure },
+				result: { type: 'record-delivery-external-operation-failure', evidence: externalFailure, dispatchStartedActionId: null },
 			})
 
 			expect(deliveryState(tx, 'delivery-1')).toEqual({
@@ -430,7 +430,7 @@ if (import.meta.vitest) {
 			seedAction(tx, {
 				id: 'observe-integration',
 				at: '2026-06-10T12:04:00.000Z',
-				result: { type: 'observe-delivery-artifact-integration', evidence: externalPassed },
+				result: { type: 'observe-delivery-artifact-integration', evidence: externalPassed, dispatchStartedActionId: null },
 			})
 
 			expect(deliveryState(tx, 'delivery-1')).toEqual({
@@ -455,12 +455,17 @@ if (import.meta.vitest) {
 		seedAction(core.tx, {
 			id: 'promote-slice',
 			at: '2026-06-10T12:01:00.000Z',
-			result: { type: 'promote-slice-artifact', sliceId: 'slice-1', evidence: slicePromotion },
+			result: { type: 'promote-slice-artifact', sliceId: 'slice-1', evidence: slicePromotion, dispatchStartedActionId: null },
 		})
 		seedAction(core.tx, {
 			id: 'slice-complete',
 			at: '2026-06-10T12:02:00.000Z',
-			result: { type: 'validate-slice-delivery-artifact', sliceId: 'slice-1', evidence: sliceValidation },
+			result: {
+				type: 'validate-slice-delivery-artifact',
+				sliceId: 'slice-1',
+				evidence: sliceValidation,
+				dispatchStartedActionId: null,
+			},
 		})
 
 		return core
@@ -486,7 +491,11 @@ if (import.meta.vitest) {
 		seedAction(tx, {
 			id,
 			at: '2026-06-10T12:03:00.000Z',
-			result: { type: 'validate-delivery-artifact', evidence: passed ? passedValidation : failedValidation },
+			result: {
+				type: 'validate-delivery-artifact',
+				evidence: passed ? passedValidation : failedValidation,
+				dispatchStartedActionId: null,
+			},
 		})
 	}
 

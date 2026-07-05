@@ -10,7 +10,13 @@ import type { CoreStorage } from '../../../services'
 import { withTransaction } from '../../../storage/helpers'
 import { buildDeliveryContext, getDeliveryState, getSliceState, resolveDeliveryWork } from '../../../utils/delivery-context'
 import type { Result as CoreResult } from '../../../utils/types'
-import type { DeliveryWorkResolution, Error, ResolvedDeliveryHandlerContext, Result, ScheduleDeliveryWorkHandlerResult } from '../types'
+import type {
+	DeliveryWorkResolution,
+	Error,
+	ResolvedDeliveryHandlerContext,
+	Result,
+	DeliveryWorkHandlerResult,
+} from '../../delivery-work/types'
 
 interface SliceStateCandidate {
 	slice: Slice
@@ -68,7 +74,7 @@ export async function handleDeliverySlicesIncomplete(
 		ResolvedDeliveryHandlerContext,
 		'services' | 'storage' | 'values' | 'deliveryContext' | 'workResolution' | 'repositoryAccessSecret'
 	>,
-): Promise<ScheduleDeliveryWorkHandlerResult> {
+): Promise<DeliveryWorkHandlerResult> {
 	const pool: SliceWorkerPool = {
 		runtime,
 		deliveryId: context.deliveryContext.delivery.id,
@@ -83,7 +89,7 @@ export async function handleDeliverySlicesIncomplete(
 	return combineSliceWorkerResults(results)
 }
 
-async function runSliceWorkerSlot(pool: SliceWorkerPool): Promise<ScheduleDeliveryWorkHandlerResult> {
+async function runSliceWorkerSlot(pool: SliceWorkerPool): Promise<DeliveryWorkHandlerResult> {
 	let processedCount = 0
 	const failures: Result['failures'] = []
 
@@ -238,7 +244,7 @@ function executableKeyDetail(state: Extract<ActionableSliceWorkState, { type: 'e
 	return state.mode === 'correction' ? `correction:${state.failureChain.rootActionId}` : 'current'
 }
 
-async function processSliceSelection(pool: SliceWorkerPool, selection: SliceWorkSelection): Promise<ScheduleDeliveryWorkHandlerResult> {
+async function processSliceSelection(pool: SliceWorkerPool, selection: SliceWorkSelection): Promise<DeliveryWorkHandlerResult> {
 	if (selection.state.type === 'needs-artifact-creation') {
 		return handleSliceNeedsArtifactCreation(pool.runtime, selectionContext(pool, selection), selection.slice, selection.state)
 	}
@@ -267,18 +273,18 @@ function selectionContext(
 	}
 }
 
-function combineSliceWorkerResults(results: ScheduleDeliveryWorkHandlerResult[]): ScheduleDeliveryWorkHandlerResult {
+function combineSliceWorkerResults(results: DeliveryWorkHandlerResult[]): DeliveryWorkHandlerResult {
 	const failed = results.find((result) => !result.ok)
 	if (failed !== undefined) return failed
 
 	return completedSliceWorkerResult(successfulSliceWorkerResults(results))
 }
 
-function successfulSliceWorkerResults(results: ScheduleDeliveryWorkHandlerResult[]): Result[] {
+function successfulSliceWorkerResults(results: DeliveryWorkHandlerResult[]): Result[] {
 	return results.flatMap((result) => (result.ok ? [result.value] : []))
 }
 
-function completedSliceWorkerResult(results: Result[]): ScheduleDeliveryWorkHandlerResult {
+function completedSliceWorkerResult(results: Result[]): DeliveryWorkHandlerResult {
 	const processedCount = results.reduce((total, result) => total + result.processedCount, 0)
 	const failures = results.flatMap((result) => result.failures)
 	return processedCount === 0 && failures.length === 0 ? noEligibleWork() : { ok: true, value: { processedCount, failures } }
@@ -437,6 +443,7 @@ if (import.meta.vitest) {
 					passed: true,
 					summary: 'Merged.',
 				},
+				dispatchStartedActionId: null,
 			},
 		})
 	}

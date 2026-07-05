@@ -1,11 +1,11 @@
-import type { Slice, SliceWorkState } from '../../../domain/slice'
-import type { DeliveryHandlerContext, DeliveryWorkResolution, ScheduleDeliveryWorkHandlerResult } from '../types'
 import { noEligibleWork } from './result'
 import { handleSliceAwaitingReview } from './slice-awaiting-review'
 import { handleSliceExecutable } from './slice-executable'
 import { handleSliceNeedsArtifactValidation } from './slice-needs-artifact-validation'
 import { handleSliceNeedsDeliveryValidation } from './slice-needs-delivery-validation'
 import { handleSliceOperationFailed } from './slice-operation-failed'
+import type { Slice, SliceWorkState } from '../../../domain/slice'
+import type { DeliveryHandlerContext, DeliveryWorkResolution, DeliveryWorkHandlerResult } from '../../delivery-work/types'
 
 type NoWorkSliceState = Extract<
 	SliceWorkState,
@@ -41,7 +41,7 @@ export function handleSliceWorkState(
 	slice: Slice,
 	state: SliceWorkState,
 	resolution: DeliveryWorkResolution,
-): Promise<ScheduleDeliveryWorkHandlerResult> | ScheduleDeliveryWorkHandlerResult {
+): Promise<DeliveryWorkHandlerResult> | DeliveryWorkHandlerResult {
 	if (isNoWorkSliceState(state)) return noEligibleWork()
 	if (isValidationSliceState(state)) return handleSliceValidationWorkState(context, slice, state)
 	if (isProviderBackedSliceState(state)) return providerBackedSliceStateInvariant()
@@ -53,7 +53,7 @@ function handleSliceValidationWorkState(
 	context: DeliveryHandlerContext,
 	slice: Slice,
 	state: ValidationSliceState,
-): Promise<ScheduleDeliveryWorkHandlerResult> {
+): Promise<DeliveryWorkHandlerResult> {
 	switch (state.type) {
 		case 'needs-delivery-validation':
 			return handleSliceNeedsDeliveryValidation(context, slice, state)
@@ -69,7 +69,7 @@ function handleRemainingSliceWorkState(
 	slice: Slice,
 	state: RemainingSliceState,
 	resolution: DeliveryWorkResolution,
-): Promise<ScheduleDeliveryWorkHandlerResult> | ScheduleDeliveryWorkHandlerResult {
+): Promise<DeliveryWorkHandlerResult> | DeliveryWorkHandlerResult {
 	switch (state.type) {
 		case 'awaiting-review':
 			return handleSliceAwaitingReview(slice, state)
@@ -94,7 +94,7 @@ function isProviderBackedSliceState(state: SliceWorkState): state is ProviderBac
 	return state.type === 'needs-review-surface'
 }
 
-function providerBackedSliceStateInvariant(): ScheduleDeliveryWorkHandlerResult {
+function providerBackedSliceStateInvariant(): DeliveryWorkHandlerResult {
 	return {
 		ok: false,
 		error: {

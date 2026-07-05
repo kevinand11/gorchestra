@@ -1,16 +1,17 @@
-import type { Slice, SliceWorkState } from '../../../domain/slice'
-import type { DeliveryHandlerContext, ScheduleDeliveryWorkHandlerResult } from '../types'
 import { noConfiguredValidationEvidence, writeValidationAction } from './artifact-validation-recording'
+import type { Slice, SliceWorkState } from '../../../domain/slice'
+import type { DeliveryHandlerContext, DeliveryWorkHandlerResult } from '../../delivery-work/types'
 
 export function handleSliceNeedsArtifactValidation(
 	context: DeliveryHandlerContext,
 	slice: Slice,
 	_state: Extract<SliceWorkState, { type: 'needs-artifact-validation' }>,
-): Promise<ScheduleDeliveryWorkHandlerResult> {
+): Promise<DeliveryWorkHandlerResult> {
 	return writeValidationAction(context, {
 		type: 'validate-slice-artifact',
 		sliceId: slice.id,
 		evidence: noConfiguredValidationEvidence('slice-branch-validation', 'No Slice Artifact validation is configured.'),
+		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
 	})
 }
 
@@ -41,6 +42,7 @@ if (import.meta.vitest) {
 					type: 'validate-slice-artifact',
 					sliceId: 'slice-1',
 					evidence: validationEvidence('slice-branch-validation', true, 'No Slice Artifact validation is configured.'),
+					dispatchStartedActionId: null,
 				},
 			})
 		})

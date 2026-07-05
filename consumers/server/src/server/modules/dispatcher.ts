@@ -185,7 +185,15 @@ export function createServerDispatcher(input: CreateServerDispatcherInput) {
 					return
 				}
 				case 'delivery-work-operation': {
-					globalThis.console.error('Delivery work operation dispatch is not implemented yet', item.request)
+					const result = await opened.value.work.processDeliveryWorkOperation(
+						{
+							deliveryId: item.request.deliveryId,
+							queuedActionId: item.request.queuedActionId,
+							operation: item.request.operation,
+						},
+						{ correlationId: null },
+					)
+					if (!result.ok) globalThis.console.error('Delivery work operation failed', result.error)
 					return
 				}
 				default:
@@ -504,7 +512,7 @@ if (import.meta.vitest) {
 				type: 'delivery-work-operation',
 				deliveryId,
 				queuedActionId,
-				operation: { scope: 'slice', sliceId, state: 'needs-artifact-creation' },
+				operation: { scope: 'slice', sliceId, state: 'needs-artifact-creation', detail: null },
 				coordinationClaims: [
 					{ scope: [{ type: 'delivery', id: deliveryId }, { type: 'slice-pool' }], mode: { type: 'shared-capacity', capacity } },
 					{

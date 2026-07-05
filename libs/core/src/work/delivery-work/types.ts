@@ -14,16 +14,16 @@ import type { Result as CoreResult } from '../../utils/types'
 
 export interface Result {
 	processedCount: number
-	failures: ScheduleDeliveryWorkFailure[]
+	failures: DeliveryWorkFailure[]
 }
 
-export interface ScheduleDeliveryWorkFailure {
+export interface DeliveryWorkFailure {
 	scope: { type: 'delivery' } | { type: 'slice'; sliceId: Id }
-	operation: ScheduleDeliveryWorkFailureOperation
+	operation: DeliveryWorkFailureOperation
 	summary: string
 }
 
-export type ScheduleDeliveryWorkFailureOperation =
+export type DeliveryWorkFailureOperation =
 	| 'preflight'
 	| 'create-artifact'
 	| 'agent-run'
@@ -31,7 +31,7 @@ export type ScheduleDeliveryWorkFailureOperation =
 	| 'validate-delivery-artifact'
 	| 'review-surface'
 
-export type ScheduleDeliveryWorkNoObservedChangeTarget =
+export type DeliveryWorkNoObservedChangeTarget =
 	| { type: 'slice-review-surface'; sliceId: Id; reviewSurfaceId: Id }
 	| { type: 'delivery-review-surface'; reviewSurfaceId: Id }
 
@@ -43,15 +43,16 @@ export type Error =
 	| InvariantViolationError
 	| NotImplementedError
 
-export interface ScheduleDeliveryWorkContext {
+export interface DeliveryWorkContext {
 	services: CoreServices
 	storage: CoreStorage
 	values: CoreRuntimeValues
 	tx?: unknown
 }
 
-export interface DeliveryHandlerContext extends ScheduleDeliveryWorkContext {
+export interface DeliveryHandlerContext extends DeliveryWorkContext {
 	deliveryContext: DeliveryContext
+	dispatchStartedActionId?: Id
 }
 
 export interface ResolvedDeliveryHandlerContext extends DeliveryHandlerContext {
@@ -61,9 +62,9 @@ export interface ResolvedDeliveryHandlerContext extends DeliveryHandlerContext {
 
 export type { DeliveryWorkResolution }
 
-export type ScheduleDeliveryWorkHandlerResult = CoreResult<Result, Exclude<Error, InvalidInputError>>
+export type DeliveryWorkHandlerResult = CoreResult<Result, Exclude<Error, InvalidInputError>>
 
-export type ScheduleDeliveryWorkStorageError =
+export type DeliveryWorkStorageError =
 	| InvalidCoreServiceOutputError
 	| ResourceNotFoundError
 	| StorageOperationFailedError
