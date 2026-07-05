@@ -100,6 +100,8 @@ function openSelectedPortfolioCore(
 	const openedCore = openCore(
 		createCoreServices(storage, {
 			secretEncryptionKey: context.security.secretEncryptionKey,
+			sandboxRootDir: context.corePortfolioStorage.dataDir,
+			coreStorageNamespace,
 			dispatcher: {
 				preflight: () => context.dispatcher.preflight(),
 				request: (request) => context.dispatcher.request({ coreStorageNamespace, request }),

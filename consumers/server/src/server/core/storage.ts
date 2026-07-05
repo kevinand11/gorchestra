@@ -83,7 +83,12 @@ export async function initializeCorePortfolioStorage(
 	const coreStorage = await openCorePortfolioStorage(input)
 	try {
 		const opened = openCore(
-			createCoreServices(coreStorage.storage, { secretEncryptionKey: input.secretEncryptionKey, dispatcher: noopCoreDispatcher() }),
+			createCoreServices(coreStorage.storage, {
+				secretEncryptionKey: input.secretEncryptionKey,
+				sandboxRootDir: input.config.dataDir,
+				coreStorageNamespace: input.coreStorageNamespace,
+				dispatcher: noopCoreDispatcher(),
+			}),
 		)
 		if (!opened.ok) throw new Error(`Core failed to open: ${opened.error.type}`)
 

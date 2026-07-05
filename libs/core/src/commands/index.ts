@@ -1,12 +1,11 @@
 import { createAbandonDeliveryCommand } from './abandon-delivery'
 import { createAcceptPlanOutputCommand } from './accept-plan-output'
 import { createAcceptRevisionOutputCommand } from './accept-revision-output'
+import { createAddAgentRunRuntimeRequirementOverrideCommand } from './add-agent-run-runtime-requirement-override'
 import { createArchiveAgentRunProfileCommand } from './archive-agent-run-profile'
 import { createArchiveModelCommand } from './archive-model'
 import { createArchiveModelProviderCommand } from './archive-model-provider'
 import { createArchiveSecretCommand } from './archive-secret'
-import { createArchiveSecretBindingCommand } from './archive-secret-binding'
-import { createBindSecretCommand } from './bind-secret'
 import { createClosePlanCommand } from './close-plan'
 import { createCloseRevisionGateCommand } from './close-revision-gate'
 import { createCompactAgentRunContextCommand } from './compact-agent-run-context'
@@ -37,7 +36,6 @@ import { createUnarchiveAgentRunProfileCommand } from './unarchive-agent-run-pro
 import { createUnarchiveModelCommand } from './unarchive-model'
 import { createUnarchiveModelProviderCommand } from './unarchive-model-provider'
 import { createUnarchiveSecretCommand } from './unarchive-secret'
-import { createUnarchiveSecretBindingCommand } from './unarchive-secret-binding'
 import { createUpdateAgentRunProfileCommand } from './update-agent-run-profile'
 import { createUpdateModelCommand } from './update-model'
 import { createUpdateModelProviderCommand } from './update-model-provider'
@@ -47,12 +45,11 @@ import type { CoreRuntime } from '../runtime'
 export type * as AbandonDelivery from './abandon-delivery'
 export type * as AcceptPlanOutput from './accept-plan-output'
 export type * as AcceptRevisionOutput from './accept-revision-output'
+export type * as AddAgentRunRuntimeRequirementOverride from './add-agent-run-runtime-requirement-override'
 export type * as ArchiveAgentRunProfile from './archive-agent-run-profile'
 export type * as ArchiveModel from './archive-model'
 export type * as ArchiveModelProvider from './archive-model-provider'
 export type * as ArchiveSecret from './archive-secret'
-export type * as ArchiveSecretBinding from './archive-secret-binding'
-export type * as BindSecret from './bind-secret'
 export type * as ClosePlan from './close-plan'
 export type * as CloseRevisionGate from './close-revision-gate'
 export type * as CompactAgentRunContext from './compact-agent-run-context'
@@ -83,7 +80,6 @@ export type * as UnarchiveAgentRunProfile from './unarchive-agent-run-profile'
 export type * as UnarchiveModel from './unarchive-model'
 export type * as UnarchiveModelProvider from './unarchive-model-provider'
 export type * as UnarchiveSecret from './unarchive-secret'
-export type * as UnarchiveSecretBinding from './unarchive-secret-binding'
 export type * as UpdateAgentRunProfile from './update-agent-run-profile'
 export type * as UpdateModel from './update-model'
 export type * as UpdateModelProvider from './update-model-provider'
@@ -109,6 +105,7 @@ export function createCoreCommands(runtime: CoreRuntime) {
 		createMemoryRevision: createCreateMemoryRevisionCommand(runtime),
 		createPlan: createCreatePlanCommand(runtime),
 		sendAgentRunMessage: createSendAgentRunMessageCommand(runtime),
+		addAgentRunRuntimeRequirementOverride: createAddAgentRunRuntimeRequirementOverrideCommand(runtime),
 		closePlan: createClosePlanCommand(runtime),
 		interruptAgentRun: createInterruptAgentRunCommand(runtime),
 		setAgentRunModelUseOverride: createSetAgentRunModelUseOverrideCommand(runtime),
@@ -132,9 +129,6 @@ export function createCoreCommands(runtime: CoreRuntime) {
 		replaceSecret: createReplaceSecretCommand(runtime),
 		archiveSecret: createArchiveSecretCommand(runtime),
 		unarchiveSecret: createUnarchiveSecretCommand(runtime),
-		bindSecret: createBindSecretCommand(runtime),
-		archiveSecretBinding: createArchiveSecretBindingCommand(runtime),
-		unarchiveSecretBinding: createUnarchiveSecretBindingCommand(runtime),
 	}
 }
 
@@ -167,6 +161,7 @@ if (import.meta.vitest) {
 				'createMemoryRevision',
 				'createPlan',
 				'sendAgentRunMessage',
+				'addAgentRunRuntimeRequirementOverride',
 				'closePlan',
 				'interruptAgentRun',
 				'setAgentRunModelUseOverride',
@@ -190,9 +185,6 @@ if (import.meta.vitest) {
 				'replaceSecret',
 				'archiveSecret',
 				'unarchiveSecret',
-				'bindSecret',
-				'archiveSecretBinding',
-				'unarchiveSecretBinding',
 			]
 
 			expect(Object.keys(commands).sort()).toEqual([...commandNames].sort())

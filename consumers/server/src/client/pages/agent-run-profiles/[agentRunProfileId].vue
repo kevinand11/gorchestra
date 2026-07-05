@@ -7,7 +7,9 @@
 					<h1 class="m-0 mt-1 truncate text-sz-section font-semibold tracking-[-0.01em]">
 						{{ agentRunProfile?.name ?? 'Agent Run Profile' }}
 					</h1>
-					<p class="m-0 mt-1 text-sz-helper text-dim">Edit the Model Use Config that future Agent Runs snapshot.</p>
+					<p class="m-0 mt-1 text-sz-helper text-dim">
+						Edit the Model Use Config and runtime setup that future Agent Runs snapshot.
+					</p>
 				</div>
 				<div v-if="agentRunProfile" class="flex flex-wrap items-center gap-2">
 					<UiButton
@@ -113,6 +115,13 @@
 					</div>
 					<p v-if="isRefreshingAgentRunProfileReferences" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">
 						Refreshing references…
+					</p>
+				</section>
+				<section class="border-t border-dimmer px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">Runtime setup</h2>
+					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+						Runtime Requirement changes affect future Agent Runs only. Existing Agent Runs keep their profile snapshot and may
+						receive runtime requirement overrides directly.
 					</p>
 				</section>
 				<section class="px-3 py-3">

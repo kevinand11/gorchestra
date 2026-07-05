@@ -1,15 +1,18 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { isArchived } from '../commands/utils/storage'
+import type { AgentRunProfile } from '../domain/agent-run-profile'
+import type { AgentRunRuntimeRequirement } from '../domain/agent-run-runtime'
 import { idPipe, type Id } from '../domain/commons'
 import { modelProviderProtocolForSource, type ModelProvider, type ModelProviderAccessValue } from '../domain/model-provider'
 import type { Repository } from '../domain/repository'
-import { secretReferencePipe, type SecretBinding, type SecretReference } from '../domain/secret'
+import { secretReferencePipe, type SecretReference } from '../domain/secret'
 export type {
+	AgentRunProfileEnvironmentSecretReference,
+	AgentRunProfileRunCommandSecretReference,
 	ModelProviderAuthSecretReference,
 	ModelProviderHeaderSecretReference,
 	RepositoryAccessSecretReference,
-	SecretBindingSecretReference,
 	SecretReference,
 } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
@@ -44,7 +47,7 @@ export async function listSecretReferencesBySecretId(
 ): Promise<CoreResult<Map<Id, SecretReference[]>, StorageBoundaryError>> {
 	if (secretIds.length === 0) return { ok: true, value: emptySecretReferencesBySecretId(secretIds) }
 
-	const matches = await collectSecretReferenceMatches(storage, secretIds, new Set(secretIds))
+	const matches = await collectSecretReferenceMatches(storage, new Set(secretIds))
 	return matches.ok ? { ok: true, value: secretReferencesBySecretId(secretIds, matches.value) } : matches
 }
 
@@ -52,18 +55,17 @@ type SecretReferenceMatch = { secretId: Id; reference: SecretReference }
 
 async function collectSecretReferenceMatches(
 	storage: CoreStorage,
-	secretIds: readonly Id[],
 	secretIdSet: Set<Id>,
 ): Promise<CoreResult<SecretReferenceMatch[], StorageBoundaryError>> {
 	const repositoryReferences = await listRepositorySecretReferences(storage, secretIdSet)
 	if (!repositoryReferences.ok) return repositoryReferences
 
-	const secretBindingReferences = await listSecretBindingSecretReferences(storage, secretIds, secretIdSet)
-	if (!secretBindingReferences.ok) return secretBindingReferences
+	const agentRunProfileReferences = await listAgentRunProfileSecretReferences(storage, secretIdSet)
+	if (!agentRunProfileReferences.ok) return agentRunProfileReferences
 
 	const modelProviderReferences = await listModelProviderSecretReferences(storage, secretIdSet)
 	return modelProviderReferences.ok
-		? { ok: true, value: [...repositoryReferences.value, ...secretBindingReferences.value, ...modelProviderReferences.value] }
+		? { ok: true, value: [...repositoryReferences.value, ...agentRunProfileReferences.value, ...modelProviderReferences.value] }
 		: modelProviderReferences
 }
 
@@ -110,41 +112,66 @@ function repositorySecretReference(repository: Repository, secretIds: Set<Id>): 
 	}
 }
 
-async function listSecretBindingSecretReferences(
+async function listAgentRunProfileSecretReferences(
 	storage: CoreStorage,
-	secretIds: readonly Id[],
-	secretIdSet: Set<Id>,
+	secretIds: Set<Id>,
 ): Promise<CoreResult<SecretReferenceMatch[], StorageBoundaryError>> {
-	const bindings = await listSecretBindingsForSecretIds(storage, secretIds)
-	if (!bindings.ok) return bindings
+	const profiles = await listRecords('agent-run-profile', storage)
+	if (!profiles.ok) return profiles
 
-	return { ok: true, value: bindings.value.flatMap((binding) => secretBindingSecretReference(binding, secretIdSet)) }
+	return { ok: true, value: profiles.value.flatMap((profile) => agentRunProfileSecretReferences(profile, secretIds)) }
 }
 
-function listSecretBindingsForSecretIds(
-	storage: CoreStorage,
-	secretIds: readonly Id[],
-): Promise<CoreResult<SecretBinding[], StorageBoundaryError>> {
-	return secretIds.length === 1
-		? listRecords('secret-binding', storage, { where: (filter, fields) => filter.eq(fields.secretId, secretIds[0]!) })
-		: listRecords('secret-binding', storage)
+function agentRunProfileSecretReferences(profile: AgentRunProfile, secretIds: Set<Id>): SecretReferenceMatch[] {
+	const active = !isArchived(profile.archivePeriods)
+	return profile.runtimeRequirements.flatMap((requirement) =>
+		agentRunProfileRequirementSecretReferences(profile, requirement, secretIds, active),
+	)
 }
 
-function secretBindingSecretReference(binding: SecretBinding, secretIds: Set<Id>): SecretReferenceMatch[] {
-	return secretIds.has(binding.secretId)
-		? [
-				{
-					secretId: binding.secretId,
-					reference: {
-						type: 'secret-binding',
-						active: !isArchived(binding.archivePeriods),
-						secretBindingId: binding.id,
-						scope: binding.scope,
-						envName: binding.envName,
-					},
-				},
-			]
-		: []
+function agentRunProfileRequirementSecretReferences(
+	profile: AgentRunProfile,
+	requirement: AgentRunRuntimeRequirement,
+	secretIds: Set<Id>,
+	active: boolean,
+): SecretReferenceMatch[] {
+	switch (requirement.type) {
+		case 'environment-secret':
+			return secretIds.has(requirement.secretId)
+				? [
+						{
+							secretId: requirement.secretId,
+							reference: {
+								type: 'agent-run-profile-environment-secret',
+								active,
+								agentRunProfileId: profile.id,
+								name: profile.name,
+								envName: requirement.envName,
+							},
+						},
+					]
+				: []
+		case 'run-command':
+			return Object.entries(requirement.commandSecretEnv).flatMap(([envName, secretId]) =>
+				secretIds.has(secretId)
+					? [
+							{
+								secretId,
+								reference: {
+									type: 'agent-run-profile-run-command-secret',
+									active,
+									agentRunProfileId: profile.id,
+									name: profile.name,
+									label: requirement.label,
+									envName,
+								},
+							},
+						]
+					: [],
+			)
+		default:
+			throw new Error(`Unexpected Agent Run Runtime Requirement type: ${String(requirement satisfies never)}`)
+	}
 }
 
 async function listModelProviderSecretReferences(
@@ -235,9 +262,10 @@ function firstNonZero(values: number[]): number {
 
 const referenceTypeOrder: Record<SecretReference['type'], number> = {
 	'repository-access': 0,
-	'model-provider-auth': 1,
-	'model-provider-header': 2,
-	'secret-binding': 3,
+	'agent-run-profile-environment-secret': 1,
+	'agent-run-profile-run-command-secret': 2,
+	'model-provider-auth': 3,
+	'model-provider-header': 4,
 }
 
 function referenceActiveRank(reference: Pick<SecretReference, 'active'>): number {
@@ -248,12 +276,14 @@ function referenceLabel(reference: SecretReference): string {
 	switch (reference.type) {
 		case 'repository-access':
 			return `${reference.owner}/${reference.name}`
+		case 'agent-run-profile-environment-secret':
+			return `${reference.name}/${reference.envName}`
+		case 'agent-run-profile-run-command-secret':
+			return `${reference.name}/${reference.label}/${reference.envName}`
 		case 'model-provider-auth':
 			return reference.name
 		case 'model-provider-header':
 			return `${reference.name}/${reference.headerName}`
-		case 'secret-binding':
-			return reference.envName
 		default:
 			throw new Error(`Unexpected Secret Reference type: ${String(reference satisfies never)}`)
 	}
@@ -263,12 +293,14 @@ function referenceId(reference: SecretReference): string {
 	switch (reference.type) {
 		case 'repository-access':
 			return reference.repositoryId
+		case 'agent-run-profile-environment-secret':
+			return reference.agentRunProfileId
+		case 'agent-run-profile-run-command-secret':
+			return reference.agentRunProfileId
 		case 'model-provider-auth':
 			return reference.modelProviderId
 		case 'model-provider-header':
 			return reference.modelProviderId
-		case 'secret-binding':
-			return reference.secretBindingId
 		default:
 			throw new Error(`Unexpected Secret Reference type: ${String(reference satisfies never)}`)
 	}
@@ -276,7 +308,7 @@ function referenceId(reference: SecretReference): string {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreServices, seedSecret, stamp } = await import('../utils/test-helpers')
+	const { createTestCoreServices, seedAgentRunProfile, seedSecret, stamp } = await import('../utils/test-helpers')
 
 	describe('listSecretReferences query', () => {
 		it('validates input before reading storage', async () => {
@@ -323,6 +355,21 @@ if (import.meta.vitest) {
 						name: 'Repo',
 					},
 					{
+						type: 'agent-run-profile-environment-secret',
+						active: false,
+						agentRunProfileId: 'agent-run-profile-1',
+						name: 'Agent Run Profile',
+						envName: 'NPM_TOKEN',
+					},
+					{
+						type: 'agent-run-profile-run-command-secret',
+						active: false,
+						agentRunProfileId: 'agent-run-profile-1',
+						name: 'Agent Run Profile',
+						label: 'Install packages',
+						envName: 'NPM_TOKEN',
+					},
+					{
 						type: 'model-provider-auth',
 						active: false,
 						modelProviderId: 'model-provider-1',
@@ -337,13 +384,6 @@ if (import.meta.vitest) {
 						protocol: 'anthropic-messages',
 						headerName: 'X-Team',
 					},
-					{
-						type: 'secret-binding',
-						active: false,
-						secretBindingId: 'binding-1',
-						scope: { type: 'project', projectId: 'missing-project' },
-						envName: 'GITHUB_TOKEN',
-					},
 				],
 			})
 		})
@@ -351,21 +391,12 @@ if (import.meta.vitest) {
 		it('orders active references before inactive references within a reference type', async () => {
 			const options = createTestCoreServices()
 			seedSecret(options.tx, 'secret-1')
-			options.tx.secretBindings.records.set('binding-active-z', {
-				id: 'binding-active-z',
-				secretId: 'secret-1',
-				scope: { type: 'portfolio' },
-				envName: 'Z_ACTIVE',
-				created: stamp,
-				archivePeriods: [],
+			seedAgentRunProfile(options.tx, 'profile-active-z', 'model-1', {
+				runtimeRequirements: [{ type: 'environment-secret', envName: 'Z_ACTIVE', secretId: 'secret-1' }],
 			})
-			options.tx.secretBindings.records.set('binding-inactive-a', {
-				id: 'binding-inactive-a',
-				secretId: 'secret-1',
-				scope: { type: 'portfolio' },
-				envName: 'A_INACTIVE',
-				created: stamp,
-				archivePeriods: [{ archived: stamp, unarchived: null }],
+			seedAgentRunProfile(options.tx, 'profile-inactive-a', 'model-1', {
+				archived: true,
+				runtimeRequirements: [{ type: 'environment-secret', envName: 'A_INACTIVE', secretId: 'secret-1' }],
 			})
 			const query = createListSecretReferencesQuery(options)
 
@@ -375,17 +406,17 @@ if (import.meta.vitest) {
 				ok: true,
 				value: [
 					{
-						type: 'secret-binding',
+						type: 'agent-run-profile-environment-secret',
 						active: true,
-						secretBindingId: 'binding-active-z',
-						scope: { type: 'portfolio' },
+						agentRunProfileId: 'profile-active-z',
+						name: 'Agent Run Profile',
 						envName: 'Z_ACTIVE',
 					},
 					{
-						type: 'secret-binding',
+						type: 'agent-run-profile-environment-secret',
 						active: false,
-						secretBindingId: 'binding-inactive-a',
-						scope: { type: 'portfolio' },
+						agentRunProfileId: 'profile-inactive-a',
+						name: 'Agent Run Profile',
 						envName: 'A_INACTIVE',
 					},
 				],
@@ -420,13 +451,17 @@ if (import.meta.vitest) {
 			config: { provider: 'github', owner: 'Octo', name: 'Other', secretId: 'secret-2' },
 			created: stamp,
 		})
-		options.tx.secretBindings.records.set('binding-1', {
-			id: 'binding-1',
-			secretId: 'secret-1',
-			scope: { type: 'project', projectId: 'missing-project' },
-			envName: 'GITHUB_TOKEN',
-			created: stamp,
-			archivePeriods: [{ archived: stamp, unarchived: null }],
+		seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1', {
+			archived: true,
+			runtimeRequirements: [
+				{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: 'secret-1' },
+				{
+					type: 'run-command',
+					label: 'Install packages',
+					command: { executable: 'pnpm', args: ['install'], cwd: '/workspace/repos/repository-1' },
+					commandSecretEnv: { NPM_TOKEN: 'secret-1', OTHER_TOKEN: 'secret-2' },
+				},
+			],
 		})
 		options.tx.modelProviders.records.set('model-provider-1', {
 			id: 'model-provider-1',

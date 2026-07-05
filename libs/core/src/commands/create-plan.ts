@@ -63,7 +63,7 @@ type PlanCreationFacts = {
 
 type DispatchedPlanCreation = {
 	plan: PlanWithPlanningAgentRun
-	dispatchMarker: string
+	dispatchMarkers: string[]
 }
 
 async function handleCreatePlan(
@@ -77,7 +77,7 @@ async function handleCreatePlan(
 	const written = await withTransaction(runtime.services, (storage) => writePlan(runtime, storage, input, values.value))
 	if (!written.ok) return written
 
-	runtime.services.dispatcher.ready(written.value.dispatchMarker)
+	for (const dispatchMarker of written.value.dispatchMarkers) runtime.services.dispatcher.ready(dispatchMarker)
 	return { ok: true, value: written.value.plan }
 }
 
@@ -212,15 +212,26 @@ async function writeInitialPlanningInput(
 	})
 	if (!input.ok) return input
 
-	const dispatchMarker = await acceptDispatchRequest(runtime.services.dispatcher, {
-		type: 'agent-run',
+	const preparationDispatchMarker = await acceptDispatchRequest(runtime.services.dispatcher, {
+		type: 'agent-run-sandbox-preparation',
 		agentRunId: agentRun.id,
 		serializationKey: agentRun.id,
-		reason: { type: 'input-appended', inputEventId: input.value.id },
+		requestedThroughCursor: null,
 	})
-	if (!dispatchMarker.ok) return dispatchMarker
+	if (!preparationDispatchMarker.ok) return preparationDispatchMarker
 
-	return { ok: true, value: { plan: { ...plan, agentRun }, dispatchMarker: dispatchMarker.value } }
+	const modelTurnDispatchMarker = await acceptDispatchRequest(runtime.services.dispatcher, {
+		type: 'agent-run-model-turn',
+		agentRunId: agentRun.id,
+		serializationKey: agentRun.id,
+		inputEventId: input.value.id,
+	})
+	if (!modelTurnDispatchMarker.ok) return modelTurnDispatchMarker
+
+	return {
+		ok: true,
+		value: { plan: { ...plan, agentRun }, dispatchMarkers: [preparationDispatchMarker.value, modelTurnDispatchMarker.value] },
+	}
 }
 
 if (import.meta.vitest) {
@@ -297,13 +308,19 @@ if (import.meta.vitest) {
 			expect(result).toMatchObject({ ok: true })
 			expect(dispatches).toEqual([
 				{
-					type: 'agent-run',
+					type: 'agent-run-sandbox-preparation',
 					agentRunId: 'agent-run-1',
 					serializationKey: 'agent-run-1',
-					reason: { type: 'input-appended', inputEventId: 'agent-run-event-2' },
+					requestedThroughCursor: null,
+				},
+				{
+					type: 'agent-run-model-turn',
+					agentRunId: 'agent-run-1',
+					serializationKey: 'agent-run-1',
+					inputEventId: 'agent-run-event-2',
 				},
 			])
-			expect(readyMarkers).toEqual(['marker-1'])
+			expect(readyMarkers).toEqual(['marker-1', 'marker-1'])
 			expect(options.tx.agentRunEvents.records.get('agent-run-event-2')?.body.type).toBe('input-message')
 		})
 
@@ -347,8 +364,14 @@ if (import.meta.vitest) {
 				agentRunProfileId: 'agent-run-profile-1',
 				name: 'Agent Run Profile',
 				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				runtimeRequirements: [],
 			},
 			modelUseOverride: null,
+			sourceRuntimeRequirements: [],
+			runtimeRequirementOverrides: [],
+			desiredRuntimeRequirements: [],
+			blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
+			sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
 		}

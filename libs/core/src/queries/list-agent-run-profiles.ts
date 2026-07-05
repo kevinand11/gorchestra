@@ -30,6 +30,7 @@ function listedAgentRunProfile(profile: AgentRunProfile): Result[number] {
 		id: profile.id,
 		name: profile.name,
 		modelUse: profile.modelUse,
+		runtimeRequirements: profile.runtimeRequirements,
 		created: profile.created,
 		updated: profile.updated,
 		archived: isArchived(profile.archivePeriods),

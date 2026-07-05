@@ -1,7 +1,8 @@
 import { Repo, type AnySchema, type AnyUpdateOp, type FilterGroup, type OrmAdapterLike, type QueryOptions } from 'equipped/orm'
 import { v, type PipeOutput } from 'valleyed'
 
-import { idPipe, type Id } from './domain/commons'
+import type { AgentRunEventCursor } from './domain/agent-run'
+import { freeFormStringPipe, idPipe, nonEmptyTrimmedStringPipe, nonNegativeIntegerPipe, type Id } from './domain/commons'
 import type { UndefinedToOptional } from './utils/types'
 
 export const coreServicePreflightOutputPipe = v.discriminate((v) => v.ok.toString(), {
@@ -58,11 +59,36 @@ export interface ResolvedSecret {
 export const resolvedSecretValuesPipe = v.record(idPipe, v.string())
 export type ResolvedSecretValues = Record<Id, string>
 
-export type CoreDispatchRequest = {
-	type: 'agent-run'
-	agentRunId: Id
-	serializationKey: string
-	reason: { type: 'input-appended'; inputEventId: Id }
+export type CoreDispatchRequest =
+	| { type: 'agent-run-model-turn'; agentRunId: Id; serializationKey: string; inputEventId: Id }
+	| {
+			type: 'agent-run-sandbox-preparation'
+			agentRunId: Id
+			serializationKey: string
+			requestedThroughCursor: AgentRunEventCursor | null
+	  }
+	| { type: 'agent-run-sandbox-release'; agentRunId: Id; serializationKey: string }
+
+export const sandboxAssignmentOutputPipe = v.object({ ref: nonEmptyTrimmedStringPipe })
+export type SandboxAssignmentOutput = PipeOutput<typeof sandboxAssignmentOutputPipe>
+
+export const sandboxCommandOutputPipe = v.object({
+	exitCode: nonNegativeIntegerPipe,
+	summary: nonEmptyTrimmedStringPipe,
+	stdout: v.nullable(freeFormStringPipe),
+	stderr: v.nullable(freeFormStringPipe),
+})
+export type SandboxCommandOutput = PipeOutput<typeof sandboxCommandOutputPipe>
+
+export const sandboxReleaseOutputPipe = v.object({ summary: nonEmptyTrimmedStringPipe })
+export type SandboxReleaseOutput = PipeOutput<typeof sandboxReleaseOutputPipe>
+
+export interface SandboxRunCommandInput {
+	ref: string
+	label: string
+	command: { executable: string; args: string[]; cwd: string | null }
+	commandSecretEnv: Record<string, string>
+	timeoutMs: number
 }
 
 export type CoreEvent = never
@@ -82,6 +108,9 @@ export type CoreSecretsService = PipeOutput<typeof coreSecretsServicePipe>
 
 export const coreSandboxServicePipe = v.object({
 	preflight: typedFunctionDependencyPipe<PreflightFn>(),
+	assign: typedFunctionDependencyPipe<(input: { agentRunId: Id }) => Promise<unknown>>(),
+	runCommand: typedFunctionDependencyPipe<(input: SandboxRunCommandInput) => Promise<unknown>>(),
+	release: typedFunctionDependencyPipe<(input: { ref: string }) => Promise<unknown>>(),
 })
 export type CoreSandboxService = PipeOutput<typeof coreSandboxServicePipe>
 

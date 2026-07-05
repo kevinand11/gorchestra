@@ -197,6 +197,7 @@ function listedAgentRunProfile(profile: SavedAgentRunProfile): AgentRunProfileDe
 		id: profile.id,
 		name: profile.name,
 		modelUse: profile.modelUse,
+		runtimeRequirements: profile.runtimeRequirements,
 		created: profile.created,
 		updated: profile.updated,
 		archived: profile.archivePeriods.at(-1)?.unarchived === null,

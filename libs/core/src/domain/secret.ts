@@ -18,23 +18,6 @@ export const secretPipe = v.object({
 })
 export type Secret = PipeOutput<typeof secretPipe>
 
-export const secretBindingScopePipe = v.discriminate((value) => value.type, {
-	portfolio: v.object({ type: v.eq('portfolio') }),
-	project: v.object({ type: v.eq('project'), projectId: idPipe }),
-	delivery: v.object({ type: v.eq('delivery'), deliveryId: idPipe }),
-})
-export type SecretBindingScope = PipeOutput<typeof secretBindingScopePipe>
-
-export const secretBindingPipe = v.object({
-	id: idPipe,
-	secretId: idPipe,
-	scope: secretBindingScopePipe,
-	envName: envNamePipe,
-	created: auditStampPipe,
-	archivePeriods: v.array(archivePeriodPipe),
-})
-export type SecretBinding = PipeOutput<typeof secretBindingPipe>
-
 export const repositoryAccessSecretReferencePipe = v.object({
 	type: v.eq('repository-access'),
 	active: v.boolean(),
@@ -46,14 +29,24 @@ export const repositoryAccessSecretReferencePipe = v.object({
 })
 export type RepositoryAccessSecretReference = PipeOutput<typeof repositoryAccessSecretReferencePipe>
 
-export const secretBindingSecretReferencePipe = v.object({
-	type: v.eq('secret-binding'),
+export const agentRunProfileEnvironmentSecretReferencePipe = v.object({
+	type: v.eq('agent-run-profile-environment-secret'),
 	active: v.boolean(),
-	secretBindingId: idPipe,
-	scope: secretBindingScopePipe,
+	agentRunProfileId: idPipe,
+	name: nonEmptyTrimmedStringPipe,
 	envName: envNamePipe,
 })
-export type SecretBindingSecretReference = PipeOutput<typeof secretBindingSecretReferencePipe>
+export type AgentRunProfileEnvironmentSecretReference = PipeOutput<typeof agentRunProfileEnvironmentSecretReferencePipe>
+
+export const agentRunProfileRunCommandSecretReferencePipe = v.object({
+	type: v.eq('agent-run-profile-run-command-secret'),
+	active: v.boolean(),
+	agentRunProfileId: idPipe,
+	name: nonEmptyTrimmedStringPipe,
+	label: nonEmptyTrimmedStringPipe,
+	envName: envNamePipe,
+})
+export type AgentRunProfileRunCommandSecretReference = PipeOutput<typeof agentRunProfileRunCommandSecretReferencePipe>
 
 export const modelProviderAuthSecretReferencePipe = v.object({
 	type: v.eq('model-provider-auth'),
@@ -76,7 +69,8 @@ export type ModelProviderHeaderSecretReference = PipeOutput<typeof modelProvider
 
 export const secretReferencePipe = v.discriminate((value) => value.type, {
 	'repository-access': repositoryAccessSecretReferencePipe,
-	'secret-binding': secretBindingSecretReferencePipe,
+	'agent-run-profile-environment-secret': agentRunProfileEnvironmentSecretReferencePipe,
+	'agent-run-profile-run-command-secret': agentRunProfileRunCommandSecretReferencePipe,
 	'model-provider-auth': modelProviderAuthSecretReferencePipe,
 	'model-provider-header': modelProviderHeaderSecretReferencePipe,
 })

@@ -11,6 +11,7 @@ export const portfolioRequestCookieSchema = v.merge(sessionCookieSchema, selecti
 export const agentRunProfileRequestSchema = v.object({
 	name: Domain.Commons.nonEmptyTrimmedStringPipe,
 	modelUse: Domain.Config.modelUseConfigPipe,
+	runtimeRequirements: Domain.AgentRunRuntime.agentRunRuntimeRequirementsPipe,
 })
 export const createProjectRequestSchema = v.object({
 	title: Domain.Commons.nonEmptyTrimmedStringPipe,
@@ -23,6 +24,9 @@ export const createPlanRequestSchema = v.object({
 	agentRunProfileId: Domain.Commons.idPipe,
 })
 export const sendAgentRunMessageRequestSchema = v.object({ content: v.array(Domain.AgentRun.agentRunTextContentPipe) })
+export const agentRunRuntimeRequirementOverrideRequestSchema = v.object({
+	requirements: Domain.AgentRunRuntime.agentRunRuntimeRequirementsPipe,
+})
 export const setProjectConfigRequestSchema = v.object({ config: Domain.Config.projectConfigPipe })
 export const createModelProviderRequestSchema = v.object({
 	name: Domain.Commons.nonEmptyTrimmedStringPipe,
@@ -69,6 +73,7 @@ export type AgentRunProfileRequest = PipeOutput<typeof agentRunProfileRequestSch
 export type CreateProjectRequest = PipeOutput<typeof createProjectRequestSchema>
 export type CreatePlanRequest = PipeOutput<typeof createPlanRequestSchema>
 export type SendAgentRunMessageRequest = PipeOutput<typeof sendAgentRunMessageRequestSchema>
+export type AgentRunRuntimeRequirementOverrideRequest = PipeOutput<typeof agentRunRuntimeRequirementOverrideRequestSchema>
 export type SetProjectConfigRequest = PipeOutput<typeof setProjectConfigRequestSchema>
 export type CreateModelProviderRequest = PipeOutput<typeof createModelProviderRequestSchema>
 export type UpdateModelProviderRequest = PipeOutput<typeof updateModelProviderRequestSchema>

@@ -48,7 +48,15 @@ export type ModelTokenPricing = {
 	cacheWrite: number
 }
 export type ModelUseConfig = { modelId: string; thinkingLevel: ModelThinkingLevel }
-export type AgentRunProfileInput = { name: string; modelUse: ModelUseConfig }
+export type AgentRunEnvironmentSecretRequirement = { type: 'environment-secret'; envName: string; secretId: string }
+export type AgentRunRunCommandRequirement = {
+	type: 'run-command'
+	label: string
+	command: { executable: string; args: string[]; cwd: string | null }
+	commandSecretEnv: Record<string, string>
+}
+export type AgentRunRuntimeRequirement = AgentRunEnvironmentSecretRequirement | AgentRunRunCommandRequirement
+export type AgentRunProfileInput = { name: string; modelUse: ModelUseConfig; runtimeRequirements: AgentRunRuntimeRequirement[] }
 
 export type DeliveryWorkConfigInput = {
 	maxProcessableSliceSlots: number
@@ -183,6 +191,12 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		},
 		async sendAgentRunMessage(agentRunId: string, input: SendAgentRunMessageInput) {
 			return routes.request('post', '/api/portfolio/agent-runs/:agentRunId/messages', { params: { agentRunId }, body: input })
+		},
+		async addAgentRunRuntimeRequirementOverride(agentRunId: string, input: { requirements: AgentRunRuntimeRequirement[] }) {
+			return routes.request('post', '/api/portfolio/agent-runs/:agentRunId/runtime-requirement-overrides', {
+				params: { agentRunId },
+				body: input,
+			})
 		},
 		async listAgentRunProfiles() {
 			return routes.request('get', '/api/portfolio/agent-run-profiles')

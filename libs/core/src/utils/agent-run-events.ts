@@ -6,6 +6,7 @@ import type {
 	AgentRunProfileSnapshot,
 	AgentRunPurpose,
 } from '../domain/agent-run'
+import { appendUniqueRuntimeRequirements, type AgentRunRuntimeRequirement } from '../domain/agent-run-runtime'
 import type { Id, RuntimeRecord } from '../domain/commons'
 import type { InvalidCoreServiceOutputError, InvariantViolationError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreStorage } from '../services'
@@ -33,6 +34,7 @@ export async function createModelAgentRunWithProfileSnapshot<TPurpose extends Ag
 		purpose: TPurpose
 		started: RuntimeRecord
 		profile: AgentRunProfileSnapshot
+		sourceRuntimeRequirements?: AgentRunRuntimeRequirement[]
 	},
 ): Promise<Result<ModelAgentRunWithPurpose<TPurpose>, CreateModelAgentRunError>> {
 	const agentRun = modelAgentRun(input)
@@ -45,13 +47,21 @@ function modelAgentRun<TPurpose extends AgentRunPurpose>(input: {
 	purpose: TPurpose
 	started: RuntimeRecord
 	profile: AgentRunProfileSnapshot
+	sourceRuntimeRequirements?: AgentRunRuntimeRequirement[]
 }): ModelAgentRunWithPurpose<TPurpose> {
+	const sourceRuntimeRequirements = input.sourceRuntimeRequirements ?? []
+	const desiredRuntimeRequirements = appendUniqueRuntimeRequirements(sourceRuntimeRequirements, input.profile.runtimeRequirements)
 	return {
 		id: input.agentRunId,
 		agent: { type: 'model' },
 		purpose: input.purpose,
 		profile: input.profile,
 		modelUseOverride: null,
+		sourceRuntimeRequirements,
+		runtimeRequirementOverrides: [],
+		desiredRuntimeRequirements,
+		blocked: { type: 'sandbox-preparation-pending', blocked: input.started },
+		sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
 		started: input.started,
 		completed: null,
 	}
@@ -113,6 +123,7 @@ if (import.meta.vitest) {
 					agentRunProfileId: 'agent-run-profile-1',
 					name: 'Planning',
 					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+					runtimeRequirements: [],
 				},
 			})
 
@@ -126,8 +137,14 @@ if (import.meta.vitest) {
 						agentRunProfileId: 'agent-run-profile-1',
 						name: 'Planning',
 						modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+						runtimeRequirements: [],
 					},
 					modelUseOverride: null,
+					sourceRuntimeRequirements: [],
+					runtimeRequirementOverrides: [],
+					desiredRuntimeRequirements: [],
+					blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
+					sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
 					started: { at: '2026-06-10T12:00:00.000Z' },
 					completed: null,
 				},
@@ -147,8 +164,14 @@ if (import.meta.vitest) {
 					agentRunProfileId: 'agent-run-profile-1',
 					name: 'Planning',
 					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+					runtimeRequirements: [],
 				},
 				modelUseOverride: null,
+				sourceRuntimeRequirements: [],
+				runtimeRequirementOverrides: [],
+				desiredRuntimeRequirements: [],
+				blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
+				sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
 				started: { at: '2026-06-10T12:00:00.000Z' },
 				completed: null,
 			})

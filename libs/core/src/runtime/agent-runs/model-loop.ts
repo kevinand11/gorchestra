@@ -18,6 +18,7 @@ import { buildAgentRunModelContext } from './context'
 import type { AgentRunLiveEvent } from './live-events'
 import { providerTool, toolOutput, toolsForAgentRunPurpose, validateToolInput, type CoreAgentRunTool } from './tools'
 import type { ModelAgentTurnThinking } from './types'
+import { acceptAgentRunSandboxRelease } from '../../commands/utils/dispatch'
 import {
 	type AgentRun,
 	type AgentRunEvent,
@@ -87,6 +88,7 @@ export async function runModelAgentRun(
 	const state = await loadLoopState(runtime.services.storage, agentRunId)
 	if (!state.ok) return state
 	if (state.value.agentRun.completed !== null) return { ok: true, value: undefined }
+	if (!agentRunReadyForModelTurn(state.value.agentRun)) return { ok: true, value: undefined }
 
 	const claim = nextTurnClaim(state.value.events)
 	if (claim === null) return { ok: true, value: undefined }
@@ -107,6 +109,15 @@ async function loadLoopState(storage: CoreStorage, agentRunId: Id): Promise<Resu
 	if (!events.ok) return events
 
 	return { ok: true, value: { agentRun: agentRun.value, events: events.value, tools: toolsForAgentRunPurpose(agentRun.value.purpose) } }
+}
+
+function agentRunReadyForModelTurn(agentRun: AgentRun): boolean {
+	return (
+		agentRun.blocked === null &&
+		agentRun.sandbox.assignment !== null &&
+		agentRun.sandbox.appliedRequirements.length === agentRun.desiredRuntimeRequirements.length &&
+		agentRun.sandbox.appliedThroughCursor === (agentRun.runtimeRequirementOverrides.at(-1)?.eventCursor ?? null)
+	)
 }
 
 function nextTurnClaim(events: AgentRunEvent[]): TurnReasonClaim | null {
@@ -809,10 +820,17 @@ function completeAutonomousRunIfNeeded(
 async function completeAgentRun(runtime: ModelAgentRunRuntime, agentRun: AgentRun): Promise<Result<void, AgentRunRuntimeError>> {
 	const completed = runtimeRecord(runtime.values)
 	if (!completed.ok) return completed
-	const updated = await withTransaction(runtime.services, (storage) =>
-		updateRecord('agent-run', storage, agentRun.id, { completed: completed.value }),
-	)
-	return updated.ok ? { ok: true, value: undefined } : updated
+	const updated = await withTransaction<string, AgentRunRuntimeError>(runtime.services, async (storage) => {
+		const stored = await updateRecord('agent-run', storage, agentRun.id, { completed: completed.value })
+		if (!stored.ok) return stored
+
+		const releaseMarker = await acceptAgentRunSandboxRelease(runtime.services.dispatcher, agentRun.id)
+		return releaseMarker.ok ? { ok: true, value: releaseMarker.value } : releaseMarker
+	})
+	if (!updated.ok) return updated
+
+	runtime.services.dispatcher.ready(updated.value)
+	return { ok: true, value: undefined }
 }
 
 async function appendAndEmit(
@@ -896,8 +914,19 @@ if (import.meta.vitest) {
 				agentRunProfileId: 'agent-run-profile-1',
 				name: 'Planning',
 				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				runtimeRequirements: [],
 			},
 			modelUseOverride: null,
+			sourceRuntimeRequirements: [],
+			runtimeRequirementOverrides: [],
+			desiredRuntimeRequirements: [],
+			blocked: null,
+			sandbox: {
+				assignment: { ref: 'sandbox-ref', assigned: { at: '2026-06-10T12:00:00.000Z' } },
+				appliedRequirements: [],
+				appliedThroughCursor: null,
+				released: null,
+			},
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
 		})

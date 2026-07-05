@@ -54,6 +54,13 @@ function sortEvents(events: AgentRunEvent[]): AgentRunEvent[] {
 function modelVisibleMessages(event: AgentRunEvent, events: AgentRunEvent[]): ModelMessage[] {
 	switch (event.body.type) {
 		case 'agent-run-model-use-override-changed':
+		case 'agent-run-runtime-requirement-override-added':
+		case 'agent-run-sandbox-assigned':
+		case 'agent-run-sandbox-preparation-started':
+		case 'agent-run-sandbox-preparation-completed':
+		case 'agent-run-sandbox-preparation-failed':
+		case 'agent-run-sandbox-release-completed':
+		case 'agent-run-sandbox-release-failed':
 		case 'turn-started':
 		case 'model-message-started':
 		case 'tool-call-started':

@@ -298,6 +298,7 @@ if (import.meta.vitest) {
 						agentRunProfileId: 'agent-run-profile-1',
 						name: 'Snapshot',
 						modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+						runtimeRequirements: [],
 					},
 				}),
 			)

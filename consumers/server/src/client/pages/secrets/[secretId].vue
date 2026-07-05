@@ -53,20 +53,15 @@
 						No direct references for this Secret.
 					</div>
 					<div v-else>
-						<template v-for="reference in secret.references" :key="referenceKey(reference)">
-							<NuxtLink
-								v-if="isLinkedReference(reference)"
-								:to="referenceLocation(reference)"
-								class="block border-b border-dimmer px-3 py-2 text-body hover:bg-card focus-visible:bg-secondary"
-								:class="reference.active ? '' : 'opacity-50'">
-								<strong class="block truncate text-sz-helper font-semibold">{{ referenceTitle(reference) }}</strong>
-								<span class="mt-1 block truncate text-sz-micro text-dim">{{ referenceSubtitle(reference) }}</span>
-							</NuxtLink>
-							<div v-else class="border-b border-dimmer px-3 py-2" :class="reference.active ? '' : 'opacity-50'">
-								<strong class="block truncate text-sz-helper font-semibold">{{ referenceTitle(reference) }}</strong>
-								<span class="mt-1 block truncate text-sz-micro text-dim">{{ referenceSubtitle(reference) }}</span>
-							</div>
-						</template>
+						<NuxtLink
+							v-for="reference in secret.references"
+							:key="referenceKey(reference)"
+							:to="referenceLocation(reference)"
+							class="block border-b border-dimmer px-3 py-2 text-body hover:bg-card focus-visible:bg-secondary"
+							:class="reference.active ? '' : 'opacity-50'">
+							<strong class="block truncate text-sz-helper font-semibold">{{ referenceTitle(reference) }}</strong>
+							<span class="mt-1 block truncate text-sz-micro text-dim">{{ referenceSubtitle(reference) }}</span>
+						</NuxtLink>
 					</div>
 				</section>
 			</aside>
@@ -83,7 +78,6 @@ definePageMeta({ middleware: ['has-selection'] })
 
 type SecretDetails = Awaited<ReturnType<ServerApi['getSecret']>>
 type SecretReference = SecretDetails['references'][number]
-type LinkedSecretReference = Exclude<SecretReference, { type: 'secret-binding' }>
 
 const route = useRoute()
 const secretId = computed(() => route.params.secretId as string)
@@ -96,14 +90,13 @@ const modelProviderProtocolLabels: Record<string, string> = {
 	'google-generative-ai': 'Google Generative AI',
 }
 
-function isLinkedReference(reference: SecretReference): reference is LinkedSecretReference {
-	return reference.type !== 'secret-binding'
-}
-
-function referenceLocation(reference: LinkedSecretReference): string {
+function referenceLocation(reference: SecretReference): string {
 	switch (reference.type) {
 		case 'repository-access':
 			return `/projects/${reference.projectId}/repositories/${reference.repositoryId}`
+		case 'agent-run-profile-environment-secret':
+		case 'agent-run-profile-run-command-secret':
+			return `/agent-run-profiles/${reference.agentRunProfileId}`
 		case 'model-provider-auth':
 		case 'model-provider-header':
 			return `/models/providers/${reference.modelProviderId}`
@@ -116,12 +109,14 @@ function referenceTitle(reference: SecretReference): string {
 	switch (reference.type) {
 		case 'repository-access':
 			return `${reference.owner}/${reference.name}`
+		case 'agent-run-profile-environment-secret':
+			return `${reference.name} · ${reference.envName}`
+		case 'agent-run-profile-run-command-secret':
+			return `${reference.name} · ${reference.label}`
 		case 'model-provider-auth':
 			return reference.name
 		case 'model-provider-header':
 			return `${reference.name} · ${reference.headerName}`
-		case 'secret-binding':
-			return reference.envName
 		default:
 			throw new Error(`Unexpected Secret Reference type: ${String(reference satisfies never)}`)
 	}
@@ -131,12 +126,14 @@ function referenceSubtitle(reference: SecretReference): string {
 	switch (reference.type) {
 		case 'repository-access':
 			return 'GitHub Repository access'
+		case 'agent-run-profile-environment-secret':
+			return 'Agent Run Profile environment Secret requirement'
+		case 'agent-run-profile-run-command-secret':
+			return `${reference.envName} command-scoped Secret for Run Command requirement`
 		case 'model-provider-auth':
 			return `${modelProviderProtocolLabel(reference.protocol)} API key`
 		case 'model-provider-header':
 			return `${modelProviderProtocolLabel(reference.protocol)} custom header`
-		case 'secret-binding':
-			return `${secretBindingScopeLabel(reference.scope)} environment variable`
 		default:
 			throw new Error(`Unexpected Secret Reference type: ${String(reference satisfies never)}`)
 	}
@@ -146,12 +143,14 @@ function referenceKey(reference: SecretReference): string {
 	switch (reference.type) {
 		case 'repository-access':
 			return `${reference.type}:${reference.repositoryId}`
+		case 'agent-run-profile-environment-secret':
+			return `${reference.type}:${reference.agentRunProfileId}:${reference.envName}`
+		case 'agent-run-profile-run-command-secret':
+			return `${reference.type}:${reference.agentRunProfileId}:${reference.label}:${reference.envName}`
 		case 'model-provider-auth':
 			return `${reference.type}:${reference.modelProviderId}`
 		case 'model-provider-header':
 			return `${reference.type}:${reference.modelProviderId}:${reference.headerName}`
-		case 'secret-binding':
-			return `${reference.type}:${reference.secretBindingId}`
 		default:
 			throw new Error(`Unexpected Secret Reference type: ${String(reference satisfies never)}`)
 	}
@@ -159,18 +158,5 @@ function referenceKey(reference: SecretReference): string {
 
 function modelProviderProtocolLabel(protocol: string): string {
 	return modelProviderProtocolLabels[protocol] ?? protocol
-}
-
-function secretBindingScopeLabel(scope: Extract<SecretReference, { type: 'secret-binding' }>['scope']): string {
-	switch (scope.type) {
-		case 'portfolio':
-			return 'Portfolio-scoped'
-		case 'project':
-			return 'Project-scoped'
-		case 'delivery':
-			return 'Delivery-scoped'
-		default:
-			throw new Error(`Unexpected Secret Binding scope: ${String(scope satisfies never)}`)
-	}
 }
 </script>

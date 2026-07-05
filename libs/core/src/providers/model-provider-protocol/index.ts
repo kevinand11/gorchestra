@@ -628,7 +628,7 @@ if (import.meta.vitest) {
 		return {
 			storage: unusedStorageService(),
 			secrets: secretService(resolveSecretValues),
-			sandbox: { preflight: () => Promise.resolve({ ok: true }) },
+			sandbox: noopSandbox(),
 			dispatcher: noopDispatcher(),
 		}
 	}
@@ -640,8 +640,17 @@ if (import.meta.vitest) {
 		return {
 			storage: secretStorageService(secrets),
 			secrets: secretService(resolveSecretValues),
-			sandbox: { preflight: () => Promise.resolve({ ok: true }) },
+			sandbox: noopSandbox(),
 			dispatcher: noopDispatcher(),
+		}
+	}
+
+	function noopSandbox(): CoreServices['sandbox'] {
+		return {
+			preflight: () => Promise.resolve({ ok: true }),
+			assign: () => Promise.resolve({ ref: 'sandbox-ref' }),
+			runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command completed.', stdout: null, stderr: null }),
+			release: () => Promise.resolve({ summary: 'Sandbox released.' }),
 		}
 	}
 

@@ -154,11 +154,17 @@ if (import.meta.vitest) {
 					agentRunProfileId: 'snapshot-profile',
 					name: 'Snapshot',
 					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+					runtimeRequirements: [],
 				},
 				modelUseOverride: {
 					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
 					selected: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				},
+				sourceRuntimeRequirements: [],
+				runtimeRequirementOverrides: [],
+				desiredRuntimeRequirements: [],
+				blocked: null,
+				sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
 				started: { at: '2026-06-01T00:00:00.000Z' },
 				completed: null,
 			})

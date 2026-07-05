@@ -4,7 +4,7 @@
 			<div class="min-w-0">
 				<NuxtLink to="/agent-run-profiles" class="text-sz-helper text-dim hover:text-body">← Agent Run Profiles</NuxtLink>
 				<h1 class="m-0 mt-1 text-sz-section font-semibold tracking-[-0.01em]">New Agent Run Profile</h1>
-				<p class="m-0 mt-1 text-sz-helper text-dim">Create a reusable Model Use Config for future Agent Runs.</p>
+				<p class="m-0 mt-1 text-sz-helper text-dim">Create reusable Model Use and sandbox runtime setup for future Agent Runs.</p>
 			</div>
 		</header>
 
@@ -35,10 +35,17 @@
 						new Agent Run.
 					</p>
 				</section>
-				<section class="px-3 py-3">
+				<section class="border-b border-dimmer px-3 py-3">
 					<h2 class="m-0 text-sz-helper font-semibold">Model use</h2>
 					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
 						Model and thinking level are stored together so Core never represents a half-selected model configuration.
+					</p>
+				</section>
+				<section class="px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">Runtime setup</h2>
+					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+						Environment Secret Requirements persist values in the Agent Run sandbox. Run Command Requirements execute structured
+						argv without shell chaining, pipes, redirects, or implicit <code>cd</code>.
 					</p>
 				</section>
 			</aside>

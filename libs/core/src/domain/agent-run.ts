@@ -1,5 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import { agentRunBlockedPipe, agentRunRuntimeRequirementApplicationTargetPipe, agentRunRuntimeRequirementsPipe } from './agent-run-runtime'
 import { auditStampPipe, freeFormStringPipe, idPipe, nonEmptyTrimmedStringPipe, nonNegativeIntegerPipe, runtimeRecordPipe } from './commons'
 import { modelUseConfigPipe } from './config'
 import { planOutputProposalPipe, revisionOutputProposalPipe } from './proposals'
@@ -31,11 +32,37 @@ export const agentRunProfileSnapshotPipe = v.object({
 	agentRunProfileId: idPipe,
 	name: nonEmptyTrimmedStringPipe,
 	modelUse: modelUseConfigPipe,
+	runtimeRequirements: agentRunRuntimeRequirementsPipe,
 })
 export type AgentRunProfileSnapshot = PipeOutput<typeof agentRunProfileSnapshotPipe>
 
 export const agentRunModelUseOverridePipe = v.object({ modelUse: modelUseConfigPipe, selected: auditStampPipe })
 export type AgentRunModelUseOverride = PipeOutput<typeof agentRunModelUseOverridePipe>
+
+const nullableFreeFormStringPipe = v.nullable(freeFormStringPipe)
+const unknownPipe = v.any<unknown>()
+const toolCallIdPipe = nonEmptyTrimmedStringPipe
+
+export const agentRunEventCursorPipe = nonEmptyTrimmedStringPipe
+	.pipe((value) => value.toUpperCase())
+	.pipe(v.custom((value) => /^[0-9A-HJKMNP-TV-Z]{26}$/.test(value), 'Expected an Agent Run Event cursor.'))
+export type AgentRunEventCursor = PipeOutput<typeof agentRunEventCursorPipe>
+
+export const agentRunRuntimeRequirementOverridePipe = v.object({
+	requirements: agentRunRuntimeRequirementsPipe,
+	added: auditStampPipe,
+	eventId: idPipe,
+	eventCursor: agentRunEventCursorPipe,
+})
+export type AgentRunRuntimeRequirementOverride = PipeOutput<typeof agentRunRuntimeRequirementOverridePipe>
+
+export const agentRunSandboxStatePipe = v.object({
+	assignment: v.nullable(v.object({ ref: nonEmptyTrimmedStringPipe, assigned: runtimeRecordPipe })),
+	appliedRequirements: agentRunRuntimeRequirementsPipe,
+	appliedThroughCursor: v.nullable(agentRunEventCursorPipe),
+	released: v.nullable(runtimeRecordPipe),
+})
+export type AgentRunSandboxState = PipeOutput<typeof agentRunSandboxStatePipe>
 
 export const agentRunPipe = v.object({
 	id: idPipe,
@@ -43,6 +70,11 @@ export const agentRunPipe = v.object({
 	purpose: agentRunPurposePipe,
 	profile: agentRunProfileSnapshotPipe,
 	modelUseOverride: v.nullable(agentRunModelUseOverridePipe),
+	sourceRuntimeRequirements: agentRunRuntimeRequirementsPipe,
+	runtimeRequirementOverrides: v.array(agentRunRuntimeRequirementOverridePipe),
+	desiredRuntimeRequirements: agentRunRuntimeRequirementsPipe,
+	blocked: agentRunBlockedPipe,
+	sandbox: agentRunSandboxStatePipe,
 	started: runtimeRecordPipe,
 	completed: v.nullable(runtimeRecordPipe),
 })
@@ -54,19 +86,15 @@ export const planningAgentRunPipe = v.object({
 	purpose: planningAgentRunPurposePipe,
 	profile: agentRunProfileSnapshotPipe,
 	modelUseOverride: v.nullable(agentRunModelUseOverridePipe),
+	sourceRuntimeRequirements: agentRunRuntimeRequirementsPipe,
+	runtimeRequirementOverrides: v.array(agentRunRuntimeRequirementOverridePipe),
+	desiredRuntimeRequirements: agentRunRuntimeRequirementsPipe,
+	blocked: agentRunBlockedPipe,
+	sandbox: agentRunSandboxStatePipe,
 	started: runtimeRecordPipe,
 	completed: v.nullable(runtimeRecordPipe),
 })
 export type PlanningAgentRun = PipeOutput<typeof planningAgentRunPipe>
-
-const nullableFreeFormStringPipe = v.nullable(freeFormStringPipe)
-const unknownPipe = v.any<unknown>()
-const toolCallIdPipe = nonEmptyTrimmedStringPipe
-
-export const agentRunEventCursorPipe = nonEmptyTrimmedStringPipe
-	.pipe((value) => value.toUpperCase())
-	.pipe(v.custom((value) => /^[0-9A-HJKMNP-TV-Z]{26}$/.test(value), 'Expected an Agent Run Event cursor.'))
-export type AgentRunEventCursor = PipeOutput<typeof agentRunEventCursorPipe>
 
 export const agentRunTextContentPipe = v.object({ type: v.eq('text'), text: freeFormStringPipe })
 export type AgentRunTextContent = PipeOutput<typeof agentRunTextContentPipe>
@@ -261,6 +289,37 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 		type: v.eq('agent-run-model-use-override-changed'),
 		modelUse: v.nullable(modelUseConfigPipe),
 		authorized: auditStampPipe,
+	}),
+	'agent-run-runtime-requirement-override-added': v.object({
+		type: v.eq('agent-run-runtime-requirement-override-added'),
+		requirements: agentRunRuntimeRequirementsPipe,
+		authorized: auditStampPipe,
+	}),
+	'agent-run-sandbox-assigned': v.object({
+		type: v.eq('agent-run-sandbox-assigned'),
+		assignment: v.object({ ref: nonEmptyTrimmedStringPipe }),
+	}),
+	'agent-run-sandbox-preparation-started': v.object({
+		type: v.eq('agent-run-sandbox-preparation-started'),
+		requestedThroughCursor: v.nullable(agentRunEventCursorPipe),
+	}),
+	'agent-run-sandbox-preparation-completed': v.object({
+		type: v.eq('agent-run-sandbox-preparation-completed'),
+		appliedThroughCursor: v.nullable(agentRunEventCursorPipe),
+		summary: freeFormStringPipe,
+	}),
+	'agent-run-sandbox-preparation-failed': v.object({
+		type: v.eq('agent-run-sandbox-preparation-failed'),
+		target: agentRunRuntimeRequirementApplicationTargetPipe,
+		summary: freeFormStringPipe,
+	}),
+	'agent-run-sandbox-release-completed': v.object({
+		type: v.eq('agent-run-sandbox-release-completed'),
+		summary: freeFormStringPipe,
+	}),
+	'agent-run-sandbox-release-failed': v.object({
+		type: v.eq('agent-run-sandbox-release-failed'),
+		summary: freeFormStringPipe,
 	}),
 	'instruction-snapshot': v.object({ type: v.eq('instruction-snapshot'), instruction: agentRunInstructionPipe }),
 	'input-message': v.object({ type: v.eq('input-message'), source: agentRunInputSourcePipe, content: v.array(agentRunTextContentPipe) }),

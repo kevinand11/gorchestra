@@ -1,4 +1,4 @@
-import { openCore, type CoreDispatchRequest, type CoreServices } from '@gorchestra/core'
+import { openCore, type CoreDispatchRequest, type CoreServices, type GorchestraCore } from '@gorchestra/core'
 import { Instance } from 'equipped'
 
 import type { SecretEncryptionKey } from './secret-protection'
@@ -12,10 +12,11 @@ export type ServerDispatchRequest = {
 }
 
 export type ServerAgentRunDispatchItem = {
-	type: 'agent-run'
+	type: CoreDispatchRequest['type']
 	coreStorageNamespace: string
 	agentRunId: string
 	serializationKey: string
+	request: CoreDispatchRequest
 }
 
 export type CreateServerDispatcherInput = {
@@ -37,7 +38,7 @@ export function createServerDispatcher(input: CreateServerDispatcherInput) {
 
 	function request(request: ServerDispatchRequest): Promise<string> {
 		const marker = Instance.createId()
-		if (request.request.type === 'agent-run') pending.set(marker, agentRunItem(request))
+		pending.set(marker, agentRunItem(request))
 		return Promise.resolve(marker)
 	}
 
@@ -50,10 +51,11 @@ export function createServerDispatcher(input: CreateServerDispatcherInput) {
 
 	function agentRunItem(request: ServerDispatchRequest): ServerAgentRunDispatchItem {
 		return {
-			type: 'agent-run',
+			type: request.request.type,
 			coreStorageNamespace: request.coreStorageNamespace,
 			agentRunId: request.request.agentRunId,
 			serializationKey: request.request.serializationKey,
+			request: request.request,
 		}
 	}
 
@@ -108,14 +110,29 @@ export function createServerDispatcher(input: CreateServerDispatcherInput) {
 		try {
 			const services = createCoreServices(coreStorage.storage, {
 				secretEncryptionKey: input.secretEncryptionKey,
+				sandboxRootDir: input.corePortfolioStorage.dataDir,
+				coreStorageNamespace: item.coreStorageNamespace,
 				dispatcher: coreDispatcherForNamespace(item.coreStorageNamespace),
 			})
 			const opened = openCore(services)
 			if (!opened.ok) throw new Error(`Core open failed: ${opened.error.type}`)
-			const result = await opened.value.work.runModelAgentRun({ agentRunId: item.agentRunId }, { correlationId: null })
-			if (!result.ok) globalThis.console.error('Agent Run work failed', result.error)
+			const result = await runCoreDispatchWork(opened.value.work, item)
+			if (!result.ok) globalThis.console.error('Agent Run dispatch work failed', result.error)
 		} finally {
 			await coreStorage.close()
+		}
+	}
+
+	function runCoreDispatchWork(work: GorchestraCore['work'], item: ServerAgentRunDispatchItem) {
+		switch (item.request.type) {
+			case 'agent-run-model-turn':
+				return work.runModelAgentRun({ agentRunId: item.request.agentRunId }, { correlationId: null })
+			case 'agent-run-sandbox-preparation':
+				return work.prepareAgentRunSandbox({ agentRunId: item.request.agentRunId }, { correlationId: null })
+			case 'agent-run-sandbox-release':
+				return work.releaseAgentRunSandbox({ agentRunId: item.request.agentRunId }, { correlationId: null })
+			default:
+				throw new Error(`Unexpected dispatch request type: ${String(item.request satisfies never)}`)
 		}
 	}
 
@@ -285,10 +302,10 @@ if (import.meta.vitest) {
 		return {
 			coreStorageNamespace,
 			request: {
-				type: 'agent-run',
+				type: 'agent-run-model-turn',
 				agentRunId,
 				serializationKey,
-				reason: { type: 'input-appended', inputEventId: 'event-1' },
+				inputEventId: 'event-1',
 			},
 		}
 	}
