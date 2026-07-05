@@ -1,5 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import type { DeliveryWorkOperation } from './action'
 import { auditStampPipe, idPipe, nonEmptyTrimmedStringPipe, nonNegativeIntegerPipe, type Id } from './commons'
 import { instructionSourcePipe } from './plan'
 
@@ -14,8 +15,8 @@ export const slicePipe = v.object({
 export type Slice = PipeOutput<typeof slicePipe>
 
 /**
- * Derived in priority order: complete, needs-delivery-validation,
- * dependency-blocked, needs-artifact-validation, correction-blocked,
+ * Derived in priority order: complete, operation-running, operation-queued,
+ * needs-delivery-validation, dependency-blocked, needs-artifact-validation, correction-blocked,
  * needs-review-surface, awaiting-review, slice-operation-failed,
  * needs-artifact-creation, then executable.
  */
@@ -30,6 +31,8 @@ export interface FailureChain {
 export type SliceWorkState =
 	/** actionId points to the passed validate-slice-delivery-artifact Action that completed the Slice. */
 	| { type: 'complete'; actionId: Id }
+	| { type: 'operation-running'; operation: DeliveryWorkOperation; startedActionId: Id }
+	| { type: 'operation-queued'; operation: DeliveryWorkOperation; queuedActionId: Id }
 	/** Slice Artifact was promoted into the Delivery Artifact and the resulting Delivery Artifact still needs validation. */
 	| { type: 'needs-delivery-validation'; actionId: Id }
 	/** blockedBy contains direct incomplete same-Delivery Slice dependencies only, ordered by dependency accepted time then slice id. */

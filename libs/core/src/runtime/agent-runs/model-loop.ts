@@ -18,7 +18,7 @@ import { buildAgentRunModelContext } from './context'
 import type { AgentRunLiveEvent } from './live-events'
 import { providerTool, toolOutput, toolsForAgentRunPurpose, validateToolInput, type CoreAgentRunTool } from './tools'
 import type { ModelAgentTurnThinking } from './types'
-import { acceptAgentRunSandboxRelease } from '../../commands/utils/dispatch'
+import { acceptAgentRunSandboxRelease, acceptDispatchRequest, exclusiveDeliverySchedulerClaim } from '../../commands/utils/dispatch'
 import {
 	type AgentRun,
 	type AgentRunEvent,
@@ -820,16 +820,29 @@ function completeAutonomousRunIfNeeded(
 async function completeAgentRun(runtime: ModelAgentRunRuntime, agentRun: AgentRun): Promise<Result<void, AgentRunRuntimeError>> {
 	const completed = runtimeRecord(runtime.values)
 	if (!completed.ok) return completed
-	const updated = await withTransaction<string, AgentRunRuntimeError>(runtime.services, async (storage) => {
+	const updated = await withTransaction<string[], AgentRunRuntimeError>(runtime.services, async (storage) => {
 		const stored = await updateRecord('agent-run', storage, agentRun.id, { completed: completed.value })
 		if (!stored.ok) return stored
 
+		const schedulerMarker =
+			agentRun.purpose.type === 'execution'
+				? await acceptDispatchRequest(runtime.services.dispatcher, {
+						type: 'delivery-work-scheduler',
+						deliveryId: agentRun.purpose.deliveryId,
+						coordinationClaims: [exclusiveDeliverySchedulerClaim(agentRun.purpose.deliveryId)],
+						reason: { type: 'delivery-work-requested' },
+					})
+				: null
+		if (schedulerMarker !== null && !schedulerMarker.ok) return schedulerMarker
+
 		const releaseMarker = await acceptAgentRunSandboxRelease(runtime.services.dispatcher, agentRun.id)
-		return releaseMarker.ok ? { ok: true, value: releaseMarker.value } : releaseMarker
+		if (!releaseMarker.ok) return releaseMarker
+
+		return { ok: true, value: [...(schedulerMarker === null ? [] : [schedulerMarker.value]), releaseMarker.value] }
 	})
 	if (!updated.ok) return updated
 
-	runtime.services.dispatcher.ready(updated.value)
+	for (const marker of updated.value) runtime.services.dispatcher.ready(marker)
 	return { ok: true, value: undefined }
 }
 

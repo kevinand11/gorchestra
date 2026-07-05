@@ -190,21 +190,25 @@ if (import.meta.vitest) {
 			type: 'promote-slice-artifact',
 			sliceId: 'slice-1',
 			evidence: slicePromotion,
+			dispatchStartedActionId: null,
 		})
 		seedAction(tx, 'slice-complete', '2026-06-10T00:02:00.000Z', {
 			type: 'validate-slice-delivery-artifact',
 			sliceId: 'slice-1',
 			evidence: sliceValidation,
+			dispatchStartedActionId: null,
 		})
 		seedAction(tx, 'delivery-validation', '2026-06-10T00:03:00.000Z', {
 			type: 'validate-delivery-artifact',
 			evidence: deliveryValidation,
+			dispatchStartedActionId: null,
 		})
 		if (options.integration === 'review-surface-merged') seedMergedDeliveryReviewSurface(tx)
 		if (options.integration === 'observed-artifact-integration') {
 			seedAction(tx, 'observe-integration', '2026-06-10T00:04:00.000Z', {
 				type: 'observe-delivery-artifact-integration',
 				evidence: observedIntegration,
+				dispatchStartedActionId: null,
 			})
 		}
 	}

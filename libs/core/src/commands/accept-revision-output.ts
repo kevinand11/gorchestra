@@ -22,9 +22,9 @@ import type {
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
 import { appendAgentRunEvent } from '../utils/agent-run-events'
-import { completeSingleAgentRunByPurpose } from '../utils/agent-runs'
 import { getPendingProposalForAgentRunPurpose } from '../utils/proposals'
 import type { Result as CoreResult } from '../utils/types'
+import { completeAgentRunByPurposeAndAcceptSandboxRelease } from './utils/dispatch'
 import { buildCommandHandler } from './utils/handler'
 import { auditStamp, createRecordValue, getRequired, listRecords, nextId, updateRecordValue, withTransaction } from './utils/storage'
 
@@ -52,6 +52,8 @@ export type Error =
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
+type DispatchedResult = { result: Result; dispatchMarker: string | null }
+
 export function createAcceptRevisionOutputCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('acceptRevisionOutput', acceptRevisionOutputInputPipe, (input, context) =>
 		handleAcceptRevisionOutput(runtime, input, context),
@@ -67,9 +69,14 @@ async function handleAcceptRevisionOutput(
 	if (!stamp.ok) return stamp
 
 	const revisionId = nextId(runtime.values, 'revision')
-	return revisionId.ok
-		? withTransaction(runtime.services, (storage) => acceptRevisionOutput(runtime, storage, input, stamp.value, revisionId.value))
-		: revisionId
+	if (!revisionId.ok) return revisionId
+
+	const written = await withTransaction(runtime.services, (storage) =>
+		acceptRevisionOutput(runtime, storage, input, stamp.value, revisionId.value),
+	)
+	if (!written.ok) return written
+	if (written.value.dispatchMarker !== null) runtime.services.dispatcher.ready(written.value.dispatchMarker)
+	return { ok: true, value: written.value.result }
 }
 
 interface RevisionProposalContext {
@@ -84,7 +91,7 @@ async function acceptRevisionOutput(
 	input: Input,
 	stamp: AuditStamp,
 	revisionId: Id,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
 	const context = await revisionProposalContext(storage, input.proposalEventId)
 	return context.ok ? acceptForGate(runtime, storage, context.value, stamp, revisionId) : context
 }
@@ -108,7 +115,7 @@ async function acceptForGate(
 	context: RevisionProposalContext,
 	stamp: AuditStamp,
 	revisionId: Id,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
 	if (context.gate.closed !== null) return revisionGateClosed(context.gate.id)
 
 	const existingRevision = await validateNoRevisionForGate(storage, context.gate.id)
@@ -237,7 +244,7 @@ async function writeAcceptedRevision(
 	context: RevisionProposalContext,
 	stamp: AuditStamp,
 	revisionId: Id,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
 	const created = await createAcceptedRevisionRecord(storage, context, stamp, revisionId)
 	return created.ok ? consumeRevisionGateForRevision(runtime, storage, context, stamp, created.value) : created
 }
@@ -264,7 +271,7 @@ async function consumeRevisionGateForRevision(
 	context: RevisionProposalContext,
 	stamp: AuditStamp,
 	revision: Revision,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
 	const revisionGate = await updateRecordValue('revision-gate', storage, context.gate.id, {
 		closed: { type: 'consumed-by-revision', consumed: stamp, revisionId: revision.id },
 	})
@@ -280,13 +287,16 @@ async function completeRevisionPlanningForAcceptedRevision(
 	stamp: AuditStamp,
 	revision: Revision,
 	revisionGate: RevisionGate,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const agentRun = await completeSingleAgentRunByPurpose(
+): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
+	const agentRun = await completeAgentRunByPurposeAndAcceptSandboxRelease(
 		storage,
+		runtime.services.dispatcher,
 		{ type: 'revision-planning', revisionGateId: context.gate.id },
 		{ at: stamp.at },
 	)
-	return agentRun.ok ? appendRevisionProposalAcceptance(runtime, storage, context, stamp, revision, revisionGate) : agentRun
+	return agentRun.ok
+		? appendRevisionProposalAcceptance(runtime, storage, context, stamp, revision, revisionGate, agentRun.value.dispatchMarker)
+		: agentRun
 }
 
 async function appendRevisionProposalAcceptance(
@@ -296,14 +306,17 @@ async function appendRevisionProposalAcceptance(
 	stamp: AuditStamp,
 	revision: Revision,
 	revisionGate: RevisionGate,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+	dispatchMarker: string | null,
+): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
 	const acceptedEvent = await appendAgentRunEvent(runtime, storage, context.proposal.agentRunId, {
 		type: 'proposal-accepted',
 		proposalCursor: context.proposal.cursor,
 		authorized: stamp,
 		materialized: { type: 'revision-output', revisionId: revision.id },
 	})
-	return acceptedEvent.ok ? { ok: true, value: { revision, revisionGate, acceptedEvent: acceptedEvent.value } } : acceptedEvent
+	return acceptedEvent.ok
+		? { ok: true, value: { result: { revision, revisionGate, acceptedEvent: acceptedEvent.value }, dispatchMarker } }
+		: acceptedEvent
 }
 
 function revisionScopeKey(scope: RevisionScope): string {

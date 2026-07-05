@@ -1,7 +1,7 @@
 import { Repo, type AnySchema, type AnyUpdateOp, type FilterGroup, type OrmAdapterLike, type QueryOptions } from 'equipped/orm'
 import { v, type PipeOutput } from 'valleyed'
 
-import type { AgentRunEventCursor } from './domain/agent-run'
+import type { DeliveryWorkOperation } from './domain/action'
 import { freeFormStringPipe, idPipe, nonEmptyTrimmedStringPipe, nonNegativeIntegerPipe, type Id } from './domain/commons'
 import type { UndefinedToOptional } from './utils/types'
 
@@ -59,15 +59,53 @@ export interface ResolvedSecret {
 export const resolvedSecretValuesPipe = v.record(idPipe, v.string())
 export type ResolvedSecretValues = Record<Id, string>
 
+export type DispatchCoordinationScopeSegment =
+	| { type: 'agent-run'; id: Id }
+	| { type: 'delivery'; id: Id }
+	| { type: 'scheduler' }
+	| { type: 'slice-pool' }
+	| { type: 'slice'; id: Id }
+
+export type DispatchCoordinationScope = DispatchCoordinationScopeSegment[]
+
+export type DispatchCoordinationClaim = {
+	scope: DispatchCoordinationScope
+	mode: { type: 'exclusive' } | { type: 'shared-capacity'; capacity: number }
+}
+
 export type CoreDispatchRequest =
-	| { type: 'agent-run-model-turn'; agentRunId: Id; serializationKey: string; inputEventId: Id }
+	| {
+			type: 'agent-run-model-turn'
+			agentRunId: Id
+			coordinationClaims: DispatchCoordinationClaim[]
+			reason: { type: 'input-appended'; inputEventId: Id }
+	  }
 	| {
 			type: 'agent-run-sandbox-preparation'
 			agentRunId: Id
-			serializationKey: string
-			requestedThroughCursor: AgentRunEventCursor | null
+			coordinationClaims: DispatchCoordinationClaim[]
+			reason: { type: 'agent-run-created' } | { type: 'runtime-requirement-override-added'; eventId: Id }
 	  }
-	| { type: 'agent-run-sandbox-release'; agentRunId: Id; serializationKey: string }
+	| {
+			type: 'agent-run-sandbox-release'
+			agentRunId: Id
+			coordinationClaims: DispatchCoordinationClaim[]
+			reason: { type: 'agent-run-completed' }
+	  }
+	| {
+			type: 'delivery-work-scheduler'
+			deliveryId: Id
+			coordinationClaims: DispatchCoordinationClaim[]
+			reason: { type: 'delivery-work-requested' }
+	  }
+	| {
+			type: 'delivery-work-operation'
+			deliveryId: Id
+			coordinationClaims: DispatchCoordinationClaim[]
+			queuedActionId: Id
+			operation: DeliveryWorkOperation
+			reason: { type: 'delivery-work-operation-queued'; queuedActionId: Id }
+	  }
 
 export const sandboxAssignmentOutputPipe = v.object({ ref: nonEmptyTrimmedStringPipe })
 export type SandboxAssignmentOutput = PipeOutput<typeof sandboxAssignmentOutputPipe>

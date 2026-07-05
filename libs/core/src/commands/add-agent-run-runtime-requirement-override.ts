@@ -17,7 +17,7 @@ import type {
 import type { CoreRuntime } from '../runtime'
 import { appendAgentRunEvent } from '../utils/agent-run-events'
 import type { Result as CoreResult } from '../utils/types'
-import { acceptDispatchRequest } from './utils/dispatch'
+import { acceptAgentRunSandboxPreparation } from './utils/dispatch'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { buildCommandHandler } from './utils/handler'
 import {
@@ -94,11 +94,9 @@ export function createAddAgentRunRuntimeRequirementOverrideCommand(runtime: Core
 				})
 				if (!updated.ok) return updated
 
-				const dispatchMarker = await acceptDispatchRequest(runtime.services.dispatcher, {
-					type: 'agent-run-sandbox-preparation',
-					agentRunId: input.agentRunId,
-					serializationKey: input.agentRunId,
-					requestedThroughCursor: event.value.cursor,
+				const dispatchMarker = await acceptAgentRunSandboxPreparation(runtime.services.dispatcher, input.agentRunId, {
+					type: 'runtime-requirement-override-added',
+					eventId: event.value.id,
 				})
 				if (!dispatchMarker.ok) return dispatchMarker
 
@@ -163,8 +161,13 @@ if (import.meta.vitest) {
 				{
 					type: 'agent-run-sandbox-preparation',
 					agentRunId: 'agent-run-1',
-					serializationKey: 'agent-run-1',
-					requestedThroughCursor: '01J00000000000000000000001',
+					coordinationClaims: [
+						{
+							scope: [{ type: 'agent-run', id: 'agent-run-1' }],
+							mode: { type: 'exclusive' },
+						},
+					],
+					reason: { type: 'runtime-requirement-override-added', eventId: 'agent-run-event-1' },
 				},
 			])
 			expect(readyMarkers).toEqual(['marker-1'])

@@ -1,17 +1,18 @@
+import { acceptAgentRunModelTurn, acceptAgentRunSandboxPreparation } from '../../../commands/utils/dispatch'
 import type { AgentRun, AgentRunProfileSnapshot, ExecutionMode } from '../../../domain/agent-run'
 import type { Id, RuntimeRecord } from '../../../domain/commons'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
 import { appendAgentRunEvent, createModelAgentRunWithProfileSnapshot } from '../../../utils/agent-run-events'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
 import type { Result as CoreResult } from '../../../utils/types'
-import type { DeliveryHandlerContext, DeliveryWorkResolution, RunDeliveryWorkHandlerResult } from '../types'
+import type { DeliveryHandlerContext, DeliveryWorkResolution, DeliveryWorkHandlerResult } from '../../delivery-work/types'
 
 export async function handleSliceExecutable(
 	context: DeliveryHandlerContext,
 	slice: Slice,
 	state: Extract<SliceWorkState, { type: 'executable' }>,
 	resolution: DeliveryWorkResolution,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<DeliveryWorkHandlerResult> {
 	const agentRun = sliceExecutionAgentRun(context, slice, state, resolution)
 	if (!agentRun.ok) return agentRun
 
@@ -28,7 +29,7 @@ interface SliceExecutionAgentRunInput {
 async function writeSliceExecutionAgentRun(
 	context: DeliveryHandlerContext,
 	agentRun: SliceExecutionAgentRunInput,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<DeliveryWorkHandlerResult> {
 	const agentRunPut = await createModelAgentRunWithProfileSnapshot(context.storage, agentRun)
 	if (!agentRunPut.ok) return agentRunPut
 
@@ -39,7 +40,15 @@ async function writeSliceExecutionAgentRun(
 	})
 	if (!input.ok) return input
 
-	return { ok: true, value: { processedCount: 1, failures: [] } }
+	const preparationMarker = await acceptAgentRunSandboxPreparation(context.services.dispatcher, agentRunPut.value.id, {
+		type: 'agent-run-created',
+	})
+	if (!preparationMarker.ok) return preparationMarker
+
+	const modelTurnMarker = await acceptAgentRunModelTurn(context.services.dispatcher, agentRunPut.value.id, input.value.id)
+	if (!modelTurnMarker.ok) return modelTurnMarker
+
+	return { ok: true, value: { processedCount: 1, failures: [], dispatchMarkers: [preparationMarker.value, modelTurnMarker.value] } }
 }
 
 function sliceExecutionAgentRun(
@@ -47,7 +56,7 @@ function sliceExecutionAgentRun(
 	slice: Slice,
 	state: Extract<SliceWorkState, { type: 'executable' }>,
 	resolution: DeliveryWorkResolution,
-): CoreResult<SliceExecutionAgentRunInput, RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
+): CoreResult<SliceExecutionAgentRunInput, DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
 	const agentRunId = nextId(context.values, 'agent-run')
 	if (!agentRunId.ok) return agentRunId
 
@@ -96,7 +105,10 @@ if (import.meta.vitest) {
 				resolution,
 			)
 
-			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
+			expect(result).toEqual({
+				ok: true,
+				value: { processedCount: 1, failures: [], dispatchMarkers: ['dispatch-marker', 'dispatch-marker'] },
+			})
 			expect(context.tx.actions.records.size).toBe(0)
 			expect(context.tx.agentRuns.records.get('agent-run-1')).toEqual({
 				id: 'agent-run-1',
@@ -137,7 +149,10 @@ if (import.meta.vitest) {
 				resolution,
 			)
 
-			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
+			expect(result).toEqual({
+				ok: true,
+				value: { processedCount: 1, failures: [], dispatchMarkers: ['dispatch-marker', 'dispatch-marker'] },
+			})
 			expect(context.tx.agentRuns.records.get('agent-run-1')?.purpose).toEqual({
 				type: 'execution',
 				deliveryId: 'delivery-1',

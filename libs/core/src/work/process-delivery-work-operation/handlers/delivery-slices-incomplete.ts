@@ -10,13 +10,25 @@ import type { CoreStorage } from '../../../services'
 import { withTransaction } from '../../../storage/helpers'
 import { buildDeliveryContext, getDeliveryState, getSliceState, resolveDeliveryWork } from '../../../utils/delivery-context'
 import type { Result as CoreResult } from '../../../utils/types'
-import type { DeliveryWorkResolution, Error, ResolvedDeliveryHandlerContext, Result, RunDeliveryWorkHandlerResult } from '../types'
+import type {
+	DeliveryWorkResolution,
+	Error,
+	ResolvedDeliveryHandlerContext,
+	Result,
+	DeliveryWorkHandlerResult,
+} from '../../delivery-work/types'
 
 interface SliceStateCandidate {
 	slice: Slice
 	state: ActionableSliceWorkState
 	order: number
 	priority: SliceActionPriority
+	key: string
+}
+
+export interface SliceWorkOperationCandidate {
+	slice: Slice
+	state: ActionableSliceWorkState
 	key: string
 }
 
@@ -27,7 +39,7 @@ interface SliceWorkSelection {
 	key: string
 }
 
-type ActionableSliceWorkState = Extract<
+export type ActionableSliceWorkState = Extract<
 	SliceWorkState,
 	{ type: 'needs-delivery-validation' | 'needs-artifact-validation' | 'needs-review-surface' | 'needs-artifact-creation' | 'executable' }
 >
@@ -42,13 +54,27 @@ interface SliceWorkerPool {
 	claimedKeys: Set<string>
 }
 
+export function selectActionableSliceWorkOperationCandidates(
+	deliveryContext: ResolvedDeliveryHandlerContext['deliveryContext'],
+	limit: number,
+): CoreResult<SliceWorkOperationCandidate[], Exclude<Error, InvalidInputError>> {
+	const candidates = actionableSliceCandidates(deliveryContext, new Set())
+	return candidates.ok
+		? { ok: true, value: candidates.value.slice(0, Math.max(0, limit)).map((candidate) => sliceWorkOperationCandidate(candidate)) }
+		: candidates
+}
+
+function sliceWorkOperationCandidate(candidate: SliceStateCandidate): SliceWorkOperationCandidate {
+	return { slice: candidate.slice, state: candidate.state, key: candidate.key }
+}
+
 export async function handleDeliverySlicesIncomplete(
 	runtime: CoreRuntime,
 	context: Pick<
 		ResolvedDeliveryHandlerContext,
 		'services' | 'storage' | 'values' | 'deliveryContext' | 'workResolution' | 'repositoryAccessSecret'
 	>,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<DeliveryWorkHandlerResult> {
 	const pool: SliceWorkerPool = {
 		runtime,
 		deliveryId: context.deliveryContext.delivery.id,
@@ -63,7 +89,7 @@ export async function handleDeliverySlicesIncomplete(
 	return combineSliceWorkerResults(results)
 }
 
-async function runSliceWorkerSlot(pool: SliceWorkerPool): Promise<RunDeliveryWorkHandlerResult> {
+async function runSliceWorkerSlot(pool: SliceWorkerPool): Promise<DeliveryWorkHandlerResult> {
 	let processedCount = 0
 	const failures: Result['failures'] = []
 
@@ -177,6 +203,8 @@ function sliceActionPriority(state: SliceWorkState): SliceActionPriority | null 
 		case 'executable':
 			return 4
 		case 'complete':
+		case 'operation-running':
+		case 'operation-queued':
 		case 'dependency-blocked':
 		case 'correction-blocked':
 		case 'awaiting-review':
@@ -216,7 +244,7 @@ function executableKeyDetail(state: Extract<ActionableSliceWorkState, { type: 'e
 	return state.mode === 'correction' ? `correction:${state.failureChain.rootActionId}` : 'current'
 }
 
-async function processSliceSelection(pool: SliceWorkerPool, selection: SliceWorkSelection): Promise<RunDeliveryWorkHandlerResult> {
+async function processSliceSelection(pool: SliceWorkerPool, selection: SliceWorkSelection): Promise<DeliveryWorkHandlerResult> {
 	if (selection.state.type === 'needs-artifact-creation') {
 		return handleSliceNeedsArtifactCreation(pool.runtime, selectionContext(pool, selection), selection.slice, selection.state)
 	}
@@ -245,18 +273,18 @@ function selectionContext(
 	}
 }
 
-function combineSliceWorkerResults(results: RunDeliveryWorkHandlerResult[]): RunDeliveryWorkHandlerResult {
+function combineSliceWorkerResults(results: DeliveryWorkHandlerResult[]): DeliveryWorkHandlerResult {
 	const failed = results.find((result) => !result.ok)
 	if (failed !== undefined) return failed
 
 	return completedSliceWorkerResult(successfulSliceWorkerResults(results))
 }
 
-function successfulSliceWorkerResults(results: RunDeliveryWorkHandlerResult[]): Result[] {
+function successfulSliceWorkerResults(results: DeliveryWorkHandlerResult[]): Result[] {
 	return results.flatMap((result) => (result.ok ? [result.value] : []))
 }
 
-function completedSliceWorkerResult(results: Result[]): RunDeliveryWorkHandlerResult {
+function completedSliceWorkerResult(results: Result[]): DeliveryWorkHandlerResult {
 	const processedCount = results.reduce((total, result) => total + result.processedCount, 0)
 	const failures = results.flatMap((result) => result.failures)
 	return processedCount === 0 && failures.length === 0 ? noEligibleWork() : { ok: true, value: { processedCount, failures } }
@@ -415,6 +443,7 @@ if (import.meta.vitest) {
 					passed: true,
 					summary: 'Merged.',
 				},
+				dispatchStartedActionId: null,
 			},
 		})
 	}

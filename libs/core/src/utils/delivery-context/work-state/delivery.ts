@@ -1,4 +1,4 @@
-import { compareActions, latestAction, latestKnownAction } from './actions'
+import { compareActions, latestAction, latestInTransitDispatchForOperation, latestKnownAction } from './actions'
 import { compareAcceptedThenId } from './dependencies'
 import { firstSyncState, ok, stateOrElseSync } from './result'
 import { currentScopedReviewSurface } from './review-surfaces'
@@ -21,6 +21,7 @@ export function getDeliveryState(context: DeliveryContext): Result<DeliveryWorkS
 	const deliveryActions = deliveryActionsFor(context)
 	const earlyState = firstSyncState([
 		() => immediateDeliveryLifecycleState(context),
+		() => deliveryDispatchState(deliveryActions),
 		() => deliveryDependencyState(context),
 		() => deliveryPreflightState(deliveryActions),
 	])
@@ -65,6 +66,15 @@ function immediateDeliveryLifecycleState(context: DeliveryContext): WorkStateRes
 	if (context.delivery.closed !== null) return ok({ type: 'closed', outcome: context.delivery.closed.type })
 
 	return context.delivery.queued === null ? ok({ type: 'unqueued' }) : ok(null)
+}
+
+function deliveryDispatchState(deliveryActions: Action[]): WorkStateResult<DeliveryWorkState | null> {
+	const inTransit = latestInTransitDispatchForOperation(deliveryActions, (operation) => operation.scope === 'delivery')
+	if (inTransit === null) return ok(null)
+
+	return inTransit.type === 'running'
+		? ok({ type: 'operation-running', operation: inTransit.action.result.operation, startedActionId: inTransit.action.id })
+		: ok({ type: 'operation-queued', operation: inTransit.action.result.operation, queuedActionId: inTransit.action.id })
 }
 
 function deliveryDependencyState(context: DeliveryContext): WorkStateResult<DeliveryWorkState | null> {
@@ -344,7 +354,7 @@ if (import.meta.vitest) {
 			seedAction(tx, {
 				id: 'delivery-operation-failed',
 				at: '2026-06-10T12:04:00.000Z',
-				result: { type: 'record-delivery-external-operation-failure', evidence: externalFailure },
+				result: { type: 'record-delivery-external-operation-failure', evidence: externalFailure, dispatchStartedActionId: null },
 			})
 
 			expect(deliveryState(tx, 'delivery-1')).toEqual({
@@ -420,7 +430,7 @@ if (import.meta.vitest) {
 			seedAction(tx, {
 				id: 'observe-integration',
 				at: '2026-06-10T12:04:00.000Z',
-				result: { type: 'observe-delivery-artifact-integration', evidence: externalPassed },
+				result: { type: 'observe-delivery-artifact-integration', evidence: externalPassed, dispatchStartedActionId: null },
 			})
 
 			expect(deliveryState(tx, 'delivery-1')).toEqual({
@@ -445,12 +455,17 @@ if (import.meta.vitest) {
 		seedAction(core.tx, {
 			id: 'promote-slice',
 			at: '2026-06-10T12:01:00.000Z',
-			result: { type: 'promote-slice-artifact', sliceId: 'slice-1', evidence: slicePromotion },
+			result: { type: 'promote-slice-artifact', sliceId: 'slice-1', evidence: slicePromotion, dispatchStartedActionId: null },
 		})
 		seedAction(core.tx, {
 			id: 'slice-complete',
 			at: '2026-06-10T12:02:00.000Z',
-			result: { type: 'validate-slice-delivery-artifact', sliceId: 'slice-1', evidence: sliceValidation },
+			result: {
+				type: 'validate-slice-delivery-artifact',
+				sliceId: 'slice-1',
+				evidence: sliceValidation,
+				dispatchStartedActionId: null,
+			},
 		})
 
 		return core
@@ -476,7 +491,11 @@ if (import.meta.vitest) {
 		seedAction(tx, {
 			id,
 			at: '2026-06-10T12:03:00.000Z',
-			result: { type: 'validate-delivery-artifact', evidence: passed ? passedValidation : failedValidation },
+			result: {
+				type: 'validate-delivery-artifact',
+				evidence: passed ? passedValidation : failedValidation,
+				dispatchStartedActionId: null,
+			},
 		})
 	}
 

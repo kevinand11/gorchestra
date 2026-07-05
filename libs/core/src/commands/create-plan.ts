@@ -12,7 +12,7 @@ import type { CoreDispatchRequest, CoreStorage } from '../services'
 import { appendAgentRunEvent, createModelAgentRunWithProfileSnapshot } from '../utils/agent-run-events'
 import type { CoreRuntimeValues } from '../utils/runtime-values'
 import type { Result as CoreResult } from '../utils/types'
-import { acceptDispatchRequest } from './utils/dispatch'
+import { acceptAgentRunModelTurn, acceptAgentRunSandboxPreparation } from './utils/dispatch'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { buildCommandHandler } from './utils/handler'
 import {
@@ -212,20 +212,12 @@ async function writeInitialPlanningInput(
 	})
 	if (!input.ok) return input
 
-	const preparationDispatchMarker = await acceptDispatchRequest(runtime.services.dispatcher, {
-		type: 'agent-run-sandbox-preparation',
-		agentRunId: agentRun.id,
-		serializationKey: agentRun.id,
-		requestedThroughCursor: null,
+	const preparationDispatchMarker = await acceptAgentRunSandboxPreparation(runtime.services.dispatcher, agentRun.id, {
+		type: 'agent-run-created',
 	})
 	if (!preparationDispatchMarker.ok) return preparationDispatchMarker
 
-	const modelTurnDispatchMarker = await acceptDispatchRequest(runtime.services.dispatcher, {
-		type: 'agent-run-model-turn',
-		agentRunId: agentRun.id,
-		serializationKey: agentRun.id,
-		inputEventId: input.value.id,
-	})
+	const modelTurnDispatchMarker = await acceptAgentRunModelTurn(runtime.services.dispatcher, agentRun.id, input.value.id)
 	if (!modelTurnDispatchMarker.ok) return modelTurnDispatchMarker
 
 	return {
@@ -310,14 +302,24 @@ if (import.meta.vitest) {
 				{
 					type: 'agent-run-sandbox-preparation',
 					agentRunId: 'agent-run-1',
-					serializationKey: 'agent-run-1',
-					requestedThroughCursor: null,
+					coordinationClaims: [
+						{
+							scope: [{ type: 'agent-run', id: 'agent-run-1' }],
+							mode: { type: 'exclusive' },
+						},
+					],
+					reason: { type: 'agent-run-created' },
 				},
 				{
 					type: 'agent-run-model-turn',
 					agentRunId: 'agent-run-1',
-					serializationKey: 'agent-run-1',
-					inputEventId: 'agent-run-event-2',
+					coordinationClaims: [
+						{
+							scope: [{ type: 'agent-run', id: 'agent-run-1' }],
+							mode: { type: 'exclusive' },
+						},
+					],
+					reason: { type: 'input-appended', inputEventId: 'agent-run-event-2' },
 				},
 			])
 			expect(readyMarkers).toEqual(['marker-1', 'marker-1'])

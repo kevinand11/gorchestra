@@ -1,5 +1,6 @@
 import { actionRecord, externalOperationEvidence } from './result'
 import type { Action } from '../../../domain/action'
+import type { DeliveryWorkState } from '../../../domain/delivery'
 import type { ReviewSurface } from '../../../domain/review-surface'
 import type { InvariantViolationError } from '../../../errors'
 import type { SourceControlCreateReviewSurfaceInput, SourceControlReviewSurfaceCreation } from '../../../providers/source-control'
@@ -7,63 +8,44 @@ import type { CoreRuntime } from '../../../runtime'
 import { createRecord, withTransaction } from '../../../storage/helpers'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
 import type { Result as CoreResult } from '../../../utils/types'
-import { resolvedSchedulerHandlerContext, schedulerHandlerContextFromClaim, type ProviderBackedSchedulerPreflightClaim } from '../preflight'
-import type { ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
+import type { DeliveryWorkHandlerResult, ResolvedDeliveryHandlerContext } from '../../delivery-work/types'
 
-type DeliveryReviewSurfaceState = Extract<ProviderBackedSchedulerPreflightClaim['state'], { type: 'needs-review-surface' }>
+type DeliveryReviewSurfaceState = Extract<DeliveryWorkState, { type: 'needs-review-surface' }>
 
 type DeliveryReviewSurfaceInput = SourceControlCreateReviewSurfaceInput & {
 	deliveryId: string
 	deliveryArtifactId: string
 }
 
-type DeliveryReviewSurfaceClaim = Pick<ProviderBackedSchedulerPreflightClaim, 'deliveryContext'> &
-	Pick<ResolvedDeliveryHandlerContext, 'repositoryAccessSecret'> & { state: DeliveryReviewSurfaceState }
+type DeliveryReviewSurfaceClaim = Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'repositoryAccessSecret'> & {
+	state: DeliveryReviewSurfaceState
+}
 
 export async function handleDeliveryNeedsReviewSurface(
 	runtime: CoreRuntime,
-	preflight: ProviderBackedSchedulerPreflightClaim,
-): Promise<RunDeliveryWorkHandlerResult> {
-	const state = preflight.state
-	if (state.type !== 'needs-review-surface') return deliveryReviewSurfaceStateInvariant()
-
-	const claim = { ...preflight, state }
-	const input = deliveryReviewSurfaceInputFromPreflight(claim)
-	return input.ok ? createDeliveryReviewSurface(runtime, claim, input.value) : input
-}
-
-function deliveryReviewSurfaceInputFromPreflight(
-	preflight: ProviderBackedSchedulerPreflightClaim & { state: DeliveryReviewSurfaceState },
-): CoreResult<DeliveryReviewSurfaceInput, RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	const context = schedulerHandlerContextFromClaim(preflight)
-	return context.ok
-		? deliveryReviewSurfaceInput({
-				deliveryContext: preflight.deliveryContext,
-				repositoryAccessSecret: context.value.repositoryAccessSecret,
-				state: preflight.state,
-			})
-		: context
+	context: ResolvedDeliveryHandlerContext,
+	state: DeliveryReviewSurfaceState,
+): Promise<DeliveryWorkHandlerResult> {
+	const input = deliveryReviewSurfaceInput({
+		deliveryContext: context.deliveryContext,
+		repositoryAccessSecret: context.repositoryAccessSecret,
+		state,
+	})
+	return input.ok ? createDeliveryReviewSurface(runtime, context, state, input.value) : input
 }
 
 async function createDeliveryReviewSurface(
 	runtime: CoreRuntime,
-	preflight: ProviderBackedSchedulerPreflightClaim & { state: DeliveryReviewSurfaceState },
+	context: ResolvedDeliveryHandlerContext,
+	state: DeliveryReviewSurfaceState,
 	input: DeliveryReviewSurfaceInput,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<DeliveryWorkHandlerResult> {
 	const creation = await runtime.providers.sourceControl.createReviewSurface(input)
 	if (!creation.ok) return creation
 
-	return withTransaction(runtime.services, async (storage) => {
-		const context = resolvedSchedulerHandlerContext(runtime, storage, preflight.deliveryContext, preflight)
-		return context.ok ? recordDeliveryReviewSurfaceCreationResult(context.value, preflight.state, input, creation.value) : context
-	})
-}
-
-function deliveryReviewSurfaceStateInvariant(): RunDeliveryWorkHandlerResult {
-	return {
-		ok: false,
-		error: { type: 'invariant-violation', message: 'Delivery Review Surface creation requires needs-review-surface state.' },
-	}
+	return withTransaction(runtime.services, (storage) =>
+		recordDeliveryReviewSurfaceCreationResult({ ...context, storage }, state, input, creation.value),
+	)
 }
 
 function deliveryReviewSurfaceInput(claim: DeliveryReviewSurfaceClaim): CoreResult<DeliveryReviewSurfaceInput, InvariantViolationError> {
@@ -94,7 +76,7 @@ async function recordDeliveryReviewSurfaceCreationResult(
 	_state: DeliveryReviewSurfaceState,
 	input: DeliveryReviewSurfaceInput,
 	creation: SourceControlReviewSurfaceCreation,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<DeliveryWorkHandlerResult> {
 	switch (creation.type) {
 		case 'integrated':
 			return writeIntegratedDeliveryArtifactObservation(context, creation.summary)
@@ -110,10 +92,11 @@ async function recordDeliveryReviewSurfaceCreationResult(
 async function writeIntegratedDeliveryArtifactObservation(
 	context: ResolvedDeliveryHandlerContext,
 	summary: string,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<DeliveryWorkHandlerResult> {
 	const action = actionRecord(context, {
 		type: 'observe-delivery-artifact-integration',
 		evidence: externalOperationEvidence(summary, 'observe-artifact-integration', true),
+		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
 	})
 	if (!action.ok) return action
 
@@ -125,7 +108,7 @@ async function writeDeliveryReviewSurface(
 	context: ResolvedDeliveryHandlerContext,
 	input: DeliveryReviewSurfaceInput,
 	creation: Extract<SourceControlReviewSurfaceCreation, { type: 'review-surface' }>,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<DeliveryWorkHandlerResult> {
 	const records = deliveryReviewSurfaceRecords(context, input, creation.pullRequestNumber)
 	return records.ok ? putDeliveryReviewSurfaceRecords(context, records.value) : records
 }
@@ -136,7 +119,7 @@ function deliveryReviewSurfaceRecords(
 	pullRequestNumber: number,
 ): CoreResult<
 	{ reviewSurface: ReviewSurface; action: Action },
-	RunDeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
+	DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
 > {
 	const reviewSurfaceId = nextId(context.values, 'review-surface')
 	if (!reviewSurfaceId.ok) return reviewSurfaceId
@@ -169,7 +152,11 @@ function deliveryReviewSurfaceRecords(
 				deliveryId: context.deliveryContext.delivery.id,
 				performed: performed.value,
 				authorized: null,
-				result: { type: 'create-delivery-review-surface', reviewSurfaceId: reviewSurfaceId.value },
+				result: {
+					type: 'create-delivery-review-surface',
+					reviewSurfaceId: reviewSurfaceId.value,
+					dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+				},
 			},
 		},
 	}
@@ -178,7 +165,7 @@ function deliveryReviewSurfaceRecords(
 async function putDeliveryReviewSurfaceRecords(
 	context: ResolvedDeliveryHandlerContext,
 	records: { reviewSurface: ReviewSurface; action: Action },
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<DeliveryWorkHandlerResult> {
 	const surfacePut = await createRecord('review-surface', context.storage, records.reviewSurface)
 	if (!surfacePut.ok) return surfacePut
 
@@ -189,10 +176,11 @@ async function putDeliveryReviewSurfaceRecords(
 async function writeFailedDeliveryReviewSurfaceCreation(
 	context: ResolvedDeliveryHandlerContext,
 	summary: string,
-): Promise<RunDeliveryWorkHandlerResult> {
+): Promise<DeliveryWorkHandlerResult> {
 	const action = actionRecord(context, {
 		type: 'record-delivery-external-operation-failure',
 		evidence: externalOperationEvidence(summary, 'create-review-surface'),
+		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
 	})
 	if (!action.ok) return action
 
@@ -210,7 +198,7 @@ async function writeFailedDeliveryReviewSurfaceCreation(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createRunDeliveryWorkHandlerTestContext } = await import('./test-utils')
+	const { createDeliveryWorkHandlerTestContext } = await import('./test-utils')
 
 	describe('Delivery Review Surface creation handler', () => {
 		it('stores a Delivery Review Surface and Action after provider creation', async () => {
@@ -249,7 +237,7 @@ if (import.meta.vitest) {
 				deliveryId: 'delivery-1',
 				performed: { at: '2026-06-10T12:00:00.000Z' },
 				authorized: null,
-				result: { type: 'create-delivery-review-surface', reviewSurfaceId: 'review-surface-1' },
+				result: { type: 'create-delivery-review-surface', reviewSurfaceId: 'review-surface-1', dispatchStartedActionId: null },
 			})
 		})
 
@@ -276,6 +264,7 @@ if (import.meta.vitest) {
 					passed: true,
 					summary: 'Already integrated.',
 				},
+				dispatchStartedActionId: null,
 			})
 		})
 
@@ -309,6 +298,7 @@ if (import.meta.vitest) {
 					passed: false,
 					summary: 'Failed.',
 				},
+				dispatchStartedActionId: null,
 			})
 		})
 	})
@@ -318,6 +308,6 @@ if (import.meta.vitest) {
 	}
 
 	async function handlerContext() {
-		return createRunDeliveryWorkHandlerTestContext()
+		return createDeliveryWorkHandlerTestContext()
 	}
 }

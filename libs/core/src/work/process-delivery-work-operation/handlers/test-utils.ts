@@ -9,7 +9,7 @@ import {
 	stamp,
 } from '../../../utils/test-helpers'
 
-export async function createRunDeliveryWorkHandlerTestContext(options: { sliceId?: string } = {}) {
+export async function createDeliveryWorkHandlerTestContext(options: { sliceId?: string } = {}) {
 	const services = createTestCoreServices()
 	seedDelivery(services.tx, 'delivery-1')
 	seedSelectableModel(services.tx, 'model-1')

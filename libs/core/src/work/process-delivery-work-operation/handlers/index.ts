@@ -8,11 +8,21 @@ import { noEligibleWork } from './result'
 import type { DeliveryWorkState } from '../../../domain/delivery'
 import type { InvariantViolationError } from '../../../errors'
 import type { CoreRuntime } from '../../../runtime'
-import type { DeliveryHandlerContext, ResolvedDeliveryHandlerContext, RunDeliveryWorkHandlerResult } from '../types'
+import type { DeliveryHandlerContext, ResolvedDeliveryHandlerContext, DeliveryWorkHandlerResult } from '../../delivery-work/types'
 
 type NoWorkDeliveryState = Extract<
 	DeliveryWorkState,
-	{ type: 'closed' | 'unqueued' | 'dependency-blocked' | 'preflight-failed' | 'needs-artifact-creation' | 'ready-to-ship' }
+	{
+		type:
+			| 'closed'
+			| 'unqueued'
+			| 'operation-running'
+			| 'operation-queued'
+			| 'dependency-blocked'
+			| 'preflight-failed'
+			| 'needs-artifact-creation'
+			| 'ready-to-ship'
+	}
 >
 
 type FailedDeliveryState = Extract<
@@ -28,6 +38,8 @@ type RemainingDeliveryState = ArtifactOrSliceDeliveryState | ReviewDeliveryState
 const noWorkDeliveryStateTypes = new Set<DeliveryWorkState['type']>([
 	'closed',
 	'unqueued',
+	'operation-running',
+	'operation-queued',
 	'dependency-blocked',
 	'preflight-failed',
 	'needs-artifact-creation',
@@ -44,7 +56,7 @@ export function handleDeliveryWorkState(
 	context: DeliveryHandlerContext,
 	state: DeliveryWorkState,
 	runtime?: CoreRuntime,
-): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
+): Promise<DeliveryWorkHandlerResult> | DeliveryWorkHandlerResult {
 	const resolved = resolvedContextForState(context, state)
 	return resolved.ok ? handleResolvedDeliveryWorkState(resolved.value, state, runtime) : resolved
 }
@@ -53,7 +65,7 @@ function handleResolvedDeliveryWorkState(
 	context: DeliveryHandlerContext | ResolvedDeliveryHandlerContext,
 	state: DeliveryWorkState,
 	runtime: CoreRuntime | undefined,
-): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
+): Promise<DeliveryWorkHandlerResult> | DeliveryWorkHandlerResult {
 	if (isNoWorkDeliveryState(state)) return noEligibleWork()
 	if (isFailedDeliveryState(state)) return handleFailedDeliveryWorkState(state)
 	if (isProviderBackedDeliveryState(state)) return providerBackedDeliveryStateInvariant()
@@ -78,10 +90,18 @@ function resolvedContextForState(context: DeliveryHandlerContext, state: Deliver
 }
 
 function requiresDeliveryWorkResolution(state: DeliveryWorkState): boolean {
-	return !['closed', 'unqueued', 'dependency-blocked', 'preflight-failed', 'ready-to-ship'].includes(state.type)
+	return ![
+		'closed',
+		'unqueued',
+		'operation-running',
+		'operation-queued',
+		'dependency-blocked',
+		'preflight-failed',
+		'ready-to-ship',
+	].includes(state.type)
 }
 
-function handleFailedDeliveryWorkState(state: FailedDeliveryState): RunDeliveryWorkHandlerResult {
+function handleFailedDeliveryWorkState(state: FailedDeliveryState): DeliveryWorkHandlerResult {
 	switch (state.type) {
 		case 'delivery-operation-failed':
 			return handleDeliveryOperationFailed()
@@ -98,7 +118,7 @@ function handleRemainingDeliveryWorkState(
 	context: DeliveryHandlerContext | ResolvedDeliveryHandlerContext,
 	state: RemainingDeliveryState,
 	runtime: CoreRuntime | undefined,
-): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
+): Promise<DeliveryWorkHandlerResult> | DeliveryWorkHandlerResult {
 	return isArtifactOrSliceDeliveryState(state)
 		? handleArtifactOrSliceDeliveryWorkState(context, state, runtime)
 		: handleReviewDeliveryWorkState(state)
@@ -108,7 +128,7 @@ function handleArtifactOrSliceDeliveryWorkState(
 	context: DeliveryHandlerContext | ResolvedDeliveryHandlerContext,
 	state: ArtifactOrSliceDeliveryState,
 	runtime: CoreRuntime | undefined,
-): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
+): Promise<DeliveryWorkHandlerResult> | DeliveryWorkHandlerResult {
 	switch (state.type) {
 		case 'slices-incomplete':
 			return handleDeliverySlicesIncompleteState(context, runtime)
@@ -119,7 +139,7 @@ function handleArtifactOrSliceDeliveryWorkState(
 	}
 }
 
-function handleReviewDeliveryWorkState(state: ReviewDeliveryState): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
+function handleReviewDeliveryWorkState(state: ReviewDeliveryState): Promise<DeliveryWorkHandlerResult> | DeliveryWorkHandlerResult {
 	switch (state.type) {
 		case 'needs-review-surface':
 			return providerBackedDeliveryStateInvariant()
@@ -133,7 +153,7 @@ function handleReviewDeliveryWorkState(state: ReviewDeliveryState): Promise<RunD
 function handleDeliverySlicesIncompleteState(
 	context: DeliveryHandlerContext | ResolvedDeliveryHandlerContext,
 	runtime: CoreRuntime | undefined,
-): Promise<RunDeliveryWorkHandlerResult> | RunDeliveryWorkHandlerResult {
+): Promise<DeliveryWorkHandlerResult> | DeliveryWorkHandlerResult {
 	return runtime === undefined
 		? missingDeliveryWorkRuntime()
 		: handleDeliverySlicesIncomplete(runtime, context as ResolvedDeliveryHandlerContext)
@@ -155,7 +175,7 @@ function isProviderBackedDeliveryState(state: DeliveryWorkState): state is Provi
 	return state.type === 'needs-review-surface'
 }
 
-function providerBackedDeliveryStateInvariant(): RunDeliveryWorkHandlerResult {
+function providerBackedDeliveryStateInvariant(): DeliveryWorkHandlerResult {
 	return {
 		ok: false,
 		error: {
@@ -165,7 +185,7 @@ function providerBackedDeliveryStateInvariant(): RunDeliveryWorkHandlerResult {
 	}
 }
 
-function missingDeliveryWorkRuntime(): RunDeliveryWorkHandlerResult {
+function missingDeliveryWorkRuntime(): DeliveryWorkHandlerResult {
 	return {
 		ok: false,
 		error: {
