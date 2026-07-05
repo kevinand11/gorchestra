@@ -1,10 +1,13 @@
 import type { CoreServices, CoreStorage } from '@gorchestra/core'
 
+import { createLocalDirectorySandboxService } from './sandbox'
 import { revealSecretPlaintext, type SecretEncryptionKey } from '../modules/secret-protection'
 
 export type CreateCoreServicesOptions = {
 	secretEncryptionKey: SecretEncryptionKey
 	dispatcher: CoreServices['dispatcher']
+	sandboxRootDir: string
+	coreStorageNamespace: string
 }
 
 export function createCoreServices(storage: CoreStorage, options: CreateCoreServicesOptions): CoreServices {
@@ -15,7 +18,10 @@ export function createCoreServices(storage: CoreStorage, options: CreateCoreServ
 			resolveSecrets: () => Promise.resolve([]),
 			resolveSecretValues: ({ secrets }) => Promise.resolve(resolveSecretValues(secrets, options.secretEncryptionKey)),
 		},
-		sandbox: { preflight: () => Promise.resolve({ ok: true }) },
+		sandbox: createLocalDirectorySandboxService({
+			rootDir: options.sandboxRootDir,
+			coreStorageNamespace: options.coreStorageNamespace,
+		}),
 		dispatcher: options.dispatcher,
 	}
 }
@@ -37,7 +43,11 @@ if (import.meta.vitest) {
 
 	describe('Server Core services', () => {
 		it('preflights and resolves inline protected Secret value refs', async () => {
+			const { mkdtemp, rm } = await import('node:fs/promises')
+			const { tmpdir } = await import('node:os')
+			const { join } = await import('node:path')
 			const { parseSecretEncryptionKey, protectSecretPlaintext } = await import('../modules/secret-protection')
+			const sandboxRootDir = await mkdtemp(join(tmpdir(), 'gorchestra-core-services-'))
 			const secretEncryptionKey = parseSecretEncryptionKey(Buffer.alloc(32, 1).toString('base64url'))
 			const valueRef = protectSecretPlaintext('token-value', secretEncryptionKey)
 			const dispatcher: CoreServices['dispatcher'] = {
@@ -45,15 +55,24 @@ if (import.meta.vitest) {
 				request: () => Promise.resolve('dispatch-marker'),
 				ready: () => {},
 			}
-			const services = createCoreServices({} as CoreStorage, { secretEncryptionKey, dispatcher })
-
-			expect(await services.secrets.preflight()).toEqual({ ok: true })
-			expect(await services.secrets.resolveSecrets({ scope: { type: 'project', projectId: 'project-1' } })).toEqual([])
-			expect(await services.secrets.resolveSecretValues({ secrets: [{ secretId: 'secret-1', valueRef }] })).toEqual({
-				'secret-1': 'token-value',
+			const services = createCoreServices({} as CoreStorage, {
+				secretEncryptionKey,
+				dispatcher,
+				sandboxRootDir,
+				coreStorageNamespace: 'portfolio-1',
 			})
-			expect(await services.secrets.resolveSecretValues({ secrets: [{ secretId: 'secret-2', valueRef: 'bad-ref' }] })).toEqual({})
-			expect(await services.sandbox.preflight()).toEqual({ ok: true })
+
+			try {
+				expect(await services.secrets.preflight()).toEqual({ ok: true })
+				expect(await services.secrets.resolveSecrets({ scope: { type: 'project', projectId: 'project-1' } })).toEqual([])
+				expect(await services.secrets.resolveSecretValues({ secrets: [{ secretId: 'secret-1', valueRef }] })).toEqual({
+					'secret-1': 'token-value',
+				})
+				expect(await services.secrets.resolveSecretValues({ secrets: [{ secretId: 'secret-2', valueRef: 'bad-ref' }] })).toEqual({})
+				expect(await services.sandbox.preflight()).toEqual({ ok: true })
+			} finally {
+				await rm(sandboxRootDir, { recursive: true, force: true })
+			}
 		})
 	})
 }

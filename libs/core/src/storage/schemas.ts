@@ -11,10 +11,13 @@ import {
 	agentRunModelUseOverridePipe,
 	agentRunProfileSnapshotPipe,
 	agentRunPurposePipe,
+	agentRunRuntimeRequirementOverridePipe,
+	agentRunSandboxStatePipe,
 	type AgentRun,
 	type AgentRunEvent,
 } from '../domain/agent-run'
 import { type AgentRunProfile } from '../domain/agent-run-profile'
+import { agentRunBlockedPipe, agentRunRuntimeRequirementsPipe } from '../domain/agent-run-runtime'
 import { deliveryArtifactConfigPipe, sliceArtifactConfigPipe, type DeliveryArtifact, type SliceArtifact } from '../domain/artifact'
 import {
 	archivePeriodPipe,
@@ -37,7 +40,7 @@ import { projectSourcePipe, type Project } from '../domain/project'
 import { repositoryConfigPipe, type Repository } from '../domain/repository'
 import { reviewSurfaceClosedPipe, reviewSurfaceConfigPipe, reviewSurfaceScopePipe, type ReviewSurface } from '../domain/review-surface'
 import { revisionDispositionPipe, revisionGateClosedPipe, revisionScopePipe, type Revision, type RevisionGate } from '../domain/revision'
-import { envNamePipe, secretBindingScopePipe, secretValueRefPipe, type Secret, type SecretBinding } from '../domain/secret'
+import { secretValueRefPipe, type Secret } from '../domain/secret'
 import { type Slice } from '../domain/slice'
 import type { CoreIdResource, CoreResource } from '../errors'
 
@@ -92,6 +95,7 @@ export const agentRunProfileSchema = Schema.from('agent_run_profiles')
 	.pk('id', idPipe, explicitCoreIdRequired)
 	.field('name', nonEmptyTrimmedStringPipe)
 	.field('modelUse', modelUseConfigPipe)
+	.field('runtimeRequirements', agentRunRuntimeRequirementsPipe)
 	.field('created', auditStampPipe)
 	.field('updated', v.nullable(auditStampPipe))
 	.field('archivePeriods', archivePeriodsPipe)
@@ -175,6 +179,11 @@ export const agentRunSchema = Schema.from('agent_runs')
 	.field('purpose', agentRunPurposePipe)
 	.field('profile', agentRunProfileSnapshotPipe)
 	.field('modelUseOverride', v.nullable(agentRunModelUseOverridePipe))
+	.field('sourceRuntimeRequirements', agentRunRuntimeRequirementsPipe)
+	.field('runtimeRequirementOverrides', v.array(agentRunRuntimeRequirementOverridePipe))
+	.field('desiredRuntimeRequirements', agentRunRuntimeRequirementsPipe)
+	.field('blocked', agentRunBlockedPipe)
+	.field('sandbox', agentRunSandboxStatePipe)
 	.field('started', runtimeRecordPipe)
 	.field('completed', v.nullable(runtimeRecordPipe))
 	.build()
@@ -222,15 +231,6 @@ export const secretSchema = Schema.from('secrets')
 	.field('archivePeriods', archivePeriodsPipe)
 	.build()
 
-export const secretBindingSchema = Schema.from('secret_bindings')
-	.pk('id', idPipe, explicitCoreIdRequired)
-	.field('secretId', idPipe)
-	.field('scope', secretBindingScopePipe)
-	.field('envName', envNamePipe)
-	.field('created', auditStampPipe)
-	.field('archivePeriods', archivePeriodsPipe)
-	.build()
-
 export const coreStorageSchemas = [
 	projectSchema,
 	repositorySchema,
@@ -252,7 +252,6 @@ export const coreStorageSchemas = [
 	revisionGateSchema,
 	revisionSchema,
 	secretSchema,
-	secretBindingSchema,
 ] as const satisfies readonly AnySchema[]
 
 export const coreIdResourceSchemas = {
@@ -276,7 +275,6 @@ export const coreIdResourceSchemas = {
 	'revision-gate': revisionGateSchema,
 	revision: revisionSchema,
 	secret: secretSchema,
-	'secret-binding': secretBindingSchema,
 } as const satisfies Record<CoreIdResource, AnySchema>
 
 export const coreResourceSchemas = coreIdResourceSchemas as Record<CoreResource, AnySchema>
@@ -302,7 +300,6 @@ export interface CoreIdStorageRecordMap {
 	'revision-gate': RevisionGate
 	revision: Revision
 	secret: Secret
-	'secret-binding': SecretBinding
 }
 
 export type CoreStorageRecordMap = CoreIdStorageRecordMap

@@ -1,16 +1,22 @@
 import type { CoreRuntime } from '../runtime'
+import { createPrepareAgentRunSandboxOperation } from './prepare-agent-run-sandbox'
 import { createProcessDeliveryWorkOperation } from './process-delivery-work-operation'
+import { createReleaseAgentRunSandboxOperation } from './release-agent-run-sandbox'
 import { createRunModelAgentRunOperation } from './run-model-agent-run'
 import { createScheduleDeliveryWorkOperation } from './schedule-delivery-work'
 
 export type * from './types'
+export type * as PrepareAgentRunSandbox from './prepare-agent-run-sandbox'
 export type * as ProcessDeliveryWorkOperation from './process-delivery-work-operation'
+export type * as ReleaseAgentRunSandbox from './release-agent-run-sandbox'
 export type * as RunModelAgentRun from './run-model-agent-run'
 export type * as ScheduleDeliveryWork from './schedule-delivery-work'
 
 export function createCoreWork(runtime: CoreRuntime) {
 	return {
 		runModelAgentRun: createRunModelAgentRunOperation(runtime),
+		prepareAgentRunSandbox: createPrepareAgentRunSandboxOperation(runtime),
+		releaseAgentRunSandbox: createReleaseAgentRunSandboxOperation(runtime),
 		scheduleDeliveryWork: createScheduleDeliveryWorkOperation(runtime),
 		processDeliveryWorkOperation: createProcessDeliveryWorkOperation(runtime),
 	}

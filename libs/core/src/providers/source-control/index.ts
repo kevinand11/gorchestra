@@ -397,7 +397,12 @@ if (import.meta.vitest) {
 				resolveSecrets: () => Promise.resolve([]),
 				resolveSecretValues,
 			},
-			sandbox: { preflight: () => Promise.resolve({ ok: true }) },
+			sandbox: {
+				preflight: () => Promise.resolve({ ok: true }),
+				assign: () => Promise.resolve({ ref: 'sandbox-ref' }),
+				runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command completed.', stdout: null, stderr: null }),
+				release: () => Promise.resolve({ summary: 'Sandbox released.' }),
+			},
 			dispatcher: {
 				preflight: () => Promise.resolve({ ok: true }),
 				request: () => Promise.resolve('dispatch-marker'),

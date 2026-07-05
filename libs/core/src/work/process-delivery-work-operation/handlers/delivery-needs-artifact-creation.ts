@@ -184,6 +184,7 @@ if (import.meta.vitest) {
 			expect(context.tx.actions.records.get('action-1')?.result).toEqual({
 				type: 'create-delivery-artifact',
 				deliveryArtifactId: 'delivery-artifact-1',
+				dispatchStartedActionId: null,
 			})
 		})
 
@@ -219,6 +220,7 @@ if (import.meta.vitest) {
 					passed: false,
 					summary: 'GitHub artifact source branch was not found.',
 				},
+				dispatchStartedActionId: null,
 			})
 		})
 	})

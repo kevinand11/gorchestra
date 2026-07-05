@@ -16,7 +16,8 @@ import type {
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
 import { listRecords, notFound } from '../storage/helpers'
-import { completeSingleAgentRunByPurpose, getSingleAgentRunByPurpose } from '../utils/agent-runs'
+import { getSingleAgentRunByPurpose } from '../utils/agent-runs'
+import { completeAgentRunByPurposeAndAcceptSandboxRelease } from './utils/dispatch'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
 import { getRequired, updateRecordValue, withAuditStampTransaction } from './utils/storage'
@@ -36,17 +37,23 @@ export type Error =
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
+type DispatchedResult = { result: Result; dispatchMarker: string | null }
+
 export function createClosePlanCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('closePlan', closePlanInputPipe, (input, context) =>
-		withAuditStampTransaction(runtime, context, (storage, stamp) => closePlan(storage, input, stamp)),
-	)
+	return buildCommandHandler('closePlan', closePlanInputPipe, async (input, context) => {
+		const written = await withAuditStampTransaction(runtime, context, (storage, stamp) => closePlan(runtime, storage, input, stamp))
+		if (!written.ok) return written
+		if (written.value.dispatchMarker !== null) runtime.services.dispatcher.ready(written.value.dispatchMarker)
+		return { ok: true, value: written.value.result }
+	})
 }
 
 async function closePlan(
+	runtime: CoreRuntime,
 	storage: CoreStorage,
 	input: Input,
 	stamp: AuditStamp,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
 	const plan = await getOpenProjectPlan(storage, input)
 	if (!plan.ok) return plan
 
@@ -54,7 +61,7 @@ async function closePlan(
 	if (!agentRun.ok) return agentRun
 
 	const idle = await requireAgentRunIdle(storage, agentRun.value.id)
-	return idle.ok ? writeClosedPlan(storage, plan.value, stamp) : idle
+	return idle.ok ? writeClosedPlan(runtime, storage, plan.value, stamp) : idle
 }
 
 async function getOpenProjectPlan(
@@ -68,21 +75,36 @@ async function getOpenProjectPlan(
 }
 
 async function writeClosedPlan(
+	runtime: CoreRuntime,
 	storage: CoreStorage,
 	plan: Plan,
 	stamp: AuditStamp,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
 	const closedPlan = await updateRecordValue('plan', storage, plan.id, { closed: stamp })
-	return closedPlan.ok ? completePlanningAgentRun(storage, closedPlan.value, stamp) : closedPlan
+	return closedPlan.ok ? completePlanningAgentRun(runtime, storage, closedPlan.value, stamp) : closedPlan
 }
 
 async function completePlanningAgentRun(
+	runtime: CoreRuntime,
 	storage: CoreStorage,
 	plan: Plan,
 	stamp: AuditStamp,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const completed = await completeSingleAgentRunByPurpose(storage, { type: 'planning', planId: plan.id }, { at: stamp.at })
-	return completed.ok ? { ok: true, value: { ...plan, agentRun: completed.value as PlanWithPlanningAgentRun['agentRun'] } } : completed
+): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
+	const completed = await completeAgentRunByPurposeAndAcceptSandboxRelease(
+		storage,
+		runtime.services.dispatcher,
+		{ type: 'planning', planId: plan.id },
+		{ at: stamp.at },
+	)
+	return completed.ok
+		? {
+				ok: true,
+				value: {
+					result: { ...plan, agentRun: completed.value.agentRun as PlanWithPlanningAgentRun['agentRun'] },
+					dispatchMarker: completed.value.dispatchMarker,
+				},
+			}
+		: completed
 }
 
 async function requireAgentRunIdle(
@@ -226,8 +248,14 @@ if (import.meta.vitest) {
 				agentRunProfileId: 'agent-run-profile-1',
 				name: 'Agent Run Profile',
 				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				runtimeRequirements: [],
 			},
 			modelUseOverride: null,
+			sourceRuntimeRequirements: [],
+			runtimeRequirementOverrides: [],
+			desiredRuntimeRequirements: [],
+			blocked: null,
+			sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
 		}

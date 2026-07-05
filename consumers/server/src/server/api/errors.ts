@@ -53,6 +53,8 @@ const badRequestCoreErrorMessages: Record<string, string> = {
 	'plan-closed': 'Plan is closed',
 	'archived-model-reference': 'Selected Model is archived',
 	'archived-model-provider-reference': 'Selected Model Provider is archived',
+	'archived-secret-reference': 'Selected Secret is archived',
+	'duplicate-agent-run-runtime-requirement': 'Runtime Requirement already exists',
 	'duplicate-repository-target': 'Repository target already exists for this Project',
 	'project-source-type-mismatch': 'Project does not support source control Repositories',
 	'secret-not-active': 'Repository access Secret is not active',

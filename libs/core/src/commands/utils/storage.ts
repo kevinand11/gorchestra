@@ -1,5 +1,6 @@
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './errors'
 import type { AgentRunProfile } from '../../domain/agent-run-profile'
+import type { AgentRunRuntimeRequirement } from '../../domain/agent-run-runtime'
 import type { ArchivePeriod, AuditStamp, Id } from '../../domain/commons'
 import type { DeliveryConfig, DeliveryConfigRecord, ModelUseConfig, ProjectConfig, ProjectConfigRecord } from '../../domain/config'
 import type { DeliveryWorkState } from '../../domain/delivery'
@@ -13,7 +14,7 @@ import {
 } from '../../domain/model-provider'
 import type { Project } from '../../domain/project'
 import type { RepositoryConfig } from '../../domain/repository'
-import type { Secret, SecretBindingScope } from '../../domain/secret'
+import type { Secret } from '../../domain/secret'
 import type {
 	AlreadyArchivedError,
 	ArchivableCoreResource,
@@ -24,7 +25,6 @@ import type {
 	CoreIdResource,
 	DeliveryWorkStateMismatchError,
 	DuplicateRepositoryTargetError,
-	DuplicateSecretBindingError,
 	InvalidCoreServiceOutputError,
 	InvariantViolationError,
 	ModelThinkingLevelUnavailableError,
@@ -237,7 +237,12 @@ export async function validateSelectableAgentRunProfiles(
 }
 
 export function agentRunProfileSnapshot(profile: AgentRunProfile) {
-	return { agentRunProfileId: profile.id, name: profile.name, modelUse: profile.modelUse }
+	return {
+		agentRunProfileId: profile.id,
+		name: profile.name,
+		modelUse: profile.modelUse,
+		runtimeRequirements: profile.runtimeRequirements,
+	}
 }
 
 export function agentRunProfileIdsFromProjectConfig(config: ProjectConfig): Id[] {
@@ -508,6 +513,28 @@ export function secretReferencesFromModelProviderConfig(auth: ModelProviderAuth 
 	])
 }
 
+export function secretIdsFromRuntimeRequirements(requirements: AgentRunRuntimeRequirement[]): Id[] {
+	return uniqueIds(requirements.flatMap(secretIdsFromRuntimeRequirement))
+}
+
+export function validateRuntimeRequirementSecretReferences(
+	storage: CoreStorage,
+	requirements: AgentRunRuntimeRequirement[],
+): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError | ArchivedSecretReferenceError>> {
+	return validateActiveSecretReferences(storage, secretIdsFromRuntimeRequirements(requirements))
+}
+
+function secretIdsFromRuntimeRequirement(requirement: AgentRunRuntimeRequirement): Id[] {
+	switch (requirement.type) {
+		case 'environment-secret':
+			return [requirement.secretId]
+		case 'run-command':
+			return Object.values(requirement.commandSecretEnv)
+		default:
+			throw new Error(`Unexpected Agent Run Runtime Requirement type: ${String(requirement satisfies never)}`)
+	}
+}
+
 function secretReferencesFromModelProviderAccessValue(value: ModelProviderAccessValue): Id[] {
 	switch (value.type) {
 		case 'secret':
@@ -515,29 +542,6 @@ function secretReferencesFromModelProviderAccessValue(value: ModelProviderAccess
 		default:
 			throw new Error('Unexpected Model Provider access value.')
 	}
-}
-
-export function scopesEqual(left: SecretBindingScope, right: SecretBindingScope): boolean {
-	return secretBindingScopeKey(left) === secretBindingScopeKey(right)
-}
-
-function secretBindingScopeKey(scope: SecretBindingScope): string {
-	switch (scope.type) {
-		case 'portfolio':
-			return 'portfolio'
-		case 'project':
-			return `project:${scope.projectId}`
-		case 'delivery':
-			return `delivery:${scope.deliveryId}`
-	}
-}
-
-export function duplicateSecretBinding(
-	existingSecretBindingId: Id,
-	scope: SecretBindingScope,
-	envName: string,
-): Result<never, DuplicateSecretBindingError> {
-	return { ok: false, error: { type: 'duplicate-secret-binding', existingSecretBindingId, scope, envName } }
 }
 
 export function archivedSecretReference(secretId: Id): Result<never, ArchivedSecretReferenceError> {

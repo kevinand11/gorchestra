@@ -1,13 +1,13 @@
 import type { PipeError } from 'valleyed'
 
 import type { AgentRunPurpose } from './domain/agent-run'
+import type { AgentRunRuntimeRequirement } from './domain/agent-run-runtime'
 import type { Id } from './domain/commons'
 import type { DeliveryClosedOutcome, DeliveryWorkState } from './domain/delivery'
 import type { ExternalOperationEvidence, ValidationEvidence } from './domain/evidence'
 import type { LinkDef } from './domain/graph'
 import type { ModelThinkingLevel } from './domain/model'
 import type { ModelProviderProtocolType } from './domain/model-provider'
-import type { SecretBindingScope } from './domain/secret'
 
 export type CorePreflightCheckName = 'storage' | 'secrets' | 'sandbox' | 'dispatcher'
 export type CoreServiceOutputName = CorePreflightCheckName | 'runtime'
@@ -58,11 +58,10 @@ export type CoreIdResource =
 	| 'revision-gate'
 	| 'revision'
 	| 'secret'
-	| 'secret-binding'
 
 export type CoreResource = CoreIdResource
 
-export type ArchivableCoreResource = Extract<CoreIdResource, 'model-provider' | 'model' | 'agent-run-profile' | 'secret' | 'secret-binding'>
+export type ArchivableCoreResource = Extract<CoreIdResource, 'model-provider' | 'model' | 'agent-run-profile' | 'secret'>
 
 export interface ResourceNotFoundError {
 	type: 'not-found'
@@ -94,11 +93,9 @@ export interface StorageOperationFailedError {
 	operation: CoreStorageOperation
 }
 
-export interface DuplicateSecretBindingError {
-	type: 'duplicate-secret-binding'
-	scope: SecretBindingScope
-	envName: string
-	existingSecretBindingId: Id
+export interface DuplicateAgentRunRuntimeRequirementError {
+	type: 'duplicate-agent-run-runtime-requirement'
+	requirement: AgentRunRuntimeRequirement
 }
 
 export interface ArchivedSecretReferenceError {
@@ -296,7 +293,7 @@ export type CoreError =
 	| AlreadyArchivedError
 	| NotArchivedError
 	| StorageOperationFailedError
-	| DuplicateSecretBindingError
+	| DuplicateAgentRunRuntimeRequirementError
 	| DuplicateLinkError
 	| ArchivedSecretReferenceError
 	| ArchivedModelReferenceError

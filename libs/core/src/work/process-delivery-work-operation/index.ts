@@ -32,7 +32,13 @@ import {
 	startedDeliveryWorkDispatchAction,
 	sliceOperationFromState,
 } from '../delivery-work/dispatch-actions'
-import type { DeliveryWorkHandlerResult, Error, ResolvedDeliveryHandlerContext, Result } from '../delivery-work/types'
+import type {
+	DeliveryWorkHandlerResult,
+	DeliveryWorkHandlerSuccess,
+	Error,
+	ResolvedDeliveryHandlerContext,
+	Result,
+} from '../delivery-work/types'
 import type { WorkContext } from '../types'
 import { buildWorkHandler } from '../utils/handler'
 
@@ -75,7 +81,8 @@ async function handleProcessDeliveryWorkOperation(
 	const handled = await processFreshOperation(runtime, input, startedActionId, current.value.deliveryContext, preflight.value.context)
 	if (!handled.ok) return handled
 
-	return finishAndRequestScheduler(runtime, input, startedActionId, 'processed', handled.value)
+	const result = deliveryWorkResult(handled.value)
+	return finishAndRequestScheduler(runtime, input, startedActionId, 'processed', result.value, result.dispatchMarkers)
 }
 
 type StartedAttempt = { type: 'started'; action: Action } | { type: 'already-started' }
@@ -368,6 +375,7 @@ async function finishAndRequestScheduler(
 	startedActionId: Id,
 	outcome: 'processed' | 'stale-no-op',
 	result: Result,
+	dispatchMarkers: string[] = [],
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const written = await withTransaction(runtime.services, (storage) =>
 		writeFinishAndAcceptSchedulerRequest(runtime, storage, input, startedActionId, outcome),
@@ -375,6 +383,7 @@ async function finishAndRequestScheduler(
 	if (!written.ok) return written
 
 	runtime.services.dispatcher.ready(written.value.marker)
+	for (const dispatchMarker of dispatchMarkers) runtime.services.dispatcher.ready(dispatchMarker)
 	return { ok: true, value: result }
 }
 
@@ -417,6 +426,10 @@ async function writeFinishAndAcceptSchedulerRequest(
 		reason: { type: 'delivery-work-requested' },
 	})
 	return marker.ok ? { ok: true, value: { marker: marker.value } } : marker
+}
+
+function deliveryWorkResult(result: DeliveryWorkHandlerSuccess): { value: Result; dispatchMarkers: string[] } {
+	return { value: { processedCount: result.processedCount, failures: result.failures }, dispatchMarkers: result.dispatchMarkers ?? [] }
 }
 
 function operationsEqual(left: DeliveryWorkOperation | null, right: DeliveryWorkOperation): boolean {

@@ -17,7 +17,7 @@ import type { CoreRuntime } from '../runtime'
 import type { CoreDispatchRequest } from '../services'
 import { appendAgentRunEvent } from '../utils/agent-run-events'
 import { requireInteractiveAgentRunTargetOpen } from '../utils/agent-run-targets'
-import { acceptDispatchRequest, exclusiveAgentRunClaim } from './utils/dispatch'
+import { acceptAgentRunModelTurn } from './utils/dispatch'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
 import { withAuditStampTransaction } from './utils/storage'
@@ -62,12 +62,7 @@ export function createSendAgentRunMessageCommand(runtime: CoreRuntime): Operatio
 				})
 				if (!event.ok) return event
 
-				const dispatchMarker = await acceptDispatchRequest(runtime.services.dispatcher, {
-					type: 'agent-run',
-					agentRunId: input.agentRunId,
-					coordinationClaims: [exclusiveAgentRunClaim(input.agentRunId)],
-					reason: { type: 'input-appended', inputEventId: event.value.id },
-				})
+				const dispatchMarker = await acceptAgentRunModelTurn(runtime.services.dispatcher, input.agentRunId, event.value.id)
 				if (!dispatchMarker.ok) return dispatchMarker
 
 				return { ok: true, value: { event: event.value, dispatchMarker: dispatchMarker.value } }
@@ -138,7 +133,7 @@ if (import.meta.vitest) {
 			expect(result).toMatchObject({ ok: true })
 			expect(dispatches).toEqual([
 				{
-					type: 'agent-run',
+					type: 'agent-run-model-turn',
 					agentRunId: 'agent-run-1',
 					coordinationClaims: [
 						{

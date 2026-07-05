@@ -6,6 +6,7 @@ import type { CommandContext } from '../commands/types'
 import type { Action } from '../domain/action'
 import type { AgentRun, AgentRunEvent, AgentRunProfileSnapshot } from '../domain/agent-run'
 import type { AgentRunProfile } from '../domain/agent-run-profile'
+import type { AgentRunRuntimeRequirement } from '../domain/agent-run-runtime'
 import type { DeliveryArtifact, SliceArtifact } from '../domain/artifact'
 import type { AuditStamp, Id } from '../domain/commons'
 import type { DeliveryWorkConfig } from '../domain/config'
@@ -20,7 +21,7 @@ import type { Project } from '../domain/project'
 import type { Repository } from '../domain/repository'
 import type { ReviewSurface } from '../domain/review-surface'
 import type { Revision, RevisionGate } from '../domain/revision'
-import type { Secret, SecretBinding } from '../domain/secret'
+import type { Secret } from '../domain/secret'
 import type { Slice } from '../domain/slice'
 import { createCoreProviders } from '../providers'
 import type { CoreRuntime } from '../runtime'
@@ -43,7 +44,6 @@ import {
 	reviewSurfaceSchema,
 	revisionGateSchema,
 	revisionSchema,
-	secretBindingSchema,
 	secretSchema,
 	sliceArtifactSchema,
 	sliceSchema,
@@ -161,7 +161,7 @@ export function neverCalledProviderBackedPreflightProviders(): CoreRuntime['prov
 	}
 }
 
-export function createTestCoreServices(overrides: Partial<Pick<CoreServices, 'dispatcher'>> = {}): CoreServices & {
+export function createTestCoreServices(overrides: Partial<Pick<CoreServices, 'dispatcher' | 'sandbox' | 'secrets'>> = {}): CoreServices & {
 	tx: TestStorageTransaction
 	values: CoreRuntimeValues
 	transactionCalls: () => number
@@ -171,17 +171,24 @@ export function createTestCoreServices(overrides: Partial<Pick<CoreServices, 'di
 
 	return {
 		storage: storage.service,
-		secrets: {
+		secrets: overrides.secrets ?? {
 			preflight: () => Promise.resolve({ ok: true }),
 			resolveSecrets: () => Promise.resolve([]),
 			resolveSecretValues: () => Promise.resolve({}),
 		},
-		sandbox: { preflight: () => Promise.resolve({ ok: true }) },
+		sandbox: overrides.sandbox ?? noopSandbox,
 		dispatcher: overrides.dispatcher ?? noopDispatcher,
 		values,
 		tx: storage.tx,
 		transactionCalls: () => storage.transactionCalls,
 	}
+}
+
+const noopSandbox: CoreServices['sandbox'] = {
+	preflight: () => Promise.resolve({ ok: true }),
+	assign: () => Promise.resolve({ ref: 'sandbox-ref' }),
+	runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command succeeded.', stdout: null, stderr: null }),
+	release: () => Promise.resolve({ summary: 'Sandbox released.' }),
 }
 
 const noopDispatcher: CoreServices['dispatcher'] = {
@@ -249,8 +256,12 @@ export function seedAction(
 	tx.actions.records.set(id, { id, deliveryId: 'delivery-1', performed: { at }, authorized, result })
 }
 
-export function testAgentRunProfileSnapshot(agentRunProfileId = 'agent-run-profile-1', modelId = 'model-1'): AgentRunProfileSnapshot {
-	return { agentRunProfileId, name: 'Agent Run Profile', modelUse: { modelId, thinkingLevel: 'none' } }
+export function testAgentRunProfileSnapshot(
+	agentRunProfileId = 'agent-run-profile-1',
+	modelId = 'model-1',
+	runtimeRequirements: AgentRunRuntimeRequirement[] = [],
+): AgentRunProfileSnapshot {
+	return { agentRunProfileId, name: 'Agent Run Profile', modelUse: { modelId, thinkingLevel: 'none' }, runtimeRequirements }
 }
 
 export function testModelAgentRun(
@@ -267,6 +278,11 @@ export function testModelAgentRun(
 		purpose: input.purpose ?? { type: 'planning', planId: 'plan-1' },
 		profile: input.profile ?? testAgentRunProfileSnapshot(),
 		modelUseOverride: null,
+		sourceRuntimeRequirements: [],
+		runtimeRequirementOverrides: [],
+		desiredRuntimeRequirements: input.profile?.runtimeRequirements ?? [],
+		blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
+		sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
 		started: { at: '2026-06-10T12:00:00.000Z' },
 		completed: input.completed ?? null,
 	}
@@ -315,13 +331,14 @@ export function seedAgentRunProfile(
 	tx: TestStorageTransaction,
 	id: string,
 	modelId = 'model-1',
-	options: { archived?: boolean } = {},
+	options: { archived?: boolean; runtimeRequirements?: AgentRunRuntimeRequirement[] } = {},
 ): AgentRunProfile {
 	if (!tx.models.records.has(modelId)) seedSelectableModel(tx, modelId)
 	const profile: AgentRunProfile = {
 		id,
 		name: 'Agent Run Profile',
 		modelUse: { modelId, thinkingLevel: 'none' },
+		runtimeRequirements: options.runtimeRequirements ?? [],
 		created: stamp,
 		updated: null,
 		archivePeriods: options.archived ? [{ archived: stamp, unarchived: null }] : [],
@@ -410,7 +427,6 @@ export interface TestStorageTransaction extends CoreStorage {
 	revisionGates: TestTable<RevisionGate>
 	revisions: TestTable<Revision>
 	secrets: TestTable<Secret>
-	secretBindings: TestTable<SecretBinding>
 }
 
 export interface TestTable<TRecord extends { id: Id }> {
@@ -440,7 +456,6 @@ function testStorageTransaction(adapter: InMemoryAdapter): TestStorageTransactio
 		revisionGates: tableView<RevisionGate>(adapter, revisionGateSchema.name),
 		revisions: tableView<Revision>(adapter, revisionSchema.name),
 		secrets: tableView<Secret>(adapter, secretSchema.name),
-		secretBindings: tableView<SecretBinding>(adapter, secretBindingSchema.name),
 	} as TestStorageTransaction
 }
 
@@ -530,7 +545,6 @@ function failureTables(tx: TestStorageTransaction): Map<string, { get?: boolean;
 		[revisionGateSchema.name, tx.revisionGates.fail],
 		[revisionSchema.name, tx.revisions.fail],
 		[secretSchema.name, tx.secrets.fail],
-		[secretBindingSchema.name, tx.secretBindings.fail],
 	])
 }
 

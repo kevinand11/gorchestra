@@ -3,8 +3,10 @@ import { Router } from 'equipped/server'
 import { v, type PipeOutput } from 'valleyed'
 
 import {
+	agentRunRuntimeRequirementOverrideRequestSchema,
 	portfolioRequestCookieSchema,
 	sendAgentRunMessageRequestSchema,
+	type AgentRunRuntimeRequirementOverrideRequest,
 	type PortfolioRequestCookies,
 	type SendAgentRunMessageRequest,
 } from './shared'
@@ -37,6 +39,14 @@ export function createAgentRunsApiRouter(context: ServerApiContext) {
 				response: Domain.AgentRun.agentRunEventPipe,
 			},
 		})(async (req) => sendSelectedPortfolioAgentRunMessage(context, req.cookies, req.params.agentRunId, req.body))
+		.post('/agent-runs/:agentRunId/runtime-requirement-overrides', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ agentRunId: idPipe }),
+				body: agentRunRuntimeRequirementOverrideRequestSchema,
+				response: Domain.AgentRun.agentRunEventPipe,
+			},
+		})(async (req) => addSelectedPortfolioAgentRunRuntimeRequirementOverride(context, req.cookies, req.params.agentRunId, req.body))
 }
 
 function getSelectedPortfolioAgentRunEvents(
@@ -60,6 +70,21 @@ function sendSelectedPortfolioAgentRunMessage(
 	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
 		const event = await core.commands.sendAgentRunMessage(
 			{ agentRunId, content: input.content },
+			{ actor: { type: 'workspace-member', id: workspaceMember.id }, correlationId: null },
+		)
+		return event.ok ? event.value : throwCoreOperationError(event.error)
+	})
+}
+
+function addSelectedPortfolioAgentRunRuntimeRequirementOverride(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	agentRunId: string,
+	input: AgentRunRuntimeRequirementOverrideRequest,
+): Promise<Domain.AgentRun.AgentRunEvent> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
+		const event = await core.commands.addAgentRunRuntimeRequirementOverride(
+			{ agentRunId, requirements: input.requirements },
 			{ actor: { type: 'workspace-member', id: workspaceMember.id }, correlationId: null },
 		)
 		return event.ok ? event.value : throwCoreOperationError(event.error)

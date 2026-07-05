@@ -162,18 +162,36 @@ export function createServerDispatcher(input: CreateServerDispatcherInput) {
 		try {
 			const services = createCoreServices(coreStorage.storage, {
 				secretEncryptionKey: input.secretEncryptionKey,
+				sandboxRootDir: input.corePortfolioStorage.dataDir,
+				coreStorageNamespace: item.coreStorageNamespace,
 				dispatcher: coreDispatcherForNamespace(item.coreStorageNamespace),
 			})
 			const opened = openCore(services)
 			if (!opened.ok) throw new Error(`Core open failed: ${opened.error.type}`)
 
 			switch (item.request.type) {
-				case 'agent-run': {
+				case 'agent-run-model-turn': {
 					const result = await opened.value.work.runModelAgentRun(
 						{ agentRunId: item.request.agentRunId },
 						{ correlationId: null },
 					)
-					if (!result.ok) globalThis.console.error('Agent Run work failed', result.error)
+					if (!result.ok) globalThis.console.error('Agent Run model turn work failed', result.error)
+					return
+				}
+				case 'agent-run-sandbox-preparation': {
+					const result = await opened.value.work.prepareAgentRunSandbox(
+						{ agentRunId: item.request.agentRunId },
+						{ correlationId: null },
+					)
+					if (!result.ok) globalThis.console.error('Agent Run sandbox preparation work failed', result.error)
+					return
+				}
+				case 'agent-run-sandbox-release': {
+					const result = await opened.value.work.releaseAgentRunSandbox(
+						{ agentRunId: item.request.agentRunId },
+						{ correlationId: null },
+					)
+					if (!result.ok) globalThis.console.error('Agent Run sandbox release work failed', result.error)
 					return
 				}
 				case 'delivery-work-scheduler': {
@@ -269,7 +287,7 @@ if (import.meta.vitest) {
 				corePortfolioStorage: testCorePortfolioStorage,
 				secretEncryptionKey: Buffer.alloc(32, 1),
 				runDispatchItem: (item) => {
-					if (item.request.type === 'agent-run') started.push(item.request.agentRunId)
+					if (item.request.type === 'agent-run-model-turn') started.push(item.request.agentRunId)
 					return Promise.resolve()
 				},
 			})
@@ -291,7 +309,7 @@ if (import.meta.vitest) {
 				corePortfolioStorage: testCorePortfolioStorage,
 				secretEncryptionKey: Buffer.alloc(32, 1),
 				runDispatchItem: async (item) => {
-					if (item.request.type !== 'agent-run') return
+					if (item.request.type !== 'agent-run-model-turn') return
 					started.push(item.request.agentRunId)
 					if (started.length === 1) await firstGate.promise
 					completed.push(item.request.agentRunId)
@@ -313,7 +331,7 @@ if (import.meta.vitest) {
 
 		it('allows different Agent Run exclusive claims in the same Portfolio to run concurrently', async () => {
 			const { completed, dispatcher, firstGate, secondGate, started } = concurrentDispatchFixture((item) => {
-				if (item.request.type !== 'agent-run') throw new Error('Expected Agent Run request')
+				if (item.request.type !== 'agent-run-model-turn') throw new Error('Expected Agent Run request')
 				return item.request.agentRunId
 			})
 
@@ -431,7 +449,7 @@ if (import.meta.vitest) {
 				corePortfolioStorage: testCorePortfolioStorage,
 				secretEncryptionKey: Buffer.alloc(32, 1),
 				runDispatchItem: async (item) => {
-					started.push(item.request.type === 'agent-run' ? item.request.agentRunId : item.request.type)
+					started.push(item.request.type === 'agent-run-model-turn' ? item.request.agentRunId : item.request.type)
 					if (started.length === 1) await firstGate.promise
 				},
 			})
@@ -454,7 +472,7 @@ if (import.meta.vitest) {
 				corePortfolioStorage: testCorePortfolioStorage,
 				secretEncryptionKey: Buffer.alloc(32, 1),
 				runDispatchItem: (item) => {
-					if (item.request.type === 'agent-run') started.push(item.request.agentRunId)
+					if (item.request.type === 'agent-run-model-turn') started.push(item.request.agentRunId)
 					return Promise.resolve()
 				},
 			})
@@ -473,7 +491,7 @@ if (import.meta.vitest) {
 		return {
 			coreStorageNamespace,
 			request: {
-				type: 'agent-run',
+				type: 'agent-run-model-turn',
 				agentRunId,
 				coordinationClaims: [{ scope: [{ type: 'agent-run', id: agentRunId }], mode: { type: 'exclusive' } }],
 				reason: { type: 'input-appended', inputEventId: `${agentRunId}-input` },

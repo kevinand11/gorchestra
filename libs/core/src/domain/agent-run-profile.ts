@@ -1,5 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import { agentRunRuntimeRequirementsPipe } from './agent-run-runtime'
 import { archivePeriodPipe, auditStampPipe, idPipe, nonEmptyTrimmedStringPipe } from './commons'
 import { modelUseConfigPipe } from './config'
 
@@ -7,6 +8,7 @@ export const agentRunProfilePipe = v.object({
 	id: idPipe,
 	name: nonEmptyTrimmedStringPipe,
 	modelUse: modelUseConfigPipe,
+	runtimeRequirements: agentRunRuntimeRequirementsPipe,
 	created: auditStampPipe,
 	updated: v.nullable(auditStampPipe),
 	archivePeriods: v.array(archivePeriodPipe),
@@ -17,6 +19,7 @@ export const listedAgentRunProfilePipe = v.object({
 	id: idPipe,
 	name: nonEmptyTrimmedStringPipe,
 	modelUse: modelUseConfigPipe,
+	runtimeRequirements: agentRunRuntimeRequirementsPipe,
 	created: auditStampPipe,
 	updated: v.nullable(auditStampPipe),
 	archived: v.boolean(),

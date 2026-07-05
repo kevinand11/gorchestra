@@ -1,3 +1,4 @@
+import { acceptAgentRunModelTurn, acceptAgentRunSandboxPreparation } from '../../../commands/utils/dispatch'
 import type { AgentRun, AgentRunProfileSnapshot, ExecutionMode } from '../../../domain/agent-run'
 import type { Id, RuntimeRecord } from '../../../domain/commons'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
@@ -39,7 +40,15 @@ async function writeSliceExecutionAgentRun(
 	})
 	if (!input.ok) return input
 
-	return { ok: true, value: { processedCount: 1, failures: [] } }
+	const preparationMarker = await acceptAgentRunSandboxPreparation(context.services.dispatcher, agentRunPut.value.id, {
+		type: 'agent-run-created',
+	})
+	if (!preparationMarker.ok) return preparationMarker
+
+	const modelTurnMarker = await acceptAgentRunModelTurn(context.services.dispatcher, agentRunPut.value.id, input.value.id)
+	if (!modelTurnMarker.ok) return modelTurnMarker
+
+	return { ok: true, value: { processedCount: 1, failures: [], dispatchMarkers: [preparationMarker.value, modelTurnMarker.value] } }
 }
 
 function sliceExecutionAgentRun(
@@ -69,6 +78,7 @@ function sliceExecutionAgentRun(
 				agentRunProfileId: resolution.executionProfile.id,
 				name: resolution.executionProfile.name,
 				modelUse: resolution.executionProfile.modelUse,
+				runtimeRequirements: resolution.executionProfile.runtimeRequirements,
 			},
 		},
 	}
@@ -95,7 +105,10 @@ if (import.meta.vitest) {
 				resolution,
 			)
 
-			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
+			expect(result).toEqual({
+				ok: true,
+				value: { processedCount: 1, failures: [], dispatchMarkers: ['dispatch-marker', 'dispatch-marker'] },
+			})
 			expect(context.tx.actions.records.size).toBe(0)
 			expect(context.tx.agentRuns.records.get('agent-run-1')).toEqual({
 				id: 'agent-run-1',
@@ -105,8 +118,14 @@ if (import.meta.vitest) {
 					agentRunProfileId: 'agent-run-profile-1',
 					name: 'Execution',
 					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+					runtimeRequirements: [],
 				},
 				modelUseOverride: null,
+				sourceRuntimeRequirements: [],
+				runtimeRequirementOverrides: [],
+				desiredRuntimeRequirements: [],
+				blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
+				sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
 				started: { at: '2026-06-10T12:00:00.000Z' },
 				completed: null,
 			})
@@ -130,7 +149,10 @@ if (import.meta.vitest) {
 				resolution,
 			)
 
-			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
+			expect(result).toEqual({
+				ok: true,
+				value: { processedCount: 1, failures: [], dispatchMarkers: ['dispatch-marker', 'dispatch-marker'] },
+			})
 			expect(context.tx.agentRuns.records.get('agent-run-1')?.purpose).toEqual({
 				type: 'execution',
 				deliveryId: 'delivery-1',
@@ -151,6 +173,7 @@ if (import.meta.vitest) {
 			id: 'agent-run-profile-1',
 			name: 'Execution',
 			modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+			runtimeRequirements: [],
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 			updated: null,
 			archivePeriods: [],

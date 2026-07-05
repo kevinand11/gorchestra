@@ -2,9 +2,10 @@ import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
 import type { AgentRunProfile } from '../domain/agent-run-profile'
+import { agentRunRuntimeRequirementsPipe, firstDuplicateRuntimeRequirement } from '../domain/agent-run-runtime'
 import { idPipe, nonEmptyTrimmedStringPipe } from '../domain/commons'
 import { modelUseConfigPipe } from '../domain/config'
-import type { InvalidInputError } from '../errors'
+import type { ArchivedSecretReferenceError, DuplicateAgentRunRuntimeRequirementError, InvalidInputError } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { Result as CoreResult } from '../utils/types'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
@@ -15,6 +16,7 @@ import {
 	modelIdsFromModelUses,
 	updateRecordValue,
 	validateModelUseConfigs,
+	validateRuntimeRequirementSecretReferences,
 	withAuditStampTransaction,
 } from './utils/storage'
 
@@ -22,11 +24,17 @@ const updateAgentRunProfileInputPipe = v.object({
 	agentRunProfileId: idPipe,
 	name: nonEmptyTrimmedStringPipe,
 	modelUse: modelUseConfigPipe,
+	runtimeRequirements: agentRunRuntimeRequirementsPipe,
 })
 export type Input = PipeOutput<typeof updateAgentRunProfileInputPipe>
 
 export type Result = AgentRunProfile
-export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
+export type Error =
+	| InvalidInputError
+	| ConfigCommandReferenceError
+	| ConfigCommandStorageError
+	| ArchivedSecretReferenceError
+	| DuplicateAgentRunRuntimeRequirementError
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createUpdateAgentRunProfileCommand(runtime: CoreRuntime): Operation {
@@ -35,6 +43,11 @@ export function createUpdateAgentRunProfileCommand(runtime: CoreRuntime): Operat
 			runtime,
 			context,
 			async (storage, stamp): Promise<CoreResult<AgentRunProfile, Exclude<Error, InvalidInputError>>> => {
+				const duplicateRequirement = firstDuplicateRuntimeRequirement(input.runtimeRequirements)
+				if (duplicateRequirement !== null) {
+					return { ok: false, error: { type: 'duplicate-agent-run-runtime-requirement', requirement: duplicateRequirement } }
+				}
+
 				const existing = await getRequired('agent-run-profile', storage, input.agentRunProfileId)
 				if (!existing.ok) return existing
 
@@ -44,9 +57,13 @@ export function createUpdateAgentRunProfileCommand(runtime: CoreRuntime): Operat
 				const modelUseValidation = validateModelUseConfigs(facts.value, [input.modelUse])
 				if (!modelUseValidation.ok) return modelUseValidation
 
+				const secretValidation = await validateRuntimeRequirementSecretReferences(storage, input.runtimeRequirements)
+				if (!secretValidation.ok) return secretValidation
+
 				return updateRecordValue('agent-run-profile', storage, input.agentRunProfileId, {
 					name: input.name,
 					modelUse: input.modelUse,
+					runtimeRequirements: input.runtimeRequirements,
 					updated: stamp,
 				})
 			},
@@ -71,13 +88,19 @@ if (import.meta.vitest) {
 					agentRunProfileId: 'agent-run-profile-1',
 					name: '  Execution  ',
 					modelUse: { modelId: 'model-2', thinkingLevel: 'none' },
+					runtimeRequirements: [],
 				},
 				context,
 			)
 
 			expect(result).toMatchObject({
 				ok: true,
-				value: { name: 'Execution', modelUse: { modelId: 'model-2', thinkingLevel: 'none' }, updated: localStamp() },
+				value: {
+					name: 'Execution',
+					modelUse: { modelId: 'model-2', thinkingLevel: 'none' },
+					runtimeRequirements: [],
+					updated: localStamp(),
+				},
 			})
 		})
 	})

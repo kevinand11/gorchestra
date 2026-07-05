@@ -31,8 +31,8 @@ The `libs/core/` package is the private Core package source surface for reusable
 - Opened Core exposes top-level `preflight()` for required Core Service readiness; keep it separate from command/query APIs and do not include optional logger/event checks.
 - Core storage transactions created with `withTransaction` roll back on returned error `Result`s as well as thrown exceptions; expected domain, boundary, and service-output failures should return `Result` variants rather than throwing only to abort a transaction.
 - Core dispatcher service acceptance uses `request(input): Promise<string>` to return an opaque marker inside command/work transactions and `ready(marker): void` only after successful transaction completion; command and work implementations must not start dispatch processing inside the transaction. Core dispatch requests carry Dispatch Coordination Claims that Consumers must scope by Portfolio namespace and acquire before processing.
-- Storage-backed Secret and Secret Binding mutations must preserve Archive Period history and enforce duplicate exact binding scope/environment names across archived and active bindings.
-- Secret read queries return redacted Secret data with Secret References for Repository access, Secret Binding, and Model Provider usages; they must never expose plaintext or Protected Secret Value References.
+- Storage-backed Secret mutations must preserve Archive Period history.
+- Secret read queries return redacted Secret data with Secret References for Repository access, Agent Run Profile runtime requirements, and Model Provider usages; they must never expose plaintext or Protected Secret Value References.
 
 ## Work Guidance
 

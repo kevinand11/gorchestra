@@ -127,7 +127,12 @@ if (import.meta.vitest) {
 		resolveSecretValues: () => Promise.resolve({}),
 	}
 
-	const sandbox: CoreServices['sandbox'] = { preflight: () => Promise.resolve({ ok: true }) }
+	const sandbox: CoreServices['sandbox'] = {
+		preflight: () => Promise.resolve({ ok: true }),
+		assign: () => Promise.resolve({ ref: 'sandbox-ref' }),
+		runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command succeeded.', stdout: null, stderr: null }),
+		release: () => Promise.resolve({ summary: 'Sandbox released.' }),
+	}
 	const dispatcher: CoreServices['dispatcher'] = {
 		preflight: () => Promise.resolve({ ok: true }),
 		request: () => Promise.resolve('dispatch-marker'),
@@ -186,6 +191,15 @@ if (import.meta.vitest) {
 				sandbox: {
 					preflight: () => {
 						throw new Error('sandbox preflight was probed')
+					},
+					assign: () => {
+						throw new Error('sandbox assignment was called')
+					},
+					runCommand: () => {
+						throw new Error('sandbox command was called')
+					},
+					release: () => {
+						throw new Error('sandbox release was called')
 					},
 				},
 				dispatcher: {
@@ -282,6 +296,7 @@ if (import.meta.vitest) {
 					},
 				},
 				sandbox: {
+					...sandbox,
 					preflight: () => {
 						calls.push('sandbox')
 						return Promise.resolve({ ok: true })

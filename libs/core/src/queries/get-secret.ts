@@ -32,7 +32,7 @@ export function createGetSecretQuery(options: CoreServices): Operation {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreServices, seedSecret } = await import('../utils/test-helpers')
+	const { createTestCoreServices, seedAgentRunProfile, seedSecret } = await import('../utils/test-helpers')
 
 	describe('getSecret query', () => {
 		it('validates input before reading storage', async () => {
@@ -72,13 +72,8 @@ if (import.meta.vitest) {
 		it('includes Secret References for the target Secret', async () => {
 			const options = createTestCoreServices()
 			seedSecret(options.tx, 'secret-1')
-			options.tx.secretBindings.records.set('binding-1', {
-				id: 'binding-1',
-				secretId: 'secret-1',
-				scope: { type: 'portfolio' },
-				envName: 'GITHUB_TOKEN',
-				created: { origin: 'imported', at: '2026-06-12T00:00:00.000Z' },
-				archivePeriods: [],
+			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1', {
+				runtimeRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: 'secret-1' }],
 			})
 			const query = createGetSecretQuery(options)
 
@@ -94,11 +89,11 @@ if (import.meta.vitest) {
 					archived: false,
 					references: [
 						{
-							type: 'secret-binding',
+							type: 'agent-run-profile-environment-secret',
 							active: true,
-							secretBindingId: 'binding-1',
-							scope: { type: 'portfolio' },
-							envName: 'GITHUB_TOKEN',
+							agentRunProfileId: 'agent-run-profile-1',
+							name: 'Agent Run Profile',
+							envName: 'NPM_TOKEN',
 						},
 					],
 				},
