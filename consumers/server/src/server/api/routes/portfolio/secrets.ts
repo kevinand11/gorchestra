@@ -13,7 +13,7 @@ import { protectSecretPlaintext } from '../../../modules/secret-protection'
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
 import { withSelectedPortfolioCore } from '../../portfolio-context'
-import { idPipe } from '../../schemas'
+import { coreIdPipe } from '../../schemas'
 
 export function createSecretsApiRouter(context: ServerApiContext) {
 	return new Router()
@@ -30,7 +30,7 @@ export function createSecretsApiRouter(context: ServerApiContext) {
 		.get('/secrets/:secretId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ secretId: idPipe }),
+				params: v.object({ secretId: coreIdPipe }),
 				response: Queries.GetSecret.resultPipe,
 			},
 		})(async (req) => getSelectedPortfolioSecret(context, req.cookies, req.params.secretId))

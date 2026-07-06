@@ -1,49 +1,48 @@
-import { randomUUID } from 'node:crypto'
-
 import { Schema, type AnySchema, type SchemaOutput } from 'equipped/orm'
 import { v } from 'valleyed'
 
-const idPipe = v.string().pipe(v.min(1))
+import { createServerId, serverIdPipe } from '../server-id'
+
 const isoDateTimePipe = v.string().pipe(v.min(1))
 const nullableIsoDateTimePipe = v.nullable(isoDateTimePipe)
 const emailPipe = v.string().pipe(v.email(), v.min(1))
 const displayNamePipe = v.string().pipe(v.asTrimmed(), v.min(1))
 const coreStorageNamespacePipe = v.string().pipe(v.asTrimmed(), v.min(1))
 
-export const userSchema = Schema.from('users').pk('id', idPipe, randomUUID).field('createdAt', isoDateTimePipe).build()
+export const userSchema = Schema.from('users').pk('id', serverIdPipe, createServerId).field('createdAt', isoDateTimePipe).build()
 
 export const emailAuthenticationIdentitySchema = Schema.from('email_authentication_identities')
-	.pk('id', idPipe, randomUUID)
-	.field('userId', idPipe)
+	.pk('id', serverIdPipe, createServerId)
+	.field('userId', serverIdPipe)
 	.field('email', emailPipe)
 	.field('createdAt', isoDateTimePipe)
 	.build()
 
 export const workspaceSchema = Schema.from('workspaces')
-	.pk('id', idPipe, randomUUID)
+	.pk('id', serverIdPipe, createServerId)
 	.field('displayName', displayNamePipe)
 	.field('createdAt', isoDateTimePipe)
 	.build()
 
 export const workspaceMemberSchema = Schema.from('workspace_members')
-	.pk('id', idPipe, randomUUID)
-	.field('workspaceId', idPipe)
-	.field('userId', idPipe)
+	.pk('id', serverIdPipe, createServerId)
+	.field('workspaceId', serverIdPipe)
+	.field('userId', serverIdPipe)
 	.field('membershipStartedAt', isoDateTimePipe)
 	.field('membershipEndedAt', nullableIsoDateTimePipe)
 	.build()
 
 export const workspaceOwnerRoleSchema = Schema.from('workspace_owner_roles')
-	.pk('id', idPipe, randomUUID)
-	.field('workspaceId', idPipe)
-	.field('workspaceMemberId', idPipe)
+	.pk('id', serverIdPipe, createServerId)
+	.field('workspaceId', serverIdPipe)
+	.field('workspaceMemberId', serverIdPipe)
 	.field('assignedAt', isoDateTimePipe)
 	.field('revokedAt', nullableIsoDateTimePipe)
 	.build()
 
 export const portfolioRegistryEntrySchema = Schema.from('portfolio_registry_entries')
-	.pk('id', idPipe, randomUUID)
-	.field('workspaceId', idPipe)
+	.pk('id', serverIdPipe, createServerId)
+	.field('workspaceId', serverIdPipe)
 	.field('displayName', displayNamePipe)
 	.field('coreStorageNamespace', coreStorageNamespacePipe)
 	.field('registeredAt', isoDateTimePipe)

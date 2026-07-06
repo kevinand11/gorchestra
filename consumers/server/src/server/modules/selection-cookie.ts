@@ -1,20 +1,17 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import { requireServerId, serverIdPipe } from '../server-id'
 import { signJwtPayload, verifySignedJwtPayload } from '../signed-jwt'
 
 export const selectionCookieName = 'gorchestra_selection'
 export const selectionLifetimeSeconds = 90 * 24 * 60 * 60
 
-function nonEmptyStringPipe() {
-	return v.string().pipe(v.min(1))
-}
-
 const selectionJwtPayloadPipe = v
 	.fromJson(
 		v.object({
 			typ: v.is('gorchestra-selection'),
-			workspaceId: nonEmptyStringPipe(),
-			portfolioId: nonEmptyStringPipe(),
+			workspaceId: serverIdPipe,
+			portfolioId: serverIdPipe,
 			iat: v.number().pipe(v.int()),
 			exp: v.number().pipe(v.int()),
 		}),
@@ -138,8 +135,7 @@ function selectionFromPayload(payload: SelectionJwtPayload): SelectedPortfolio {
 }
 
 function requireIdentifier(value: string, message: string): string {
-	if (!value.trim()) throw new Error(message)
-	return value
+	return requireServerId(value, message)
 }
 
 function isExpiredSelectionPayload(payload: SelectionJwtPayload, now: Date): boolean {
@@ -156,10 +152,14 @@ if (import.meta.vitest) {
 	const signingKey = 'test-selection-cookie-signing-key'
 	const testNow = new Date('2026-06-19T00:00:00.000Z')
 
+	const workspaceId = '01k00000000000000000000011'
+	const portfolioId = '01k00000000000000000000012'
+	const tamperedWorkspaceId = '01k00000000000000000000013'
+
 	function buildTestSelection(overrides: Partial<BuildSelectionCookieInput> = {}): BuildSelectionCookieResult {
 		return buildSelectionCookie({
-			workspaceId: 'workspace-1',
-			portfolioId: 'portfolio-1',
+			workspaceId,
+			portfolioId,
 			now: testNow,
 			signingKey,
 			...overrides,
@@ -170,8 +170,8 @@ if (import.meta.vitest) {
 		const built = buildTestSelection()
 
 		expect(built.selection).toEqual({
-			workspaceId: 'workspace-1',
-			portfolioId: 'portfolio-1',
+			workspaceId,
+			portfolioId,
 			issuedAt: '2026-06-19T00:00:00.000Z',
 			expiresAt: '2026-09-17T00:00:00.000Z',
 		})
@@ -198,7 +198,7 @@ if (import.meta.vitest) {
 	function testRejectsMissingInvalidAndTamperedSelectionTokens(): void {
 		const built = buildTestSelection()
 		const [header, body, signature] = built.token.split('.')
-		const tamperedToken = `${header}.${Buffer.from(JSON.stringify({ typ: 'gorchestra-selection', workspaceId: 'workspace-2', portfolioId: 'portfolio-1', iat: 1, exp: 2 })).toString('base64url')}.${signature}`
+		const tamperedToken = `${header}.${Buffer.from(JSON.stringify({ typ: 'gorchestra-selection', workspaceId: tamperedWorkspaceId, portfolioId, iat: 1, exp: 2 })).toString('base64url')}.${signature}`
 
 		expect(verifySelectionToken({ token: null, now: testNow, signingKey })).toEqual({ selected: false, reason: 'missing-token' })
 		expect(verifySelectionToken({ token: `${built.token}x`, now: testNow, signingKey })).toEqual({

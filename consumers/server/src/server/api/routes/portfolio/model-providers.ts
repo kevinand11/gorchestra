@@ -18,7 +18,7 @@ import {
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
 import { type SelectedPortfolioCoreContext, withSelectedPortfolioCore } from '../../portfolio-context'
-import { idPipe } from '../../schemas'
+import { coreIdPipe } from '../../schemas'
 
 export function createModelProvidersApiRouter(context: ServerApiContext) {
 	return new Router()
@@ -39,28 +39,28 @@ export function createModelProvidersApiRouter(context: ServerApiContext) {
 		.get('/model-providers/:modelProviderId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ modelProviderId: idPipe }),
+				params: v.object({ modelProviderId: coreIdPipe }),
 				response: Queries.GetModelProvider.resultPipe,
 			},
 		})(async (req) => getSelectedModelProvider(context, req.cookies, req.params.modelProviderId))
 		.get('/model-providers/:modelProviderId/models/:modelId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ modelProviderId: idPipe, modelId: idPipe }),
+				params: v.object({ modelProviderId: coreIdPipe, modelId: coreIdPipe }),
 				response: Queries.GetModel.resultPipe,
 			},
 		})(async (req) => getSelectedModel(context, req.cookies, req.params.modelProviderId, req.params.modelId))
 		.get('/model-providers/:modelProviderId/models/:modelId/references', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ modelProviderId: idPipe, modelId: idPipe }),
+				params: v.object({ modelProviderId: coreIdPipe, modelId: coreIdPipe }),
 				response: Queries.ListModelReferences.resultPipe,
 			},
 		})(async (req) => listSelectedModelReferences(context, req.cookies, req.params.modelProviderId, req.params.modelId))
 		.put('/model-providers/:modelProviderId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ modelProviderId: idPipe }),
+				params: v.object({ modelProviderId: coreIdPipe }),
 				body: updateModelProviderRequestSchema,
 				response: Domain.ModelProvider.modelProviderPipe,
 			},
@@ -68,21 +68,21 @@ export function createModelProvidersApiRouter(context: ServerApiContext) {
 		.post('/model-providers/:modelProviderId/archive', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ modelProviderId: idPipe }),
+				params: v.object({ modelProviderId: coreIdPipe }),
 				response: Domain.ModelProvider.modelProviderPipe,
 			},
 		})(async (req) => archiveSelectedModelProvider(context, req.cookies, req.params.modelProviderId))
 		.post('/model-providers/:modelProviderId/unarchive', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ modelProviderId: idPipe }),
+				params: v.object({ modelProviderId: coreIdPipe }),
 				response: Domain.ModelProvider.modelProviderPipe,
 			},
 		})(async (req) => unarchiveSelectedModelProvider(context, req.cookies, req.params.modelProviderId))
 		.post('/model-providers/:modelProviderId/models', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ modelProviderId: idPipe }),
+				params: v.object({ modelProviderId: coreIdPipe }),
 				body: createModelRequestSchema,
 				response: Domain.Model.modelPipe,
 			},
@@ -90,7 +90,7 @@ export function createModelProvidersApiRouter(context: ServerApiContext) {
 		.put('/model-providers/:modelProviderId/models/:modelId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ modelProviderId: idPipe, modelId: idPipe }),
+				params: v.object({ modelProviderId: coreIdPipe, modelId: coreIdPipe }),
 				body: updateModelRequestSchema,
 				response: Domain.Model.modelPipe,
 			},
@@ -98,21 +98,21 @@ export function createModelProvidersApiRouter(context: ServerApiContext) {
 		.post('/model-providers/:modelProviderId/models/:modelId/archive', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ modelProviderId: idPipe, modelId: idPipe }),
+				params: v.object({ modelProviderId: coreIdPipe, modelId: coreIdPipe }),
 				response: Domain.Model.modelPipe,
 			},
 		})(async (req) => archiveSelectedModel(context, req.cookies, req.params.modelProviderId, req.params.modelId))
 		.post('/model-providers/:modelProviderId/models/:modelId/unarchive', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ modelProviderId: idPipe, modelId: idPipe }),
+				params: v.object({ modelProviderId: coreIdPipe, modelId: coreIdPipe }),
 				response: Domain.Model.modelPipe,
 			},
 		})(async (req) => unarchiveSelectedModel(context, req.cookies, req.params.modelProviderId, req.params.modelId))
 		.post('/model-providers/:modelProviderId/models/:modelId/preflight', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ modelProviderId: idPipe, modelId: idPipe }),
+				params: v.object({ modelProviderId: coreIdPipe, modelId: coreIdPipe }),
 				response: Domain.Evidence.validationEvidencePipe,
 			},
 		})(async (req) => preflightSelectedModel(context, req.cookies, req.params.modelProviderId, req.params.modelId))

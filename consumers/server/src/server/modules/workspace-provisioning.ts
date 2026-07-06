@@ -93,7 +93,7 @@ if (import.meta.vitest) {
 	const { createTempServerStorageTestHarness } = await import('../testing/server-storage')
 	const { openServerStorage } = await import('../storage/repo')
 	const { createUser } = await import('./identities')
-	const { listAccessibleWorkspacePortfolios } = await import('./workspaces')
+	const { listAccessibleWorkspaces } = await import('./workspaces')
 	const { workspaceSchema } = await import('../storage/schemas')
 	const { getCorePortfolioStorageDirectory, openCorePortfolioStorage } = await import('../core/storage')
 
@@ -101,6 +101,7 @@ if (import.meta.vitest) {
 		'gorchestra-server-workspace-provisioning-',
 	)
 	const testNow = new Date('2026-06-19T12:00:00.000Z')
+	const missingUserId = '01k00000000000000000000051'
 	const secretEncryptionKey = Buffer.alloc(32, 1)
 
 	afterEach(cleanupTempServerStorage)
@@ -152,13 +153,13 @@ if (import.meta.vitest) {
 				registeredAt: testNow.toISOString(),
 			})
 
-			const accessible = await listAccessibleWorkspacePortfolios({ serverStorage, userId: user.id })
-			expect(accessible).toHaveLength(1)
-			expect(accessible[0]).toMatchObject({
-				workspace: result.workspace,
-				workspaceMember: result.workspaceMember,
-				portfolio: result.portfolio,
-				activeWorkspaceOwnerRole: result.workspaceOwnerRole,
+			const accessible = await listAccessibleWorkspaces({ serverStorage, userId: user.id })
+			expect(accessible.items).toHaveLength(1)
+			expect(accessible.items[0]).toMatchObject({
+				...result.workspace,
+				member: result.workspaceMember,
+				ownerRole: result.workspaceOwnerRole,
+				portfolios: [result.portfolio],
 			})
 
 			const coreStorage = await openCorePortfolioStorage({ config: corePortfolioStorage, coreStorageNamespace })
@@ -202,7 +203,7 @@ if (import.meta.vitest) {
 			await expect(
 				provisionWorkspaceWithDefaultPortfolio({
 					serverStorage,
-					userId: 'missing-user',
+					userId: missingUserId,
 					workspaceDisplayName: 'Delivery Ops',
 					portfolioDisplayName: 'Main Portfolio',
 					corePortfolioStorage,

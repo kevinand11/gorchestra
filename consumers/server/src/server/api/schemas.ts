@@ -3,13 +3,23 @@ import { v } from 'valleyed'
 
 import { selectionCookieName } from '../modules/selection-cookie'
 import { sessionCookieName } from '../modules/sessions'
+import { serverIdPipe } from '../server-id'
+import {
+	serverNonNegativeIntegerPipe,
+	serverPaginatedQueryEnvelopePipe,
+	serverPaginatedQueryInputPipe,
+	serverPositiveIntegerPipe,
+} from '../server-pagination'
 
-export const idPipe = Domain.Commons.nonEmptyRawStringPipe
+export { serverIdPipe }
+export { serverPaginatedQueryEnvelopePipe, serverPaginatedQueryInputPipe }
+export const coreIdPipe = Domain.Commons.idPipe
+export const idPipe = serverIdPipe
 export const nonEmptyStringPipe = Domain.Commons.nonEmptyRawStringPipe
 export const isoDateTimePipe = Domain.Commons.nonEmptyRawStringPipe
 export const emailPipe = Domain.Commons.nonEmptyRawStringPipe.pipe(v.email())
-export const positiveIntegerPipe = Domain.Commons.positiveIntegerPipe
-export const nonNegativeIntegerPipe = Domain.Commons.nonNegativeIntegerPipe
+export const positiveIntegerPipe = serverPositiveIntegerPipe
+export const nonNegativeIntegerPipe = serverNonNegativeIntegerPipe
 
 export const workspaceResponseSchema = v.object({
 	id: idPipe,

@@ -143,6 +143,12 @@ if (import.meta.vitest) {
 
 	const { cleanupTempServerStorage, createTempServerDataDir } = createTempServerStorageTestHarness('gorchestra-server-portfolio-context-')
 	const now = new Date('2026-06-21T00:00:00.000Z')
+	const fixtureUserId = '01k00000000000000000000031'
+	const fixtureSessionId = '01k00000000000000000000032'
+	const fixtureWorkspaceId = '01k00000000000000000000033'
+	const fixtureWorkspaceMemberId = '01k00000000000000000000034'
+	const fixturePortfolioId = '01k00000000000000000000035'
+	const fixtureWorkspaceOwnerRoleId = '01k00000000000000000000036'
 	const sessionSigningKey = 'test-portfolio-context-session-key'
 	const selectionSigningKey = 'test-portfolio-context-selection-key'
 	const secretEncryptionKey = Buffer.alloc(32, 1)
@@ -198,29 +204,29 @@ if (import.meta.vitest) {
 	function selectedPortfolioCoreContextFixture(activeWorkspaceOwnerRole: WorkspaceOwnerRole | null): SelectedPortfolioCoreContext {
 		return {
 			session: {
-				userId: 'user-1',
+				userId: fixtureUserId,
 				email: 'person@example.com',
-				sessionId: 'session-1',
+				sessionId: fixtureSessionId,
 				issuedAt: now.toISOString(),
 				expiresAt: now.toISOString(),
 			},
 			selection: {
-				workspaceId: 'workspace-1',
-				portfolioId: 'portfolio-1',
+				workspaceId: fixtureWorkspaceId,
+				portfolioId: fixturePortfolioId,
 				issuedAt: now.toISOString(),
 				expiresAt: now.toISOString(),
 			},
-			workspace: { id: 'workspace-1', displayName: 'Workspace', createdAt: now.toISOString() },
+			workspace: { id: fixtureWorkspaceId, displayName: 'Workspace', createdAt: now.toISOString() },
 			workspaceMember: {
-				id: 'member-1',
-				workspaceId: 'workspace-1',
-				userId: 'user-1',
+				id: fixtureWorkspaceMemberId,
+				workspaceId: fixtureWorkspaceId,
+				userId: fixtureUserId,
 				membershipStartedAt: now.toISOString(),
 				membershipEndedAt: null,
 			},
 			portfolio: {
-				id: 'portfolio-1',
-				workspaceId: 'workspace-1',
+				id: fixturePortfolioId,
+				workspaceId: fixtureWorkspaceId,
 				displayName: 'Portfolio',
 				coreStorageNamespace: 'portfolios/portfolio-1',
 				registeredAt: now.toISOString(),
@@ -232,9 +238,9 @@ if (import.meta.vitest) {
 
 	function workspaceOwnerRole(): WorkspaceOwnerRole {
 		return {
-			id: 'role-1',
-			workspaceId: 'workspace-1',
-			workspaceMemberId: 'member-1',
+			id: fixtureWorkspaceOwnerRoleId,
+			workspaceId: fixtureWorkspaceId,
+			workspaceMemberId: fixtureWorkspaceMemberId,
 			assignedAt: now.toISOString(),
 			revokedAt: null,
 		}
@@ -273,7 +279,7 @@ if (import.meta.vitest) {
 			email: 'person@example.com',
 			now,
 			signingKey: sessionSigningKey,
-			generateSessionId: () => 'session-1',
+			generateSessionId: () => fixtureSessionId,
 		})
 		const provisioned = await provisionWorkspaceWithDefaultPortfolio({
 			serverStorage,

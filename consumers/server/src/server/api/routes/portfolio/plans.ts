@@ -12,14 +12,14 @@ import {
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
 import { withSelectedPortfolioCore } from '../../portfolio-context'
-import { idPipe } from '../../schemas'
+import { coreIdPipe } from '../../schemas'
 
 export function createPlansApiRouter(context: ServerApiContext) {
 	return new Router()
 		.get('/projects/:projectId/plans', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ projectId: idPipe }),
+				params: v.object({ projectId: coreIdPipe }),
 				query: Domain.Commons.paginatedQueryInputPipe,
 				response: Queries.ListPlans.resultPipe,
 			},
@@ -27,7 +27,7 @@ export function createPlansApiRouter(context: ServerApiContext) {
 		.post('/projects/:projectId/plans', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ projectId: idPipe }),
+				params: v.object({ projectId: coreIdPipe }),
 				body: createPlanRequestSchema,
 				response: Queries.GetPlan.resultPipe,
 			},
@@ -35,14 +35,14 @@ export function createPlansApiRouter(context: ServerApiContext) {
 		.get('/projects/:projectId/plans/:planId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ projectId: idPipe, planId: idPipe }),
+				params: v.object({ projectId: coreIdPipe, planId: coreIdPipe }),
 				response: Queries.GetPlan.resultPipe,
 			},
 		})(async (req) => getSelectedProjectPlan(context, req.cookies, req.params.projectId, req.params.planId))
 		.post('/projects/:projectId/plans/:planId/close', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ projectId: idPipe, planId: idPipe }),
+				params: v.object({ projectId: coreIdPipe, planId: coreIdPipe }),
 				response: Queries.GetPlan.resultPipe,
 			},
 		})(async (req) => closeSelectedProjectPlan(context, req.cookies, req.params.projectId, req.params.planId))

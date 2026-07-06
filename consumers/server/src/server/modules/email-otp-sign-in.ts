@@ -72,6 +72,8 @@ if (import.meta.vitest) {
 	const { cleanupTempServerStorage, withTempServerStorage } = createTempServerStorageTestHarness('gorchestra-server-email-otp-sign-in-')
 	const signingKey = 'test-email-otp-sign-in-session-key'
 	const testNow = new Date('2026-06-19T12:00:00.000Z')
+	const firstSessionId = '01k00000000000000000000021'
+	const secondSessionId = '01k00000000000000000000022'
 
 	afterEach(cleanupTempServerStorage)
 
@@ -105,14 +107,14 @@ if (import.meta.vitest) {
 				code: '123456',
 				now: testNow,
 				signingKey,
-				generateSessionId: () => 'session-1',
+				generateSessionId: () => firstSessionId,
 			})
 
 			expect(result.signedIn).toBe(true)
 			if (!result.signedIn) return
 			expect(result.createdUser).toBe(true)
 			expect(result.emailAuthenticationIdentity).toMatchObject({ userId: result.user.id, email })
-			expect(result.session).toMatchObject({ userId: result.user.id, email, sessionId: 'session-1' })
+			expect(result.session).toMatchObject({ userId: result.user.id, email, sessionId: firstSessionId })
 			expect(result.cookie).toMatchObject({
 				name: 'gorchestra_session',
 				value: result.token,
@@ -170,7 +172,7 @@ if (import.meta.vitest) {
 				code: '333333',
 				now: testNow,
 				signingKey,
-				generateSessionId: () => 'first-session',
+				generateSessionId: () => firstSessionId,
 			})
 			if (!first.signedIn) throw new Error('expected first Email OTP Sign-in to succeed')
 
@@ -182,7 +184,7 @@ if (import.meta.vitest) {
 				code: '444444',
 				now: secondSignInTime,
 				signingKey,
-				generateSessionId: () => 'second-session',
+				generateSessionId: () => secondSessionId,
 			})
 
 			expect(second.signedIn).toBe(true)
@@ -190,7 +192,7 @@ if (import.meta.vitest) {
 			expect(second.createdUser).toBe(false)
 			expect(second.user).toEqual(first.user)
 			expect(second.emailAuthenticationIdentity).toEqual(first.emailAuthenticationIdentity)
-			expect(second.session).toMatchObject({ userId: first.user.id, email, sessionId: 'second-session' })
+			expect(second.session).toMatchObject({ userId: first.user.id, email, sessionId: secondSessionId })
 			expect(await verifySessionToken({ serverCache, token: first.token, now: secondSignInTime, signingKey })).toEqual({
 				authenticated: false,
 				reason: 'not-current',

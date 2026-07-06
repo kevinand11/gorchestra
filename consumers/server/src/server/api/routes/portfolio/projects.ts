@@ -13,7 +13,7 @@ import {
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
 import { withSelectedPortfolioCore, withSelectedPortfolioOwnerCore } from '../../portfolio-context'
-import { idPipe } from '../../schemas'
+import { coreIdPipe } from '../../schemas'
 
 export function createProjectsApiRouter(context: ServerApiContext) {
 	return new Router()
@@ -35,14 +35,14 @@ export function createProjectsApiRouter(context: ServerApiContext) {
 		.get('/projects/:projectId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ projectId: idPipe }),
+				params: v.object({ projectId: coreIdPipe }),
 				response: Queries.GetProject.resultPipe,
 			},
 		})(async (req) => getSelectedPortfolioProject(context, req.cookies, req.params.projectId))
 		.put('/projects/:projectId/config', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ projectId: idPipe }),
+				params: v.object({ projectId: coreIdPipe }),
 				body: setProjectConfigRequestSchema,
 				response: Queries.GetProject.resultPipe,
 			},

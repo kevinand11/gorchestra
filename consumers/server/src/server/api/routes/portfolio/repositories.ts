@@ -13,14 +13,14 @@ import {
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
 import { withSelectedPortfolioCore } from '../../portfolio-context'
-import { idPipe } from '../../schemas'
+import { coreIdPipe } from '../../schemas'
 
 export function createRepositoriesApiRouter(context: ServerApiContext) {
 	return new Router()
 		.get('/projects/:projectId/repositories', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ projectId: idPipe }),
+				params: v.object({ projectId: coreIdPipe }),
 				query: Domain.Commons.paginatedQueryInputPipe,
 				response: Queries.ListRepositories.resultPipe,
 			},
@@ -28,7 +28,7 @@ export function createRepositoriesApiRouter(context: ServerApiContext) {
 		.post('/projects/:projectId/repositories', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ projectId: idPipe }),
+				params: v.object({ projectId: coreIdPipe }),
 				body: createRepositoryRequestSchema,
 				response: Queries.GetRepository.resultPipe,
 			},
@@ -36,14 +36,14 @@ export function createRepositoriesApiRouter(context: ServerApiContext) {
 		.get('/projects/:projectId/repositories/:repositoryId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ projectId: idPipe, repositoryId: idPipe }),
+				params: v.object({ projectId: coreIdPipe, repositoryId: coreIdPipe }),
 				response: Queries.GetRepository.resultPipe,
 			},
 		})(async (req) => getSelectedProjectRepository(context, req.cookies, req.params.projectId, req.params.repositoryId))
 		.post('/projects/:projectId/repositories/:repositoryId/preflight', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ projectId: idPipe, repositoryId: idPipe }),
+				params: v.object({ projectId: coreIdPipe, repositoryId: coreIdPipe }),
 				response: Domain.Evidence.validationEvidencePipe,
 			},
 		})(async (req) => preflightSelectedProjectRepository(context, req.cookies, req.params.projectId, req.params.repositoryId))

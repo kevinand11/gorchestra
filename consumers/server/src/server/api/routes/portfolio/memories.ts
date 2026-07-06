@@ -14,10 +14,10 @@ import {
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
 import { withSelectedPortfolioCore } from '../../portfolio-context'
-import { idPipe } from '../../schemas'
+import { coreIdPipe } from '../../schemas'
 
 const listMemoryChildrenQuerySchema = v.merge(
-	v.object({ parentId: v.defaults(v.fromJson(v.nullable(idPipe)), null) }),
+	v.object({ parentId: v.defaults(v.fromJson(v.nullable(coreIdPipe)), null) }),
 	Domain.Commons.paginatedQueryInputPipe,
 )
 type ListMemoryChildrenQuery = PaginatedQuery & { parentId: string | null }
@@ -37,14 +37,14 @@ export function createMemoriesApiRouter(context: ServerApiContext) {
 		.get('/memories/:memoryId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ memoryId: idPipe }),
+				params: v.object({ memoryId: coreIdPipe }),
 				response: Queries.GetMemory.resultPipe,
 			},
 		})(async (req) => getSelectedPortfolioMemory(context, req.cookies, req.params.memoryId))
 		.post('/memories/:memoryId/revisions', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ memoryId: idPipe }),
+				params: v.object({ memoryId: coreIdPipe }),
 				body: createMemoryRevisionRequestSchema,
 				response: Domain.Memory.memoryPipe,
 			},

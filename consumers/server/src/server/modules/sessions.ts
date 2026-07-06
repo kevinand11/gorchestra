@@ -1,8 +1,7 @@
-import { randomUUID } from 'node:crypto'
-
 import { v, type PipeOutput } from 'valleyed'
 
 import type { ServerCache } from '../cache'
+import { createServerId, requireServerId, serverIdPipe } from '../server-id'
 import { signJwtPayload, verifySignedJwtPayload } from '../signed-jwt'
 import { normalizeEmailAddress } from './email-otp'
 
@@ -18,9 +17,9 @@ const sessionJwtPayloadPipe = v
 	.fromJson(
 		v.object({
 			typ: v.is('gorchestra-session'),
-			sub: nonEmptyStringPipe(),
+			sub: serverIdPipe,
 			email: nonEmptyStringPipe(),
-			sid: nonEmptyStringPipe(),
+			sid: serverIdPipe,
 			iat: v.number().pipe(v.int()),
 			exp: v.number().pipe(v.int()),
 		}),
@@ -101,7 +100,7 @@ export async function createSession(input: CreateSessionInput): Promise<CreateSe
 		typ: 'gorchestra-session',
 		sub: requireUserId(input.userId),
 		email: requireEmail(input.email),
-		sid: input.generateSessionId?.() ?? randomUUID(),
+		sid: createSessionId(input.generateSessionId),
 		iat: issuedAt,
 		exp: issuedAt + sessionLifetimeSeconds,
 	}
@@ -172,9 +171,9 @@ async function createRefreshedSession(input: RefreshSessionTokenInput & { sessio
 	const issuedAt = getEpochSeconds(input.now)
 	const payload: SessionJwtPayload = {
 		typ: 'gorchestra-session',
-		sub: input.session.userId,
+		sub: requireUserId(input.session.userId),
 		email: input.session.email,
-		sid: input.generateSessionId?.() ?? randomUUID(),
+		sid: createSessionId(input.generateSessionId),
 		iat: issuedAt,
 		exp: issuedAt + sessionLifetimeSeconds,
 	}
@@ -246,9 +245,12 @@ function sessionFromPayload(payload: SessionJwtPayload): ServerSession {
 	}
 }
 
+function createSessionId(generateSessionId: (() => string) | undefined): string {
+	return generateSessionId ? requireServerId(generateSessionId(), 'Session id must be a Server id') : createServerId()
+}
+
 function requireUserId(userId: string): string {
-	if (!userId.trim()) throw new Error('Session User id is required')
-	return userId
+	return requireServerId(userId, 'Session User id is required')
 }
 
 function requireEmail(email: string): string {
@@ -276,8 +278,14 @@ if (import.meta.vitest) {
 	const signingKey = 'test-session-signing-key'
 	const testNow = new Date('2026-06-19T00:00:00.000Z')
 
+	const testSessionId = '01k00000000000000000000001'
+	const firstSessionId = '01k00000000000000000000002'
+	const secondSessionId = '01k00000000000000000000003'
+	const initialSessionId = '01k00000000000000000000004'
+	const refreshedSessionId = '01k00000000000000000000005'
+
 	function uniqueUserId(): string {
-		return `user-${crypto.randomUUID()}`
+		return createServerId()
 	}
 
 	function sessionInput(serverCache: ServerCache, overrides: Partial<Omit<CreateSessionInput, 'serverCache'>> = {}): CreateSessionInput {
@@ -287,20 +295,20 @@ if (import.meta.vitest) {
 			email: '  Person+Ops@Example.COM  ',
 			now: testNow,
 			signingKey,
-			generateSessionId: () => crypto.randomUUID(),
+			generateSessionId: () => createServerId(),
 			...overrides,
 		}
 	}
 
 	async function testCreateAndVerifySession(): Promise<void> {
 		const serverCache = createTestServerCache()
-		const created = await createSession(sessionInput(serverCache, { generateSessionId: () => 'session-1' }))
+		const created = await createSession(sessionInput(serverCache, { generateSessionId: () => testSessionId }))
 		const verified = await verifySessionToken({ serverCache, token: created.token, now: testNow, signingKey })
 
 		expect(created.session).toEqual({
 			userId: created.session.userId,
 			email: 'person+ops@example.com',
-			sessionId: 'session-1',
+			sessionId: testSessionId,
 			issuedAt: '2026-06-19T00:00:00.000Z',
 			expiresAt: '2026-06-26T00:00:00.000Z',
 		})
@@ -320,9 +328,9 @@ if (import.meta.vitest) {
 		const serverCache = createTestServerCache()
 		const userId = uniqueUserId()
 		const secondSessionStart = new Date(testNow.getTime() + 1000)
-		const first = await createSession(sessionInput(serverCache, { userId, generateSessionId: () => 'first-session' }))
+		const first = await createSession(sessionInput(serverCache, { userId, generateSessionId: () => firstSessionId }))
 		const second = await createSession(
-			sessionInput(serverCache, { userId, now: secondSessionStart, generateSessionId: () => 'second-session' }),
+			sessionInput(serverCache, { userId, now: secondSessionStart, generateSessionId: () => secondSessionId }),
 		)
 
 		expect(await verifySessionToken({ serverCache, token: first.token, now: secondSessionStart, signingKey })).toEqual({
@@ -365,7 +373,7 @@ if (import.meta.vitest) {
 	async function testRefreshDecisionAndImmediateTokenReplacement(): Promise<void> {
 		const serverCache = createTestServerCache()
 		const userId = uniqueUserId()
-		const created = await createSession(sessionInput(serverCache, { userId, generateSessionId: () => 'initial-session' }))
+		const created = await createSession(sessionInput(serverCache, { userId, generateSessionId: () => initialSessionId }))
 		const beforeRefreshThreshold = new Date(testNow.getTime() + 5 * 24 * 60 * 60 * 1000)
 		const atRefreshThreshold = new Date(testNow.getTime() + 6 * 24 * 60 * 60 * 1000)
 
@@ -385,11 +393,11 @@ if (import.meta.vitest) {
 			token: created.token,
 			now: atRefreshThreshold,
 			signingKey,
-			generateSessionId: () => 'refreshed-session',
+			generateSessionId: () => refreshedSessionId,
 		})
 		expect(refreshed.refreshed).toBe(true)
 		if (!refreshed.refreshed) return
-		expect(refreshed.session).toMatchObject({ userId, email: created.session.email, sessionId: 'refreshed-session' })
+		expect(refreshed.session).toMatchObject({ userId, email: created.session.email, sessionId: refreshedSessionId })
 		expect(await verifySessionToken({ serverCache, token: created.token, now: atRefreshThreshold, signingKey })).toEqual({
 			authenticated: false,
 			reason: 'not-current',

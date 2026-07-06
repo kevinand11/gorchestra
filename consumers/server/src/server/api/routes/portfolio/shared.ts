@@ -84,4 +84,4 @@ export type CreateMemoryRevisionRequest = PipeOutput<typeof createMemoryRevision
 export type CreateSecretRequest = PipeOutput<typeof createSecretRequestSchema>
 export type CreateRepositoryRequest = PipeOutput<typeof createRepositoryRequestSchema>
 export type RepositoryPreflightEvidence = Domain.Evidence.ValidationEvidence & { operation: { type: 'repository-preflight' } }
-export type PaginatedQuery = { beforeId?: string; limit?: number; page?: number }
+export type PaginatedQuery = { beforeId: string | undefined; limit: number | undefined; page?: number | undefined }

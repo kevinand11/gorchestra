@@ -14,7 +14,7 @@ import {
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
 import { withSelectedPortfolioCore } from '../../portfolio-context'
-import { idPipe } from '../../schemas'
+import { coreIdPipe } from '../../schemas'
 
 const agentRunEventsQuerySchema = Domain.Commons.paginatedQueryInputPipe
 
@@ -23,7 +23,7 @@ export function createAgentRunsApiRouter(context: ServerApiContext) {
 		.get('/agent-runs/:agentRunId/events', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ agentRunId: idPipe }),
+				params: v.object({ agentRunId: coreIdPipe }),
 				query: agentRunEventsQuerySchema,
 				response: Queries.ListAgentRunEvents.resultPipe,
 			},
@@ -31,7 +31,7 @@ export function createAgentRunsApiRouter(context: ServerApiContext) {
 		.post('/agent-runs/:agentRunId/messages', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ agentRunId: idPipe }),
+				params: v.object({ agentRunId: coreIdPipe }),
 				body: sendAgentRunMessageRequestSchema,
 				response: Domain.AgentRun.agentRunEventPipe,
 			},
@@ -39,7 +39,7 @@ export function createAgentRunsApiRouter(context: ServerApiContext) {
 		.post('/agent-runs/:agentRunId/runtime-requirement-overrides', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ agentRunId: idPipe }),
+				params: v.object({ agentRunId: coreIdPipe }),
 				body: agentRunRuntimeRequirementOverrideRequestSchema,
 				response: Domain.AgentRun.agentRunEventPipe,
 			},

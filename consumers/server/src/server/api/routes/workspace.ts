@@ -3,7 +3,7 @@ import { v } from 'valleyed'
 
 import { buildSelectionCookie } from '../../modules/selection-cookie'
 import { provisionWorkspaceWithDefaultPortfolio } from '../../modules/workspace-provisioning'
-import { listAccessibleWorkspacePortfolios } from '../../modules/workspaces'
+import { hasAccessibleWorkspacePortfolios, listAccessibleWorkspaces } from '../../modules/workspaces'
 import type { ServerApiContext } from '../context'
 import { throwNotAuthorized, throwSessionAuthenticationError } from '../errors'
 import { moduleCookiesToResponseCookies } from '../http'
@@ -11,6 +11,8 @@ import {
 	portfolioRegistryEntryResponseSchema,
 	selectedPortfolioResponseSchema,
 	selectionResponseCookieSchema,
+	serverPaginatedQueryEnvelopePipe,
+	serverPaginatedQueryInputPipe,
 	workspaceMemberResponseSchema,
 	workspaceOwnerRoleResponseSchema,
 	workspaceResponseSchema,
@@ -22,27 +24,31 @@ const provisionDefaultWorkspaceBodySchema = v.object({
 	portfolioDisplayName: displayNamePipe(),
 })
 
+const accessibleWorkspaceResponseSchema = v.merge(
+	workspaceResponseSchema,
+	v.object({
+		member: workspaceMemberResponseSchema,
+		ownerRole: v.nullable(workspaceOwnerRoleResponseSchema),
+		portfolios: v.array(portfolioRegistryEntryResponseSchema),
+	}),
+)
+
 export function createWorkspaceApiRouter(context: ServerApiContext) {
 	return new Router({ path: '/workspaces' })
-		.get('/portfolios', {
+		.get('/', {
 			schema: {
 				cookies: sessionCookieSchema,
-				response: v.array(
-					v.object({
-						workspace: workspaceResponseSchema,
-						workspaceMember: workspaceMemberResponseSchema,
-						portfolio: portfolioRegistryEntryResponseSchema,
-						activeWorkspaceOwnerRole: v.nullable(workspaceOwnerRoleResponseSchema),
-					}),
-				),
+				query: serverPaginatedQueryInputPipe,
+				response: serverPaginatedQueryEnvelopePipe(accessibleWorkspaceResponseSchema),
 			},
 		})(async (req) => {
 			const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 			if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 
-			return await listAccessibleWorkspacePortfolios({
+			return await listAccessibleWorkspaces({
 				serverStorage: context.serverStorage,
 				userId: authentication.session.userId,
+				query: req.query,
 			})
 		})
 		.post('/provision-default', {
@@ -62,12 +68,11 @@ export function createWorkspaceApiRouter(context: ServerApiContext) {
 		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 
-		const existingAccess = await listAccessibleWorkspacePortfolios({
+		const existingAccess = await hasAccessibleWorkspacePortfolios({
 			serverStorage: context.serverStorage,
 			userId: authentication.session.userId,
 		})
-		if (existingAccess.length > 0)
-			throwNotAuthorized('Workspace Provisioning is only available when no Workspace and Portfolio can be selected')
+		if (existingAccess) throwNotAuthorized('Workspace Provisioning is only available when no Workspace and Portfolio can be selected')
 
 		const now = context.now()
 		const provisioned = await provisionWorkspaceWithDefaultPortfolio({

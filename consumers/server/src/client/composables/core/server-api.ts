@@ -157,8 +157,8 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async logout() {
 			return routes.request('delete', '/api/auth/session')
 		},
-		async listWorkspacePortfolios() {
-			return routes.request('get', '/api/workspaces/portfolios')
+		async listWorkspaces(input: PaginatedQueryInput) {
+			return routes.request('get', '/api/workspaces', { query: paginationQuery(input) })
 		},
 		async listProjects(input: PaginatedQueryInput) {
 			return routes.request('get', '/api/portfolio/projects', { query: paginationQuery(input) })

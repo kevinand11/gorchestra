@@ -18,6 +18,8 @@ The `consumers/server/` package implements the v1 deployed Server Consumer: Nuxt
 
 - Read `../../docs/consumers/CONTEXT.md`, `../../docs/consumers/server/CONTEXT.md`, and relevant Server Consumer ADRs before changing source behavior.
 - Server-owned storage must not store Core Portfolio facts except Portfolio registry metadata and Core storage locations.
+- Server-owned durable record ids and server-managed browser Session ids use Server Ids: lowercase monotonic Equipped ids generated through Server-owned helpers. Do not import Core id pipes/helpers to model Server Ids, and do not treat `coreStorageNamespace` as an id.
+- Server-owned list endpoints return Server Consumer Paginated Query Envelopes ordered by the primary Server-owned record id descending unless a local route documents another primary record.
 - Client code must not import from `src/server/`; server code may not import from `src/client/`; either side may import browser-safe types from `src/shared/`. The client route-contract Axios utility may import the Server API factory with `import type` only to derive Equipped Route Contracts; no runtime client-to-server imports are allowed.
 - Portfolio-scoped API routes must validate the signed-in User, Selection Cookie, Active Workspace membership, and Portfolio registry ownership before opening Core; after Session authentication succeeds, missing or unusable selection must fail with Equipped `PreconditionRequiredError` / HTTP 428 so browser clients can redirect to `/select`.
 - Reuse the Portfolio-scoped Server API context helper for Portfolio-scoped routes; it validates selection, opens Core, exposes only resolved Session/selection/access records plus Core, and auto-closes Core storage through a callback.

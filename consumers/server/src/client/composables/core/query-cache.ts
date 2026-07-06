@@ -51,8 +51,8 @@ const queryKeys = {
 	selection(): QueryKey {
 		return ['selection']
 	},
-	workspacePortfolios(): QueryKey {
-		return ['workspace-portfolios']
+	workspaces(): QueryKey {
+		return ['workspaces']
 	},
 	portfolio: {
 		root(portfolioId: string): QueryKey {
@@ -442,7 +442,7 @@ if (import.meta.vitest) {
 
 	describe('Query Key helpers', () => {
 		it('builds collection-style Portfolio Query Keys', () => {
-			expect(queryKeys.workspacePortfolios()).toEqual(['workspace-portfolios'])
+			expect(queryKeys.workspaces()).toEqual(['workspaces'])
 			expect(queryKeys.portfolio.root('portfolio-1')).toEqual(['portfolio', 'portfolio-1'])
 			expect(queryKeys.portfolio.projects('portfolio-1')).toEqual(['portfolio', 'portfolio-1', 'projects'])
 			expect(queryKeys.portfolio.agentRunProfiles('portfolio-1')).toEqual(['portfolio', 'portfolio-1', 'agent-run-profiles'])
@@ -505,14 +505,14 @@ if (import.meta.vitest) {
 		it('serves cached data to later observers without refetching', async () => {
 			const cache = createQueryCacheController(createEmptyQueryCacheSnapshot())
 			let calls = 0
-			const first = createTestObserver(['workspace-portfolios'], [] as string[], () => {
+			const first = createTestObserver(['workspaces'], [] as string[], () => {
 				calls += 1
 				return Promise.resolve(['workspace-1'])
 			})
 			cache.attach(first)
 			await cache.ensure(first)
 
-			const second = createTestObserver(['workspace-portfolios'], [] as string[], () => {
+			const second = createTestObserver(['workspaces'], [] as string[], () => {
 				calls += 1
 				return Promise.resolve(['workspace-2'])
 			})

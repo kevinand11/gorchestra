@@ -208,6 +208,9 @@ if (import.meta.vitest) {
 	const { cleanupTempServerStorage, withTempServerStorage } = createTempServerStorageTestHarness('gorchestra-server-selection-access-')
 	const testNow = new Date('2026-06-19T12:00:00.000Z')
 	const signingKey = 'test-selection-access-signing-key'
+	const missingUserId = '01k00000000000000000000041'
+	const missingWorkspaceId = '01k00000000000000000000042'
+	const missingPortfolioId = '01k00000000000000000000043'
 
 	afterEach(cleanupTempServerStorage)
 
@@ -305,7 +308,7 @@ if (import.meta.vitest) {
 			await expect(
 				validateWorkspacePortfolioAccess({
 					serverStorage,
-					userId: 'missing-user',
+					userId: missingUserId,
 					selection: { workspaceId: records.workspace.id, portfolioId: records.portfolio.id },
 				}),
 			).resolves.toEqual({ accessible: false, reason: 'user-not-found' })
@@ -320,7 +323,7 @@ if (import.meta.vitest) {
 				validateWorkspacePortfolioAccess({
 					serverStorage,
 					userId: records.user.id,
-					selection: { workspaceId: 'missing-workspace', portfolioId: records.portfolio.id },
+					selection: { workspaceId: missingWorkspaceId, portfolioId: records.portfolio.id },
 				}),
 			).resolves.toEqual({ accessible: false, reason: 'workspace-not-found' })
 		})
@@ -362,7 +365,7 @@ if (import.meta.vitest) {
 				validateWorkspacePortfolioAccess({
 					serverStorage,
 					userId: records.user.id,
-					selection: { workspaceId: records.workspace.id, portfolioId: 'missing-portfolio' },
+					selection: { workspaceId: records.workspace.id, portfolioId: missingPortfolioId },
 				}),
 			).resolves.toEqual({ accessible: false, reason: 'portfolio-not-found' })
 			await expect(

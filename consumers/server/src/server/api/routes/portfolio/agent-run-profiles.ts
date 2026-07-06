@@ -12,7 +12,7 @@ import {
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
 import { withSelectedPortfolioCore, withSelectedPortfolioOwnerCore } from '../../portfolio-context'
-import { idPipe } from '../../schemas'
+import { coreIdPipe } from '../../schemas'
 
 export function createAgentRunProfilesApiRouter(context: ServerApiContext) {
 	return new Router()
@@ -33,21 +33,21 @@ export function createAgentRunProfilesApiRouter(context: ServerApiContext) {
 		.get('/agent-run-profiles/:agentRunProfileId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ agentRunProfileId: idPipe }),
+				params: v.object({ agentRunProfileId: coreIdPipe }),
 				response: Queries.GetAgentRunProfile.resultPipe,
 			},
 		})(async (req) => getSelectedPortfolioAgentRunProfile(context, req.cookies, req.params.agentRunProfileId))
 		.get('/agent-run-profiles/:agentRunProfileId/references', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ agentRunProfileId: idPipe }),
+				params: v.object({ agentRunProfileId: coreIdPipe }),
 				response: Queries.ListAgentRunProfileReferences.resultPipe,
 			},
 		})(async (req) => listSelectedPortfolioAgentRunProfileReferences(context, req.cookies, req.params.agentRunProfileId))
 		.put('/agent-run-profiles/:agentRunProfileId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ agentRunProfileId: idPipe }),
+				params: v.object({ agentRunProfileId: coreIdPipe }),
 				body: agentRunProfileRequestSchema,
 				response: Domain.AgentRunProfile.agentRunProfilePipe,
 			},
@@ -55,14 +55,14 @@ export function createAgentRunProfilesApiRouter(context: ServerApiContext) {
 		.post('/agent-run-profiles/:agentRunProfileId/archive', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ agentRunProfileId: idPipe }),
+				params: v.object({ agentRunProfileId: coreIdPipe }),
 				response: Domain.AgentRunProfile.agentRunProfilePipe,
 			},
 		})(async (req) => archiveSelectedPortfolioAgentRunProfile(context, req.cookies, req.params.agentRunProfileId))
 		.post('/agent-run-profiles/:agentRunProfileId/unarchive', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ agentRunProfileId: idPipe }),
+				params: v.object({ agentRunProfileId: coreIdPipe }),
 				response: Domain.AgentRunProfile.agentRunProfilePipe,
 			},
 		})(async (req) => unarchiveSelectedPortfolioAgentRunProfile(context, req.cookies, req.params.agentRunProfileId))

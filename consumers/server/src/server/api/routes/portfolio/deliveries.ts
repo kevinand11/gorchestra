@@ -6,14 +6,14 @@ import { portfolioRequestCookieSchema, type PaginatedQuery, type PortfolioReques
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
 import { withSelectedPortfolioCore } from '../../portfolio-context'
-import { idPipe } from '../../schemas'
+import { coreIdPipe } from '../../schemas'
 
 export function createDeliveriesApiRouter(context: ServerApiContext) {
 	return new Router()
 		.get('/projects/:projectId/deliveries', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ projectId: idPipe }),
+				params: v.object({ projectId: coreIdPipe }),
 				query: Domain.Commons.paginatedQueryInputPipe,
 				response: Queries.ListDeliveries.resultPipe,
 			},
@@ -21,7 +21,7 @@ export function createDeliveriesApiRouter(context: ServerApiContext) {
 		.get('/projects/:projectId/deliveries/:deliveryId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
-				params: v.object({ projectId: idPipe, deliveryId: idPipe }),
+				params: v.object({ projectId: coreIdPipe, deliveryId: coreIdPipe }),
 				response: Queries.GetDelivery.resultPipe,
 			},
 		})(async (req) => getSelectedProjectDelivery(context, req.cookies, req.params.projectId, req.params.deliveryId))

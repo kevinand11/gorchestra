@@ -2,12 +2,13 @@ import { computed, ref } from 'vue'
 
 import { useSetAuth } from './session'
 import { ProvisionWorkspaceFormDraft } from '../../forms/workspace'
-import { useApiAction, useFetchAction } from '../core/action-state'
+import { useApiAction } from '../core/action-state'
 import { useOverlay } from '../core/overlay'
+import { usePaginatedFetchAction } from '../core/paginated-fetch-action'
 import { useQueryCache } from '../core/query-cache'
 import { useServerApi, type ServerApi } from '../core/server-api'
 
-type WorkspacePortfolios = Awaited<ReturnType<ServerApi['listWorkspacePortfolios']>>
+type Workspace = Awaited<ReturnType<ServerApi['listWorkspaces']>>['items'][number]
 type ProvisionDefaultWorkspaceResponse = Awaited<ReturnType<ServerApi['provisionDefaultWorkspace']>>
 type SelectionAccess = Awaited<ReturnType<ServerApi['setSelection']>>
 
@@ -19,30 +20,33 @@ type PortfolioSelectionOptions = {
 	onSuccess?: (selection: SelectionAccess) => void | Promise<void>
 }
 
-export function useWorkspacePortfoliosList() {
+export function useWorkspacesList() {
 	const serverApi = useServerApi()
 	const { queryKeys } = useQueryCache()
 	const {
-		data: workspacePortfolios,
-		isLoading: isLoadingWorkspacePortfolios,
-		error: workspacePortfoliosError,
-		hasExecuted: hasLoadedWorkspacePortfolios,
-		execute: refreshWorkspacePortfolios,
-		reset: resetWorkspacePortfolios,
-	} = useFetchAction(() => serverApi.listWorkspacePortfolios(), {
-		queryKey: queryKeys.workspacePortfolios(),
-		initialData: [] as WorkspacePortfolios,
+		items: workspaces,
+		isLoading: isLoadingWorkspaces,
+		error: workspacesError,
+		hasExecuted: hasLoadedWorkspaces,
+		fetchNext: fetchNextWorkspaces,
+		hasNext: hasNextWorkspaces,
+	} = usePaginatedFetchAction<Workspace>((input) => serverApi.listWorkspaces(input), {
+		queryKey: queryKeys.workspaces(),
 	})
-	const isRefreshingWorkspacePortfolios = computed(() => isLoadingWorkspacePortfolios.value && hasLoadedWorkspacePortfolios.value)
+	const isRefreshingWorkspaces = computed(() => isLoadingWorkspaces.value && hasLoadedWorkspaces.value)
+	const hasSelectablePortfolios = computed(() => workspaces.value.some((workspace) => workspace.portfolios.length > 0))
+	const hasNoSelectablePortfolios = computed(() => hasLoadedWorkspaces.value && !hasSelectablePortfolios.value)
 
 	return {
-		workspacePortfolios,
-		isLoadingWorkspacePortfolios,
-		workspacePortfoliosError,
-		hasLoadedWorkspacePortfolios,
-		isRefreshingWorkspacePortfolios,
-		refreshWorkspacePortfolios,
-		resetWorkspacePortfolios,
+		workspaces,
+		isLoadingWorkspaces,
+		workspacesError,
+		hasLoadedWorkspaces,
+		isRefreshingWorkspaces,
+		fetchNextWorkspaces,
+		hasNextWorkspaces,
+		hasSelectablePortfolios,
+		hasNoSelectablePortfolios,
 	}
 }
 
@@ -60,7 +64,7 @@ export function useDefaultWorkspaceProvision(options: DefaultWorkspaceProvisionO
 		reset: resetProvisionWorkspace,
 	} = useApiAction(async () => {
 		const response = await serverApi.provisionDefaultWorkspace(provisionWorkspaceForm.toModel())
-		queryCache.invalidate(queryKeys.workspacePortfolios())
+		queryCache.invalidate(queryKeys.workspaces())
 		setSelection({
 			selected: true,
 			selection: response.selection,
