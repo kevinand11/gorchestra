@@ -1,7 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
-import { agentRunTextContentPipe, type AgentRunEvent } from '../domain/agent-run'
+import { agentRunInputTranscriptPartsPipe, type AgentRunEvent } from '../domain/agent-run'
 import { idPipe } from '../domain/commons'
 import type {
 	AgentRunNotActiveError,
@@ -24,7 +24,7 @@ import { withAuditStampTransaction } from './utils/storage'
 
 const sendAgentRunMessageInputPipe = v.object({
 	agentRunId: idPipe,
-	content: v.array(agentRunTextContentPipe),
+	parts: agentRunInputTranscriptPartsPipe,
 })
 export type Input = PipeOutput<typeof sendAgentRunMessageInputPipe>
 
@@ -58,7 +58,7 @@ export function createSendAgentRunMessageCommand(runtime: CoreRuntime): Operatio
 				const event = await appendAgentRunEvent(runtime, storage, input.agentRunId, {
 					type: 'input-message',
 					source: { type: 'operator', authorized: stamp },
-					content: input.content,
+					parts: input.parts,
 				})
 				if (!event.ok) return event
 
@@ -100,7 +100,7 @@ if (import.meta.vitest) {
 			const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ agentRunId: 'agent-run-1', content: [{ type: 'text', text: 'Please refine the plan.' }] },
+				{ agentRunId: 'agent-run-1', parts: [{ type: 'text', text: 'Please refine the plan.', metadata: null }] },
 				context,
 			)
 
@@ -126,7 +126,7 @@ if (import.meta.vitest) {
 			const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ agentRunId: 'agent-run-1', content: [{ type: 'text', text: 'Please refine the plan.' }] },
+				{ agentRunId: 'agent-run-1', parts: [{ type: 'text', text: 'Please refine the plan.', metadata: null }] },
 				context,
 			)
 
@@ -190,11 +190,18 @@ if (import.meta.vitest) {
 				agentRunId: 'agent-run-1',
 				cursor: '01J00000000000000000000000',
 				occurred: { at: '2026-06-10T12:00:00.000Z' },
-				body: { type: 'turn-started', contextThroughCursor: null, reason: { type: 'input', inputEventCursors: [] } },
+				body: {
+					type: 'turn-started',
+					contextThroughCursor: '01J00000000000000000000000',
+					reason: { type: 'input', inputEventCursors: ['01J00000000000000000000000'] },
+				},
 			})
 			const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', content: [{ type: 'text', text: 'Next turn.' }] }, context)
+			const result = await command(
+				{ agentRunId: 'agent-run-1', parts: [{ type: 'text', text: 'Next turn.', metadata: null }] },
+				context,
+			)
 
 			expect(result).toMatchObject({ ok: true, value: { cursor: '01J00000000000000000000001' } })
 		})
@@ -209,7 +216,7 @@ if (import.meta.vitest) {
 			}
 			const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', content: [{ type: 'text', text: 'No.' }] }, context)
+			const result = await command({ agentRunId: 'agent-run-1', parts: [{ type: 'text', text: 'No.', metadata: null }] }, context)
 
 			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-interactive', agentRunId: 'agent-run-1' } })
 		})
@@ -218,7 +225,7 @@ if (import.meta.vitest) {
 			const options = revisionPlanningAgentRunFixture(true)
 			const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', content: [{ type: 'text', text: 'No.' }] }, context)
+			const result = await command({ agentRunId: 'agent-run-1', parts: [{ type: 'text', text: 'No.', metadata: null }] }, context)
 
 			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: 'agent-run-1' } })
 		})
@@ -228,7 +235,7 @@ if (import.meta.vitest) {
 
 	async function sendNextTurn(options: ReturnType<typeof planningAgentRunFixture>): Promise<SendAgentRunMessageResult> {
 		const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
-		return command({ agentRunId: 'agent-run-1', content: [{ type: 'text', text: 'Next turn.' }] }, context)
+		return command({ agentRunId: 'agent-run-1', parts: [{ type: 'text', text: 'Next turn.', metadata: null }] }, context)
 	}
 
 	function transactionFailureCause(result: SendAgentRunMessageResult): unknown {
@@ -252,7 +259,7 @@ if (import.meta.vitest) {
 			body: {
 				type: 'input-message',
 				source: { type: 'operator', authorized: localStamp() },
-				content: [{ type: 'text', text: 'Please refine the plan.' }],
+				parts: [{ type: 'text', text: 'Please refine the plan.', metadata: null }],
 			},
 		}
 	}

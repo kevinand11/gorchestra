@@ -19,13 +19,13 @@ export class AgentRunMessageFormDraft extends FormDraft<SendAgentRunMessageInput
 	}
 
 	clear(): void {
-		this.loadEntity({ content: [{ type: 'text', text: '' }] })
+		this.loadEntity({ parts: [{ type: 'text', text: '', metadata: null }] })
 	}
 
-	protected model = (): SendAgentRunMessageInput => ({ content: [{ type: 'text', text: this.text.trim() }] })
+	protected model = (): SendAgentRunMessageInput => ({ parts: [{ type: 'text', text: this.text.trim(), metadata: null }] })
 
 	protected load = (entity: SendAgentRunMessageInput): void => {
-		this.text = entity.content.at(0)?.text ?? ''
+		this.text = entity.parts.at(0)?.text ?? ''
 	}
 }
 
@@ -38,7 +38,7 @@ if (import.meta.vitest) {
 
 			draft.text = '  Please continue planning.  '
 
-			expect(draft.toModel()).toEqual({ content: [{ type: 'text', text: 'Please continue planning.' }] })
+			expect(draft.toModel()).toEqual({ parts: [{ type: 'text', text: 'Please continue planning.', metadata: null }] })
 		})
 
 		it('rejects whitespace-only message text', () => {

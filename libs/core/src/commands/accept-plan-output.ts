@@ -28,7 +28,7 @@ import type {
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
 import { appendAgentRunEvent } from '../utils/agent-run-events'
-import { getPendingProposalForAgentRunPurpose } from '../utils/proposals'
+import { getPendingProposalForAgentRunPurpose, proposalAcceptedProjectedParts } from '../utils/proposals'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
 import { auditStamp, createRecordValue, getRequired, nextId, updateRecordValue, withTransaction } from './utils/storage'
@@ -271,6 +271,7 @@ async function materializeAcceptedPlanProposal(
 			memoryRevisionIds: stored.value.memoryRevisions.map((record) => record.id),
 			linkIds: stored.value.links.map((record) => record.id),
 		},
+		projectedParts: proposalAcceptedProjectedParts(proposal.cursor),
 	})
 	return acceptedEvent.ok
 		? { ok: true, value: { ...stored.value, proposalEvent: proposal, acceptedEvent: acceptedEvent.value } }
@@ -838,7 +839,12 @@ if (import.meta.vitest) {
 			agentRunId: 'agent-run-1',
 			cursor: '01J00000000000000000000000',
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
-			body: { type: 'proposed-plan-output', toolCallStartedCursor: '01J00000000000000000000000', output },
+			body: {
+				type: 'proposed-plan-output',
+				assistantMessageCursor: '01J00000000000000000000000',
+				toolCallId: 'call-1',
+				output,
+			},
 		}
 	}
 

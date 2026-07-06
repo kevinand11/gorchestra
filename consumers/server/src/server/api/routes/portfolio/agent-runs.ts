@@ -69,7 +69,7 @@ function sendSelectedPortfolioAgentRunMessage(
 ): Promise<Domain.AgentRun.AgentRunEvent> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
 		const event = await core.commands.sendAgentRunMessage(
-			{ agentRunId, content: input.content },
+			{ agentRunId, parts: input.parts },
 			{ actor: { type: 'workspace-member', id: workspaceMember.id }, correlationId: null },
 		)
 		return event.ok ? event.value : throwCoreOperationError(event.error)

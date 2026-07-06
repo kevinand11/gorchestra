@@ -67,7 +67,7 @@ export type DeliveryWorkConfigInput = {
 
 export type ProjectConfigInput = { work: DeliveryWorkConfigInput }
 
-export type SendAgentRunMessageInput = { content: Array<{ type: 'text'; text: string }> }
+export type SendAgentRunMessageInput = { parts: Array<{ type: 'text'; text: string; metadata: Record<string, unknown> | null }> }
 
 export type CreateModelProviderInput = {
 	name: string

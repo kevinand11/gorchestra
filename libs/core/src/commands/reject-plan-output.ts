@@ -16,7 +16,7 @@ import type {
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
 import { appendAgentRunEvent } from '../utils/agent-run-events'
-import { getPendingProposalForAgentRunPurpose } from '../utils/proposals'
+import { getPendingProposalForAgentRunPurpose, proposalRejectedProjectedParts } from '../utils/proposals'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
 import { auditStamp, getRequired, withTransaction } from './utils/storage'
@@ -66,6 +66,7 @@ async function rejectPlanOutput(
 				proposalCursor: proposal.value.cursor,
 				authorized: stamp,
 				reason: input.reason,
+				projectedParts: proposalRejectedProjectedParts(proposal.value.cursor, input.reason),
 			})
 		: proposal
 }
@@ -118,6 +119,9 @@ if (import.meta.vitest) {
 						proposalCursor: '01J00000000000000000000000',
 						authorized: localStamp(),
 						reason: 'Needs changes.',
+						projectedParts: [
+							{ type: 'text', text: 'Proposal 01J00000000000000000000000 rejected. Needs changes.', metadata: null },
+						],
 					},
 				},
 			})
@@ -160,7 +164,8 @@ if (import.meta.vitest) {
 			occurred: { at: stamp.at },
 			body: {
 				type: 'proposed-plan-output',
-				toolCallStartedCursor: '01J00000000000000000000000',
+				assistantMessageCursor: '01J00000000000000000000000',
+				toolCallId: 'call-1',
 				output: {
 					proposedDeliveries: {},
 					proposedMemoryCreations: { memory: { parentId: null, title: 'Memory', body: '', children: {} } },

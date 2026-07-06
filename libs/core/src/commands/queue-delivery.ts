@@ -81,7 +81,7 @@ if (import.meta.vitest) {
 			const result = await command(
 				{ deliveryId: ' delivery-1 ', unknown: 'stripped' } as never,
 				{
-					actor: { type: 'local-user', id: 'actor-1', unknown: 'stripped' },
+					actor: { type: 'local-user', id: 'actor-1', unknown: 'stripped' } as never,
 					correlationId: 'correlation-1',
 					unknown: 'stripped',
 				} as never,

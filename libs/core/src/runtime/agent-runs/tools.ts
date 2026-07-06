@@ -52,7 +52,7 @@ function proposeRevisionOutputTool(): CoreAgentRunTool {
 }
 
 export function toolOutput(text: string): AgentRunToolOutput {
-	return { content: [{ type: 'text', text }], truncation: null }
+	return { output: { type: 'text', value: text }, truncation: null }
 }
 
 export function validateToolInput(tool: CoreAgentRunTool, input: unknown): { ok: true; value: unknown } | { ok: false } {

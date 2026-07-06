@@ -1,6 +1,6 @@
 import type { JSONValue, LanguageModel } from 'ai'
 
-import type { AgentRunModelMessageOutcome, ModelProviderGenerationFailureReason } from '../../domain/agent-run'
+import type { ModelProviderGenerationFailureReason, TurnErrorReason } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
 import type { Model } from '../../domain/model'
 import type { ModelProvider, ModelProviderProtocol } from '../../domain/model-provider'
@@ -67,9 +67,7 @@ export interface ModelProviderProtocolProviders {
 	): Promise<Result<ModelProviderProtocolPreflight, ModelProviderProtocolPreflightError>>
 	resolveLanguageModel(
 		input: Omit<Extract<AISDKLanguageModelResolutionInput, { mode: 'agent-run' }>, 'access'>,
-	): Promise<
-		Result<AISDKLanguageModelResolution | AgentRunModelMessageOutcome, ResolveAISDKLanguageModelError | ModelAgentTurnAccessError>
-	>
+	): Promise<Result<AISDKLanguageModelResolution | TurnErrorReason, ResolveAISDKLanguageModelError | ModelAgentTurnAccessError>>
 }
 
 export type ModelProviderProtocolProviderResolveInput<Protocol extends ModelProviderProtocol> = AISDKLanguageModelResolutionInput & {

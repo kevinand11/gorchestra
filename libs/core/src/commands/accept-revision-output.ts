@@ -22,7 +22,7 @@ import type {
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
 import { appendAgentRunEvent } from '../utils/agent-run-events'
-import { getPendingProposalForAgentRunPurpose } from '../utils/proposals'
+import { getPendingProposalForAgentRunPurpose, proposalAcceptedProjectedParts } from '../utils/proposals'
 import type { Result as CoreResult } from '../utils/types'
 import { completeAgentRunByPurposeAndAcceptSandboxRelease } from './utils/dispatch'
 import { buildCommandHandler } from './utils/handler'
@@ -313,6 +313,7 @@ async function appendRevisionProposalAcceptance(
 		proposalCursor: context.proposal.cursor,
 		authorized: stamp,
 		materialized: { type: 'revision-output', revisionId: revision.id },
+		projectedParts: proposalAcceptedProjectedParts(context.proposal.cursor),
 	})
 	return acceptedEvent.ok
 		? { ok: true, value: { result: { revision, revisionGate, acceptedEvent: acceptedEvent.value }, dispatchMarker } }
@@ -428,7 +429,13 @@ if (import.meta.vitest) {
 				agentRunId: 'agent-run-1',
 				cursor: '01J00000000000000000000001',
 				occurred: { at: stamp.at },
-				body: { type: 'proposal-rejected', proposalCursor: '01J00000000000000000000000', authorized: stamp, reason: null },
+				body: {
+					type: 'proposal-rejected',
+					proposalCursor: '01J00000000000000000000000',
+					authorized: stamp,
+					reason: null,
+					projectedParts: [{ type: 'text', text: 'Proposal reviewed.', metadata: null }],
+				},
 			})
 			await expect(
 				createAcceptRevisionOutputCommand(createTestCoreRuntime(reviewed))({ proposalEventId: 'proposal-event' }, context),
@@ -509,10 +516,16 @@ if (import.meta.vitest) {
 			occurred: { at: stamp.at },
 			body:
 				type === 'proposed-revision-output'
-					? { type, toolCallStartedCursor: '01J00000000000000000000000', output: revisionOutput() }
+					? {
+							type,
+							assistantMessageCursor: '01J00000000000000000000000',
+							toolCallId: 'call-1',
+							output: revisionOutput(),
+						}
 					: {
 							type,
-							toolCallStartedCursor: '01J00000000000000000000000',
+							assistantMessageCursor: '01J00000000000000000000000',
+							toolCallId: 'call-1',
 							output: {
 								proposedDeliveries: {},
 								proposedMemoryCreations: { memory: { parentId: null, title: 'Memory', body: '', children: {} } },

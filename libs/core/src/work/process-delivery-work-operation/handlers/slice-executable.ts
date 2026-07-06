@@ -36,7 +36,7 @@ async function writeSliceExecutionAgentRun(
 	const input = await appendAgentRunEvent({ values: context.values }, context.storage, agentRunPut.value.id, {
 		type: 'input-message',
 		source: { type: 'runtime' },
-		content: [{ type: 'text', text: `Execute Slice ${agentRun.purpose.sliceId}.` }],
+		parts: [{ type: 'text', text: `Execute Slice ${agentRun.purpose.sliceId}.`, metadata: null }],
 	})
 	if (!input.ok) return input
 
@@ -132,7 +132,7 @@ if (import.meta.vitest) {
 			expect(context.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toEqual({
 				type: 'input-message',
 				source: { type: 'runtime' },
-				content: [{ type: 'text', text: 'Execute Slice slice-1.' }],
+				parts: [{ type: 'text', text: 'Execute Slice slice-1.', metadata: null }],
 			})
 		})
 

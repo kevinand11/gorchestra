@@ -1,6 +1,6 @@
 import type { ModelMessage } from 'ai'
 
-import type { AgentRunModelMessageOutcome, AgentRunToolOutput, AgentRunEventCursor } from '../../domain/agent-run'
+import type { AgentRunEventCursor, AgentRunToolOutput } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
 import type { ModelThinkingLevel } from '../../domain/model'
 
@@ -23,13 +23,10 @@ export interface ModelAgentTurnInput {
 	signal: AbortSignal
 }
 
-export interface ModelAgentTurnOutput {
-	outcome: AgentRunModelMessageOutcome
-}
-
 export interface CoreAgentRunToolContext {
 	agentRunId: Id
-	toolCallStartedCursor: AgentRunEventCursor
+	assistantMessageCursor: AgentRunEventCursor
+	toolCallId: string
 	onUpdate(
 		update:
 			| { type: 'text-delta'; delta: string }

@@ -1,7 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
-import type { AgentRunInstruction } from '../domain/agent-run'
+import type { AgentRunEvent } from '../domain/agent-run'
 import { idPipe, nonEmptyTrimmedStringPipe, type AuditStamp, type Id, type RuntimeRecord } from '../domain/commons'
 import type { Plan, PlanWithPlanningAgentRun } from '../domain/plan'
 import type { Project } from '../domain/project'
@@ -55,7 +55,7 @@ type PlanCreationFacts = {
 	agentRunId: Id
 	started: RuntimeRecord
 	profile: ReturnType<typeof agentRunProfileSnapshot>
-	instruction: AgentRunInstruction
+	instruction: Extract<AgentRunEvent['body'], { type: 'instruction-snapshot' }>
 	initialMessage: string
 	stamp: AuditStamp
 	runtimeValues: CoreRuntimeValues
@@ -146,7 +146,7 @@ function planCreationFactsValue(
 	values: PlanCreationRuntimeValues,
 	project: Project,
 	profile: ReturnType<typeof agentRunProfileSnapshot>,
-	instruction: AgentRunInstruction,
+	instruction: Extract<AgentRunEvent['body'], { type: 'instruction-snapshot' }>,
 ): PlanCreationFacts {
 	return {
 		plan: { id: values.planId, projectId: project.id, title: input.title, created: values.stamp, closed: null },
@@ -191,10 +191,7 @@ async function writePlanningInstruction(
 	agentRun: PlanWithPlanningAgentRun['agentRun'],
 	facts: PlanCreationFacts,
 ): Promise<CoreResult<DispatchedPlanCreation, Exclude<Error, InvalidInputError>>> {
-	const instruction = await appendAgentRunEvent({ values: facts.runtimeValues }, storage, agentRun.id, {
-		type: 'instruction-snapshot',
-		instruction: facts.instruction,
-	})
+	const instruction = await appendAgentRunEvent({ values: facts.runtimeValues }, storage, agentRun.id, facts.instruction)
 	return instruction.ok ? writeInitialPlanningInput(runtime, storage, plan, agentRun, facts) : instruction
 }
 
@@ -208,7 +205,7 @@ async function writeInitialPlanningInput(
 	const input = await appendAgentRunEvent({ values: facts.runtimeValues }, storage, agentRun.id, {
 		type: 'input-message',
 		source: { type: 'operator', authorized: facts.stamp },
-		content: [{ type: 'text', text: facts.initialMessage }],
+		parts: [{ type: 'text', text: facts.initialMessage, metadata: null }],
 	})
 	if (!input.ok) return input
 
@@ -265,14 +262,19 @@ if (import.meta.vitest) {
 			expect(result).toEqual({ ok: true, value: { ...expectedPlan(), agentRun: expectedPlanningAgentRun() } })
 			expect(options.tx.plans.records.get('plan-1')).toEqual(expectedPlan())
 			expect(options.tx.agentRuns.records.get('agent-run-1')).toEqual(expectedPlanningAgentRun())
-			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toMatchObject({
+			const instructionBody = options.tx.agentRunEvents.records.get('agent-run-event-1')?.body
+			expect(instructionBody).toMatchObject({
 				type: 'instruction-snapshot',
 				instruction: { type: 'source-control-planning', version: 1 },
+			})
+			expect(instructionBody?.type === 'instruction-snapshot' ? instructionBody.parts[0] : null).toMatchObject({
+				type: 'text',
+				metadata: null,
 			})
 			expect(options.tx.agentRunEvents.records.get('agent-run-event-2')?.body).toEqual({
 				type: 'input-message',
 				source: { type: 'operator', authorized: localStamp() },
-				content: [{ type: 'text', text: 'Please plan repository onboarding.' }],
+				parts: [{ type: 'text', text: 'Please plan repository onboarding.', metadata: null }],
 			})
 		})
 

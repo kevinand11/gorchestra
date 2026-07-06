@@ -1,4 +1,4 @@
-import type { AgentRun, AgentRunEvent } from '../domain/agent-run'
+import type { AgentRun, AgentRunEvent, AgentRunSystemTranscriptPart } from '../domain/agent-run'
 import type { Id } from '../domain/commons'
 import type {
 	AgentRunPurposeMismatchError,
@@ -135,6 +135,23 @@ export function requireAgentRunPurpose<TExpected extends AgentRun['purpose']['ty
 		: agentRunPurposeMismatch(agentRun, [expected])
 }
 
+export function proposalAcceptedProjectedParts(proposalCursor: AgentRunEvent['cursor']): AgentRunSystemTranscriptPart[] {
+	return [{ type: 'text', text: `Proposal ${proposalCursor} accepted.`, metadata: null }]
+}
+
+export function proposalRejectedProjectedParts(
+	proposalCursor: AgentRunEvent['cursor'],
+	reason: string | null,
+): AgentRunSystemTranscriptPart[] {
+	return [
+		{
+			type: 'text',
+			text: `Proposal ${proposalCursor} rejected.${reason === null ? '' : ` ${reason}`}`,
+			metadata: null,
+		},
+	]
+}
+
 function proposalReviewState(proposal: AgentRunEvent, events: AgentRunEvent[]): Result<ProposalReviewState, InvariantViolationError> {
 	const terminal = events.filter((event) => isReviewForProposal(proposal, event))
 	if (terminal.length === 0) return { ok: true, value: { type: 'pending' } }
@@ -226,7 +243,8 @@ if (import.meta.vitest) {
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
 			body: {
 				type: 'proposed-plan-output',
-				toolCallStartedCursor: '01J00000000000000000000000',
+				assistantMessageCursor: '01J00000000000000000000000',
+				toolCallId: 'call-1',
 				output: {
 					proposedDeliveries: {},
 					proposedMemoryCreations: { memory: { parentId: null, title: 'Memory', body: '', children: {} } },
@@ -256,8 +274,15 @@ if (import.meta.vitest) {
 								memoryRevisionIds: [],
 								linkIds: [],
 							},
+							projectedParts: [{ type: 'text', text: 'Proposal reviewed.', metadata: null }],
 						}
-					: { type, proposalCursor: '01J00000000000000000000001', authorized: localStamp(), reason: null },
+					: {
+							type,
+							proposalCursor: '01J00000000000000000000001',
+							authorized: localStamp(),
+							reason: null,
+							projectedParts: [{ type: 'text', text: 'Proposal reviewed.', metadata: null }],
+						},
 		}
 	}
 }

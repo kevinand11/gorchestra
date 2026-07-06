@@ -1,18 +1,19 @@
-import type { AssistantModelMessage, ModelMessage, ToolResultPart } from 'ai'
+import type { ModelMessage } from 'ai'
 
 import type { AgentRunModelContext } from './types'
 import type {
+	AgentRunAssistantTranscriptPart,
 	AgentRunEvent,
-	AgentRunModelContent,
-	AgentRunModelMessage,
-	AgentRunModelMessageOutcome,
-	AgentRunToolCallOutcome,
-	AgentRunToolOutput,
+	AgentRunInputTranscriptPart,
+	AgentRunSystemTranscriptPart,
+	AgentRunToolResultOutput,
+	AgentRunToolTruncation,
 } from '../../domain/agent-run'
+import type { JsonObject } from '../../domain/commons'
 
 export function buildAgentRunModelContext(events: AgentRunEvent[], contextThroughCursor: string | null): AgentRunModelContext {
 	const scoped = eventsForContext(events, contextThroughCursor)
-	return { messages: scoped.flatMap((event) => modelVisibleMessages(event, scoped)) }
+	return { messages: scoped.flatMap((event) => modelVisibleMessages(event)) }
 }
 
 function eventsForContext(events: AgentRunEvent[], contextThroughCursor: string | null): AgentRunEvent[] {
@@ -22,7 +23,7 @@ function eventsForContext(events: AgentRunEvent[], contextThroughCursor: string 
 }
 
 function compactedEventsForContext(events: AgentRunEvent[], compaction: AgentRunEventWithBody<'context-compacted'>): AgentRunEvent[] {
-	const kept = events.filter((event) => event.cursor >= compaction.body.firstKeptCursor)
+	const kept = events.filter((event) => event.cursor > compaction.body.compactedThroughCursor && event.cursor !== compaction.cursor)
 	const instruction = latestInstructionSnapshot(events)
 	return instruction === null || kept.some((event) => event.cursor === instruction.cursor)
 		? [compaction, ...kept]
@@ -51,7 +52,7 @@ function sortEvents(events: AgentRunEvent[]): AgentRunEvent[] {
 	return [...events].sort((left, right) => left.cursor.localeCompare(right.cursor))
 }
 
-function modelVisibleMessages(event: AgentRunEvent, events: AgentRunEvent[]): ModelMessage[] {
+function modelVisibleMessages(event: AgentRunEvent): ModelMessage[] {
 	switch (event.body.type) {
 		case 'agent-run-model-use-override-changed':
 		case 'agent-run-runtime-requirement-override-added':
@@ -62,121 +63,26 @@ function modelVisibleMessages(event: AgentRunEvent, events: AgentRunEvent[]): Mo
 		case 'agent-run-sandbox-release-completed':
 		case 'agent-run-sandbox-release-failed':
 		case 'turn-started':
-		case 'model-message-started':
-		case 'tool-call-started':
+		case 'turn-ended':
+		case 'interrupt-requested':
 		case 'proposed-plan-output':
 		case 'proposed-revision-output':
 			return []
 		case 'instruction-snapshot':
-			return [{ role: 'system', content: textContent(event.body.instruction.content) }]
+			return [systemMessage(projectSystemParts(event.body.parts))]
 		case 'input-message':
-			return [{ role: 'user', content: textContent(event.body.content) }]
-		case 'model-message-ended':
-			return modelOutcomeMessages(event.body.outcome)
-		case 'tool-call-ended':
-			return toolOutcomeMessages(event.body.outcome, startedToolCall(event.body.toolCallStartedCursor, events))
-		case 'turn-ended':
-			return turnEndedMessages(event.body.outcome)
-		case 'proposal-accepted':
-			return [{ role: 'system', content: `Proposal ${event.body.proposalCursor} accepted.` }]
-		case 'proposal-rejected':
-			return [
-				{
-					role: 'system',
-					content: `Proposal ${event.body.proposalCursor} rejected.${event.body.reason === null ? '' : ` ${event.body.reason}`}`,
-				},
-			]
-		case 'interrupt-requested':
-			return [{ role: 'system', content: `Interrupt requested.${event.body.reason === null ? '' : ` ${event.body.reason}`}` }]
+			return [{ role: 'user', content: projectInputParts(event.body.parts) }]
+		case 'assistant-message':
+			return [projectAssistantMessage(event.body)]
+		case 'tool-message':
+			return [projectToolMessage(event.body)]
 		case 'context-compacted':
-			return [{ role: 'system', content: `Compacted context summary:\n${event.body.summary}` }]
+			return [systemMessage(projectSystemParts(event.body.replacementParts))]
+		case 'proposal-accepted':
+		case 'proposal-rejected':
+			return [systemMessage(projectSystemParts(event.body.projectedParts))]
 		default:
 			throw new Error(`Unexpected Agent Run event body: ${String(event.body satisfies never)}`)
-	}
-}
-
-function modelOutcomeMessages(outcome: AgentRunModelMessageOutcome): ModelMessage[] {
-	switch (outcome.type) {
-		case 'stop':
-		case 'tool-calls':
-			return [assistantMessage(outcome.message)]
-		case 'length':
-			return [
-				assistantMessage(outcome.message),
-				systemMessage(`Model stopped due to length.${outcome.summary === null ? '' : ` ${outcome.summary}`}`),
-			]
-		case 'error':
-			return [systemMessage(`Model error (${outcome.reason.type}): ${outcome.summary}`)]
-		case 'aborted':
-			return [systemMessage(`Model aborted (${outcome.reason.type}).${outcome.summary === null ? '' : ` ${outcome.summary}`}`)]
-		default:
-			throw new Error(`Unexpected Agent Run model message outcome: ${String(outcome satisfies never)}`)
-	}
-}
-
-function assistantMessage(message: AgentRunModelMessage): AssistantModelMessage {
-	return { role: 'assistant', content: assistantContent(message.content) }
-}
-
-function assistantContent(content: AgentRunModelContent[]): AssistantModelMessage['content'] {
-	const parts = content.map((part) => {
-		switch (part.type) {
-			case 'text':
-				return { type: 'text', text: part.text } as const
-			case 'thinking':
-				return { type: 'reasoning', text: part.text } as const
-			case 'tool-call':
-				return { type: 'tool-call', toolCallId: part.toolCallId, toolName: part.toolName, input: part.input } as const
-			default:
-				throw new Error(`Unexpected Agent Run model content: ${String(part satisfies never)}`)
-		}
-	})
-	return parts.length === 1 && parts[0]?.type === 'text' ? parts[0].text : parts
-}
-
-function toolOutcomeMessages(
-	outcome: AgentRunToolCallOutcome,
-	started: Extract<AgentRunEvent['body'], { type: 'tool-call-started' }> | null,
-): ModelMessage[] {
-	if (started === null) return [systemMessage(`Tool result could not be projected because its start event is missing.`)]
-	return [
-		{
-			role: 'tool',
-			content: [toolResultPart(started, outcome)],
-		},
-	]
-}
-
-function toolResultPart(
-	started: Extract<AgentRunEvent['body'], { type: 'tool-call-started' }>,
-	outcome: AgentRunToolCallOutcome,
-): ToolResultPart {
-	return {
-		type: 'tool-result',
-		toolCallId: started.toolCallId,
-		toolName: started.toolName,
-		output:
-			outcome.type === 'success'
-				? { type: 'text', value: toolOutputText(outcome.output) }
-				: { type: 'error-text', value: toolOutcomeText(outcome) },
-	}
-}
-
-function startedToolCall(cursor: string, events: AgentRunEvent[]): Extract<AgentRunEvent['body'], { type: 'tool-call-started' }> | null {
-	const event = events.find((candidate) => candidate.cursor === cursor)
-	return event?.body.type === 'tool-call-started' ? event.body : null
-}
-
-function turnEndedMessages(outcome: Extract<AgentRunEvent['body'], { type: 'turn-ended' }>['outcome']): ModelMessage[] {
-	switch (outcome.type) {
-		case 'completed':
-			return []
-		case 'error':
-			return [systemMessage(`Turn error (${outcome.reason.type}): ${outcome.summary}`)]
-		case 'aborted':
-			return [systemMessage(`Turn aborted (${outcome.reason.type}).${outcome.summary === null ? '' : ` ${outcome.summary}`}`)]
-		default:
-			throw new Error(`Unexpected turn outcome: ${String(outcome satisfies never)}`)
 	}
 }
 
@@ -184,18 +90,127 @@ function systemMessage(content: string): ModelMessage {
 	return { role: 'system', content }
 }
 
-function toolOutcomeText(outcome: AgentRunToolCallOutcome): string {
-	if (outcome.type === 'success') return toolOutputText(outcome.output)
-	if (outcome.type === 'error') return `Tool error (${outcome.reason.type}).\n${toolOutputText(outcome.output)}`
-	return `Tool aborted (${outcome.reason.type}).${outcome.output === null ? '' : `\n${toolOutputText(outcome.output)}`}`
+function projectSystemParts(parts: AgentRunSystemTranscriptPart[]): string {
+	return parts.map((part) => part.text).join('\n')
 }
 
-function toolOutputText(output: AgentRunToolOutput): string {
-	return textContent(output.content)
+function projectInputParts(parts: AgentRunInputTranscriptPart[]): string {
+	return parts.map((part) => part.text).join('\n')
 }
 
-function textContent(content: Array<{ text: string }>): string {
-	return content.map((part) => part.text).join('\n')
+type ProviderOptions = Record<string, Record<string, unknown>>
+
+function withProviderOptions<TPart extends object>(
+	part: TPart,
+	metadata: JsonObject | null,
+): TPart & { providerOptions?: ProviderOptions } {
+	return metadata === null ? part : { ...part, providerOptions: metadata as ProviderOptions }
+}
+
+function projectAssistantMessage(body: Extract<AgentRunEvent['body'], { type: 'assistant-message' }>): ModelMessage {
+	const content = body.parts.flatMap(projectAssistantPart)
+	return { role: 'assistant', content } as ModelMessage
+}
+
+function projectAssistantPart(part: AgentRunAssistantTranscriptPart): object[] {
+	switch (part.type) {
+		case 'text':
+			return [withProviderOptions({ type: 'text' as const, text: part.text }, part.metadata)]
+		case 'tool-call':
+			return [
+				withProviderOptions(
+					{
+						type: 'tool-call' as const,
+						toolCallId: part.toolCallId,
+						toolName: part.toolName,
+						input: part.input,
+						providerExecuted: part.providerExecuted,
+					},
+					part.metadata,
+				),
+			]
+		case 'tool-result':
+			return [
+				withProviderOptions(
+					{ type: 'tool-result' as const, toolCallId: part.toolCallId, toolName: part.toolName, output: part.output },
+					part.metadata,
+				),
+			]
+		case 'tool-error':
+			return [
+				withProviderOptions(
+					{
+						type: 'tool-result' as const,
+						toolCallId: part.toolCallId,
+						toolName: part.toolName,
+						output: { type: 'error-text' as const, value: String(part.error) },
+					},
+					part.metadata,
+				),
+			]
+		case 'tool-approval-request':
+			return [{ type: 'tool-approval-request' as const, approvalId: part.approvalId, toolCallId: part.toolCallId }]
+		case 'reasoning':
+		case 'reasoning-file':
+		case 'source':
+		case 'file':
+		case 'custom':
+			return []
+		default:
+			throw new Error(`Unexpected assistant part: ${String(part satisfies never)}`)
+	}
+}
+
+function projectToolMessage(body: Extract<AgentRunEvent['body'], { type: 'tool-message' }>): ModelMessage {
+	return {
+		role: 'tool',
+		content: body.parts.map((part) => {
+			switch (part.type) {
+				case 'tool-result':
+					return withProviderOptions(
+						{
+							type: 'tool-result' as const,
+							toolCallId: part.toolCallId,
+							toolName: part.toolName,
+							output: withTruncationNotice(part.output, part.truncation),
+						},
+						part.metadata,
+					)
+				case 'tool-error':
+					return withProviderOptions(
+						{
+							type: 'tool-result' as const,
+							toolCallId: part.toolCallId,
+							toolName: part.toolName,
+							output: withTruncationNotice(part.error, part.truncation),
+						},
+						part.metadata,
+					)
+				case 'tool-approval-response':
+					return {
+						type: 'tool-approval-response' as const,
+						approvalId: part.approvalId,
+						approved: part.approved,
+						...(part.reason === null ? {} : { reason: part.reason }),
+					}
+				default:
+					throw new Error(`Unexpected tool part: ${String(part satisfies never)}`)
+			}
+		}),
+	} as ModelMessage
+}
+
+function withTruncationNotice(output: AgentRunToolResultOutput, truncation: AgentRunToolTruncation | null): AgentRunToolResultOutput {
+	if (truncation === null || !truncation.truncated) return output
+	const notice = truncationNotice(truncation)
+	if (output.type === 'text' || output.type === 'error-text') return { ...output, value: `${notice}\n\n${output.value}` }
+	return output
+}
+
+function truncationNotice(truncation: AgentRunToolTruncation): string {
+	const original = truncation.originalLines === null ? 'unknown original line count' : `${truncation.originalLines} original lines`
+	const shown = truncation.outputLines === null ? 'stored output' : `${truncation.outputLines} stored lines`
+	return `[Tool output truncated using ${truncation.strategy}: ${shown} from ${original}.]`
 }
 
 if (import.meta.vitest) {
@@ -203,7 +218,7 @@ if (import.meta.vitest) {
 	const { localStamp } = await import('../../utils/test-helpers')
 
 	describe('buildAgentRunModelContext', () => {
-		it('omits metadata and projects visible input/model/tool events', () => {
+		it('projects input, assistant, and tool transcript parts while filtering reasoning', () => {
 			const context = buildAgentRunModelContext(
 				[
 					event(1, {
@@ -214,57 +229,78 @@ if (import.meta.vitest) {
 					event(2, {
 						type: 'input-message',
 						source: { type: 'operator', authorized: localStamp() },
-						content: [{ type: 'text', text: 'Hello' }],
+						parts: [{ type: 'text', text: 'Hello', metadata: null }],
 					}),
-					event(3, { type: 'model-message-started', turnStartedCursor: cursor(1), aiSdkCallId: null }),
-					event(4, { type: 'model-message-ended', modelMessageStartedCursor: cursor(3), outcome: stopOutcome('Hi') }),
+					event(3, {
+						type: 'turn-started',
+						contextThroughCursor: cursor(2),
+						reason: { type: 'input', inputEventCursors: [cursor(2)] },
+					}),
+					event(4, assistantMessageBody('Hi', 'call-1')),
 					event(5, {
-						type: 'tool-call-started',
-						modelMessageCursor: cursor(4),
-						toolCallId: 'tool-1',
-						toolName: 'tool',
-						input: {},
-					}),
-					event(6, {
-						type: 'tool-call-ended',
-						toolCallStartedCursor: cursor(5),
-						outcome: { type: 'success', output: toolOutput('Done.') },
+						type: 'tool-message',
+						turnStartedCursor: cursor(3),
+						respondsToAssistantMessageCursor: cursor(4),
+						source: { type: 'tool-execution' },
+						parts: [
+							{
+								type: 'tool-result',
+								toolCallId: 'call-1',
+								toolName: 'tool',
+								providerExecuted: false,
+								started: { at: '2026-06-10T12:00:00.000Z' },
+								completed: { at: '2026-06-10T12:00:01.000Z' },
+								output: { type: 'text', value: 'Done.' },
+								truncation: null,
+								metadata: null,
+							},
+						],
 					}),
 				],
-				cursor(6),
+				cursor(5),
 			)
 
 			expect(context.messages).toEqual([
 				{ role: 'user', content: 'Hello' },
-				{ role: 'assistant', content: 'Hi' },
+				{
+					role: 'assistant',
+					content: [
+						{ type: 'text', text: 'Hi' },
+						{ type: 'tool-call', toolCallId: 'call-1', toolName: 'tool', input: {}, providerExecuted: false },
+					],
+				},
 				{
 					role: 'tool',
-					content: [{ type: 'tool-result', toolCallId: 'tool-1', toolName: 'tool', output: { type: 'text', value: 'Done.' } }],
+					content: [{ type: 'tool-result', toolCallId: 'call-1', toolName: 'tool', output: { type: 'text', value: 'Done.' } }],
 				},
 			])
 		})
 
-		it('uses the latest compaction summary as a context boundary', () => {
+		it('uses the latest compaction replacement as a context boundary', () => {
 			const context = buildAgentRunModelContext(
 				[
-					event(1, { type: 'input-message', source: { type: 'runtime' }, content: [{ type: 'text', text: 'old' }] }),
+					event(1, {
+						type: 'input-message',
+						source: { type: 'runtime' },
+						parts: [{ type: 'text', text: 'old', metadata: null }],
+					}),
 					event(2, {
 						type: 'context-compacted',
 						source: { type: 'runtime' },
-						summary: 'summary',
-						firstKeptCursor: cursor(3),
+						compactedThroughCursor: cursor(1),
+						replacementParts: [{ type: 'text', text: 'summary', metadata: null }],
 					}),
 					event(3, {
 						type: 'input-message',
 						source: { type: 'operator', authorized: localStamp() },
-						content: [{ type: 'text', text: 'new' }],
+						parts: [{ type: 'text', text: 'new', metadata: null }],
 					}),
 				],
 				cursor(3),
 			)
 
 			expect(context.messages).toEqual([
-				{ role: 'system', content: 'Compacted context summary:\nsummary' },
+				{ role: 'system', content: 'summary' },
 				{ role: 'user', content: 'new' },
 			])
 		})
@@ -284,11 +320,31 @@ if (import.meta.vitest) {
 		return `01J000000000000000000${index.toString().padStart(5, '0')}`
 	}
 
-	function stopOutcome(text: string): AgentRunModelMessageOutcome {
-		return { type: 'stop', message: { content: [{ type: 'text', text }], usage: null, providerResponseRef: null } }
-	}
-
-	function toolOutput(text: string): AgentRunToolOutput {
-		return { content: [{ type: 'text', text }], truncation: null }
+	function assistantMessageBody(text: string, toolCallId: string): Extract<AgentRunEvent['body'], { type: 'assistant-message' }> {
+		return {
+			type: 'assistant-message',
+			turnStartedCursor: cursor(3),
+			model: {
+				modelId: 'model-1',
+				thinkingLevel: 'none',
+				modelProviderId: 'provider-1',
+				providerProtocol: 'anthropic-messages',
+				providerModelId: 'claude-sonnet',
+			},
+			finishReason: 'tool-calls',
+			usage: {
+				inputTokens: 10,
+				inputTokenDetails: { noCacheTokens: 10, cacheReadTokens: null, cacheWriteTokens: null },
+				outputTokens: 5,
+				outputTokenDetails: { textTokens: 5, reasoningTokens: null },
+			},
+			cost: null,
+			responseId: null,
+			parts: [
+				{ type: 'reasoning', text: 'hidden from future context', metadata: null },
+				{ type: 'text', text, metadata: null },
+				{ type: 'tool-call', toolCallId, toolName: 'tool', input: {}, providerExecuted: false, metadata: null },
+			],
+		}
 	}
 }

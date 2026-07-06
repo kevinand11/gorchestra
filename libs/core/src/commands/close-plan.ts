@@ -207,7 +207,11 @@ if (import.meta.vitest) {
 				agentRunId: 'agent-run-1',
 				cursor: '01J00000000000000000000001',
 				occurred: { at: '2026-06-10T12:00:00.000Z' },
-				body: { type: 'turn-started', contextThroughCursor: null, reason: { type: 'input', inputEventCursors: [] } },
+				body: {
+					type: 'turn-started',
+					contextThroughCursor: '01J00000000000000000000000',
+					reason: { type: 'input', inputEventCursors: ['01J00000000000000000000000'] },
+				},
 			})
 			const command = createClosePlanCommand(createTestCoreRuntime(options))
 

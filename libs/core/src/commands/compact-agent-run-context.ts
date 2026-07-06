@@ -1,8 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
-import type { AgentRunEvent } from '../domain/agent-run'
-import { freeFormStringPipe, idPipe } from '../domain/commons'
+import { agentRunSystemTranscriptPartsPipe, type AgentRunEvent } from '../domain/agent-run'
+import { idPipe } from '../domain/commons'
 import type {
 	AgentRunNotActiveError,
 	AgentRunNotInteractiveError,
@@ -23,8 +23,8 @@ import { getRequired, withAuditStampTransaction } from './utils/storage'
 
 const compactAgentRunContextInputPipe = v.object({
 	agentRunId: idPipe,
-	summary: freeFormStringPipe,
-	firstKeptEventId: idPipe,
+	replacementParts: agentRunSystemTranscriptPartsPipe,
+	compactedThroughEventId: idPipe,
 })
 export type Input = PipeOutput<typeof compactAgentRunContextInputPipe>
 
@@ -47,28 +47,28 @@ export function createCompactAgentRunContextCommand(runtime: CoreRuntime): Opera
 			const agentRun = await requireInteractiveAgentRunTargetOpen(storage, input.agentRunId)
 			if (!agentRun.ok) return agentRun
 
-			const firstKept = await validateFirstKeptEvent(storage, input)
-			if (!firstKept.ok) return firstKept
+			const compactedThrough = await validateCompactedThroughEvent(storage, input)
+			if (!compactedThrough.ok) return compactedThrough
 
 			return appendAgentRunEvent(runtime, storage, input.agentRunId, {
 				type: 'context-compacted',
 				source: { type: 'operator', authorized: stamp },
-				summary: input.summary,
-				firstKeptCursor: firstKept.value.cursor,
+				compactedThroughCursor: compactedThrough.value.cursor,
+				replacementParts: input.replacementParts,
 			})
 		}),
 	)
 }
 
-async function validateFirstKeptEvent(
+async function validateCompactedThroughEvent(
 	storage: CoreStorage,
 	input: Input,
 ): Promise<CoreResult<AgentRunEvent, Exclude<Error, InvalidInputError>>> {
-	const event = await getRequired('agent-run-event', storage, input.firstKeptEventId)
-	return event.ok ? validateFirstKeptEventMatchesInput(event.value, input) : event
+	const event = await getRequired('agent-run-event', storage, input.compactedThroughEventId)
+	return event.ok ? validateCompactedThroughEventMatchesInput(event.value, input) : event
 }
 
-function validateFirstKeptEventMatchesInput(event: AgentRunEvent, input: Input): CoreResult<AgentRunEvent, InvariantViolationError> {
+function validateCompactedThroughEventMatchesInput(event: AgentRunEvent, input: Input): CoreResult<AgentRunEvent, InvariantViolationError> {
 	return event.agentRunId === input.agentRunId
 		? { ok: true, value: event }
 		: invariant(`Agent Run Event ${event.id} is outside Agent Run ${input.agentRunId}.`)
@@ -90,7 +90,11 @@ if (import.meta.vitest) {
 			const command = createCompactAgentRunContextCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ agentRunId: 'agent-run-1', summary: 'Earlier context summary.', firstKeptEventId: 'existing-event' },
+				{
+					agentRunId: 'agent-run-1',
+					replacementParts: [{ type: 'text', text: 'Earlier context summary.', metadata: null }],
+					compactedThroughEventId: 'existing-event',
+				},
 				context,
 			)
 
@@ -104,8 +108,8 @@ if (import.meta.vitest) {
 					body: {
 						type: 'context-compacted',
 						source: { type: 'operator', authorized: localStamp() },
-						summary: 'Earlier context summary.',
-						firstKeptCursor: '01J00000000000000000000000',
+						compactedThroughCursor: '01J00000000000000000000000',
+						replacementParts: [{ type: 'text', text: 'Earlier context summary.', metadata: null }],
 					},
 				},
 			})
@@ -117,7 +121,14 @@ if (import.meta.vitest) {
 			options.tx.agentRunEvents.records.set('existing-event', inputEvent('existing-event', 'agent-run-1', 0))
 			const command = createCompactAgentRunContextCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', summary: 'Summary.', firstKeptEventId: 'existing-event' }, context)
+			const result = await command(
+				{
+					agentRunId: 'agent-run-1',
+					replacementParts: [{ type: 'text', text: 'Summary.', metadata: null }],
+					compactedThroughEventId: 'existing-event',
+				},
+				context,
+			)
 
 			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: 'agent-run-1' } })
 		})
@@ -127,7 +138,11 @@ if (import.meta.vitest) {
 			outsideEventOptions.tx.agentRunEvents.records.set('agent-run-event-1', inputEvent('agent-run-event-1', 'agent-run-other', 1))
 			await expect(
 				createCompactAgentRunContextCommand(createTestCoreRuntime(outsideEventOptions))(
-					{ agentRunId: 'agent-run-1', summary: 'Summary.', firstKeptEventId: 'agent-run-event-1' },
+					{
+						agentRunId: 'agent-run-1',
+						replacementParts: [{ type: 'text', text: 'Summary.', metadata: null }],
+						compactedThroughEventId: 'agent-run-event-1',
+					},
 					context,
 				),
 			).resolves.toEqual({

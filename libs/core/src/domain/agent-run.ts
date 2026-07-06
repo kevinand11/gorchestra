@@ -1,8 +1,18 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { agentRunBlockedPipe, agentRunRuntimeRequirementApplicationTargetPipe, agentRunRuntimeRequirementsPipe } from './agent-run-runtime'
-import { auditStampPipe, freeFormStringPipe, idPipe, nonEmptyTrimmedStringPipe, nonNegativeIntegerPipe, runtimeRecordPipe } from './commons'
+import {
+	auditStampPipe,
+	freeFormStringPipe,
+	idPipe,
+	jsonObjectPipe,
+	nonEmptyTrimmedStringPipe,
+	nonNegativeIntegerPipe,
+	runtimeRecordPipe,
+} from './commons'
 import { modelUseConfigPipe } from './config'
+import { modelThinkingLevelPipe } from './model'
+import { modelProviderProtocolPipe } from './model-provider'
 import { planOutputProposalPipe, revisionOutputProposalPipe } from './proposals'
 
 export const agentPipe = v.discriminate((value) => value.type, {
@@ -96,51 +106,104 @@ export const planningAgentRunPipe = v.object({
 })
 export type PlanningAgentRun = PipeOutput<typeof planningAgentRunPipe>
 
-export const agentRunTextContentPipe = v.object({ type: v.eq('text'), text: freeFormStringPipe })
-export type AgentRunTextContent = PipeOutput<typeof agentRunTextContentPipe>
+export const agentRunTranscriptPartMetadataPipe = v.nullable(jsonObjectPipe)
+export type AgentRunTranscriptPartMetadata = PipeOutput<typeof agentRunTranscriptPartMetadataPipe>
+
+export const agentRunTextTranscriptPartPipe = v.object({
+	type: v.eq('text'),
+	text: freeFormStringPipe,
+	metadata: agentRunTranscriptPartMetadataPipe,
+})
+export type AgentRunTextTranscriptPart = PipeOutput<typeof agentRunTextTranscriptPartPipe>
+
+export const agentRunTextContentPipe = agentRunTextTranscriptPartPipe
+export type AgentRunTextContent = AgentRunTextTranscriptPart
 
 export const agentRunInstructionPipe = v.discriminate((value) => value.type, {
 	'source-control-planning': v.object({
 		type: v.eq('source-control-planning'),
 		version: v.eq(1),
-		content: v.array(agentRunTextContentPipe),
 	}),
 })
 export type AgentRunInstruction = PipeOutput<typeof agentRunInstructionPipe>
 
-export const agentRunModelCostPipe = v.object({
-	unit: v.eq('micro-usd'),
-	input: nonNegativeIntegerPipe,
-	output: nonNegativeIntegerPipe,
-	cacheRead: nonNegativeIntegerPipe,
-	cacheWrite: nonNegativeIntegerPipe,
-	total: nonNegativeIntegerPipe,
+const fileDataPipe = v.discriminate((value) => value.type, {
+	data: v.object({ type: v.eq('data'), data: freeFormStringPipe }),
+	url: v.object({ type: v.eq('url'), url: nonEmptyTrimmedStringPipe }),
+	reference: v.object({ type: v.eq('reference'), reference: v.record(nonEmptyTrimmedStringPipe, nonEmptyTrimmedStringPipe) }),
+	text: v.object({ type: v.eq('text'), text: freeFormStringPipe }),
 })
-export type AgentRunModelCost = PipeOutput<typeof agentRunModelCostPipe>
 
-export const agentRunModelUsagePipe = v.object({
-	inputTokens: nonNegativeIntegerPipe,
-	outputTokens: nonNegativeIntegerPipe,
-	cacheReadTokens: nonNegativeIntegerPipe,
-	cacheWriteTokens: nonNegativeIntegerPipe,
-	totalTokens: nonNegativeIntegerPipe,
-	cost: v.nullable(agentRunModelCostPipe),
+const reasoningFileDataPipe = v.discriminate((value) => value.type, {
+	data: v.object({ type: v.eq('data'), data: freeFormStringPipe }),
+	url: v.object({ type: v.eq('url'), url: nonEmptyTrimmedStringPipe }),
 })
-export type AgentRunModelUsage = PipeOutput<typeof agentRunModelUsagePipe>
 
-export const agentRunModelContentPipe = v.discriminate((value) => value.type, {
-	text: agentRunTextContentPipe,
-	thinking: v.object({ type: v.eq('thinking'), text: freeFormStringPipe, providerReplay: v.nullable(freeFormStringPipe) }),
-	'tool-call': v.object({ type: v.eq('tool-call'), toolCallId: toolCallIdPipe, toolName: freeFormStringPipe, input: unknownPipe }),
+export const agentRunFileTranscriptPartPipe = v.object({
+	type: v.eq('file'),
+	data: fileDataPipe,
+	mediaType: nonEmptyTrimmedStringPipe,
+	filename: v.nullable(nonEmptyTrimmedStringPipe),
+	metadata: agentRunTranscriptPartMetadataPipe,
 })
-export type AgentRunModelContent = PipeOutput<typeof agentRunModelContentPipe>
+export type AgentRunFileTranscriptPart = PipeOutput<typeof agentRunFileTranscriptPartPipe>
 
-export const agentRunModelMessagePipe = v.object({
-	content: v.array(agentRunModelContentPipe),
-	usage: v.nullable(agentRunModelUsagePipe),
-	providerResponseRef: v.nullable(freeFormStringPipe),
+export const agentRunReasoningTranscriptPartPipe = v.object({
+	type: v.eq('reasoning'),
+	text: freeFormStringPipe,
+	metadata: agentRunTranscriptPartMetadataPipe,
 })
-export type AgentRunModelMessage = PipeOutput<typeof agentRunModelMessagePipe>
+export type AgentRunReasoningTranscriptPart = PipeOutput<typeof agentRunReasoningTranscriptPartPipe>
+
+export const agentRunReasoningFileTranscriptPartPipe = v.object({
+	type: v.eq('reasoning-file'),
+	data: reasoningFileDataPipe,
+	mediaType: nonEmptyTrimmedStringPipe,
+	metadata: agentRunTranscriptPartMetadataPipe,
+})
+export type AgentRunReasoningFileTranscriptPart = PipeOutput<typeof agentRunReasoningFileTranscriptPartPipe>
+
+export const agentRunSourceTranscriptPartPipe = v.object({
+	type: v.eq('source'),
+	sourceType: nonEmptyTrimmedStringPipe,
+	id: nonEmptyTrimmedStringPipe,
+	title: v.nullable(nonEmptyTrimmedStringPipe),
+	url: v.nullable(nonEmptyTrimmedStringPipe),
+	mediaType: v.nullable(nonEmptyTrimmedStringPipe),
+	metadata: agentRunTranscriptPartMetadataPipe,
+})
+export type AgentRunSourceTranscriptPart = PipeOutput<typeof agentRunSourceTranscriptPartPipe>
+
+export const agentRunCustomTranscriptPartPipe = v.object({
+	type: v.eq('custom'),
+	kind: nonEmptyTrimmedStringPipe,
+	metadata: agentRunTranscriptPartMetadataPipe,
+})
+export type AgentRunCustomTranscriptPart = PipeOutput<typeof agentRunCustomTranscriptPartPipe>
+
+export const agentRunToolResultOutputPipe = v.discriminate((value) => value.type, {
+	text: v.object({ type: v.eq('text'), value: freeFormStringPipe }),
+	json: v.object({ type: v.eq('json'), value: unknownPipe }),
+	'error-text': v.object({ type: v.eq('error-text'), value: freeFormStringPipe }),
+	'execution-denied': v.object({ type: v.eq('execution-denied'), reason: v.nullable(freeFormStringPipe) }),
+})
+export type AgentRunToolResultOutput = PipeOutput<typeof agentRunToolResultOutputPipe>
+
+export const agentRunToolTruncationPipe = v.object({
+	truncated: v.boolean(),
+	strategy: v.in(['head', 'tail', 'result-limit', 'line-limit']),
+	originalBytes: v.nullable(nonNegativeIntegerPipe),
+	originalLines: v.nullable(nonNegativeIntegerPipe),
+	outputBytes: v.nullable(nonNegativeIntegerPipe),
+	outputLines: v.nullable(nonNegativeIntegerPipe),
+})
+export type AgentRunToolTruncation = PipeOutput<typeof agentRunToolTruncationPipe>
+
+export const agentRunToolOutputPipe = v.object({
+	output: agentRunToolResultOutputPipe,
+	truncation: v.nullable(agentRunToolTruncationPipe),
+})
+export type AgentRunToolOutput = PipeOutput<typeof agentRunToolOutputPipe>
 
 const providerGenerationFailureReasonPipes = {
 	'provider-authentication-failed': v.object({ type: v.eq('provider-authentication-failed') }),
@@ -160,64 +223,16 @@ const runtimeErrorReasonPipes = {
 	'runtime-error': v.object({ type: v.eq('runtime-error') }),
 }
 
-export const turnErrorReasonPipe = v.discriminate((value) => value.type, runtimeErrorReasonPipes)
+export const turnErrorReasonPipe = v.discriminate((value) => value.type, {
+	...runtimeErrorReasonPipes,
+	'operator-interrupt': v.object({ type: v.eq('operator-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
+	'runtime-interrupt': v.object({ type: v.eq('runtime-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
+	timeout: v.object({ type: v.eq('timeout') }),
+	'abort-signal': v.object({ type: v.eq('abort-signal') }),
+})
 export type TurnErrorReason = PipeOutput<typeof turnErrorReasonPipe>
 
-export const turnAbortReasonPipe = v.discriminate((value) => value.type, {
-	'operator-interrupt': v.object({ type: v.eq('operator-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
-	'runtime-interrupt': v.object({ type: v.eq('runtime-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
-	timeout: v.object({ type: v.eq('timeout') }),
-	'abort-signal': v.object({ type: v.eq('abort-signal') }),
-})
-export type TurnAbortReason = PipeOutput<typeof turnAbortReasonPipe>
-
-export const modelMessageErrorReasonPipe = v.discriminate((value) => value.type, runtimeErrorReasonPipes)
-export type ModelMessageErrorReason = PipeOutput<typeof modelMessageErrorReasonPipe>
-
-export const agentRunModelAbortReasonPipe = v.discriminate((value) => value.type, {
-	'operator-interrupt': v.object({ type: v.eq('operator-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
-	'runtime-interrupt': v.object({ type: v.eq('runtime-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
-	timeout: v.object({ type: v.eq('timeout') }),
-	'abort-signal': v.object({ type: v.eq('abort-signal') }),
-})
-export type AgentRunModelAbortReason = PipeOutput<typeof agentRunModelAbortReasonPipe>
-
-export const agentRunModelMessageOutcomePipe = v.discriminate((value) => value.type, {
-	stop: v.object({ type: v.eq('stop'), message: agentRunModelMessagePipe }),
-	'tool-calls': v.object({ type: v.eq('tool-calls'), message: agentRunModelMessagePipe }),
-	length: v.object({ type: v.eq('length'), message: agentRunModelMessagePipe, summary: nullableFreeFormStringPipe }),
-	error: v.object({
-		type: v.eq('error'),
-		reason: modelMessageErrorReasonPipe,
-		message: v.nullable(agentRunModelMessagePipe),
-		summary: freeFormStringPipe,
-	}),
-	aborted: v.object({
-		type: v.eq('aborted'),
-		reason: agentRunModelAbortReasonPipe,
-		message: v.nullable(agentRunModelMessagePipe),
-		summary: nullableFreeFormStringPipe,
-	}),
-})
-export type AgentRunModelMessageOutcome = PipeOutput<typeof agentRunModelMessageOutcomePipe>
-
-export const agentRunToolTruncationPipe = v.object({
-	truncated: v.boolean(),
-	strategy: v.in(['head', 'tail', 'result-limit', 'line-limit']),
-	originalBytes: v.nullable(nonNegativeIntegerPipe),
-	originalLines: v.nullable(nonNegativeIntegerPipe),
-	outputBytes: v.nullable(nonNegativeIntegerPipe),
-	outputLines: v.nullable(nonNegativeIntegerPipe),
-})
-export type AgentRunToolTruncation = PipeOutput<typeof agentRunToolTruncationPipe>
-
-export const agentRunToolOutputPipe = v.object({
-	content: v.array(agentRunTextContentPipe),
-	truncation: v.nullable(agentRunToolTruncationPipe),
-})
-export type AgentRunToolOutput = PipeOutput<typeof agentRunToolOutputPipe>
-
-export const agentRunToolCallErrorReasonPipe = v.discriminate((value) => value.type, {
+export const agentRunToolErrorReasonPipe = v.discriminate((value) => value.type, {
 	'unknown-tool': v.object({ type: v.eq('unknown-tool') }),
 	'tool-disabled': v.object({ type: v.eq('tool-disabled') }),
 	'invalid-input': v.object({ type: v.eq('invalid-input') }),
@@ -228,24 +243,153 @@ export const agentRunToolCallErrorReasonPipe = v.discriminate((value) => value.t
 	'tool-timeout': v.object({ type: v.eq('tool-timeout') }),
 	'sandbox-error': v.object({ type: v.eq('sandbox-error') }),
 	'external-dependency-error': v.object({ type: v.eq('external-dependency-error') }),
-})
-export type AgentRunToolCallErrorReason = PipeOutput<typeof agentRunToolCallErrorReasonPipe>
-
-export const agentRunToolAbortReasonPipe = v.discriminate((value) => value.type, {
 	'operator-interrupt': v.object({ type: v.eq('operator-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
 	'runtime-interrupt': v.object({ type: v.eq('runtime-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
 	timeout: v.object({ type: v.eq('timeout') }),
 	'abort-signal': v.object({ type: v.eq('abort-signal') }),
 	'interrupted-before-execution': v.object({ type: v.eq('interrupted-before-execution') }),
+	'result-not-recorded-before-recovery': v.object({ type: v.eq('result-not-recorded-before-recovery') }),
 })
-export type AgentRunToolAbortReason = PipeOutput<typeof agentRunToolAbortReasonPipe>
+export type AgentRunToolErrorReason = PipeOutput<typeof agentRunToolErrorReasonPipe>
 
-export const agentRunToolCallOutcomePipe = v.discriminate((value) => value.type, {
-	success: v.object({ type: v.eq('success'), output: agentRunToolOutputPipe }),
-	error: v.object({ type: v.eq('error'), reason: agentRunToolCallErrorReasonPipe, output: agentRunToolOutputPipe }),
-	aborted: v.object({ type: v.eq('aborted'), reason: agentRunToolAbortReasonPipe, output: v.nullable(agentRunToolOutputPipe) }),
+const agentRunToolCallTranscriptPartPipe = v.object({
+	type: v.eq('tool-call'),
+	toolCallId: toolCallIdPipe,
+	toolName: freeFormStringPipe,
+	input: unknownPipe,
+	providerExecuted: v.boolean(),
+	metadata: agentRunTranscriptPartMetadataPipe,
 })
-export type AgentRunToolCallOutcome = PipeOutput<typeof agentRunToolCallOutcomePipe>
+
+const providerExecutedToolResultPartPipe = v.object({
+	type: v.eq('tool-result'),
+	toolCallId: toolCallIdPipe,
+	toolName: freeFormStringPipe,
+	providerExecuted: v.eq(true),
+	output: agentRunToolResultOutputPipe,
+	metadata: agentRunTranscriptPartMetadataPipe,
+})
+
+const coreExecutedToolResultPartPipe = v.object({
+	type: v.eq('tool-result'),
+	toolCallId: toolCallIdPipe,
+	toolName: freeFormStringPipe,
+	providerExecuted: v.eq(false),
+	started: runtimeRecordPipe,
+	completed: runtimeRecordPipe,
+	output: agentRunToolResultOutputPipe,
+	truncation: v.nullable(agentRunToolTruncationPipe),
+	metadata: agentRunTranscriptPartMetadataPipe,
+})
+
+const providerExecutedToolErrorPartPipe = v.object({
+	type: v.eq('tool-error'),
+	toolCallId: toolCallIdPipe,
+	toolName: freeFormStringPipe,
+	providerExecuted: v.eq(true),
+	error: unknownPipe,
+	metadata: agentRunTranscriptPartMetadataPipe,
+})
+
+const coreExecutedToolErrorPartPipe = v.object({
+	type: v.eq('tool-error'),
+	toolCallId: toolCallIdPipe,
+	toolName: freeFormStringPipe,
+	providerExecuted: v.eq(false),
+	started: runtimeRecordPipe,
+	completed: runtimeRecordPipe,
+	reason: agentRunToolErrorReasonPipe,
+	error: agentRunToolResultOutputPipe,
+	truncation: v.nullable(agentRunToolTruncationPipe),
+	metadata: agentRunTranscriptPartMetadataPipe,
+})
+
+const agentRunToolApprovalRequestPartPipe = v.object({
+	type: v.eq('tool-approval-request'),
+	approvalId: nonEmptyTrimmedStringPipe,
+	toolCallId: toolCallIdPipe,
+	toolName: freeFormStringPipe,
+	providerExecuted: v.boolean(),
+	metadata: agentRunTranscriptPartMetadataPipe,
+})
+
+const agentRunToolApprovalResponseSourcePipe = v.discriminate((value) => value.type, {
+	runtime: v.object({ type: v.eq('runtime') }),
+	operator: v.object({ type: v.eq('operator'), authorized: auditStampPipe }),
+})
+
+const agentRunToolApprovalResponsePartPipe = v.object({
+	type: v.eq('tool-approval-response'),
+	approvalId: nonEmptyTrimmedStringPipe,
+	approved: v.boolean(),
+	reason: v.nullable(freeFormStringPipe),
+	providerExecuted: v.boolean(),
+	source: agentRunToolApprovalResponseSourcePipe,
+	metadata: agentRunTranscriptPartMetadataPipe,
+})
+
+export const agentRunSystemTranscriptPartPipe = agentRunTextTranscriptPartPipe
+export type AgentRunSystemTranscriptPart = PipeOutput<typeof agentRunSystemTranscriptPartPipe>
+export const agentRunSystemTranscriptPartsPipe = v.array(agentRunSystemTranscriptPartPipe).pipe(v.min(1))
+
+export const agentRunInputTranscriptPartPipe = agentRunTextTranscriptPartPipe
+export type AgentRunInputTranscriptPart = PipeOutput<typeof agentRunInputTranscriptPartPipe>
+export const agentRunInputTranscriptPartsPipe = v.array(agentRunInputTranscriptPartPipe).pipe(v.min(1))
+
+export const agentRunAssistantTranscriptPartPipe = v.discriminate((value) => value.type, {
+	text: agentRunTextTranscriptPartPipe,
+	reasoning: agentRunReasoningTranscriptPartPipe,
+	'reasoning-file': agentRunReasoningFileTranscriptPartPipe,
+	source: agentRunSourceTranscriptPartPipe,
+	file: agentRunFileTranscriptPartPipe,
+	custom: agentRunCustomTranscriptPartPipe,
+	'tool-call': agentRunToolCallTranscriptPartPipe,
+	'tool-result': providerExecutedToolResultPartPipe,
+	'tool-error': providerExecutedToolErrorPartPipe,
+	'tool-approval-request': agentRunToolApprovalRequestPartPipe,
+})
+export type AgentRunAssistantTranscriptPart = PipeOutput<typeof agentRunAssistantTranscriptPartPipe>
+export const agentRunAssistantTranscriptPartsPipe = v.array(agentRunAssistantTranscriptPartPipe)
+
+export const agentRunToolTranscriptPartPipe = v.discriminate((value) => value.type, {
+	'tool-result': coreExecutedToolResultPartPipe,
+	'tool-error': coreExecutedToolErrorPartPipe,
+	'tool-approval-response': agentRunToolApprovalResponsePartPipe,
+})
+export type AgentRunToolTranscriptPart = PipeOutput<typeof agentRunToolTranscriptPartPipe>
+export const agentRunToolTranscriptPartsPipe = v.array(agentRunToolTranscriptPartPipe).pipe(v.min(1))
+
+export const agentRunLanguageModelUsagePipe = v.object({
+	inputTokens: v.nullable(nonNegativeIntegerPipe),
+	inputTokenDetails: v.object({
+		noCacheTokens: v.nullable(nonNegativeIntegerPipe),
+		cacheReadTokens: v.nullable(nonNegativeIntegerPipe),
+		cacheWriteTokens: v.nullable(nonNegativeIntegerPipe),
+	}),
+	outputTokens: v.nullable(nonNegativeIntegerPipe),
+	outputTokenDetails: v.object({
+		textTokens: v.nullable(nonNegativeIntegerPipe),
+		reasoningTokens: v.nullable(nonNegativeIntegerPipe),
+	}),
+})
+export type AgentRunLanguageModelUsage = PipeOutput<typeof agentRunLanguageModelUsagePipe>
+
+export const agentRunModelCostPipe = v.object({
+	unit: v.eq('micro-usd'),
+	input: nonNegativeIntegerPipe,
+	output: nonNegativeIntegerPipe,
+	cacheRead: nonNegativeIntegerPipe,
+	cacheWrite: nonNegativeIntegerPipe,
+})
+export type AgentRunModelCost = PipeOutput<typeof agentRunModelCostPipe>
+
+const agentRunAssistantMessageModelPipe = v.object({
+	modelId: idPipe,
+	thinkingLevel: modelThinkingLevelPipe,
+	modelProviderId: idPipe,
+	providerProtocol: modelProviderProtocolPipe,
+	providerModelId: nonEmptyTrimmedStringPipe,
+})
 
 export const agentRunInputSourcePipe = v.discriminate((value) => value.type, {
 	runtime: v.object({ type: v.eq('runtime') }),
@@ -266,8 +410,7 @@ export const agentRunCompactionSourcePipe = v.discriminate((value) => value.type
 export type AgentRunCompactionSource = PipeOutput<typeof agentRunCompactionSourcePipe>
 
 export const agentRunTurnStartReasonPipe = v.discriminate((value) => value.type, {
-	input: v.object({ type: v.eq('input'), inputEventCursors: v.array(agentRunEventCursorPipe) }),
-	retry: v.object({ type: v.eq('retry'), previousTurnStartedCursor: agentRunEventCursorPipe }),
+	input: v.object({ type: v.eq('input'), inputEventCursors: v.array(agentRunEventCursorPipe).pipe(v.min(1)) }),
 })
 export type AgentRunTurnStartReason = PipeOutput<typeof agentRunTurnStartReasonPipe>
 
@@ -321,11 +464,15 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 		type: v.eq('agent-run-sandbox-release-failed'),
 		summary: freeFormStringPipe,
 	}),
-	'instruction-snapshot': v.object({ type: v.eq('instruction-snapshot'), instruction: agentRunInstructionPipe }),
-	'input-message': v.object({ type: v.eq('input-message'), source: agentRunInputSourcePipe, content: v.array(agentRunTextContentPipe) }),
+	'instruction-snapshot': v.object({
+		type: v.eq('instruction-snapshot'),
+		instruction: agentRunInstructionPipe,
+		parts: agentRunSystemTranscriptPartsPipe,
+	}),
+	'input-message': v.object({ type: v.eq('input-message'), source: agentRunInputSourcePipe, parts: agentRunInputTranscriptPartsPipe }),
 	'turn-started': v.object({
 		type: v.eq('turn-started'),
-		contextThroughCursor: v.nullable(agentRunEventCursorPipe),
+		contextThroughCursor: agentRunEventCursorPipe,
 		reason: agentRunTurnStartReasonPipe,
 	}),
 	'turn-ended': v.object({
@@ -333,31 +480,28 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 		turnStartedCursor: agentRunEventCursorPipe,
 		outcome: v.discriminate((outcome) => outcome.type, {
 			completed: v.object({ type: v.eq('completed') }),
-			error: v.object({ type: v.eq('error'), reason: turnErrorReasonPipe, summary: freeFormStringPipe }),
-			aborted: v.object({ type: v.eq('aborted'), reason: turnAbortReasonPipe, summary: nullableFreeFormStringPipe }),
+			error: v.object({ type: v.eq('error'), reason: turnErrorReasonPipe }),
 		}),
 	}),
-	'model-message-started': v.object({
-		type: v.eq('model-message-started'),
+	'assistant-message': v.object({
+		type: v.eq('assistant-message'),
 		turnStartedCursor: agentRunEventCursorPipe,
-		aiSdkCallId: v.nullable(freeFormStringPipe),
+		model: agentRunAssistantMessageModelPipe,
+		finishReason: v.in(['stop', 'tool-calls', 'length', 'content-filter', 'error', 'other']),
+		usage: agentRunLanguageModelUsagePipe,
+		cost: v.nullable(agentRunModelCostPipe),
+		responseId: v.nullable(freeFormStringPipe),
+		parts: agentRunAssistantTranscriptPartsPipe,
 	}),
-	'model-message-ended': v.object({
-		type: v.eq('model-message-ended'),
-		modelMessageStartedCursor: agentRunEventCursorPipe,
-		outcome: agentRunModelMessageOutcomePipe,
-	}),
-	'tool-call-started': v.object({
-		type: v.eq('tool-call-started'),
-		modelMessageCursor: agentRunEventCursorPipe,
-		toolCallId: toolCallIdPipe,
-		toolName: freeFormStringPipe,
-		input: unknownPipe,
-	}),
-	'tool-call-ended': v.object({
-		type: v.eq('tool-call-ended'),
-		toolCallStartedCursor: agentRunEventCursorPipe,
-		outcome: agentRunToolCallOutcomePipe,
+	'tool-message': v.object({
+		type: v.eq('tool-message'),
+		turnStartedCursor: agentRunEventCursorPipe,
+		respondsToAssistantMessageCursor: agentRunEventCursorPipe,
+		source: v.discriminate((value) => value.type, {
+			'tool-execution': v.object({ type: v.eq('tool-execution') }),
+			'runtime-recovery': v.object({ type: v.eq('runtime-recovery') }),
+		}),
+		parts: agentRunToolTranscriptPartsPipe,
 	}),
 	'interrupt-requested': v.object({
 		type: v.eq('interrupt-requested'),
@@ -366,12 +510,14 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 	}),
 	'proposed-plan-output': v.object({
 		type: v.eq('proposed-plan-output'),
-		toolCallStartedCursor: agentRunEventCursorPipe,
+		assistantMessageCursor: agentRunEventCursorPipe,
+		toolCallId: toolCallIdPipe,
 		output: planOutputProposalPipe,
 	}),
 	'proposed-revision-output': v.object({
 		type: v.eq('proposed-revision-output'),
-		toolCallStartedCursor: agentRunEventCursorPipe,
+		assistantMessageCursor: agentRunEventCursorPipe,
+		toolCallId: toolCallIdPipe,
 		output: revisionOutputProposalPipe,
 	}),
 	'proposal-accepted': v.object({
@@ -379,18 +525,20 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 		proposalCursor: agentRunEventCursorPipe,
 		authorized: auditStampPipe,
 		materialized: agentRunProposalMaterializationPipe,
+		projectedParts: agentRunSystemTranscriptPartsPipe,
 	}),
 	'proposal-rejected': v.object({
 		type: v.eq('proposal-rejected'),
 		proposalCursor: agentRunEventCursorPipe,
 		authorized: auditStampPipe,
 		reason: nullableFreeFormStringPipe,
+		projectedParts: agentRunSystemTranscriptPartsPipe,
 	}),
 	'context-compacted': v.object({
 		type: v.eq('context-compacted'),
 		source: agentRunCompactionSourcePipe,
-		summary: freeFormStringPipe,
-		firstKeptCursor: agentRunEventCursorPipe,
+		compactedThroughCursor: agentRunEventCursorPipe,
+		replacementParts: agentRunSystemTranscriptPartsPipe,
 	}),
 })
 export type AgentRunEventBody = PipeOutput<typeof agentRunEventBodyPipe>
@@ -423,6 +571,90 @@ if (import.meta.vitest) {
 					reason: { type: 'input', inputEventCursors: ['01J00000000000000000000002'] },
 				}),
 			).toMatchObject({ valid: true })
+		})
+
+		it('accepts new transcript event variants with required metadata and links', () => {
+			expect(
+				v.validate(agentRunEventBodyPipe, {
+					type: 'input-message',
+					source: { type: 'runtime' },
+					parts: [{ type: 'text', text: 'Hello', metadata: null }],
+				}),
+			).toMatchObject({ valid: true })
+			expect(
+				v.validate(agentRunEventBodyPipe, {
+					type: 'assistant-message',
+					turnStartedCursor: '01J00000000000000000000001',
+					model: {
+						modelId: 'model-1',
+						thinkingLevel: 'none',
+						modelProviderId: 'provider-1',
+						providerProtocol: 'anthropic-messages',
+						providerModelId: 'claude-sonnet',
+					},
+					finishReason: 'tool-calls',
+					usage: {
+						inputTokens: 10,
+						inputTokenDetails: { noCacheTokens: 10, cacheReadTokens: null, cacheWriteTokens: null },
+						outputTokens: 5,
+						outputTokenDetails: { textTokens: 4, reasoningTokens: 1 },
+					},
+					cost: null,
+					responseId: 'response-1',
+					parts: [
+						{ type: 'reasoning', text: 'thinking', metadata: null },
+						{ type: 'text', text: 'I will call a tool.', metadata: null },
+						{
+							type: 'tool-call',
+							toolCallId: 'call-1',
+							toolName: 'propose-plan-output',
+							input: {},
+							providerExecuted: false,
+							metadata: null,
+						},
+					],
+				}),
+			).toMatchObject({ valid: true })
+			expect(
+				v.validate(agentRunEventBodyPipe, {
+					type: 'tool-message',
+					turnStartedCursor: '01J00000000000000000000001',
+					respondsToAssistantMessageCursor: '01J00000000000000000000002',
+					source: { type: 'tool-execution' },
+					parts: [
+						{
+							type: 'tool-result',
+							toolCallId: 'call-1',
+							toolName: 'read',
+							providerExecuted: false,
+							started: { at: '2026-06-10T12:00:00.000Z' },
+							completed: { at: '2026-06-10T12:00:01.000Z' },
+							output: { type: 'text', value: 'done' },
+							truncation: null,
+							metadata: null,
+						},
+					],
+				}),
+			).toMatchObject({ valid: true })
+		})
+
+		it('rejects removed low-level model and tool event bodies', () => {
+			expect(
+				v.validate(agentRunEventBodyPipe, {
+					type: 'model-message-started',
+					turnStartedCursor: '01J00000000000000000000001',
+					aiSdkCallId: null,
+				}),
+			).toMatchObject({ valid: false })
+			expect(
+				v.validate(agentRunEventBodyPipe, {
+					type: 'tool-call-started',
+					modelMessageCursor: '01J00000000000000000000001',
+					toolCallId: 'call-1',
+					toolName: 'tool',
+					input: {},
+				}),
+			).toMatchObject({ valid: false })
 		})
 
 		it('normalizes cursors to uppercase ULIDs', () => {

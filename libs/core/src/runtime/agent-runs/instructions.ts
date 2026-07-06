@@ -1,9 +1,11 @@
-import type { AgentRunInstruction } from '../../domain/agent-run'
+import type { AgentRunEvent } from '../../domain/agent-run'
 import type { Project } from '../../domain/project'
 import type { InvariantViolationError } from '../../errors'
 import type { Result } from '../../utils/types'
 
-export function planningInstructionForProject(project: Project): Result<AgentRunInstruction, InvariantViolationError> {
+export function planningInstructionForProject(
+	project: Project,
+): Result<Extract<AgentRunEvent['body'], { type: 'instruction-snapshot' }>, InvariantViolationError> {
 	switch (project.source.type) {
 		case 'source-control':
 			return { ok: true, value: sourceControlPlanningInstruction() }
@@ -12,8 +14,12 @@ export function planningInstructionForProject(project: Project): Result<AgentRun
 	}
 }
 
-function sourceControlPlanningInstruction(): AgentRunInstruction {
-	return { type: 'source-control-planning', version: 1, content: [{ type: 'text', text: sourceControlPlanningInstructionText() }] }
+function sourceControlPlanningInstruction(): Extract<AgentRunEvent['body'], { type: 'instruction-snapshot' }> {
+	return {
+		type: 'instruction-snapshot',
+		instruction: { type: 'source-control-planning', version: 1 },
+		parts: [{ type: 'text', text: sourceControlPlanningInstructionText(), metadata: null }],
+	}
 }
 
 function sourceControlPlanningInstructionText(): string {
@@ -93,8 +99,11 @@ if (import.meta.vitest) {
 				created: stamp,
 			})
 
-			expect(result).toMatchObject({ ok: true, value: { type: 'source-control-planning', version: 1 } })
-			const text = result.ok ? result.value.content[0]?.text : ''
+			expect(result).toMatchObject({
+				ok: true,
+				value: { type: 'instruction-snapshot', instruction: { type: 'source-control-planning', version: 1 } },
+			})
+			const text = result.ok ? result.value.parts[0]?.text : ''
 			expect(text).toContain('propose-plan-output')
 			expect(text).toContain('Repository id')
 			expect(text).toContain('Target Branch')

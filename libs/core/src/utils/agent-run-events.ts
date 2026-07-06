@@ -179,7 +179,7 @@ if (import.meta.vitest) {
 			const first = await appendAgentRunEvent(options, options.storage, 'agent-run-1', {
 				type: 'input-message',
 				source: { type: 'runtime' },
-				content: [{ type: 'text', text: 'hello' }],
+				parts: [{ type: 'text', text: 'hello', metadata: null }],
 			})
 			const second = await appendAgentRunEvent(options, options.storage, 'agent-run-1', {
 				type: 'interrupt-requested',

@@ -245,7 +245,7 @@ if (import.meta.vitest) {
 			body: {
 				type: 'input-message' as const,
 				source: { type: 'runtime' as const },
-				content: [{ type: 'text' as const, text: `event ${sequence}` }],
+				parts: [{ type: 'text' as const, text: `event ${sequence}`, metadata: null }],
 			},
 		}
 	}

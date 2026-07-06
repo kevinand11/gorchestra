@@ -23,7 +23,7 @@ export const createPlanRequestSchema = v.object({
 	initialMessage: Domain.Commons.nonEmptyTrimmedStringPipe,
 	agentRunProfileId: Domain.Commons.idPipe,
 })
-export const sendAgentRunMessageRequestSchema = v.object({ content: v.array(Domain.AgentRun.agentRunTextContentPipe) })
+export const sendAgentRunMessageRequestSchema = v.object({ parts: Domain.AgentRun.agentRunInputTranscriptPartsPipe })
 export const agentRunRuntimeRequirementOverrideRequestSchema = v.object({
 	requirements: Domain.AgentRunRuntime.agentRunRuntimeRequirementsPipe,
 })

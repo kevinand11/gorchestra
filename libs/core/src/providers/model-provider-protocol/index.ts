@@ -27,7 +27,7 @@ import type {
 	ModelProviderProtocolProviders,
 	ResolveAISDKLanguageModelError,
 } from './types'
-import type { AgentRunModelMessageOutcome } from '../../domain/agent-run'
+import type { TurnErrorReason } from '../../domain/agent-run'
 import type { ArchivePeriod, Id } from '../../domain/commons'
 import {
 	modelProviderProtocolForSource,
@@ -135,7 +135,7 @@ async function resolveLanguageModelWithConcreteProviders(
 	services: CoreServices,
 	concrete: Required<ModelProviderProtocolProviderImplementations>,
 	input: Omit<Extract<AISDKLanguageModelResolutionInput, { mode: 'agent-run' }>, 'access'>,
-): Promise<Result<AISDKLanguageModelResolution | AgentRunModelMessageOutcome, ResolveAISDKLanguageModelError | ModelAgentTurnAccessError>> {
+): Promise<Result<AISDKLanguageModelResolution | TurnErrorReason, ResolveAISDKLanguageModelError | ModelAgentTurnAccessError>> {
 	const access = await resolveModelProviderProtocolAccessFromStorage(services, input.modelProvider)
 	if (!access.ok) return access
 	if (!isProtocolAccess(access.value)) return { ok: true, value: modelAccessFailureOutcome(access.value) }
@@ -163,8 +163,8 @@ function concreteResolveLanguageModel(
 	}
 }
 
-function modelAccessFailureOutcome(preflight: ModelProviderProtocolPreflight): AgentRunModelMessageOutcome {
-	return { type: 'error', reason: { type: 'runtime-error' }, message: null, summary: preflight.summary }
+function modelAccessFailureOutcome(_preflight: ModelProviderProtocolPreflight): TurnErrorReason {
+	return { type: 'runtime-error' }
 }
 
 export function modelProviderProtocolPreflight(

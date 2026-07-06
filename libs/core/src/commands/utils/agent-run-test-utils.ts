@@ -42,7 +42,7 @@ export function inputEvent(id: string, agentRunId: string, sequence: number): Ag
 		body: {
 			type: 'input-message',
 			source: { type: 'runtime' },
-			content: [{ type: 'text', text: 'Earlier context.' }],
+			parts: [{ type: 'text', text: 'Earlier context.', metadata: null }],
 		},
 	}
 }

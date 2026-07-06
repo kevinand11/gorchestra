@@ -98,11 +98,7 @@ export function passingProviderBackedPreflightProviders(): CoreRuntime['provider
 		modelProviderProtocols: {
 			preflightModel: () =>
 				Promise.resolve({ ok: true, value: { type: 'passed', summary: 'Anthropic Messages model preflight passed.' } }),
-			resolveLanguageModel: () =>
-				Promise.resolve({
-					ok: true,
-					value: { type: 'stop', message: { content: [], usage: null, providerResponseRef: null } },
-				}),
+			resolveLanguageModel: () => Promise.resolve({ ok: true, value: { type: 'runtime-error' } }),
 		},
 	}
 }
@@ -133,16 +129,7 @@ export function failingProviderBackedPreflightProviders(): CoreRuntime['provider
 						summary: 'Anthropic Messages model was not found.',
 					},
 				}),
-			resolveLanguageModel: () =>
-				Promise.resolve({
-					ok: true,
-					value: {
-						type: 'error',
-						reason: { type: 'provider-generation-failed' },
-						message: null,
-						summary: 'Model provider failed.',
-					},
-				}),
+			resolveLanguageModel: () => Promise.resolve({ ok: true, value: { type: 'provider-generation-failed' } }),
 		},
 	}
 }

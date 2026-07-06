@@ -30,7 +30,7 @@
 					v-for="event in agentRunEvents"
 					:key="event.id"
 					class="wrap-break-word border-b border-dimmer px-3 py-2 last:border-b-0">
-					<span class="font-mono text-sz-micro text-dim">#{{ event.cursor }} · {{ event.body.type }} · {{ event.id }}</span>
+					<span class="font-mono text-sz-micro text-dim">#{{ event.cursor }} · {{ eventTitle(event) }} · {{ event.id }}</span>
 					<pre class="m-0 mt-1 max-h-36 overflow-auto whitespace-pre-wrap font-mono text-sz-micro text-card-contrast">{{
 						eventSummary(event)
 					}}</pre>
@@ -97,7 +97,183 @@ const canSendAgentRunMessage = computed(() => agentRunMessageForm.valid && !isCo
 
 watch(isSendingAgentRunMessage, (isSending) => emit('message-sending-change', isSending), { immediate: true })
 
-function eventSummary(event: (typeof agentRunEvents.value)[number]): string {
-	return JSON.stringify(event.body, null, 2)
+type AgentRunEvent = (typeof agentRunEvents.value)[number]
+type AgentRunEventBody<TType extends AgentRunEvent['body']['type']> = Extract<AgentRunEvent['body'], { type: TType }>
+type TextTranscriptPart = { text: string }
+
+function eventTitle(event: AgentRunEvent): string {
+	switch (event.body.type) {
+		case 'agent-run-model-use-override-changed':
+			return 'Model use override changed'
+		case 'agent-run-runtime-requirement-override-added':
+			return 'Runtime requirement override added'
+		case 'agent-run-sandbox-assigned':
+			return 'Sandbox assigned'
+		case 'agent-run-sandbox-preparation-started':
+			return 'Sandbox preparation started'
+		case 'agent-run-sandbox-preparation-completed':
+			return 'Sandbox preparation completed'
+		case 'agent-run-sandbox-preparation-failed':
+			return 'Sandbox preparation failed'
+		case 'agent-run-sandbox-release-completed':
+			return 'Sandbox release completed'
+		case 'agent-run-sandbox-release-failed':
+			return 'Sandbox release failed'
+		case 'instruction-snapshot':
+			return 'Instruction snapshot'
+		case 'input-message':
+			return 'Input message'
+		case 'turn-started':
+			return 'Turn started'
+		case 'turn-ended':
+			return 'Turn ended'
+		case 'assistant-message':
+			return 'Assistant message'
+		case 'tool-message':
+			return 'Tool message'
+		case 'interrupt-requested':
+			return 'Interrupt requested'
+		case 'proposed-plan-output':
+			return 'Plan output proposed'
+		case 'proposed-revision-output':
+			return 'Revision output proposed'
+		case 'proposal-accepted':
+			return 'Proposal accepted'
+		case 'proposal-rejected':
+			return 'Proposal rejected'
+		case 'context-compacted':
+			return 'Context compacted'
+		default:
+			return unexpectedEventBody(event.body)
+	}
+}
+
+function eventSummary(event: AgentRunEvent): string {
+	switch (event.body.type) {
+		case 'instruction-snapshot':
+			return textPartsSummary(event.body.parts)
+		case 'input-message':
+			return textPartsSummary(event.body.parts)
+		case 'assistant-message':
+			return assistantMessageSummary(event.body)
+		case 'tool-message':
+			return toolMessageSummary(event.body)
+		case 'turn-started':
+			return `Context through ${event.body.contextThroughCursor}\nReason: ${event.body.reason.type}\nInput events: ${event.body.reason.inputEventCursors.join(', ')}`
+		case 'turn-ended':
+			return event.body.outcome.type === 'completed' ? 'Completed' : `Error: ${event.body.outcome.reason.type}`
+		case 'proposal-accepted':
+			return `Proposal ${event.body.proposalCursor} accepted.\n${textPartsSummary(event.body.projectedParts)}`
+		case 'proposal-rejected':
+			return `Proposal ${event.body.proposalCursor} rejected.${event.body.reason === null ? '' : ` ${event.body.reason}`}\n${textPartsSummary(event.body.projectedParts)}`
+		case 'context-compacted':
+			return `Compacted through ${event.body.compactedThroughCursor}\n${textPartsSummary(event.body.replacementParts)}`
+		case 'agent-run-model-use-override-changed':
+		case 'agent-run-runtime-requirement-override-added':
+		case 'agent-run-sandbox-assigned':
+		case 'agent-run-sandbox-preparation-started':
+		case 'agent-run-sandbox-preparation-completed':
+		case 'agent-run-sandbox-preparation-failed':
+		case 'agent-run-sandbox-release-completed':
+		case 'agent-run-sandbox-release-failed':
+		case 'interrupt-requested':
+		case 'proposed-plan-output':
+		case 'proposed-revision-output':
+			return JSON.stringify(event.body, null, 2)
+		default:
+			return unexpectedEventBody(event.body)
+	}
+}
+
+function assistantMessageSummary(body: AgentRunEventBody<'assistant-message'>): string {
+	const parts = body.parts.map(assistantPartSummary)
+	return [`Finish: ${body.finishReason}`, `Model: ${body.model.providerModelId}`, ...parts].join('\n')
+}
+
+function assistantPartSummary(part: AgentRunEventBody<'assistant-message'>['parts'][number]): string {
+	switch (part.type) {
+		case 'text':
+			return part.text
+		case 'reasoning':
+			return `[reasoning: ${part.text.length} chars]`
+		case 'reasoning-file':
+			return `[reasoning file: ${part.mediaType}]`
+		case 'source':
+			return `[source: ${part.title ?? part.url ?? part.id}]`
+		case 'file':
+			return `[file: ${part.filename ?? part.mediaType}]`
+		case 'custom':
+			return `[custom: ${part.kind}]`
+		case 'tool-call':
+			return `[tool call: ${part.toolName} (${part.toolCallId})] ${formatUnknown(part.input)}`
+		case 'tool-result':
+			return `[provider tool result: ${part.toolName} (${part.toolCallId})] ${toolOutputSummary(part.output)}`
+		case 'tool-error':
+			return `[provider tool error: ${part.toolName} (${part.toolCallId})] ${formatUnknown(part.error)}`
+		case 'tool-approval-request':
+			return `[tool approval request: ${part.toolName} (${part.toolCallId})] ${part.approvalId}`
+		default:
+			return unexpectedPart(part)
+	}
+}
+
+function toolMessageSummary(body: AgentRunEventBody<'tool-message'>): string {
+	return body.parts.map(toolPartSummary).join('\n')
+}
+
+function toolPartSummary(part: AgentRunEventBody<'tool-message'>['parts'][number]): string {
+	switch (part.type) {
+		case 'tool-result':
+			return `[tool result: ${part.toolName} (${part.toolCallId})] ${toolOutputSummary(part.output)}`
+		case 'tool-error':
+			return `[tool error: ${part.toolName} (${part.toolCallId}); ${part.reason.type}] ${toolOutputSummary(part.error)}`
+		case 'tool-approval-response':
+			return `[tool approval response: ${part.approvalId}] ${part.approved ? 'approved' : 'rejected'}${part.reason === null ? '' : `: ${part.reason}`}`
+		default:
+			return unexpectedPart(part)
+	}
+}
+
+function toolOutputSummary(
+	output: AgentRunEventBody<'tool-message'>['parts'][number] extends infer TPart
+		? TPart extends { output: infer TOutput }
+			? TOutput
+			: TPart extends { error: infer TError }
+				? TError
+				: never
+		: never,
+): string {
+	switch (output.type) {
+		case 'text':
+		case 'error-text':
+			return output.value
+		case 'json':
+			return formatUnknown(output.value)
+		case 'execution-denied':
+			return output.reason === null ? 'execution denied' : `execution denied: ${output.reason}`
+		default:
+			return unexpectedPart(output)
+	}
+}
+
+function textPartsSummary(parts: readonly TextTranscriptPart[]): string {
+	return parts.map((part) => part.text).join('\n')
+}
+
+function formatUnknown(value: unknown): string {
+	if (typeof value === 'string') return value
+	try {
+		return JSON.stringify(value, null, 2) ?? String(value)
+	} catch {
+		return String(value)
+	}
+}
+
+function unexpectedEventBody(body: never): never {
+	throw new Error(`Unexpected Agent Run event body: ${String(body)}`)
+}
+
+function unexpectedPart(part: never): never {
+	throw new Error(`Unexpected Agent Run transcript part: ${String(part)}`)
 }
 </script>
