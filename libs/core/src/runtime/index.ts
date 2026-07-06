@@ -89,7 +89,6 @@ if (import.meta.vitest) {
 			expect(typeof runtime.agentRuns.runExecutionAgentRun).toBe('function')
 			expect(typeof runtime.agentRuns.runModelAgentRun).toBe('function')
 			expect(typeof runtime.values.nextId).toBe('function')
-			expect(typeof runtime.values.nextCursor).toBe('function')
 			expect(typeof runtime.values.now).toBe('function')
 		})
 	})

@@ -1,31 +1,41 @@
-import { v, type PipeOutput } from 'valleyed'
+import { type PipeInput, type PipeOutput } from 'valleyed'
 
+import { paginatedQueryEnvelopePipe, paginatedQueryInputPipe } from '../domain/commons'
 import { listedModelProviderPipe } from '../domain/model-provider'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
 import { listedModelProviders } from './model-provider-read-model'
-import { listRecords, withTransaction } from '../storage/helpers'
-import type { Result as CoreResult } from '../utils/types'
+import { listRecords, listRecordsPaginated, withTransaction } from '../storage/helpers'
+import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
-export const inputPipe = v.object({})
-export type Input = PipeOutput<typeof inputPipe>
+export const inputPipe = paginatedQueryInputPipe
+export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
 
-export const resultPipe = v.array(listedModelProviderPipe)
+export const resultPipe = paginatedQueryEnvelopePipe(listedModelProviderPipe)
 export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createListModelProvidersQuery(options: CoreServices): Operation {
-	return buildQueryHandler('listModelProviders', inputPipe, () =>
+	return buildQueryHandler('listModelProviders', inputPipe, (input) =>
 		withTransaction(options, async (storage) => {
-			const providers = await listRecords('model-provider', storage)
+			const providers = await listRecordsPaginated('model-provider', storage, input)
 			if (!providers.ok) return providers
 
-			const models = await listRecords('model', storage)
-			return models.ok ? { ok: true, value: listedModelProviders(providers.value, models.value) } : models
+			const providerIds = providers.value.items.map((provider) => provider.id)
+			const models =
+				providerIds.length === 0
+					? { ok: true as const, value: [] }
+					: await listRecords('model', storage, {
+							where: (filter, fields) => filter.in(fields.providerId, providerIds),
+							orderBy: [{ field: 'id', direction: 'desc' }],
+						})
+			return models.ok
+				? { ok: true, value: { ...providers.value, items: listedModelProviders(providers.value.items, models.value) } }
+				: models
 		}),
-	)
+	) as Operation
 }
 
 if (import.meta.vitest) {
@@ -52,36 +62,43 @@ if (import.meta.vitest) {
 
 			const result = await query({})
 
-			expect(result).toEqual({ ok: true, value: [] })
+			expect(result).toEqual({
+				ok: true,
+				value: {
+					items: [],
+					pages: { current: 1, start: 1, last: 1, previous: null, next: null },
+					docs: { limit: 0, total: 0, count: 0 },
+				},
+			})
 		})
 
-		it('lists providers with nested Models in creation order and archive state', async () => {
+		it('lists providers with nested Models in id-desc order and archive state', async () => {
 			const options = createTestCoreServices()
-			seedModelProvider(options.tx, 'provider-b')
-			seedModelProvider(options.tx, 'provider-a', true)
-			options.tx.modelProviders.records.set('provider-a', {
-				...options.tx.modelProviders.records.get('provider-a')!,
+			seedModelProvider(options.tx, '01k00000000000000000100053')
+			seedModelProvider(options.tx, '01k00000000000000000100052', true)
+			options.tx.modelProviders.records.set('01k00000000000000000100052', {
+				...options.tx.modelProviders.records.get('01k00000000000000000100052')!,
 				name: 'Provider A',
 				created: { origin: 'imported', at: '2026-06-09T00:00:00.000Z' },
 			})
-			options.tx.modelProviders.records.set('provider-b', {
-				...options.tx.modelProviders.records.get('provider-b')!,
+			options.tx.modelProviders.records.set('01k00000000000000000100053', {
+				...options.tx.modelProviders.records.get('01k00000000000000000100053')!,
 				name: 'Provider B',
 				created: { origin: 'imported', at: '2026-06-10T00:00:00.000Z' },
 			})
-			seedSelectableModel(options.tx, 'model-a')
-			options.tx.modelProviders.records.delete('model-a-provider')
-			options.tx.models.records.set('model-a', {
-				...options.tx.models.records.get('model-a')!,
-				providerId: 'provider-a',
+			seedSelectableModel(options.tx, '01k00000000000000000100045')
+			options.tx.modelProviders.records.delete('01k00000000000000000050045')
+			options.tx.models.records.set('01k00000000000000000100045', {
+				...options.tx.models.records.get('01k00000000000000000100045')!,
+				providerId: '01k00000000000000000100052',
 				name: 'Model A',
 				created: { origin: 'imported', at: '2026-06-09T00:00:00.000Z' },
 			})
-			seedSelectableModel(options.tx, 'model-b', { modelArchived: true })
-			options.tx.modelProviders.records.delete('model-b-provider')
-			options.tx.models.records.set('model-b', {
-				...options.tx.models.records.get('model-b')!,
-				providerId: 'provider-a',
+			seedSelectableModel(options.tx, '01k00000000000000000100046', { modelArchived: true })
+			options.tx.modelProviders.records.delete('01k00000000000000000050046')
+			options.tx.models.records.set('01k00000000000000000100046', {
+				...options.tx.models.records.get('01k00000000000000000100046')!,
+				providerId: '01k00000000000000000100052',
 				name: 'Model B',
 				created: { origin: 'imported', at: '2026-06-10T00:00:00.000Z' },
 				archivePeriods: [{ archived: stamp, unarchived: null }],
@@ -92,18 +109,22 @@ if (import.meta.vitest) {
 
 			expect(result).toEqual({
 				ok: true,
-				value: [
-					expect.objectContaining({
-						id: 'provider-a',
-						name: 'Provider A',
-						archived: true,
-						models: [
-							expect.objectContaining({ id: 'model-a', name: 'Model A', archived: false }),
-							expect.objectContaining({ id: 'model-b', name: 'Model B', archived: true }),
-						],
-					}),
-					expect.objectContaining({ id: 'provider-b', name: 'Provider B', archived: false, models: [] }),
-				],
+				value: {
+					items: [
+						expect.objectContaining({ id: '01k00000000000000000100053', name: 'Provider B', archived: false, models: [] }),
+						expect.objectContaining({
+							id: '01k00000000000000000100052',
+							name: 'Provider A',
+							archived: true,
+							models: [
+								expect.objectContaining({ id: '01k00000000000000000100046', name: 'Model B', archived: true }),
+								expect.objectContaining({ id: '01k00000000000000000100045', name: 'Model A', archived: false }),
+							],
+						}),
+					],
+					pages: { current: 1, start: 1, last: 1, previous: null, next: null },
+					docs: { limit: 2, total: 2, count: 2 },
+				},
 			})
 		})
 
@@ -116,6 +137,7 @@ if (import.meta.vitest) {
 			})
 
 			const modelFailure = createTestCoreServices()
+			seedModelProvider(modelFailure.tx, '01k00000000000000000100052')
 			modelFailure.tx.models.fail.list = true
 			await expect(createListModelProvidersQuery(modelFailure)({})).resolves.toEqual({
 				ok: false,

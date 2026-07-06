@@ -302,17 +302,20 @@ if (import.meta.vitest) {
 	describe('getSliceState', () => {
 		it('derives complete after Slice Delivery Artifact validation passes after promotion', () => {
 			const { tx } = sliceFixture()
-			seedPromotion(tx, 'promote-slice', 'slice-1')
-			seedSliceDeliveryValidation(tx, 'slice-complete', 'slice-1', true)
+			seedPromotion(tx, 'promote-slice', '01k00000000000000000000042')
+			seedSliceDeliveryValidation(tx, '01k00000000000000000100043', '01k00000000000000000000042', true)
 
-			expect(sliceState(tx, 'slice-1')).toEqual({ ok: true, value: { type: 'complete', actionId: 'slice-complete' } })
+			expect(sliceState(tx, '01k00000000000000000000042')).toEqual({
+				ok: true,
+				value: { type: 'complete', actionId: '01k00000000000000000100043' },
+			})
 		})
 
 		it('derives needs-delivery-validation after promotion without later Slice Delivery Artifact validation', () => {
 			const { tx } = sliceFixture()
-			seedPromotion(tx, 'promote-slice', 'slice-1')
+			seedPromotion(tx, 'promote-slice', '01k00000000000000000000042')
 
-			expect(sliceState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, '01k00000000000000000000042')).toEqual({
 				ok: true,
 				value: { type: 'needs-delivery-validation', actionId: 'promote-slice' },
 			})
@@ -320,36 +323,54 @@ if (import.meta.vitest) {
 
 		it('derives dependency-blocked for an incomplete same-Delivery prerequisite Slice', () => {
 			const { tx } = sliceFixture()
-			seedSlice(tx, 'slice-prerequisite', 'delivery-1')
-			tx.links.records.set('slice-dependency', {
-				id: 'slice-dependency',
+			seedSlice(tx, '01k00000000000000000100041', '01k00000000000000000000008')
+			tx.links.records.set('01k00000000000000000100042', {
+				id: '01k00000000000000000100042',
 				def: {
 					type: 'depends-on',
-					from: { type: 'slice', projectId: 'project-1', deliveryId: 'delivery-1', id: 'slice-1' },
-					to: { type: 'slice', projectId: 'project-1', deliveryId: 'delivery-1', id: 'slice-prerequisite' },
+					from: {
+						type: 'slice',
+						projectId: '01k00000000000000000000030',
+						deliveryId: '01k00000000000000000000008',
+						id: '01k00000000000000000000042',
+					},
+					to: {
+						type: 'slice',
+						projectId: '01k00000000000000000000030',
+						deliveryId: '01k00000000000000000000008',
+						id: '01k00000000000000000100041',
+					},
 				},
 				created: stamp,
 			})
 
-			expect(sliceState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, '01k00000000000000000000042')).toEqual({
 				ok: true,
-				value: { type: 'dependency-blocked', blockedBy: ['slice-prerequisite'] },
+				value: { type: 'dependency-blocked', blockedBy: ['01k00000000000000000100041'] },
 			})
 		})
 
 		it('keeps a Slice executable while an initial Agent Run is incomplete', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
-			seedSliceExecution(tx, 'start-initial', 'slice-1', 'initial', 'agent-run-1', null)
+			seedSliceExecution(tx, 'start-initial', '01k00000000000000000000042', 'initial', '01k00000000000000000000002', null)
 
-			expect(sliceState(tx, 'slice-1')).toEqual({ ok: true, value: { type: 'executable', mode: 'initial' } })
+			expect(sliceState(tx, '01k00000000000000000000042')).toEqual({ ok: true, value: { type: 'executable', mode: 'initial' } })
 		})
 
 		it('counts an incomplete correction Agent Run without exposing an in-transit Slice state', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
-			seedSliceArtifactValidation(tx, 'failed-validation', 'slice-1', false)
-			seedSliceExecution(tx, 'start-correction', 'slice-1', 'correction', 'agent-run-1', null, '2026-06-10T12:01:00.000Z')
+			seedSliceArtifactValidation(tx, 'failed-validation', '01k00000000000000000000042', false)
+			seedSliceExecution(
+				tx,
+				'start-correction',
+				'01k00000000000000000000042',
+				'correction',
+				'01k00000000000000000000002',
+				null,
+				'2026-06-10T12:01:00.000Z',
+			)
 
-			expect(sliceState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, '01k00000000000000000000042')).toEqual({
 				ok: true,
 				value: {
 					type: 'executable',
@@ -361,33 +382,35 @@ if (import.meta.vitest) {
 
 		it('derives needs-artifact-validation initial after completed initial execution', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
-			seedSliceExecution(tx, 'start-initial', 'slice-1', 'initial', 'agent-run-1', { at: '2026-06-10T12:01:00.000Z' })
+			seedSliceExecution(tx, 'start-initial', '01k00000000000000000000042', 'initial', '01k00000000000000000000002', {
+				at: '2026-06-10T12:01:00.000Z',
+			})
 
-			expect(sliceState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, '01k00000000000000000000042')).toEqual({
 				ok: true,
-				value: { type: 'needs-artifact-validation', mode: 'initial', sliceArtifactId: 'slice-artifact-1' },
+				value: { type: 'needs-artifact-validation', mode: 'initial', sliceArtifactId: '01k00000000000000000000045' },
 			})
 		})
 
 		it('derives needs-artifact-validation correction after completed correction execution', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
-			seedSliceArtifactValidation(tx, 'failed-validation', 'slice-1', false)
+			seedSliceArtifactValidation(tx, 'failed-validation', '01k00000000000000000000042', false)
 			seedSliceExecution(
 				tx,
 				'start-correction',
-				'slice-1',
+				'01k00000000000000000000042',
 				'correction',
-				'agent-run-1',
+				'01k00000000000000000000002',
 				{ at: '2026-06-10T12:02:00.000Z' },
 				'2026-06-10T12:01:00.000Z',
 			)
 
-			expect(sliceState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, '01k00000000000000000000042')).toEqual({
 				ok: true,
 				value: {
 					type: 'needs-artifact-validation',
 					mode: 'correction',
-					sliceArtifactId: 'slice-artifact-1',
+					sliceArtifactId: '01k00000000000000000000045',
 					failureChain: { rootActionId: 'failed-validation', correctionRetries: 1 },
 				},
 			})
@@ -395,29 +418,29 @@ if (import.meta.vitest) {
 
 		it('derives needs-review-surface after passed Slice Artifact validation before review exists', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
-			seedSliceArtifactValidation(tx, 'passed-validation', 'slice-1', true)
+			seedSliceArtifactValidation(tx, 'passed-validation', '01k00000000000000000000042', true)
 
-			expect(sliceState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, '01k00000000000000000000042')).toEqual({
 				ok: true,
-				value: { type: 'needs-review-surface', sliceArtifactId: 'slice-artifact-1' },
+				value: { type: 'needs-review-surface', sliceArtifactId: '01k00000000000000000000045' },
 			})
 		})
 
 		it('derives awaiting-review while the current Slice Review Surface is open', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
-			seedSliceArtifactValidation(tx, 'passed-validation', 'slice-1', true)
-			tx.reviewSurfaces.records.set('review-surface-1', {
-				id: 'review-surface-1',
-				scope: { type: 'slice', sliceId: 'slice-1', sliceArtifactId: 'slice-artifact-1' },
+			seedSliceArtifactValidation(tx, 'passed-validation', '01k00000000000000000000042', true)
+			tx.reviewSurfaces.records.set('01k00000000000000000000037', {
+				id: '01k00000000000000000000037',
+				scope: { type: 'slice', sliceId: '01k00000000000000000000042', sliceArtifactId: '01k00000000000000000000045' },
 				config: reviewSurfaceConfig(),
 				title: 'Review',
 				closed: null,
 				created: { at: stamp.at },
 			})
 
-			expect(sliceState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, '01k00000000000000000000042')).toEqual({
 				ok: true,
-				value: { type: 'awaiting-review', reviewSurfaceId: 'review-surface-1' },
+				value: { type: 'awaiting-review', reviewSurfaceId: '01k00000000000000000000037' },
 			})
 		})
 
@@ -425,18 +448,18 @@ if (import.meta.vitest) {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
 			tx.actions.records.set('external-failure', {
 				id: 'external-failure',
-				deliveryId: 'delivery-1',
+				deliveryId: '01k00000000000000000000008',
 				performed: { at: '2026-06-10T12:00:00.000Z' },
 				authorized: null,
 				result: {
 					type: 'record-slice-external-operation-failure',
-					sliceId: 'slice-1',
+					sliceId: '01k00000000000000000000042',
 					evidence: externalFailure,
 					dispatchStartedActionId: null,
 				},
 			})
 
-			expect(sliceState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, '01k00000000000000000000042')).toEqual({
 				ok: true,
 				value: { type: 'slice-operation-failed', actionId: 'external-failure' },
 			})
@@ -445,20 +468,20 @@ if (import.meta.vitest) {
 		it('derives needs-artifact-creation before a Slice Artifact exists', () => {
 			const { tx } = sliceFixture()
 
-			expect(sliceState(tx, 'slice-1')).toEqual({ ok: true, value: { type: 'needs-artifact-creation' } })
+			expect(sliceState(tx, '01k00000000000000000000042')).toEqual({ ok: true, value: { type: 'needs-artifact-creation' } })
 		})
 
 		it('derives executable initial when the Slice Artifact exists and no earlier gate applies', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
 
-			expect(sliceState(tx, 'slice-1')).toEqual({ ok: true, value: { type: 'executable', mode: 'initial' } })
+			expect(sliceState(tx, '01k00000000000000000000042')).toEqual({ ok: true, value: { type: 'executable', mode: 'initial' } })
 		})
 
 		it('derives executable correction from a failed Slice Artifact validation', () => {
 			const { tx } = sliceFixture({ withSliceArtifact: true })
-			seedSliceArtifactValidation(tx, 'failed-validation', 'slice-1', false)
+			seedSliceArtifactValidation(tx, 'failed-validation', '01k00000000000000000000042', false)
 
-			expect(sliceState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, '01k00000000000000000000042')).toEqual({
 				ok: true,
 				value: {
 					type: 'executable',
@@ -470,16 +493,16 @@ if (import.meta.vitest) {
 
 		it('does not treat Delivery-level artifact validation as Slice completion', () => {
 			const { tx } = sliceFixture()
-			seedPromotion(tx, 'promote-slice', 'slice-1')
+			seedPromotion(tx, 'promote-slice', '01k00000000000000000000042')
 			tx.actions.records.set('delivery-validation', {
 				id: 'delivery-validation',
-				deliveryId: 'delivery-1',
+				deliveryId: '01k00000000000000000000008',
 				performed: { at: '2026-06-10T12:01:00.000Z' },
 				authorized: null,
 				result: { type: 'validate-delivery-artifact', evidence: passedValidation, dispatchStartedActionId: null },
 			})
 
-			expect(sliceState(tx, 'slice-1')).toEqual({
+			expect(sliceState(tx, '01k00000000000000000000042')).toEqual({
 				ok: true,
 				value: { type: 'needs-delivery-validation', actionId: 'promote-slice' },
 			})
@@ -488,12 +511,12 @@ if (import.meta.vitest) {
 
 	function sliceFixture(options: { withSliceArtifact?: boolean } = {}) {
 		const core = createTestCoreServices()
-		seedDelivery(core.tx, 'delivery-1')
-		seedSlice(core.tx, 'slice-1', 'delivery-1')
+		seedDelivery(core.tx, '01k00000000000000000000008')
+		seedSlice(core.tx, '01k00000000000000000000042', '01k00000000000000000000008')
 		if (options.withSliceArtifact === true) {
-			core.tx.sliceArtifacts.records.set('slice-artifact-1', {
-				id: 'slice-artifact-1',
-				sliceId: 'slice-1',
+			core.tx.sliceArtifacts.records.set('01k00000000000000000000045', {
+				id: '01k00000000000000000000045',
+				sliceId: '01k00000000000000000000042',
 				config: { type: 'source-control', sliceBranch: 'slice-branch' },
 				created: stamp,
 			})
@@ -516,14 +539,14 @@ if (import.meta.vitest) {
 			agent: { type: 'model' },
 			purpose: {
 				type: 'execution',
-				deliveryId: 'delivery-1',
+				deliveryId: '01k00000000000000000000008',
 				sliceId,
 				mode: mode === 'initial' ? { type: 'initial' } : { type: 'correction', failureChainRootActionId: 'failed-validation' },
 			},
 			profile: {
-				agentRunProfileId: 'agent-run-profile-1',
+				agentRunProfileId: '01k00000000000000000000006',
 				name: 'Agent Run Profile',
-				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				runtimeRequirements: [],
 			},
 			modelUseOverride: null,
@@ -531,7 +554,7 @@ if (import.meta.vitest) {
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: null,
-			sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+			sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 			started: { at },
 			completed,
 		})
@@ -540,7 +563,7 @@ if (import.meta.vitest) {
 	function seedSliceArtifactValidation(tx: ReturnType<typeof sliceFixture>['tx'], actionId: string, sliceId: string, passed: boolean) {
 		tx.actions.records.set(actionId, {
 			id: actionId,
-			deliveryId: 'delivery-1',
+			deliveryId: '01k00000000000000000000008',
 			performed: { at: '2026-06-10T12:00:00.000Z' },
 			authorized: null,
 			result: {
@@ -555,7 +578,7 @@ if (import.meta.vitest) {
 	function seedPromotion(tx: ReturnType<typeof sliceFixture>['tx'], actionId: string, sliceId: string) {
 		tx.actions.records.set(actionId, {
 			id: actionId,
-			deliveryId: 'delivery-1',
+			deliveryId: '01k00000000000000000000008',
 			performed: { at: '2026-06-10T12:00:00.000Z' },
 			authorized: null,
 			result: { type: 'promote-slice-artifact', sliceId, evidence: externalPassed, dispatchStartedActionId: null },
@@ -565,7 +588,7 @@ if (import.meta.vitest) {
 	function seedSliceDeliveryValidation(tx: ReturnType<typeof sliceFixture>['tx'], actionId: string, sliceId: string, passed: boolean) {
 		tx.actions.records.set(actionId, {
 			id: actionId,
-			deliveryId: 'delivery-1',
+			deliveryId: '01k00000000000000000000008',
 			performed: { at: '2026-06-10T12:01:00.000Z' },
 			authorized: null,
 			result: {
@@ -581,14 +604,14 @@ if (import.meta.vitest) {
 		return {
 			provider: 'github' as const,
 			pullRequestNumber: 1,
-			repositoryId: 'repository-1',
+			repositoryId: '01k00000000000000000000034',
 			sourceBranch: 'slice-branch',
 			targetBranch: 'delivery-branch',
 		}
 	}
 
 	function sliceState(tx: ReturnType<typeof sliceFixture>['tx'], sliceId: string) {
-		const delivery = tx.deliveries.records.get('delivery-1')!
+		const delivery = tx.deliveries.records.get('01k00000000000000000000008')!
 		const sliceRecords = [...tx.slices.records.values()]
 			.filter((slice) => slice.deliveryId === delivery.id)
 			.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))

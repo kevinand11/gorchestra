@@ -12,7 +12,7 @@ export function deliveryReadModels(
 ): CoreResult<DeliveryReadModel[], ResourceNotFoundError> {
 	const repositoriesById = new Map(repositories.map((repository) => [repository.id, repository]))
 	const models: DeliveryReadModel[] = []
-	for (const delivery of sortDeliveriesByAcceptedAtThenId(deliveries)) {
+	for (const delivery of deliveries) {
 		const model = deliveryReadModel(delivery, repositoriesById, slicesByDeliveryId.get(delivery.id) ?? [])
 		if (!model.ok) return model
 		models.push(model.value)
@@ -43,8 +43,4 @@ function deliveryReadTarget(
 				: { ok: true, value: { type: 'source-control', repository, targetBranch: target.targetBranch } }
 		}
 	}
-}
-
-function sortDeliveriesByAcceptedAtThenId(deliveries: Delivery[]): Delivery[] {
-	return [...deliveries].sort((left, right) => left.accepted.at.localeCompare(right.accepted.at) || left.id.localeCompare(right.id))
 }

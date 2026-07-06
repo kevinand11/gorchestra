@@ -267,13 +267,13 @@ if (import.meta.vitest) {
 	describe('getDeliveryState', () => {
 		it('derives closed from Delivery.closed', () => {
 			const { tx } = deliveryFixture()
-			tx.deliveries.records.get('delivery-1')!.closed = {
+			tx.deliveries.records.get('01k00000000000000000000008')!.closed = {
 				type: 'shipped',
 				shipped: stamp,
 				integration: { type: 'observed-artifact-integration', actionId: 'observe-integration' },
 			}
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({
+			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({
 				ok: true,
 				value: { type: 'closed', outcome: 'shipped' },
 			})
@@ -282,25 +282,25 @@ if (import.meta.vitest) {
 		it('derives unqueued before Delivery.queued is set', () => {
 			const { tx } = deliveryFixture()
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({ ok: true, value: { type: 'unqueued' } })
+			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({ ok: true, value: { type: 'unqueued' } })
 		})
 
 		it('derives dependency-blocked from an unclosed same-Project prerequisite Delivery', () => {
 			const { tx } = deliveryFixture({ queued: true })
-			seedDelivery(tx, 'delivery-prerequisite')
-			tx.links.records.set('delivery-dependency', {
-				id: 'delivery-dependency',
+			seedDelivery(tx, '01k00000000000000000100036')
+			tx.links.records.set('01k00000000000000000100037', {
+				id: '01k00000000000000000100037',
 				def: {
 					type: 'depends-on',
-					from: { type: 'delivery', projectId: 'project-1', id: 'delivery-1' },
-					to: { type: 'delivery', projectId: 'project-1', id: 'delivery-prerequisite' },
+					from: { type: 'delivery', projectId: '01k00000000000000000000030', id: '01k00000000000000000000008' },
+					to: { type: 'delivery', projectId: '01k00000000000000000000030', id: '01k00000000000000000100036' },
 				},
 				created: stamp,
 			})
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({
+			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({
 				ok: true,
-				value: { type: 'dependency-blocked', blockedBy: ['delivery-prerequisite'] },
+				value: { type: 'dependency-blocked', blockedBy: ['01k00000000000000000100036'] },
 			})
 		})
 
@@ -308,7 +308,7 @@ if (import.meta.vitest) {
 			const { tx } = deliveryFixture({ queued: true })
 			seedAction(tx, { id: 'preflight-failed', result: { type: 'validate-preflight', checks: [failedValidation] } })
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({
+			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({
 				ok: true,
 				value: { type: 'preflight-failed', actionId: 'preflight-failed' },
 			})
@@ -318,7 +318,7 @@ if (import.meta.vitest) {
 			const { tx } = deliveryFixture({ queued: true })
 			seedAction(tx, { id: 'preflight-empty', result: { type: 'validate-preflight', checks: [] } })
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({
+			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({
 				ok: true,
 				value: { type: 'preflight-failed', actionId: 'preflight-empty' },
 			})
@@ -333,19 +333,19 @@ if (import.meta.vitest) {
 				result: { type: 'validate-preflight', checks: [validationEvidence('repository-preflight', true, 'Repository ready.')] },
 			})
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({ ok: true, value: { type: 'needs-artifact-creation' } })
+			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({ ok: true, value: { type: 'needs-artifact-creation' } })
 		})
 
 		it('derives needs-artifact-creation after queueing before a Delivery Artifact exists', () => {
 			const { tx } = deliveryFixture({ queued: true })
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({ ok: true, value: { type: 'needs-artifact-creation' } })
+			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({ ok: true, value: { type: 'needs-artifact-creation' } })
 		})
 
 		it('derives slices-incomplete when at least one Slice is not complete', () => {
 			const { tx } = deliveryFixture({ queued: true, withDeliveryArtifact: true, withSlice: true })
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({ ok: true, value: { type: 'slices-incomplete' } })
+			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({ ok: true, value: { type: 'slices-incomplete' } })
 		})
 
 		it('derives delivery-operation-failed from a Delivery-scoped external failure after passed validation', () => {
@@ -357,7 +357,7 @@ if (import.meta.vitest) {
 				result: { type: 'record-delivery-external-operation-failure', evidence: externalFailure, dispatchStartedActionId: null },
 			})
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({
+			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({
 				ok: true,
 				value: { type: 'delivery-operation-failed', actionId: 'delivery-operation-failed' },
 			})
@@ -367,7 +367,7 @@ if (import.meta.vitest) {
 			const { tx } = completedDeliveryFixture()
 			seedDeliveryValidation(tx, 'delivery-validation-failed', false)
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({
+			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({
 				ok: true,
 				value: { type: 'delivery-validation-failed', actionId: 'delivery-validation-failed' },
 			})
@@ -377,7 +377,7 @@ if (import.meta.vitest) {
 			const { tx } = validatedDeliveryFixture()
 			seedDeliveryReviewSurface(tx, { id: 'delivery-review', closed: { type: 'closed-without-merge', closed: { at: stamp.at } } })
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({
+			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({
 				ok: true,
 				value: { type: 'delivery-review-failed', reviewSurfaceId: 'delivery-review' },
 			})
@@ -386,15 +386,15 @@ if (import.meta.vitest) {
 		it('derives needs-artifact-validation after all Slices complete before Delivery Artifact validation', () => {
 			const { tx } = completedDeliveryFixture()
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({ ok: true, value: { type: 'needs-artifact-validation' } })
+			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({ ok: true, value: { type: 'needs-artifact-validation' } })
 		})
 
 		it('derives needs-review-surface after passed Delivery Artifact validation before review exists', () => {
 			const { tx } = validatedDeliveryFixture()
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({
+			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({
 				ok: true,
-				value: { type: 'needs-review-surface', deliveryArtifactId: 'delivery-artifact-1' },
+				value: { type: 'needs-review-surface', deliveryArtifactId: '01k00000000000000000000010' },
 			})
 		})
 
@@ -402,7 +402,7 @@ if (import.meta.vitest) {
 			const { tx } = validatedDeliveryFixture()
 			seedDeliveryReviewSurface(tx, { id: 'delivery-review', closed: null })
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({
+			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({
 				ok: true,
 				value: { type: 'awaiting-review', reviewSurfaceId: 'delivery-review' },
 			})
@@ -415,11 +415,16 @@ if (import.meta.vitest) {
 				closed: {
 					type: 'merged',
 					merged: { at: stamp.at },
-					config: { type: 'source-control', repositoryId: 'repository-1', sourceBranch: 'delivery', targetBranch: 'main' },
+					config: {
+						type: 'source-control',
+						repositoryId: '01k00000000000000000000034',
+						sourceBranch: 'delivery',
+						targetBranch: 'main',
+					},
 				},
 			})
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({
+			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({
 				ok: true,
 				value: { type: 'ready-to-ship', integration: { type: 'review-surface-merged', reviewSurfaceId: 'delivery-review' } },
 			})
@@ -433,7 +438,7 @@ if (import.meta.vitest) {
 				result: { type: 'observe-delivery-artifact-integration', evidence: externalPassed, dispatchStartedActionId: null },
 			})
 
-			expect(deliveryState(tx, 'delivery-1')).toEqual({
+			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({
 				ok: true,
 				value: { type: 'ready-to-ship', integration: { type: 'observed-artifact-integration', actionId: 'observe-integration' } },
 			})
@@ -442,9 +447,9 @@ if (import.meta.vitest) {
 
 	function deliveryFixture(options: { queued?: boolean; withDeliveryArtifact?: boolean; withSlice?: boolean } = {}) {
 		const core = createTestCoreServices()
-		seedDelivery(core.tx, 'delivery-1')
-		if (options.withSlice === true) seedSlice(core.tx, 'slice-1', 'delivery-1')
-		if (options.queued === true) core.tx.deliveries.records.get('delivery-1')!.queued = stamp
+		seedDelivery(core.tx, '01k00000000000000000000008')
+		if (options.withSlice === true) seedSlice(core.tx, '01k00000000000000000000042', '01k00000000000000000000008')
+		if (options.queued === true) core.tx.deliveries.records.get('01k00000000000000000000008')!.queued = stamp
 		if (options.withDeliveryArtifact === true) seedDeliveryArtifact(core.tx)
 
 		return core
@@ -455,14 +460,19 @@ if (import.meta.vitest) {
 		seedAction(core.tx, {
 			id: 'promote-slice',
 			at: '2026-06-10T12:01:00.000Z',
-			result: { type: 'promote-slice-artifact', sliceId: 'slice-1', evidence: slicePromotion, dispatchStartedActionId: null },
+			result: {
+				type: 'promote-slice-artifact',
+				sliceId: '01k00000000000000000000042',
+				evidence: slicePromotion,
+				dispatchStartedActionId: null,
+			},
 		})
 		seedAction(core.tx, {
-			id: 'slice-complete',
+			id: '01k00000000000000000100043',
 			at: '2026-06-10T12:02:00.000Z',
 			result: {
 				type: 'validate-slice-delivery-artifact',
-				sliceId: 'slice-1',
+				sliceId: '01k00000000000000000000042',
 				evidence: sliceValidation,
 				dispatchStartedActionId: null,
 			},
@@ -479,9 +489,9 @@ if (import.meta.vitest) {
 	}
 
 	function seedDeliveryArtifact(tx: ReturnType<typeof deliveryFixture>['tx']) {
-		tx.deliveryArtifacts.records.set('delivery-artifact-1', {
-			id: 'delivery-artifact-1',
-			deliveryId: 'delivery-1',
+		tx.deliveryArtifacts.records.set('01k00000000000000000000010', {
+			id: '01k00000000000000000000010',
+			deliveryId: '01k00000000000000000000008',
 			config: { type: 'source-control', deliveryBranch: 'delivery' },
 			created: stamp,
 		})
@@ -505,11 +515,11 @@ if (import.meta.vitest) {
 	) {
 		tx.reviewSurfaces.records.set(reviewSurface.id, {
 			id: reviewSurface.id,
-			scope: { type: 'delivery', deliveryId: 'delivery-1', deliveryArtifactId: 'delivery-artifact-1' },
+			scope: { type: 'delivery', deliveryId: '01k00000000000000000000008', deliveryArtifactId: '01k00000000000000000000010' },
 			config: {
 				provider: 'github',
 				pullRequestNumber: 1,
-				repositoryId: 'repository-1',
+				repositoryId: '01k00000000000000000000034',
 				sourceBranch: 'delivery',
 				targetBranch: 'main',
 			},
@@ -522,7 +532,7 @@ if (import.meta.vitest) {
 	function seedAction(tx: ReturnType<typeof deliveryFixture>['tx'], action: { id: string; at?: string; result: Action['result'] }) {
 		tx.actions.records.set(action.id, {
 			id: action.id,
-			deliveryId: 'delivery-1',
+			deliveryId: '01k00000000000000000000008',
 			performed: { at: action.at ?? '2026-06-10T12:00:00.000Z' },
 			authorized: null,
 			result: action.result,

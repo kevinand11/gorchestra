@@ -4,10 +4,11 @@ import { AgentRunProfileFormDraft } from '../../forms/agent-run-profile'
 import { useSelectedPortfolio } from '../auth/session'
 import { useApiAction, useFetchAction } from '../core/action-state'
 import { useOverlay } from '../core/overlay'
+import { usePaginatedFetchAction } from '../core/paginated-fetch-action'
 import { useQueryCache } from '../core/query-cache'
 import { useServerApi, type ServerApi } from '../core/server-api'
 
-type ListedAgentRunProfile = Awaited<ReturnType<ServerApi['listAgentRunProfiles']>>[number]
+type ListedAgentRunProfile = Awaited<ReturnType<ServerApi['listAgentRunProfiles']>>['items'][number]
 type AgentRunProfileDetails = Awaited<ReturnType<ServerApi['getAgentRunProfile']>>
 type SavedAgentRunProfile = Awaited<ReturnType<ServerApi['createAgentRunProfile']>>
 type AgentRunProfileReference = Awaited<ReturnType<ServerApi['listAgentRunProfileReferences']>>[number]
@@ -17,15 +18,14 @@ export function useAgentRunProfilesList() {
 	const { portfolio } = useSelectedPortfolio()
 	const { queryKeys } = useQueryCache()
 	const {
-		data: agentRunProfiles,
+		items: agentRunProfiles,
 		isLoading: isLoadingAgentRunProfiles,
 		error: agentRunProfilesError,
 		hasExecuted: hasLoadedAgentRunProfiles,
-		execute: refreshAgentRunProfiles,
-		reset: resetAgentRunProfiles,
-	} = useFetchAction(() => serverApi.listAgentRunProfiles(), {
+		fetchNext: fetchNextAgentRunProfiles,
+		hasNext: hasNextAgentRunProfiles,
+	} = usePaginatedFetchAction((input) => serverApi.listAgentRunProfiles(input), {
 		queryKey: queryKeys.portfolio.agentRunProfiles(portfolio.value.id),
-		initialData: [] as ListedAgentRunProfile[],
 	})
 	const isRefreshingAgentRunProfiles = computed(() => isLoadingAgentRunProfiles.value && hasLoadedAgentRunProfiles.value)
 	const activeAgentRunProfiles = computed(() => agentRunProfiles.value.filter((profile) => !profile.archived))
@@ -41,8 +41,8 @@ export function useAgentRunProfilesList() {
 		agentRunProfilesError,
 		hasLoadedAgentRunProfiles,
 		isRefreshingAgentRunProfiles,
-		refreshAgentRunProfiles,
-		resetAgentRunProfiles,
+		fetchNextAgentRunProfiles,
+		hasNextAgentRunProfiles,
 	}
 }
 

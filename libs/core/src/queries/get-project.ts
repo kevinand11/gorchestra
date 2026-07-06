@@ -4,7 +4,7 @@ import { idPipe } from '../domain/commons'
 import { listedProjectPipe } from '../domain/project'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
-import { listedProjectFromProjectAndRepositories, sortByCreatedAtThenId } from './list-projects'
+import { listedProjectFromProjectAndRepositories } from './list-projects'
 import { getRequired, listRecords, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
@@ -25,12 +25,13 @@ export function createGetProjectQuery(options: CoreServices): Operation {
 
 			const repositories = await listRecords('repository', storage, {
 				where: (filter, fields) => filter.eq(fields.projectId, project.value.id),
+				orderBy: [{ field: 'id', direction: 'desc' }],
 			})
 			if (!repositories.ok) return repositories
 
 			return {
 				ok: true,
-				value: listedProjectFromProjectAndRepositories(project.value, sortByCreatedAtThenId(repositories.value)),
+				value: listedProjectFromProjectAndRepositories(project.value, repositories.value),
 			}
 		}),
 	)
@@ -56,58 +57,61 @@ if (import.meta.vitest) {
 			expect(options.transactionCalls()).toBe(0)
 		})
 
-		it('returns one Project with nested Repositories in creation order', async () => {
+		it('returns one Project with nested Repositories in id-desc order', async () => {
 			const options = createTestCoreServices()
-			options.tx.projects.records.set('project-1', project({ id: 'project-1', title: 'Delivery Ops' }))
-			options.tx.projects.records.set('project-2', project({ id: 'project-2', title: 'Other' }))
+			options.tx.projects.records.set(
+				'01k00000000000000000000030',
+				project({ id: '01k00000000000000000000030', title: 'Delivery Ops' }),
+			)
+			options.tx.projects.records.set('01k00000000000000000000031', project({ id: '01k00000000000000000000031', title: 'Other' }))
 			options.tx.repositories.records.set(
-				'repository-b',
+				'01k00000000000000000100026',
 				repository({
-					id: 'repository-b',
-					projectId: 'project-1',
+					id: '01k00000000000000000100026',
+					projectId: '01k00000000000000000000030',
 					owner: 'Octo',
 					name: 'Beta',
 					createdAt: '2026-06-10T00:00:00.000Z',
 				}),
 			)
 			options.tx.repositories.records.set(
-				'repository-a',
+				'01k00000000000000000100025',
 				repository({
-					id: 'repository-a',
-					projectId: 'project-1',
+					id: '01k00000000000000000100025',
+					projectId: '01k00000000000000000000030',
 					owner: 'Octo',
 					name: 'Alpha',
 					createdAt: '2026-06-09T00:00:00.000Z',
 				}),
 			)
 			options.tx.repositories.records.set(
-				'repository-other',
-				repository({ id: 'repository-other', projectId: 'project-2', owner: 'Other', name: 'Repo' }),
+				'01k00000000000000000100028',
+				repository({ id: '01k00000000000000000100028', projectId: '01k00000000000000000000031', owner: 'Other', name: 'Repo' }),
 			)
 			const query = createGetProjectQuery(options)
 
-			const result = await query({ projectId: 'project-1' })
+			const result = await query({ projectId: '01k00000000000000000000030' })
 
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					...project({ id: 'project-1', title: 'Delivery Ops' }),
+					...project({ id: '01k00000000000000000000030', title: 'Delivery Ops' }),
 					source: {
 						type: 'source-control',
 						repositories: [
 							repository({
-								id: 'repository-a',
-								projectId: 'project-1',
-								owner: 'Octo',
-								name: 'Alpha',
-								createdAt: '2026-06-09T00:00:00.000Z',
-							}),
-							repository({
-								id: 'repository-b',
-								projectId: 'project-1',
+								id: '01k00000000000000000100026',
+								projectId: '01k00000000000000000000030',
 								owner: 'Octo',
 								name: 'Beta',
 								createdAt: '2026-06-10T00:00:00.000Z',
+							}),
+							repository({
+								id: '01k00000000000000000100025',
+								projectId: '01k00000000000000000000030',
+								owner: 'Octo',
+								name: 'Alpha',
+								createdAt: '2026-06-09T00:00:00.000Z',
 							}),
 						],
 					},
@@ -118,9 +122,9 @@ if (import.meta.vitest) {
 		it('returns not-found when the target Project does not exist', async () => {
 			const query = createGetProjectQuery(createTestCoreServices())
 
-			const result = await query({ projectId: 'project-1' })
+			const result = await query({ projectId: '01k00000000000000000000030' })
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'project', id: 'project-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'project', id: '01k00000000000000000000030' } })
 		})
 	})
 
@@ -136,7 +140,7 @@ if (import.meta.vitest) {
 						work: {
 							maxProcessableSliceSlots: 1,
 							maxCorrectionRetriesPerFailure: 1,
-							executionAgentRunProfileId: 'agent-run-profile-1',
+							executionAgentRunProfileId: '01k00000000000000000000006',
 							revisionExecutionAgentRunProfileId: null,
 						},
 					},
@@ -146,7 +150,7 @@ if (import.meta.vitest) {
 			repository: (input: { id: string; projectId: string; owner: string; name: string; createdAt?: string }) => ({
 				id: input.id,
 				projectId: input.projectId,
-				config: { provider: 'github' as const, owner: input.owner, name: input.name, secretId: 'secret-1' },
+				config: { provider: 'github' as const, owner: input.owner, name: input.name, secretId: '01k00000000000000000000040' },
 				created: { origin: 'imported' as const, at: input.createdAt ?? '2026-06-10T00:00:00.000Z' },
 			}),
 		}

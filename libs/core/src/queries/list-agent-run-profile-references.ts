@@ -166,24 +166,27 @@ if (import.meta.vitest) {
 		it('returns not-found when the target Agent Run Profile does not exist', async () => {
 			const query = createListAgentRunProfileReferencesQuery(createTestCoreServices())
 
-			const result = await query({ agentRunProfileId: 'agent-run-profile-1' })
+			const result = await query({ agentRunProfileId: '01k00000000000000000000006' })
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'agent-run-profile', id: 'agent-run-profile-1' } })
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'not-found', resource: 'agent-run-profile', id: '01k00000000000000000000006' },
+			})
 		})
 
 		it('returns Project Config references for execution and effective revision execution roles', async () => {
 			const options = createTestCoreServices()
-			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
-			seedProject(options.tx, 'project-1', defaultDeliveryWorkConfig('agent-run-profile-1'))
-			options.tx.projects.records.get('project-1')!.title = 'Build API'
-			seedProject(options.tx, 'project-2', {
-				...defaultDeliveryWorkConfig('agent-run-profile-2'),
-				revisionExecutionAgentRunProfileId: 'agent-run-profile-1',
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
+			seedProject(options.tx, '01k00000000000000000000030', defaultDeliveryWorkConfig('01k00000000000000000000006'))
+			options.tx.projects.records.get('01k00000000000000000000030')!.title = 'Build API'
+			seedProject(options.tx, '01k00000000000000000000031', {
+				...defaultDeliveryWorkConfig('01k00000000000000000000007'),
+				revisionExecutionAgentRunProfileId: '01k00000000000000000000006',
 			})
-			options.tx.projects.records.get('project-2')!.title = 'Repair UI'
+			options.tx.projects.records.get('01k00000000000000000000031')!.title = 'Repair UI'
 			const query = createListAgentRunProfileReferencesQuery(options)
 
-			const result = await query({ agentRunProfileId: 'agent-run-profile-1' })
+			const result = await query({ agentRunProfileId: '01k00000000000000000000006' })
 
 			expect(result).toEqual({
 				ok: true,
@@ -192,21 +195,21 @@ if (import.meta.vitest) {
 						type: 'project-config',
 						active: true,
 						role: 'execution',
-						projectId: 'project-1',
+						projectId: '01k00000000000000000000030',
 						projectTitle: 'Build API',
 					},
 					{
 						type: 'project-config',
 						active: true,
 						role: 'revision-execution',
-						projectId: 'project-1',
+						projectId: '01k00000000000000000000030',
 						projectTitle: 'Build API',
 					},
 					{
 						type: 'project-config',
 						active: true,
 						role: 'revision-execution',
-						projectId: 'project-2',
+						projectId: '01k00000000000000000000031',
 						projectTitle: 'Repair UI',
 					},
 				],
@@ -215,12 +218,12 @@ if (import.meta.vitest) {
 
 		it('returns Delivery Config references with closed Deliveries marked inactive', async () => {
 			const options = createTestCoreServices()
-			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
-			seedDelivery(options.tx, 'delivery-active')
-			options.tx.deliveries.records.get('delivery-active')!.title = 'Active Delivery'
-			options.tx.deliveries.records.get('delivery-active')!.config = {
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
+			seedDelivery(options.tx, '01k00000000000000000100034')
+			options.tx.deliveries.records.get('01k00000000000000000100034')!.title = 'Active Delivery'
+			options.tx.deliveries.records.get('01k00000000000000000100034')!.config = {
 				configured: stamp,
-				value: { work: defaultDeliveryWorkConfig('agent-run-profile-1') },
+				value: { work: defaultDeliveryWorkConfig('01k00000000000000000000006') },
 			}
 			seedDelivery(options.tx, 'delivery-closed')
 			options.tx.deliveries.records.get('delivery-closed')!.title = 'Closed Delivery'
@@ -228,8 +231,8 @@ if (import.meta.vitest) {
 				configured: stamp,
 				value: {
 					work: {
-						...defaultDeliveryWorkConfig('agent-run-profile-2'),
-						revisionExecutionAgentRunProfileId: 'agent-run-profile-1',
+						...defaultDeliveryWorkConfig('01k00000000000000000000007'),
+						revisionExecutionAgentRunProfileId: '01k00000000000000000000006',
 					},
 				},
 			}
@@ -240,7 +243,7 @@ if (import.meta.vitest) {
 			}
 			const query = createListAgentRunProfileReferencesQuery(options)
 
-			const result = await query({ agentRunProfileId: 'agent-run-profile-1' })
+			const result = await query({ agentRunProfileId: '01k00000000000000000000006' })
 
 			expect(result).toEqual({
 				ok: true,
@@ -249,37 +252,37 @@ if (import.meta.vitest) {
 						type: 'project-config',
 						active: true,
 						role: 'execution',
-						projectId: 'project-1',
+						projectId: '01k00000000000000000000030',
 						projectTitle: 'Project',
 					},
 					{
 						type: 'project-config',
 						active: true,
 						role: 'revision-execution',
-						projectId: 'project-1',
+						projectId: '01k00000000000000000000030',
 						projectTitle: 'Project',
 					},
 					{
 						type: 'delivery-config',
 						active: true,
 						role: 'execution',
-						projectId: 'project-1',
-						deliveryId: 'delivery-active',
+						projectId: '01k00000000000000000000030',
+						deliveryId: '01k00000000000000000100034',
 						deliveryTitle: 'Active Delivery',
 					},
 					{
 						type: 'delivery-config',
 						active: true,
 						role: 'revision-execution',
-						projectId: 'project-1',
-						deliveryId: 'delivery-active',
+						projectId: '01k00000000000000000000030',
+						deliveryId: '01k00000000000000000100034',
 						deliveryTitle: 'Active Delivery',
 					},
 					{
 						type: 'delivery-config',
 						active: false,
 						role: 'revision-execution',
-						projectId: 'project-1',
+						projectId: '01k00000000000000000000030',
 						deliveryId: 'delivery-closed',
 						deliveryTitle: 'Closed Delivery',
 					},
@@ -289,15 +292,15 @@ if (import.meta.vitest) {
 
 		it('excludes Agent Run profile snapshots because they are historical run state', async () => {
 			const options = createTestCoreServices()
-			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
 			options.tx.agentRuns.records.set(
-				'agent-run-1',
+				'01k00000000000000000000002',
 				testModelAgentRun({
-					id: 'agent-run-1',
+					id: '01k00000000000000000000002',
 					profile: {
-						agentRunProfileId: 'agent-run-profile-1',
+						agentRunProfileId: '01k00000000000000000000006',
 						name: 'Snapshot',
-						modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+						modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 						runtimeRequirements: [],
 					},
 				}),
@@ -305,18 +308,18 @@ if (import.meta.vitest) {
 			options.tx.projects.records.clear()
 			const query = createListAgentRunProfileReferencesQuery(options)
 
-			const result = await query({ agentRunProfileId: 'agent-run-profile-1' })
+			const result = await query({ agentRunProfileId: '01k00000000000000000000006' })
 
 			expect(result).toEqual({ ok: true, value: [] })
 		})
 
 		it('returns storage errors when reference reads fail', async () => {
 			const options = createTestCoreServices()
-			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
 			options.tx.projects.fail.list = true
 			const query = createListAgentRunProfileReferencesQuery(options)
 
-			const result = await query({ agentRunProfileId: 'agent-run-profile-1' })
+			const result = await query({ agentRunProfileId: '01k00000000000000000000006' })
 
 			expect(result).toEqual({
 				ok: false,

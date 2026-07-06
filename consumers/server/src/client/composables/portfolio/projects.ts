@@ -4,10 +4,11 @@ import { ProjectCreationFormDraft } from '../../forms/project'
 import { useSelectedPortfolio } from '../auth/session'
 import { useApiAction, useFetchAction } from '../core/action-state'
 import { useOverlay } from '../core/overlay'
+import { usePaginatedFetchAction } from '../core/paginated-fetch-action'
 import { useQueryCache } from '../core/query-cache'
 import { useServerApi, type ServerApi } from '../core/server-api'
 
-export type ListedProject = Awaited<ReturnType<ServerApi['listProjects']>>[number]
+export type ListedProject = Awaited<ReturnType<ServerApi['listProjects']>>['items'][number]
 type ProjectDetails = Awaited<ReturnType<ServerApi['getProject']>>
 type CreatedProject = Awaited<ReturnType<ServerApi['createProject']>>
 
@@ -20,19 +21,18 @@ export function useProjectsList() {
 	const { portfolio } = useSelectedPortfolio()
 	const { queryKeys } = useQueryCache()
 	const {
-		data: projects,
+		items: projects,
 		isLoading: isLoadingProjects,
 		error: projectsError,
 		hasExecuted: hasLoadedProjects,
-		execute: refreshProjects,
-		reset: resetProjects,
-	} = useFetchAction(() => serverApi.listProjects(), {
+		fetchNext: fetchNextProjects,
+		hasNext: hasNextProjects,
+	} = usePaginatedFetchAction((input) => serverApi.listProjects(input), {
 		queryKey: queryKeys.portfolio.projects(portfolio.value.id),
-		initialData: [] as ListedProject[],
 	})
 	const isRefreshingProjects = computed(() => isLoadingProjects.value && hasLoadedProjects.value)
 
-	return { projects, isLoadingProjects, projectsError, hasLoadedProjects, isRefreshingProjects, refreshProjects, resetProjects }
+	return { projects, isLoadingProjects, projectsError, hasLoadedProjects, isRefreshingProjects, fetchNextProjects, hasNextProjects }
 }
 
 export function useProjectDetail(projectId: Ref<string>) {

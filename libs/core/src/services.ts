@@ -90,7 +90,7 @@ export type CoreDispatchRequest =
 			type: 'agent-run-sandbox-release'
 			agentRunId: Id
 			coordinationClaims: DispatchCoordinationClaim[]
-			reason: { type: 'agent-run-completed' }
+			reason: { type: '01k00000000000000000100019' }
 	  }
 	| {
 			type: 'delivery-work-scheduler'

@@ -7,6 +7,7 @@ import {
 	portfolioRequestCookieSchema,
 	type AgentRunProfileRequest,
 	type PortfolioRequestCookies,
+	type PaginatedQuery,
 } from './shared'
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
@@ -16,8 +17,12 @@ import { idPipe } from '../../schemas'
 export function createAgentRunProfilesApiRouter(context: ServerApiContext) {
 	return new Router()
 		.get('/agent-run-profiles', {
-			schema: { cookies: portfolioRequestCookieSchema, response: Queries.ListAgentRunProfiles.resultPipe },
-		})(async (req) => listSelectedPortfolioAgentRunProfiles(context, req.cookies))
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				query: Domain.Commons.paginatedQueryInputPipe,
+				response: Queries.ListAgentRunProfiles.resultPipe,
+			},
+		})(async (req) => listSelectedPortfolioAgentRunProfiles(context, req.cookies, req.query))
 		.post('/agent-run-profiles', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
@@ -66,9 +71,10 @@ export function createAgentRunProfilesApiRouter(context: ServerApiContext) {
 function listSelectedPortfolioAgentRunProfiles(
 	context: ServerApiContext,
 	cookies: PortfolioRequestCookies,
+	query: PaginatedQuery,
 ): Promise<Queries.ListAgentRunProfiles.Result> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
-		const profiles = await core.queries.listAgentRunProfiles({})
+		const profiles = await core.queries.listAgentRunProfiles(query)
 		return profiles.ok ? profiles.value : throwCoreOperationError(profiles.error)
 	})
 }

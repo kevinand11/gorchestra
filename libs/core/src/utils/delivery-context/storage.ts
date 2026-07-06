@@ -342,169 +342,191 @@ if (import.meta.vitest) {
 		it('loads root-level Delivery facts and supports derived unqueued state', async () => {
 			const options = storedContextFixture()
 
-			const result = await buildDeliveryContext(options.tx, 'delivery-1')
+			const result = await buildDeliveryContext(options.tx, '01k00000000000000000000008')
 
-			expect(result).toMatchObject({ ok: true, value: { delivery: { id: 'delivery-1' } } })
+			expect(result).toMatchObject({ ok: true, value: { delivery: { id: '01k00000000000000000000008' } } })
 			if (result.ok) {
-				expect(result.value.delivery.id).toBe('delivery-1')
-				expect(result.value.project.id).toBe('project-1')
-				expect(result.value.repository.id).toBe('repository-1')
+				expect(result.value.delivery.id).toBe('01k00000000000000000000008')
+				expect(result.value.project.id).toBe('01k00000000000000000000030')
+				expect(result.value.repository.id).toBe('01k00000000000000000000034')
 				expect(getDeliveryState(result.value)).toEqual({ ok: true, value: { type: 'unqueued' } })
 			}
 		})
 
 		it('loads Slices in Delivery order and supports derived Slice Work States', async () => {
 			const options = storedContextFixture()
-			seedSlice(options.tx, 'slice-2', 'delivery-1')
-			seedSlice(options.tx, 'slice-1', 'delivery-1')
+			seedSlice(options.tx, '01k00000000000000000000043', '01k00000000000000000000008')
+			seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000008')
 
-			const result = await buildDeliveryContext(options.tx, 'delivery-1')
+			const result = await buildDeliveryContext(options.tx, '01k00000000000000000000008')
 
 			expect(result).toMatchObject({
 				ok: true,
 				value: {
 					slices: [
-						{ slice: { id: 'slice-2' }, artifact: null },
-						{ slice: { id: 'slice-1' }, artifact: null },
+						{ slice: { id: '01k00000000000000000000043' }, artifact: null },
+						{ slice: { id: '01k00000000000000000000042' }, artifact: null },
 					],
 				},
 			})
 			if (result.ok) {
-				expect(getSliceState(result.value, 'slice-2')).toEqual({ ok: true, value: { type: 'needs-artifact-creation' } })
-				expect(getSliceState(result.value, 'slice-1')).toEqual({ ok: true, value: { type: 'needs-artifact-creation' } })
+				expect(getSliceState(result.value, '01k00000000000000000000043')).toEqual({
+					ok: true,
+					value: { type: 'needs-artifact-creation' },
+				})
+				expect(getSliceState(result.value, '01k00000000000000000000042')).toEqual({
+					ok: true,
+					value: { type: 'needs-artifact-creation' },
+				})
 			}
 		})
 
 		it('loads singular Artifact facts, Slice dependency links, and sorted Actions', async () => {
 			const options = storedContextFixture()
-			seedSlice(options.tx, 'slice-1', 'delivery-1')
-			options.tx.deliveryArtifacts.records.set('delivery-artifact-1', {
-				id: 'delivery-artifact-1',
-				deliveryId: 'delivery-1',
+			seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000008')
+			options.tx.deliveryArtifacts.records.set('01k00000000000000000000010', {
+				id: '01k00000000000000000000010',
+				deliveryId: '01k00000000000000000000008',
 				config: { type: 'source-control', deliveryBranch: 'delivery-branch' },
 				created: localStamp(),
 			})
-			options.tx.sliceArtifacts.records.set('slice-artifact-1', {
-				id: 'slice-artifact-1',
-				sliceId: 'slice-1',
+			options.tx.sliceArtifacts.records.set('01k00000000000000000000045', {
+				id: '01k00000000000000000000045',
+				sliceId: '01k00000000000000000000042',
 				config: { type: 'source-control', sliceBranch: 'slice-branch' },
 				created: localStamp(),
 			})
-			options.tx.links.records.set('link-1', {
-				id: 'link-1',
+			options.tx.links.records.set('01k00000000000000000000014', {
+				id: '01k00000000000000000000014',
 				def: {
 					type: 'depends-on',
-					from: { type: 'slice', projectId: 'project-1', deliveryId: 'delivery-1', id: 'slice-1' },
-					to: { type: 'slice', projectId: 'project-1', deliveryId: 'delivery-1', id: 'slice-2' },
+					from: {
+						type: 'slice',
+						projectId: '01k00000000000000000000030',
+						deliveryId: '01k00000000000000000000008',
+						id: '01k00000000000000000000042',
+					},
+					to: {
+						type: 'slice',
+						projectId: '01k00000000000000000000030',
+						deliveryId: '01k00000000000000000000008',
+						id: '01k00000000000000000000043',
+					},
 				},
 				created: localStamp(),
 			})
-			options.tx.actions.records.set('action-later', {
-				id: 'action-later',
-				deliveryId: 'delivery-1',
+			options.tx.actions.records.set('01k00000000000000000100057', {
+				id: '01k00000000000000000100057',
+				deliveryId: '01k00000000000000000000008',
 				performed: { at: '2026-06-10T12:01:00.000Z' },
 				authorized: null,
 				result: { type: 'validate-preflight', checks: [] },
 			})
-			options.tx.actions.records.set('action-earlier', {
-				id: 'action-earlier',
-				deliveryId: 'delivery-1',
+			options.tx.actions.records.set('01k00000000000000000100056', {
+				id: '01k00000000000000000100056',
+				deliveryId: '01k00000000000000000000008',
 				performed: { at: '2026-06-10T12:00:00.000Z' },
 				authorized: null,
 				result: { type: 'validate-preflight', checks: [] },
 			})
 
-			const result = await buildDeliveryContext(options.tx, 'delivery-1')
+			const result = await buildDeliveryContext(options.tx, '01k00000000000000000000008')
 
 			expect(result).toMatchObject({
 				ok: true,
 				value: {
-					deliveryArtifact: { id: 'delivery-artifact-1' },
+					deliveryArtifact: { id: '01k00000000000000000000010' },
 					slices: [
 						{
-							slice: { id: 'slice-1' },
-							artifact: { id: 'slice-artifact-1' },
-							dependencyLinks: [{ id: 'link-1' }],
+							slice: { id: '01k00000000000000000000042' },
+							artifact: { id: '01k00000000000000000000045' },
+							dependencyLinks: [{ id: '01k00000000000000000000014' }],
 						},
 					],
-					actions: [{ id: 'action-earlier' }, { id: 'action-later' }],
+					actions: [{ id: '01k00000000000000000100056' }, { id: '01k00000000000000000100057' }],
 				},
 			})
 		})
 
 		it('returns an invariant violation when a Delivery has multiple Artifacts', async () => {
 			const options = storedContextFixture()
-			options.tx.deliveryArtifacts.records.set('delivery-artifact-1', {
-				id: 'delivery-artifact-1',
-				deliveryId: 'delivery-1',
+			options.tx.deliveryArtifacts.records.set('01k00000000000000000000010', {
+				id: '01k00000000000000000000010',
+				deliveryId: '01k00000000000000000000008',
 				config: { type: 'source-control', deliveryBranch: 'delivery-branch' },
 				created: localStamp(),
 			})
-			options.tx.deliveryArtifacts.records.set('delivery-artifact-2', {
-				id: 'delivery-artifact-2',
-				deliveryId: 'delivery-1',
+			options.tx.deliveryArtifacts.records.set('01k00000000000000000000011', {
+				id: '01k00000000000000000000011',
+				deliveryId: '01k00000000000000000000008',
 				config: { type: 'source-control', deliveryBranch: 'other-delivery-branch' },
 				created: localStamp(),
 			})
 
-			const result = await buildDeliveryContext(options.tx, 'delivery-1')
+			const result = await buildDeliveryContext(options.tx, '01k00000000000000000000008')
 
 			expect(result).toEqual({
 				ok: false,
-				error: { type: 'invariant-violation', message: 'Delivery delivery-1 has multiple Delivery Artifacts.' },
+				error: { type: 'invariant-violation', message: 'Delivery 01k00000000000000000000008 has multiple Delivery Artifacts.' },
 			})
 		})
 
 		it('returns an invariant violation when a Slice has multiple Artifacts', async () => {
 			const options = storedContextFixture()
-			seedSlice(options.tx, 'slice-1', 'delivery-1')
-			options.tx.sliceArtifacts.records.set('slice-artifact-1', {
-				id: 'slice-artifact-1',
-				sliceId: 'slice-1',
+			seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000008')
+			options.tx.sliceArtifacts.records.set('01k00000000000000000000045', {
+				id: '01k00000000000000000000045',
+				sliceId: '01k00000000000000000000042',
 				config: { type: 'source-control', sliceBranch: 'slice-branch' },
 				created: localStamp(),
 			})
-			options.tx.sliceArtifacts.records.set('slice-artifact-2', {
-				id: 'slice-artifact-2',
-				sliceId: 'slice-1',
+			options.tx.sliceArtifacts.records.set('01k00000000000000000000046', {
+				id: '01k00000000000000000000046',
+				sliceId: '01k00000000000000000000042',
 				config: { type: 'source-control', sliceBranch: 'other-slice-branch' },
 				created: localStamp(),
 			})
 
-			const result = await buildDeliveryContext(options.tx, 'delivery-1')
+			const result = await buildDeliveryContext(options.tx, '01k00000000000000000000008')
 
 			expect(result).toEqual({
 				ok: false,
-				error: { type: 'invariant-violation', message: 'Slice slice-1 has multiple Slice Artifacts.' },
+				error: { type: 'invariant-violation', message: 'Slice 01k00000000000000000000042 has multiple Slice Artifacts.' },
 			})
 		})
 
 		it('returns an invariant violation when the target Repository is outside the Delivery Project', async () => {
 			const options = storedContextFixture()
-			options.tx.repositories.records.get('repository-1')!.projectId = 'other-project'
+			options.tx.repositories.records.get('01k00000000000000000000034')!.projectId = '01k00000000000000000010020'
 
-			const result = await buildDeliveryContext(options.tx, 'delivery-1')
+			const result = await buildDeliveryContext(options.tx, '01k00000000000000000000008')
 
 			expect(result).toEqual({
 				ok: false,
-				error: { type: 'invariant-violation', message: 'Repository repository-1 is outside Project project-1.' },
+				error: {
+					type: 'invariant-violation',
+					message: 'Repository 01k00000000000000000000034 is outside Project 01k00000000000000000000030.',
+				},
 			})
 		})
 
 		it('returns an operation error when Delivery work references a missing Agent Run Profile', async () => {
 			const options = storedContextFixture()
-			const stored = await buildDeliveryContext(options.tx, 'delivery-1')
+			const stored = await buildDeliveryContext(options.tx, '01k00000000000000000000008')
 			if (!stored.ok) throw new Error('Expected Delivery Context.')
 
 			const result = await resolveDeliveryWork(options.tx, stored.value)
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'agent-run-profile', id: 'agent-run-profile-1' } })
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'not-found', resource: 'agent-run-profile', id: '01k00000000000000000000006' },
+			})
 		})
 
 		it('resolves Delivery Work Resolution without provider access plaintext', async () => {
 			const options = storedContextFixture()
-			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
-			const stored = await buildDeliveryContext(options.tx, 'delivery-1')
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
+			const stored = await buildDeliveryContext(options.tx, '01k00000000000000000000008')
 			if (!stored.ok) throw new Error('Expected Delivery Context.')
 
 			const result = await resolveDeliveryWork(options.tx, stored.value)
@@ -517,12 +539,12 @@ if (import.meta.vitest) {
 						workConfig: {
 							maxProcessableSliceSlots: 1,
 							maxCorrectionRetriesPerFailure: 1,
-							executionAgentRunProfileId: 'agent-run-profile-1',
+							executionAgentRunProfileId: '01k00000000000000000000006',
 							revisionExecutionAgentRunProfileId: null,
 						},
-						executionProfile: { id: 'agent-run-profile-1' },
-						executionModel: { id: 'model-1' },
-						executionModelProvider: { id: 'model-1-provider' },
+						executionProfile: { id: '01k00000000000000000000006' },
+						executionModel: { id: '01k00000000000000000000024' },
+						executionModelProvider: { id: '01k00000000000000000050024' },
 					},
 				},
 			})
@@ -531,13 +553,13 @@ if (import.meta.vitest) {
 
 	function storedContextFixture() {
 		const options = createTestCoreServices()
-		seedProject(options.tx, 'project-1')
-		seedDelivery(options.tx, 'delivery-1')
-		seedSecret(options.tx, 'secret-1')
-		options.tx.repositories.records.set('repository-1', {
-			id: 'repository-1',
-			projectId: 'project-1',
-			config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
+		seedProject(options.tx, '01k00000000000000000000030')
+		seedDelivery(options.tx, '01k00000000000000000000008')
+		seedSecret(options.tx, '01k00000000000000000000040')
+		options.tx.repositories.records.set('01k00000000000000000000034', {
+			id: '01k00000000000000000000034',
+			projectId: '01k00000000000000000000030',
+			config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: '01k00000000000000000000040' },
 			created: localStamp(),
 		})
 		return options

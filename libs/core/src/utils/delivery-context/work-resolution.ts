@@ -31,7 +31,7 @@ export interface PassedDeliveryPreflight {
 }
 
 export type FailedDeliveryPreflightReason =
-	| { type: 'agent-run-profile-archived'; agentRunProfileId: Id }
+	| { type: '01k00000000000000000100063'; agentRunProfileId: Id }
 	| { type: 'model-archived'; modelId: Id }
 	| { type: 'model-provider-archived'; modelProviderId: Id }
 
@@ -140,7 +140,7 @@ function passedPreflight(resolution: DeliveryWorkResolution): PassedDeliveryPref
 type PreflightStep<T> = Result<T | FailedDeliveryPreflight, DeliveryPreflightError>
 
 function agentRunProfileArchived(agentRunProfileId: Id): FailedDeliveryPreflight {
-	return failedPreflight(summaries.agentRunProfileArchived, { type: 'agent-run-profile-archived', agentRunProfileId })
+	return failedPreflight(summaries.agentRunProfileArchived, { type: '01k00000000000000000100063', agentRunProfileId })
 }
 
 function modelArchived(modelId: Id): FailedDeliveryPreflight {

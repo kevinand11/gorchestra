@@ -23,7 +23,7 @@ if (import.meta.vitest) {
 	describe('handleSliceNeedsDeliveryValidation', () => {
 		it('records passing no-op Slice Delivery Artifact validation', async () => {
 			const { context, options } = await validationHandlerFixture()
-			const slice = options.tx.slices.records.get('slice-1')
+			const slice = options.tx.slices.records.get('01k00000000000000000000042')
 			if (slice === undefined) throw new Error('Expected Slice.')
 
 			const result = await handleSliceNeedsDeliveryValidation(context, slice, {
@@ -32,14 +32,14 @@ if (import.meta.vitest) {
 			})
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
-			expect(options.tx.actions.records.get('action-1')).toEqual({
-				id: 'action-1',
-				deliveryId: 'delivery-1',
+			expect(options.tx.actions.records.get('01k00000000000000000010001')).toEqual({
+				id: '01k00000000000000000010001',
+				deliveryId: '01k00000000000000000000008',
 				performed: { at: '2026-06-10T12:00:00.000Z' },
 				authorized: null,
 				result: {
 					type: 'validate-slice-delivery-artifact',
-					sliceId: 'slice-1',
+					sliceId: '01k00000000000000000000042',
 					evidence: validationEvidence(
 						'delivery-branch-validation',
 						true,
@@ -53,9 +53,9 @@ if (import.meta.vitest) {
 
 	async function validationHandlerFixture() {
 		const options = createTestCoreServices()
-		seedDelivery(options.tx, 'delivery-1')
-		seedSlice(options.tx, 'slice-1', 'delivery-1')
-		const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
+		seedDelivery(options.tx, '01k00000000000000000000008')
+		seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000008')
+		const deliveryContext = await buildDeliveryContext(options.tx, '01k00000000000000000000008')
 		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
 
 		return {

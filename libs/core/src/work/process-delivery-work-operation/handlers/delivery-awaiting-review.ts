@@ -11,7 +11,7 @@ if (import.meta.vitest) {
 
 	describe('handleDeliveryAwaitingReview', () => {
 		it('reports no observed Delivery Review Surface change', () => {
-			expect(handleDeliveryAwaitingReview({ type: 'awaiting-review', reviewSurfaceId: 'review-1' })).toEqual({
+			expect(handleDeliveryAwaitingReview({ type: 'awaiting-review', reviewSurfaceId: '01k00000000000000000000036' })).toEqual({
 				ok: true,
 				value: { processedCount: 0, failures: [] },
 			})

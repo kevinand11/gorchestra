@@ -51,7 +51,7 @@ async function handleCreateRepository(runtime: CoreRuntime, input: Input, contex
 	const stampResult = auditStamp(runtime.values, context)
 	if (!stampResult.ok) return stampResult
 
-	const idResult = nextId(runtime.values, 'repository')
+	const idResult = nextId(runtime.values)
 	if (!idResult.ok) return idResult
 
 	return withTransaction(runtime.services, (storage) => writeRepository(storage, input, stampResult.value, idResult.value))
@@ -93,21 +93,24 @@ if (import.meta.vitest) {
 	describe('createRepository command', () => {
 		it('creates Repositories only for Source Control Projects with active Secret references', async () => {
 			const options = createTestCoreServices()
-			seedProject(options.tx, 'project-1')
-			seedSecret(options.tx, 'secret-1')
+			seedProject(options.tx, '01k00000000000000000000030')
+			seedSecret(options.tx, '01k00000000000000000000040')
 			const command = createCreateRepositoryCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ projectId: 'project-1', config: { provider: 'github', owner: ' Octo ', name: ' Repo ', secretId: 'secret-1' } },
+				{
+					projectId: '01k00000000000000000000030',
+					config: { provider: 'github', owner: ' Octo ', name: ' Repo ', secretId: '01k00000000000000000000040' },
+				},
 				context,
 			)
 
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'repository-1',
-					projectId: 'project-1',
-					config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
+					id: '01k00000000000000000010001',
+					projectId: '01k00000000000000000000030',
+					config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: '01k00000000000000000000040' },
 					created: localStamp(),
 				},
 			})

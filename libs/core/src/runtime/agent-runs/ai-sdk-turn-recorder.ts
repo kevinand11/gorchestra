@@ -15,8 +15,8 @@ import { assistantMessageModel, assistantPartsFromAIContent, toAISDKToolOutput }
 import type { TurnModelUse } from './turn-model-use'
 import type { AgentRunLoopState, AgentRunRuntimeError, ModelAgentRunRuntime, RunModelAgentRunOptions } from './types'
 import { costFromUsage, usageFromAIUsage } from './usage-cost'
-import type { AgentRunEvent, AgentRunEventCursor, AgentRunToolOutput, AgentRunToolTranscriptPart } from '../../domain/agent-run'
-import type { RuntimeRecord } from '../../domain/commons'
+import type { AgentRunEvent, AgentRunToolOutput, AgentRunToolTranscriptPart } from '../../domain/agent-run'
+import type { Id, RuntimeRecord } from '../../domain/commons'
 import { runtimeRecord, type CoreRuntimeValues } from '../../utils/runtime-values'
 import type { Result } from '../../utils/types'
 
@@ -25,8 +25,8 @@ type RecordedToolPart =
 	| Extract<AgentRunToolTranscriptPart, { type: 'tool-error' }>
 
 type PendingToolGroup = {
-	assistantMessageCursor: AgentRunEventCursor
-	turnStartedCursor: AgentRunEventCursor
+	assistantMessageEventId: Id
+	turnStartedEventId: Id
 	orderedToolCallIds: string[]
 	partsByToolCallId: Map<string, RecordedToolPart>
 }
@@ -64,7 +64,7 @@ export class AISDKTurnRecorder {
 		this.#nextContentIndex = 0
 		await emit(this.options, {
 			type: 'assistant-message-draft-updated',
-			turnStartedCursor: this.turnStarted.cursor,
+			turnStartedEventId: this.turnStarted.id,
 			draftId: this.#currentDraftId,
 			delta: { type: 'model-output-started' },
 		})
@@ -77,7 +77,7 @@ export class AISDKTurnRecorder {
 			this.state.agentRun.id,
 			{
 				type: 'assistant-message',
-				turnStartedCursor: this.turnStarted.cursor,
+				turnStartedEventId: this.turnStarted.id,
 				model: assistantMessageModel(this.turnModelUse),
 				finishReason: event.finishReason,
 				usage,
@@ -95,7 +95,7 @@ export class AISDKTurnRecorder {
 		if (draftId !== undefined) {
 			await emit(this.options, {
 				type: 'assistant-message-draft-updated',
-				turnStartedCursor: this.turnStarted.cursor,
+				turnStartedEventId: this.turnStarted.id,
 				draftId,
 				delta: { type: 'model-output-ended' },
 			})
@@ -175,7 +175,7 @@ export class AISDKTurnRecorder {
 	private emitModelDelta(draftId: string, delta: AgentRunModelDelta) {
 		return emit(this.options, {
 			type: 'assistant-message-draft-updated',
-			turnStartedCursor: this.turnStarted.cursor,
+			turnStartedEventId: this.turnStarted.id,
 			draftId,
 			delta,
 		})
@@ -188,8 +188,8 @@ export class AISDKTurnRecorder {
 		if (toolCallIds.length === 0) return
 
 		const group: PendingToolGroup = {
-			assistantMessageCursor: assistant.cursor,
-			turnStartedCursor: this.turnStarted.cursor,
+			assistantMessageEventId: assistant.id,
+			turnStartedEventId: this.turnStarted.id,
 			orderedToolCallIds: toolCallIds,
 			partsByToolCallId: new Map(),
 		}
@@ -235,19 +235,19 @@ export class AISDKTurnRecorder {
 		try {
 			const output = await coreTool.execute(validated.value, {
 				agentRunId: this.state.agentRun.id,
-				assistantMessageCursor: group.assistantMessageCursor,
+				assistantMessageEventId: group.assistantMessageEventId,
 				toolCallId: execution.toolCallId,
 				signal: execution.abortSignal ?? this.options.signal ?? new AbortController().signal,
 				onUpdate: (update) => {
 					void emit(this.options, {
 						type: 'tool-call-updated',
-						turnStartedCursor: this.turnStarted.cursor,
+						turnStartedEventId: this.turnStarted.id,
 						toolCallId: execution.toolCallId,
 						update,
 					})
 				},
 				recordProposal: (body) =>
-					recordToolProposal(this.runtime, this.state.agentRun.id, group.assistantMessageCursor, execution.toolCallId, body),
+					recordToolProposal(this.runtime, this.state.agentRun.id, group.assistantMessageEventId, execution.toolCallId, body),
 			})
 			const completed = runtimeRecordOrSame(this.runtime.values, started.value)
 			return this.recordToolPart(group, {
@@ -294,8 +294,8 @@ export class AISDKTurnRecorder {
 			this.state.agentRun.id,
 			{
 				type: 'tool-message',
-				turnStartedCursor: group.turnStartedCursor,
-				respondsToAssistantMessageCursor: group.assistantMessageCursor,
+				turnStartedEventId: group.turnStartedEventId,
+				respondsToAssistantMessageEventId: group.assistantMessageEventId,
 				source: { type: 'tool-execution' },
 				parts,
 			},

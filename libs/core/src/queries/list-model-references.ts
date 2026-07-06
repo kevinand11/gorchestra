@@ -98,31 +98,31 @@ if (import.meta.vitest) {
 		it('returns not-found when the target Model does not exist', async () => {
 			const query = createListModelReferencesQuery(createTestCoreServices())
 
-			const result = await query({ modelId: 'model-1' })
+			const result = await query({ modelId: '01k00000000000000000000024' })
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'model', id: 'model-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'model', id: '01k00000000000000000000024' } })
 		})
 
 		it('returns an empty reference list for an unreferenced existing Model', async () => {
 			const options = createTestCoreServices()
-			seedSelectableModel(options.tx, 'model-1')
+			seedSelectableModel(options.tx, '01k00000000000000000000024')
 			const query = createListModelReferencesQuery(options)
 
-			const result = await query({ modelId: 'model-1' })
+			const result = await query({ modelId: '01k00000000000000000000024' })
 
 			expect(result).toEqual({ ok: true, value: [] })
 		})
 
 		it('returns Agent Run Profile references ordered by active state and profile name', async () => {
 			const options = createTestCoreServices()
-			seedSelectableModel(options.tx, 'model-1')
-			const archived = seedAgentRunProfile(options.tx, 'agent-run-profile-archived', 'model-1', { archived: true })
+			seedSelectableModel(options.tx, '01k00000000000000000000024')
+			const archived = seedAgentRunProfile(options.tx, '01k00000000000000000100063', '01k00000000000000000000024', { archived: true })
 			archived.name = 'A Archived'
-			const active = seedAgentRunProfile(options.tx, 'agent-run-profile-active', 'model-1')
+			const active = seedAgentRunProfile(options.tx, '01k00000000000000000100062', '01k00000000000000000000024')
 			active.name = 'B Active'
 			const query = createListModelReferencesQuery(options)
 
-			const result = await query({ modelId: 'model-1' })
+			const result = await query({ modelId: '01k00000000000000000000024' })
 
 			expect(result).toEqual({
 				ok: true,
@@ -130,13 +130,13 @@ if (import.meta.vitest) {
 					{
 						type: 'agent-run-profile',
 						active: true,
-						agentRunProfileId: 'agent-run-profile-active',
+						agentRunProfileId: '01k00000000000000000100062',
 						agentRunProfileName: 'B Active',
 					},
 					{
 						type: 'agent-run-profile',
 						active: false,
-						agentRunProfileId: 'agent-run-profile-archived',
+						agentRunProfileId: '01k00000000000000000100063',
 						agentRunProfileName: 'A Archived',
 					},
 				],
@@ -145,54 +145,53 @@ if (import.meta.vitest) {
 
 		it('excludes Agent Run profile snapshots, current overrides, and override history events', async () => {
 			const options = createTestCoreServices()
-			seedSelectableModel(options.tx, 'model-1')
-			options.tx.agentRuns.records.set('agent-run-1', {
-				id: 'agent-run-1',
+			seedSelectableModel(options.tx, '01k00000000000000000000024')
+			options.tx.agentRuns.records.set('01k00000000000000000000002', {
+				id: '01k00000000000000000000002',
 				agent: { type: 'model' },
-				purpose: { type: 'planning', planId: 'plan-1' },
+				purpose: { type: 'planning', planId: '01k00000000000000000000028' },
 				profile: {
 					agentRunProfileId: 'snapshot-profile',
 					name: 'Snapshot',
-					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 					runtimeRequirements: [],
 				},
 				modelUseOverride: {
-					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 					selected: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				},
 				sourceRuntimeRequirements: [],
 				runtimeRequirementOverrides: [],
 				desiredRuntimeRequirements: [],
 				blocked: null,
-				sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+				sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 				started: { at: '2026-06-01T00:00:00.000Z' },
 				completed: null,
 			})
-			options.tx.agentRunEvents.records.set('agent-run-event-1', {
-				id: 'agent-run-event-1',
-				agentRunId: 'agent-run-1',
-				cursor: '01J00000000000000000000001',
+			options.tx.agentRunEvents.records.set('01k00000000000000000000003', {
+				id: '01k00000000000000000000003',
+				agentRunId: '01k00000000000000000000002',
 				occurred: { at: '2026-06-01T00:00:00.000Z' },
 				body: {
 					type: 'agent-run-model-use-override-changed',
-					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 					authorized: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				},
 			})
 			const query = createListModelReferencesQuery(options)
 
-			const result = await query({ modelId: 'model-1' })
+			const result = await query({ modelId: '01k00000000000000000000024' })
 
 			expect(result).toEqual({ ok: true, value: [] })
 		})
 
 		it('returns storage errors when reference reads fail', async () => {
 			const options = createTestCoreServices()
-			seedSelectableModel(options.tx, 'model-1')
+			seedSelectableModel(options.tx, '01k00000000000000000000024')
 			options.tx.agentRunProfiles.fail.list = true
 			const query = createListModelReferencesQuery(options)
 
-			const result = await query({ modelId: 'model-1' })
+			const result = await query({ modelId: '01k00000000000000000000024' })
 
 			expect(result).toEqual({
 				ok: false,

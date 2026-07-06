@@ -69,16 +69,21 @@ async function listMemoryRevisions(
 	storage: CoreStorage,
 	memoryId: string,
 ): Promise<CoreResult<MemoryRevision[], InvalidCoreServiceOutputError | StorageOperationFailedError>> {
-	const revisions = await listRecords('memory-revision', storage, { where: (filter, fields) => filter.eq(fields.memoryId, memoryId) })
-	return revisions.ok ? { ok: true, value: sortRevisionsNewestFirst(revisions.value) } : revisions
+	const revisions = await listRecords('memory-revision', storage, {
+		where: (filter, fields) => filter.eq(fields.memoryId, memoryId),
+		orderBy: [{ field: 'id', direction: 'desc' }],
+	})
+	return revisions
 }
 
 async function listMemoryChildren(
 	storage: CoreStorage,
 	memoryId: string,
 ): Promise<CoreResult<Memory[], InvalidCoreServiceOutputError | StorageOperationFailedError>> {
-	const children = await listRecords('memory', storage, { where: (filter, fields) => filter.eq(fields.parentId, memoryId) })
-	return children.ok ? { ok: true, value: sortMemoriesByTitleThenId(children.value) } : children
+	return await listRecords('memory', storage, {
+		where: (filter, fields) => filter.eq(fields.parentId, memoryId),
+		orderBy: [{ field: 'id', direction: 'desc' }],
+	})
 }
 
 function listedMemory(memory: Memory, revisions: MemoryRevision[], children: Memory[]): ListedMemory {
@@ -94,16 +99,6 @@ function missingCurrentRevision(memory: Memory): CoreResult<never, InvariantViol
 		ok: false,
 		error: { type: 'invariant-violation', message: `Memory ${memory.id} current revision ${memory.currentRevision.id} is missing.` },
 	}
-}
-
-function sortMemoriesByTitleThenId(memories: Memory[]): Memory[] {
-	return [...memories].sort(
-		(left, right) => left.currentRevision.title.localeCompare(right.currentRevision.title) || left.id.localeCompare(right.id),
-	)
-}
-
-function sortRevisionsNewestFirst(revisions: MemoryRevision[]): MemoryRevision[] {
-	return [...revisions].sort((left, right) => right.created.at.localeCompare(left.created.at) || right.id.localeCompare(left.id))
 }
 
 if (import.meta.vitest) {
@@ -124,19 +119,19 @@ if (import.meta.vitest) {
 			expect(options.transactionCalls()).toBe(0)
 		})
 
-		it('returns a ListedMemory with revisions newest-first and direct children sorted by title', async () => {
+		it('returns a ListedMemory with revisions and direct children in id-desc order', async () => {
 			const options = createTestCoreServices()
-			const parent = memory({ id: 'memory-parent', title: 'Parent', currentRevisionId: 'revision-current' })
-			const childB = memory({ id: 'memory-child-b', parentId: parent.id, title: 'Beta' })
-			const childA = memory({ id: 'memory-child-a', parentId: parent.id, title: 'Alpha' })
+			const parent = memory({ id: '01k00000000000000000100008', title: 'Parent', currentRevisionId: '01k00000000000000000100011' })
+			const childB = memory({ id: '01k00000000000000000100006', parentId: parent.id, title: 'Beta' })
+			const childA = memory({ id: '01k00000000000000000100005', parentId: parent.id, title: 'Alpha' })
 			const revisionOlder = revision({
-				id: 'revision-older',
+				id: '01k00000000000000000100012',
 				memoryId: parent.id,
 				title: 'Older',
 				createdAt: '2026-06-09T00:00:00.000Z',
 			})
 			const revisionCurrent = revision({
-				id: 'revision-current',
+				id: '01k00000000000000000100011',
 				memoryId: parent.id,
 				title: 'Parent',
 				createdAt: '2026-06-10T00:00:00.000Z',
@@ -148,34 +143,44 @@ if (import.meta.vitest) {
 
 			expect(result).toEqual({
 				ok: true,
-				value: { ...parent, revisions: [revisionCurrent, revisionOlder], children: [childA, childB] },
+				value: { ...parent, revisions: [revisionOlder, revisionCurrent], children: [childB, childA] },
 			})
 		})
 
 		it('returns not-found when the target Memory does not exist', async () => {
-			const result = await createGetMemoryQuery(createTestCoreServices())({ memoryId: 'memory-1' })
+			const result = await createGetMemoryQuery(createTestCoreServices())({ memoryId: '01k00000000000000000000019' })
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'memory', id: 'memory-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'memory', id: '01k00000000000000000000019' } })
 		})
 
 		it('returns invariant-violation when current revision is missing from revision history', async () => {
 			const options = createTestCoreServices()
-			const storedMemory = memory({ id: 'memory-1', title: 'Memory', currentRevisionId: 'missing-revision' })
+			const storedMemory = memory({
+				id: '01k00000000000000000000019',
+				title: 'Memory',
+				currentRevisionId: '01k00000000000000000010020',
+			})
 			options.tx.memories.records.set(storedMemory.id, storedMemory)
 
 			const result = await createGetMemoryQuery(options)({ memoryId: storedMemory.id })
 
 			expect(result).toEqual({
 				ok: false,
-				error: { type: 'invariant-violation', message: 'Memory memory-1 current revision missing-revision is missing.' },
+				error: {
+					type: 'invariant-violation',
+					message: 'Memory 01k00000000000000000000019 current revision 01k00000000000000000010020 is missing.',
+				},
 			})
 		})
 
 		it('returns storage errors when revision or child reads fail', async () => {
 			const revisionReadFailure = createTestCoreServices()
-			revisionReadFailure.tx.memories.records.set('memory-1', memory({ id: 'memory-1', title: 'Memory' }))
+			revisionReadFailure.tx.memories.records.set(
+				'01k00000000000000000000019',
+				memory({ id: '01k00000000000000000000019', title: 'Memory' }),
+			)
 			revisionReadFailure.tx.memoryRevisions.fail.list = true
-			await expect(createGetMemoryQuery(revisionReadFailure)({ memoryId: 'memory-1' })).resolves.toEqual({
+			await expect(createGetMemoryQuery(revisionReadFailure)({ memoryId: '01k00000000000000000000019' })).resolves.toEqual({
 				ok: false,
 				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'memory-revision' } },
 			})
@@ -188,7 +193,7 @@ if (import.meta.vitest) {
 			parentId: input.parentId ?? null,
 			created: stamp,
 			currentRevision: {
-				id: input.currentRevisionId ?? `${input.id}-revision`,
+				id: input.currentRevisionId ?? '01k00000000000000000010021',
 				title: input.title,
 				body: `${input.title} body`,
 				created: stamp,

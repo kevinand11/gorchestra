@@ -238,7 +238,7 @@ if (import.meta.vitest) {
 
 	describe('Source Control Provider family', () => {
 		it('resolves GitHub repository access Secrets and dispatches to GitHub', async () => {
-			const services = coreServices(() => Promise.resolve({ 'secret-1': 'token' }))
+			const services = coreServices(() => Promise.resolve({ '01k00000000000000000000040': 'token' }))
 			let observedToken: string | null = null
 			const sourceControl = createSourceControlProviders(services, {
 				github: {
@@ -271,7 +271,7 @@ if (import.meta.vitest) {
 				ok: true,
 				value: {
 					type: 'failed',
-					reason: { type: 'repository-access-secret-unresolved', secretId: 'secret-1' },
+					reason: { type: 'repository-access-secret-unresolved', secretId: '01k00000000000000000000040' },
 					summary: 'GitHub repository access Secret value could not be resolved.',
 				},
 			})
@@ -281,7 +281,7 @@ if (import.meta.vitest) {
 			let observedBranch: string | null = null
 			let observedToken: string | null = null
 			const sourceControl = createSourceControlProviders(
-				coreServices(() => Promise.resolve({ 'secret-1': 'token' })),
+				coreServices(() => Promise.resolve({ '01k00000000000000000000040': 'token' })),
 				{
 					github: {
 						preflightRepository: () => Promise.resolve({ type: 'passed' }),
@@ -312,7 +312,7 @@ if (import.meta.vitest) {
 		it('resolves GitHub repository access Secrets for Review Surface creation', async () => {
 			let observedToken: string | null = null
 			const sourceControl = createSourceControlProviders(
-				coreServices(() => Promise.resolve({ 'secret-1': 'token' })),
+				coreServices(() => Promise.resolve({ '01k00000000000000000000040': 'token' })),
 				{
 					github: {
 						preflightRepository: () => Promise.resolve({ type: 'passed' }),
@@ -357,14 +357,14 @@ if (import.meta.vitest) {
 				ok: true,
 				value: {
 					type: 'failed',
-					reason: { type: 'repository-access-secret-unresolved', secretId: 'secret-1' },
+					reason: { type: 'repository-access-secret-unresolved', secretId: '01k00000000000000000000040' },
 					summary: 'GitHub repository access Secret value could not be resolved.',
 				},
 			})
 		})
 
 		it('rejects malformed resolved Secret values as invalid Core Service Output', async () => {
-			const services = coreServices(() => Promise.resolve({ 'secret-1': 1 } as never))
+			const services = coreServices(() => Promise.resolve({ '01k00000000000000000000040': 1 } as never))
 			const sourceControl = createSourceControlProviders(services, { github: neverCalledGitHubProvider() })
 
 			const result = await sourceControl.preflightRepository({ repository: gitHubRepository(), accessSecret: gitHubAccessSecret() })
@@ -378,15 +378,15 @@ if (import.meta.vitest) {
 
 	function gitHubRepository(): Repository {
 		return {
-			id: 'repository-1',
-			projectId: 'project-1',
-			config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
+			id: '01k00000000000000000000034',
+			projectId: '01k00000000000000000000030',
+			config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: '01k00000000000000000000040' },
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 		}
 	}
 
 	function gitHubAccessSecret(): ResolvableSecretValue {
-		return { secretId: 'secret-1', valueRef: 'protected-ref' }
+		return { secretId: '01k00000000000000000000040', valueRef: 'protected-ref' }
 	}
 
 	function coreServices(resolveSecretValues: CoreServices['secrets']['resolveSecretValues']): CoreServices {

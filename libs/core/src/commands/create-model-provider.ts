@@ -48,7 +48,7 @@ export function createCreateModelProviderCommand(runtime: CoreRuntime): Operatio
 		const stamp = auditStamp(runtime.values, context)
 		if (!stamp.ok) return Promise.resolve(stamp)
 
-		const id = nextId(runtime.values, 'model-provider')
+		const id = nextId(runtime.values)
 		if (!id.ok) return Promise.resolve(id)
 
 		return withTransaction(runtime.services, (storage): Promise<CoreResult<ModelProvider, Exclude<Error, InvalidInputError>>> => {
@@ -92,7 +92,7 @@ if (import.meta.vitest) {
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'model-provider-1',
+					id: '01k00000000000000000010001',
 					name: 'Anthropic',
 					source: { type: 'custom-hosted', protocol: 'anthropic-messages', baseUrl: 'https://api.example.com' },
 					auth: null,

@@ -106,8 +106,8 @@ if (import.meta.vitest) {
 			mode: 'agent-run',
 			protocol: 'google-generative-ai',
 			model: {
-				id: 'model-1',
-				providerId: 'model-provider-1',
+				id: '01k00000000000000000000024',
+				providerId: '01k00000000000000000000027',
 				name: 'Gemini Pro',
 				providerModelId: 'gemini-2.5-pro',
 				providerOptions: null,
@@ -118,7 +118,7 @@ if (import.meta.vitest) {
 				archivePeriods: [],
 			},
 			modelProvider: {
-				id: 'model-provider-1',
+				id: '01k00000000000000000000027',
 				name: 'Google',
 				source: { type: 'google' },
 				auth: null,

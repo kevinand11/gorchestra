@@ -44,10 +44,10 @@ if (import.meta.vitest) {
 	describe('archiveModelProvider command', () => {
 		it('archives Model Providers while preserving Archive Period history', async () => {
 			const options = createTestCoreServices()
-			seedModelProvider(options.tx, 'provider-1')
+			seedModelProvider(options.tx, '01k00000000000000000000032')
 			const command = createArchiveModelProviderCommand(createTestCoreRuntime(options))
 
-			const result = await command({ modelProviderId: 'provider-1' }, context)
+			const result = await command({ modelProviderId: '01k00000000000000000000032' }, context)
 
 			expect(result).toMatchObject({ ok: true, value: { archivePeriods: [{ archived: localStamp(), unarchived: null }] } })
 		})

@@ -2,37 +2,27 @@ import { computed, type Ref } from 'vue'
 
 import { AgentRunMessageFormDraft } from '../../forms/agent-run'
 import { useSelectedPortfolio } from '../auth/session'
-import { useApiAction, useFetchAction } from '../core/action-state'
+import { useApiAction } from '../core/action-state'
+import { usePaginatedFetchAction } from '../core/paginated-fetch-action'
 import { useQueryCache } from '../core/query-cache'
-import { useServerApi, type ServerApi } from '../core/server-api'
+import { useServerApi } from '../core/server-api'
 
-type AgentRunEvent = Awaited<ReturnType<ServerApi['getAgentRunEvents']>>[number]
-
-type AgentRunMessageSendOptions = {
-	agentRunEvents: Readonly<Ref<readonly AgentRunEvent[]>>
-	hasLoadedAgentRunEvents: Readonly<Ref<boolean>>
-}
-
-type AgentRunEventsOptions = {
-	immediate?: boolean
-}
-
-export function useAgentRunEvents(agentRunId: Ref<string | null>, options: AgentRunEventsOptions = {}) {
+export function useAgentRunEvents(agentRunId: Ref<string | null>) {
 	const serverApi = useServerApi()
 	const { portfolio } = useSelectedPortfolio()
 	const { queryKeys } = useQueryCache()
 	const {
-		data: agentRunEvents,
+		items: fetchedAgentRunEvents,
 		isLoading: isLoadingAgentRunEvents,
 		error: agentRunEventsError,
 		hasExecuted: hasLoadedAgentRunEvents,
-		execute: refreshAgentRunEvents,
-		reset: resetAgentRunEvents,
-	} = useFetchAction(() => serverApi.getAgentRunEvents(requireAgentRunId(agentRunId.value)), {
+		fetchNext: fetchNextAgentRunEvents,
+		hasNext: hasNextAgentRunEvents,
+	} = usePaginatedFetchAction((input) => serverApi.listAgentRunEvents(requireAgentRunId(agentRunId.value), input), {
 		queryKey: () => queryKeys.portfolio.agentRunEvents(portfolio.value.id, requireAgentRunId(agentRunId.value)),
-		initialData: [] as AgentRunEvent[],
-		immediate: options.immediate === true,
+		limit: 200,
 	})
+	const agentRunEvents = computed(() => [...fetchedAgentRunEvents.value].reverse())
 	const isRefreshingAgentRunEvents = computed(() => isLoadingAgentRunEvents.value && hasLoadedAgentRunEvents.value)
 
 	return {
@@ -41,12 +31,12 @@ export function useAgentRunEvents(agentRunId: Ref<string | null>, options: Agent
 		agentRunEventsError,
 		hasLoadedAgentRunEvents,
 		isRefreshingAgentRunEvents,
-		refreshAgentRunEvents,
-		resetAgentRunEvents,
+		fetchNextAgentRunEvents,
+		hasNextAgentRunEvents,
 	}
 }
 
-export function useAgentRunMessageSend(agentRunId: Ref<string | null>, options: AgentRunMessageSendOptions) {
+export function useAgentRunMessageSend(agentRunId: Ref<string | null>) {
 	const serverApi = useServerApi()
 	const queryCache = useQueryCache()
 	const { portfolio } = useSelectedPortfolio()
@@ -59,11 +49,7 @@ export function useAgentRunMessageSend(agentRunId: Ref<string | null>, options: 
 	} = useApiAction(async () => {
 		const runId = requireAgentRunId(agentRunId.value)
 		const event = await serverApi.sendAgentRunMessage(runId, agentRunMessageForm.toModel())
-		if (options.hasLoadedAgentRunEvents.value)
-			queryCache.set(
-				queryCache.queryKeys.portfolio.agentRunEvents(portfolio.value.id, runId),
-				appendedEvent(options.agentRunEvents.value, event),
-			)
+		queryCache.invalidate(queryCache.queryKeys.portfolio.agentRunEvents(portfolio.value.id, runId), { exact: true })
 		agentRunMessageForm.clear()
 		return event
 	})
@@ -75,12 +61,6 @@ export function useAgentRunMessageSend(agentRunId: Ref<string | null>, options: 
 		sendAgentRunMessage,
 		resetSendAgentRunMessage,
 	}
-}
-
-function appendedEvent(events: readonly AgentRunEvent[], event: AgentRunEvent): AgentRunEvent[] {
-	return events.some((candidate) => candidate.id === event.id)
-		? [...events]
-		: [...events, event].sort((left, right) => left.cursor.localeCompare(right.cursor))
 }
 
 function requireAgentRunId(agentRunId: string | null): string {

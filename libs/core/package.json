@@ -17,7 +17,6 @@
 		"@octokit/rest": "^22.0.1",
 		"ai": "^7.0.14",
 		"equipped": "latest",
-		"ulid": "^3.0.2",
 		"valleyed": "latest"
 	}
 }

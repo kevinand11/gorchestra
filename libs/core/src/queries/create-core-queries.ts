@@ -1,5 +1,4 @@
 import type { CoreRuntime } from '../runtime'
-import { createGetAgentRunEventsQuery } from './get-agent-run-events'
 import { createGetAgentRunProfileQuery } from './get-agent-run-profile'
 import { createGetDeliveryQuery } from './get-delivery'
 import { createGetMemoryQuery } from './get-memory'
@@ -9,6 +8,7 @@ import { createGetPlanQuery } from './get-plan'
 import { createGetProjectQuery } from './get-project'
 import { createGetRepositoryQuery } from './get-repository'
 import { createGetSecretQuery } from './get-secret'
+import { createListAgentRunEventsQuery } from './list-agent-run-events'
 import { createListAgentRunProfileReferencesQuery } from './list-agent-run-profile-references'
 import { createListAgentRunProfilesQuery } from './list-agent-run-profiles'
 import { createListDeliveriesQuery } from './list-deliveries'
@@ -34,7 +34,7 @@ export function createCoreQueries(runtime: CoreRuntime) {
 		getModel: createGetModelQuery(services),
 		getModelProvider: createGetModelProviderQuery(services),
 		listModelReferences: createListModelReferencesQuery(services),
-		getAgentRunEvents: createGetAgentRunEventsQuery(services),
+		listAgentRunEvents: createListAgentRunEventsQuery(services),
 		listPlans: createListPlansQuery(services),
 		getPlan: createGetPlanQuery(services),
 		listMemoryChildren: createListMemoryChildrenQuery(services),
@@ -60,7 +60,7 @@ if (import.meta.vitest) {
 		it('returns an object with the expected query keys', () => {
 			const queries = createCoreQueries(createCoreRuntime(createTestCoreServices())) as Record<string, unknown>
 			const queryNames = [
-				'getAgentRunEvents',
+				'listAgentRunEvents',
 				'getAgentRunProfile',
 				'getDelivery',
 				'getMemory',

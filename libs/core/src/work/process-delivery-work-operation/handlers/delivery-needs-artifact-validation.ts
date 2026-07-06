@@ -25,9 +25,9 @@ if (import.meta.vitest) {
 			const result = await handleDeliveryNeedsArtifactValidation(context, { type: 'needs-artifact-validation' })
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
-			expect(options.tx.actions.records.get('action-1')).toEqual({
-				id: 'action-1',
-				deliveryId: 'delivery-1',
+			expect(options.tx.actions.records.get('01k00000000000000000010001')).toEqual({
+				id: '01k00000000000000000010001',
+				deliveryId: '01k00000000000000000000008',
 				performed: { at: '2026-06-10T12:00:00.000Z' },
 				authorized: null,
 				result: {
@@ -41,8 +41,8 @@ if (import.meta.vitest) {
 
 	async function validationHandlerFixture() {
 		const options = createTestCoreServices()
-		seedDelivery(options.tx, 'delivery-1')
-		const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
+		seedDelivery(options.tx, '01k00000000000000000000008')
+		const deliveryContext = await buildDeliveryContext(options.tx, '01k00000000000000000000008')
 		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
 
 		return {

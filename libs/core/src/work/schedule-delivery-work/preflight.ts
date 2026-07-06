@@ -83,7 +83,7 @@ async function writeFailedPreflightAction(
 	deliveryId: string,
 	checks: ValidationEvidence[],
 ): Promise<CoreResult<SchedulerWorkRead, Exclude<Error, InvalidInputError>>> {
-	const actionId = nextId(runtime.values, 'action')
+	const actionId = nextId(runtime.values)
 	if (!actionId.ok) return actionId
 
 	const performed = runtimeRecord(runtime.values)

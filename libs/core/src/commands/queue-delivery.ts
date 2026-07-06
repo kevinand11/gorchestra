@@ -75,11 +75,11 @@ if (import.meta.vitest) {
 
 		it('sets Delivery.queued when Delivery Work State is unqueued', async () => {
 			const options = createTestCoreServices()
-			seedDelivery(options.tx, 'delivery-1')
+			seedDelivery(options.tx, '01k00000000000000000000008')
 			const command = createQueueDeliveryCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ deliveryId: ' delivery-1 ', unknown: 'stripped' } as never,
+				{ deliveryId: ' 01k00000000000000000000008 ', unknown: 'stripped' } as never,
 				{
 					actor: { type: 'local-user', id: 'actor-1', unknown: 'stripped' } as never,
 					correlationId: 'correlation-1',
@@ -90,26 +90,26 @@ if (import.meta.vitest) {
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					...options.tx.deliveries.records.get('delivery-1'),
+					...options.tx.deliveries.records.get('01k00000000000000000000008'),
 					queued: localStamp(),
 				},
 			})
-			expect(options.tx.deliveries.records.get('delivery-1')).toEqual(result.ok ? result.value : null)
+			expect(options.tx.deliveries.records.get('01k00000000000000000000008')).toEqual(result.ok ? result.value : null)
 		})
 
 		it('rejects queueing unless Delivery Work State is unqueued', async () => {
 			const options = createTestCoreServices()
-			seedDelivery(options.tx, 'delivery-1')
-			options.tx.deliveries.records.get('delivery-1')!.queued = localStamp()
+			seedDelivery(options.tx, '01k00000000000000000000008')
+			options.tx.deliveries.records.get('01k00000000000000000000008')!.queued = localStamp()
 			const command = createQueueDeliveryCommand(createTestCoreRuntime(options))
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await command({ deliveryId: '01k00000000000000000000008' }, context)
 
 			expect(result).toEqual({
 				ok: false,
 				error: {
 					type: 'delivery-work-state-mismatch',
-					deliveryId: 'delivery-1',
+					deliveryId: '01k00000000000000000000008',
 					expected: ['unqueued'],
 					actual: { type: 'needs-artifact-creation' },
 				},

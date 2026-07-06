@@ -261,7 +261,7 @@ async function materializeAcceptedPlanProposal(
 
 	const acceptedEvent = await appendAgentRunEvent(runtime, storage, proposal.agentRunId, {
 		type: 'proposal-accepted',
-		proposalCursor: proposal.cursor,
+		proposalEventId: proposal.id,
 		authorized: stamp,
 		materialized: {
 			type: 'plan-output',
@@ -271,7 +271,7 @@ async function materializeAcceptedPlanProposal(
 			memoryRevisionIds: stored.value.memoryRevisions.map((record) => record.id),
 			linkIds: stored.value.links.map((record) => record.id),
 		},
-		projectedParts: proposalAcceptedProjectedParts(proposal.cursor),
+		projectedParts: proposalAcceptedProjectedParts(proposal.id),
 	})
 	return acceptedEvent.ok
 		? { ok: true, value: { ...stored.value, proposalEvent: proposal, acceptedEvent: acceptedEvent.value } }
@@ -324,7 +324,7 @@ class PlanOutputBuilder {
 
 	private buildDeliveries(): CoreResult<void, InvalidCoreServiceOutputError> {
 		for (const [deliveryKey, proposed] of sortedEntries(this.context.output.proposedDeliveries)) {
-			const deliveryId = nextId(this.runtime.values, 'delivery')
+			const deliveryId = nextId(this.runtime.values)
 			if (!deliveryId.ok) return deliveryId
 			this.#deliveryIds.set(deliveryKey, deliveryId.value)
 			this.#deliveries.push({
@@ -347,7 +347,7 @@ class PlanOutputBuilder {
 	private buildSlices(deliveryKey: string, proposed: ProposedDelivery, deliveryId: Id): CoreResult<void, InvalidCoreServiceOutputError> {
 		const sliceIds = new Map<string, Id>()
 		for (const [sliceKey, proposedSlice] of sortedSlices(proposed.slices)) {
-			const sliceId = nextId(this.runtime.values, 'slice')
+			const sliceId = nextId(this.runtime.values)
 			if (!sliceId.ok) return sliceId
 			sliceIds.set(sliceKey, sliceId.value)
 			this.#slices.push({
@@ -375,9 +375,9 @@ class PlanOutputBuilder {
 		creation: ProposedMemoryCreation | ProposedChildMemoryCreation,
 		parentId: Id | null,
 	): CoreResult<Id, InvalidCoreServiceOutputError> {
-		const memoryId = nextId(this.runtime.values, 'memory')
+		const memoryId = nextId(this.runtime.values)
 		if (!memoryId.ok) return memoryId
-		const revisionId = nextId(this.runtime.values, 'memory-revision')
+		const revisionId = nextId(this.runtime.values)
 		if (!revisionId.ok) return revisionId
 
 		const revision = memoryRevision(revisionId.value, memoryId.value, creation.title, creation.body, this.stamp)
@@ -394,7 +394,7 @@ class PlanOutputBuilder {
 
 	private buildExistingMemoryRevisions(): CoreResult<void, InvalidCoreServiceOutputError> {
 		for (const [memoryId, proposed] of sortedEntries(this.context.output.proposedMemoryRevisions)) {
-			const revisionId = nextId(this.runtime.values, 'memory-revision')
+			const revisionId = nextId(this.runtime.values)
 			if (!revisionId.ok) return revisionId
 			const revision = memoryRevision(revisionId.value, memoryId, proposed.title, proposed.body, this.stamp)
 			const memory = this.context.memoryRevisionTargets.get(memoryId)!
@@ -488,7 +488,7 @@ class PlanOutputBuilder {
 	}
 
 	private pushLink(links: Link[], def: LinkDef): CoreResult<void, InvalidCoreServiceOutputError> {
-		const id = nextId(this.runtime.values, 'link')
+		const id = nextId(this.runtime.values)
 		if (!id.ok) return id
 		links.push({ id: id.value, def, created: this.stamp })
 		return { ok: true, value: undefined }
@@ -600,6 +600,13 @@ function invalidPlanOutput(error: InvalidPlanOutputFields): CoreResult<never, In
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, stamp } = await import('../utils/test-helpers')
+	const proposalEventId = '01k00000000000000000000003'
+	const existingMemoryId = '01k00000000000000000000050'
+	const existingMemoryRevisionId = '01k00000000000000000000051'
+	const staleMemoryRevisionId = '01k00000000000000000000052'
+	const otherProjectId = '01k00000000000000000000053'
+	const otherPlanId = '01k00000000000000000000054'
+	const otherDeliveryId = '01k00000000000000000000055'
 
 	describe('acceptPlanOutput command', () => {
 		it('validates input before reading storage', async () => {
@@ -620,78 +627,103 @@ if (import.meta.vitest) {
 			const options = proposalFixture()
 			const command = createAcceptPlanOutputCommand(createTestCoreRuntime(options))
 
-			const result = await command({ proposalEventId: 'proposal-event' }, context)
+			const result = await command({ proposalEventId: proposalEventId }, context)
 
 			expect(result).toMatchObject({
 				ok: true,
 				value: {
-					deliveries: [{ id: 'delivery-1', projectId: 'project-1', planId: 'plan-1', title: 'Delivery' }],
-					slices: [{ id: 'slice-1', deliveryId: 'delivery-1', title: 'Slice', order: 0 }],
+					deliveries: [
+						{
+							id: '01k00000000000000000010001',
+							projectId: '01k00000000000000000000030',
+							planId: '01k00000000000000000000028',
+							title: 'Delivery',
+						},
+					],
+					slices: [{ id: '01k00000000000000000010002', deliveryId: '01k00000000000000000010001', title: 'Slice', order: 0 }],
 					memories: [
-						{ id: 'memory-1', parentId: null, currentRevision: { id: 'memory-revision-1', title: 'Memory' } },
-						{ id: 'memory-2', parentId: 'memory-1', currentRevision: { id: 'memory-revision-2', title: 'Child' } },
+						{
+							id: '01k00000000000000000010003',
+							parentId: null,
+							currentRevision: { id: '01k00000000000000000010004', title: 'Memory' },
+						},
+						{
+							id: '01k00000000000000000010005',
+							parentId: '01k00000000000000000010003',
+							currentRevision: { id: '01k00000000000000000010006', title: 'Child' },
+						},
 					],
 					memoryRevisions: [
-						{ id: 'memory-revision-1', memoryId: 'memory-1', title: 'Memory' },
-						{ id: 'memory-revision-2', memoryId: 'memory-2', title: 'Child' },
-						{ id: 'memory-revision-3', memoryId: 'existing-memory', title: 'Existing memory' },
+						{ id: '01k00000000000000000010004', memoryId: '01k00000000000000000010003', title: 'Memory' },
+						{ id: '01k00000000000000000010006', memoryId: '01k00000000000000000010005', title: 'Child' },
+						{ id: '01k00000000000000000010007', memoryId: existingMemoryId, title: 'Existing memory' },
 					],
 					acceptedEvent: {
 						body: {
 							type: 'proposal-accepted',
-							proposalCursor: '01J00000000000000000000000',
+							proposalEventId,
 							materialized: {
 								type: 'plan-output',
-								deliveryIds: ['delivery-1'],
-								sliceIds: ['slice-1'],
-								memoryIds: ['memory-1', 'memory-2'],
-								memoryRevisionIds: ['memory-revision-1', 'memory-revision-2', 'memory-revision-3'],
-								linkIds: ['link-1', 'link-2', 'link-3', 'link-4', 'link-5'],
+								deliveryIds: ['01k00000000000000000010001'],
+								sliceIds: ['01k00000000000000000010002'],
+								memoryIds: ['01k00000000000000000010003', '01k00000000000000000010005'],
+								memoryRevisionIds: [
+									'01k00000000000000000010004',
+									'01k00000000000000000010006',
+									'01k00000000000000000010007',
+								],
+								linkIds: [
+									'01k00000000000000000010008',
+									'01k00000000000000000010009',
+									'01k00000000000000000010010',
+									'01k00000000000000000010011',
+									'01k00000000000000000010012',
+								],
 							},
 						},
 					},
 				},
 			})
-			expect(options.tx.memories.records.get('existing-memory')?.currentRevision).toMatchObject({ id: 'memory-revision-3' })
+			expect(options.tx.memories.records.get(existingMemoryId)?.currentRevision).toMatchObject({ id: '01k00000000000000000010007' })
 			expect(result.ok ? result.value.links : []).toMatchObject([
 				{
-					id: 'link-1',
+					id: '01k00000000000000000010008',
 					def: {
 						type: 'produced',
-						from: { type: 'plan', projectId: 'project-1', id: 'plan-1' },
-						to: { type: 'memory', id: 'memory-1' },
+						from: { type: 'plan', projectId: '01k00000000000000000000030', id: '01k00000000000000000000028' },
+						to: { type: 'memory', id: '01k00000000000000000010003' },
 					},
 				},
 				{
-					id: 'link-2',
+					id: '01k00000000000000000010009',
 					def: {
 						type: 'produced',
-						from: { type: 'plan', projectId: 'project-1', id: 'plan-1' },
-						to: { type: 'memory', id: 'memory-2' },
+						from: { type: 'plan', projectId: '01k00000000000000000000030', id: '01k00000000000000000000028' },
+						to: { type: 'memory', id: '01k00000000000000000010005' },
 					},
 				},
 				{
-					id: 'link-3',
+					id: '01k00000000000000000010010',
 					def: {
 						type: 'produced',
-						from: { type: 'plan', projectId: 'project-1', id: 'plan-1' },
-						to: { type: 'memory-revision', memoryId: 'memory-1', id: 'memory-revision-1' },
+						from: { type: 'plan', projectId: '01k00000000000000000000030', id: '01k00000000000000000000028' },
+						to: { type: 'memory-revision', memoryId: '01k00000000000000000010003', id: '01k00000000000000000010004' },
 					},
 				},
 				{
-					id: 'link-4',
+					id: '01k00000000000000000010011',
 					def: {
 						type: 'produced',
-						from: { type: 'plan', projectId: 'project-1', id: 'plan-1' },
-						to: { type: 'memory-revision', memoryId: 'memory-2', id: 'memory-revision-2' },
+						from: { type: 'plan', projectId: '01k00000000000000000000030', id: '01k00000000000000000000028' },
+						to: { type: 'memory-revision', memoryId: '01k00000000000000000010005', id: '01k00000000000000000010006' },
 					},
 				},
 				{
-					id: 'link-5',
+					id: '01k00000000000000000010012',
 					def: {
 						type: 'produced',
-						from: { type: 'plan', projectId: 'project-1', id: 'plan-1' },
-						to: { type: 'memory-revision', memoryId: 'existing-memory', id: 'memory-revision-3' },
+						from: { type: 'plan', projectId: '01k00000000000000000000030', id: '01k00000000000000000000028' },
+						to: { type: 'memory-revision', memoryId: existingMemoryId, id: '01k00000000000000000010007' },
 					},
 				},
 			])
@@ -700,37 +732,41 @@ if (import.meta.vitest) {
 		it('rejects stale and no-op Memory revisions', async () => {
 			const stale = proposalFixture()
 			stale.tx.agentRunEvents.records.set(
-				'proposal-event',
+				proposalEventId,
 				proposalEvent({
 					proposedDeliveries: {},
 					proposedMemoryCreations: {},
 					proposedMemoryRevisions: {
-						'existing-memory': { expectedCurrentRevisionId: 'stale', title: 'Existing memory', body: 'Updated body.' },
+						[existingMemoryId]: {
+							expectedCurrentRevisionId: staleMemoryRevisionId,
+							title: 'Existing memory',
+							body: 'Updated body.',
+						},
 					},
 				}),
 			)
 			const command = createAcceptPlanOutputCommand(createTestCoreRuntime(stale))
 
-			await expect(command({ proposalEventId: 'proposal-event' }, context)).resolves.toEqual({
+			await expect(command({ proposalEventId: proposalEventId }, context)).resolves.toEqual({
 				ok: false,
 				error: {
 					type: 'invalid-plan-output',
 					reason: 'stale-memory-revision',
-					memoryId: 'existing-memory',
-					expectedCurrentRevisionId: 'stale',
-					actualCurrentRevisionId: 'existing-memory-revision',
+					memoryId: existingMemoryId,
+					expectedCurrentRevisionId: staleMemoryRevisionId,
+					actualCurrentRevisionId: existingMemoryRevisionId,
 				},
 			})
 
 			const noop = proposalFixture()
 			noop.tx.agentRunEvents.records.set(
-				'proposal-event',
+				proposalEventId,
 				proposalEvent({
 					proposedDeliveries: {},
 					proposedMemoryCreations: {},
 					proposedMemoryRevisions: {
-						'existing-memory': {
-							expectedCurrentRevisionId: 'existing-memory-revision',
+						[existingMemoryId]: {
+							expectedCurrentRevisionId: existingMemoryRevisionId,
 							title: 'Existing memory',
 							body: 'Existing body.',
 						},
@@ -738,39 +774,39 @@ if (import.meta.vitest) {
 				}),
 			)
 			await expect(
-				createAcceptPlanOutputCommand(createTestCoreRuntime(noop))({ proposalEventId: 'proposal-event' }, context),
+				createAcceptPlanOutputCommand(createTestCoreRuntime(noop))({ proposalEventId: proposalEventId }, context),
 			).resolves.toEqual({
 				ok: false,
-				error: { type: 'invalid-plan-output', reason: 'noop-memory-revision', memoryId: 'existing-memory' },
+				error: { type: 'invalid-plan-output', reason: 'noop-memory-revision', memoryId: existingMemoryId },
 			})
 		})
 
 		it('rejects cross-Project existing Delivery dependencies', async () => {
 			const options = proposalFixture()
-			options.tx.deliveries.records.set('other-delivery', {
-				id: 'other-delivery',
-				projectId: 'other-project',
-				planId: 'other-plan',
+			options.tx.deliveries.records.set(otherDeliveryId, {
+				id: otherDeliveryId,
+				projectId: otherProjectId,
+				planId: otherPlanId,
 				title: 'Other',
-				target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
+				target: { type: 'source-control', repositoryId: '01k00000000000000000000034', targetBranch: 'main' },
 				config: null,
 				accepted: stamp,
 				queued: null,
 				closed: null,
 			})
 			options.tx.agentRunEvents.records.set(
-				'proposal-event',
+				proposalEventId,
 				proposalEvent({
 					...planOutput(),
 					proposedDeliveries: {
 						...planOutput().proposedDeliveries,
-						delivery: { ...planOutput().proposedDeliveries.delivery!, dependsOnDeliveryIds: { 'other-delivery': true } },
+						delivery: { ...planOutput().proposedDeliveries.delivery!, dependsOnDeliveryIds: { [otherDeliveryId]: true } },
 					},
 				}),
 			)
 
 			const result = await createAcceptPlanOutputCommand(createTestCoreRuntime(options))(
-				{ proposalEventId: 'proposal-event' },
+				{ proposalEventId: proposalEventId },
 				context,
 			)
 
@@ -781,8 +817,8 @@ if (import.meta.vitest) {
 					reason: 'project-boundary-mismatch',
 					def: {
 						type: 'depends-on',
-						from: { type: 'delivery', projectId: 'project-1', id: 'delivery-1' },
-						to: { type: 'delivery', projectId: 'other-project', id: 'other-delivery' },
+						from: { type: 'delivery', projectId: '01k00000000000000000000030', id: '01k00000000000000000010001' },
+						to: { type: 'delivery', projectId: otherProjectId, id: otherDeliveryId },
 					},
 				},
 			})
@@ -791,33 +827,33 @@ if (import.meta.vitest) {
 
 	function proposalFixture() {
 		const options = createTestCoreServices()
-		options.tx.plans.records.set('plan-1', {
-			id: 'plan-1',
-			projectId: 'project-1',
+		options.tx.plans.records.set('01k00000000000000000000028', {
+			id: '01k00000000000000000000028',
+			projectId: '01k00000000000000000000030',
 			title: 'Plan',
 			created: localStamp(),
 			closed: null,
 		})
-		options.tx.repositories.records.set('repository-1', {
-			id: 'repository-1',
-			projectId: 'project-1',
-			config: { provider: 'github', owner: 'owner', name: 'repo', secretId: 'secret-1' },
+		options.tx.repositories.records.set('01k00000000000000000000034', {
+			id: '01k00000000000000000000034',
+			projectId: '01k00000000000000000000030',
+			config: { provider: 'github', owner: 'owner', name: 'repo', secretId: '01k00000000000000000000040' },
 			created: localStamp(),
 		})
-		options.tx.memories.records.set('existing-memory', {
-			id: 'existing-memory',
+		options.tx.memories.records.set(existingMemoryId, {
+			id: existingMemoryId,
 			parentId: null,
 			created: localStamp(),
-			currentRevision: { id: 'existing-memory-revision', title: 'Existing memory', body: 'Existing body.', created: localStamp() },
+			currentRevision: { id: existingMemoryRevisionId, title: 'Existing memory', body: 'Existing body.', created: localStamp() },
 		})
-		options.tx.agentRuns.records.set('agent-run-1', {
-			id: 'agent-run-1',
+		options.tx.agentRuns.records.set('01k00000000000000000000002', {
+			id: '01k00000000000000000000002',
 			agent: { type: 'model' },
-			purpose: { type: 'planning', planId: 'plan-1' },
+			purpose: { type: 'planning', planId: '01k00000000000000000000028' },
 			profile: {
-				agentRunProfileId: 'agent-run-profile-1',
+				agentRunProfileId: '01k00000000000000000000006',
 				name: 'Agent Run Profile',
-				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				runtimeRequirements: [],
 			},
 			modelUseOverride: null,
@@ -825,23 +861,22 @@ if (import.meta.vitest) {
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: null,
-			sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+			sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
 		})
-		options.tx.agentRunEvents.records.set('proposal-event', proposalEvent(planOutput()))
+		options.tx.agentRunEvents.records.set(proposalEventId, proposalEvent(planOutput()))
 		return options
 	}
 
 	function proposalEvent(output: PlanOutputProposal): AgentRunEvent {
 		return {
-			id: 'proposal-event',
-			agentRunId: 'agent-run-1',
-			cursor: '01J00000000000000000000000',
+			id: proposalEventId,
+			agentRunId: '01k00000000000000000000002',
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
 			body: {
 				type: 'proposed-plan-output',
-				assistantMessageCursor: '01J00000000000000000000000',
+				assistantMessageEventId: '01j00000000000000000000000',
 				toolCallId: 'call-1',
 				output,
 			},
@@ -853,7 +888,7 @@ if (import.meta.vitest) {
 			proposedDeliveries: {
 				delivery: {
 					title: 'Delivery',
-					target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
+					target: { type: 'source-control', repositoryId: '01k00000000000000000000034', targetBranch: 'main' },
 					slices: {
 						slice: {
 							order: 0,
@@ -875,8 +910,8 @@ if (import.meta.vitest) {
 				},
 			},
 			proposedMemoryRevisions: {
-				'existing-memory': {
-					expectedCurrentRevisionId: 'existing-memory-revision',
+				[existingMemoryId]: {
+					expectedCurrentRevisionId: existingMemoryRevisionId,
 					title: 'Existing memory',
 					body: 'Updated body.',
 				},

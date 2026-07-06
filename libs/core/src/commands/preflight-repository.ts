@@ -121,16 +121,16 @@ if (import.meta.vitest) {
 		it('returns not-found when the target Repository does not exist', async () => {
 			const command = createPreflightRepositoryCommand(createTestCoreRuntime())
 
-			const result = await command({ repositoryId: 'repository-1' }, context)
+			const result = await command({ repositoryId: '01k00000000000000000000034' }, context)
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'repository', id: 'repository-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'repository', id: '01k00000000000000000000034' } })
 		})
 
 		it('returns failed evidence when the repository access Secret is missing', async () => {
 			const options = repositoryFixture()
 			const command = createPreflightRepositoryCommand(createTestCoreRuntime(options, { providers: neverCalledProviders(options) }))
 
-			const result = await command({ repositoryId: 'repository-1' }, context)
+			const result = await command({ repositoryId: '01k00000000000000000000034' }, context)
 
 			expect(result).toEqual({
 				ok: true,
@@ -140,10 +140,10 @@ if (import.meta.vitest) {
 
 		it('returns failed evidence when the repository access Secret is inactive', async () => {
 			const options = repositoryFixture()
-			seedSecret(options.tx, 'secret-1', true)
+			seedSecret(options.tx, '01k00000000000000000000040', true)
 			const command = createPreflightRepositoryCommand(createTestCoreRuntime(options, { providers: neverCalledProviders(options) }))
 
-			const result = await command({ repositoryId: 'repository-1' }, context)
+			const result = await command({ repositoryId: '01k00000000000000000000034' }, context)
 
 			expect(result).toEqual({
 				ok: true,
@@ -153,8 +153,8 @@ if (import.meta.vitest) {
 
 		it('calls Source Control providers outside the storage transaction and returns passing evidence', async () => {
 			const options = repositoryFixture()
-			seedSecret(options.tx, 'secret-1')
-			options.secrets.resolveSecretValues = () => Promise.resolve({ 'secret-1': 'token' })
+			seedSecret(options.tx, '01k00000000000000000000040')
+			options.secrets.resolveSecretValues = () => Promise.resolve({ '01k00000000000000000000040': 'token' })
 			let providerTransactionCalls: number | null = null
 			const providers = {
 				sourceControl: createSourceControlProviders(options, {
@@ -175,7 +175,7 @@ if (import.meta.vitest) {
 			}
 			const command = createPreflightRepositoryCommand(createTestCoreRuntime(options, { providers }))
 
-			const result = await command({ repositoryId: 'repository-1' }, context)
+			const result = await command({ repositoryId: '01k00000000000000000000034' }, context)
 
 			expect(result).toEqual({ ok: true, value: repositoryPreflightEvidence(true, 'GitHub repository preflight passed.') })
 			expect(providerTransactionCalls).toBe(1)
@@ -183,8 +183,8 @@ if (import.meta.vitest) {
 
 		it('maps provider failures to failed evidence', async () => {
 			const options = repositoryFixture()
-			seedSecret(options.tx, 'secret-1')
-			options.secrets.resolveSecretValues = () => Promise.resolve({ 'secret-1': 'token' })
+			seedSecret(options.tx, '01k00000000000000000000040')
+			options.secrets.resolveSecretValues = () => Promise.resolve({ '01k00000000000000000000040': 'token' })
 			const providers = {
 				sourceControl: createSourceControlProviders(options, {
 					github: {
@@ -201,22 +201,22 @@ if (import.meta.vitest) {
 			}
 			const command = createPreflightRepositoryCommand(createTestCoreRuntime(options, { providers }))
 
-			const result = await command({ repositoryId: 'repository-1' }, context)
+			const result = await command({ repositoryId: '01k00000000000000000000034' }, context)
 
 			expect(result).toEqual({ ok: true, value: repositoryPreflightEvidence(false, 'GitHub repository was not found.') })
 		})
 
 		it('returns invalid Core Service Output from Secret value resolution', async () => {
 			const options = repositoryFixture()
-			seedSecret(options.tx, 'secret-1')
-			options.secrets.resolveSecretValues = () => Promise.resolve({ 'secret-1': 1 } as never)
+			seedSecret(options.tx, '01k00000000000000000000040')
+			options.secrets.resolveSecretValues = () => Promise.resolve({ '01k00000000000000000000040': 1 } as never)
 			const providers = {
 				sourceControl: createSourceControlProviders(options, { github: neverCalledGitHubProvider() }),
 				modelProviderProtocols: createTestCoreRuntime(options).providers.modelProviderProtocols,
 			}
 			const command = createPreflightRepositoryCommand(createTestCoreRuntime(options, { providers }))
 
-			const result = await command({ repositoryId: 'repository-1' }, context)
+			const result = await command({ repositoryId: '01k00000000000000000000034' }, context)
 
 			expect(result).toMatchObject({
 				ok: false,
@@ -227,10 +227,10 @@ if (import.meta.vitest) {
 
 	function repositoryFixture() {
 		const options = createTestCoreServices()
-		options.tx.repositories.records.set('repository-1', {
-			id: 'repository-1',
-			projectId: 'project-1',
-			config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
+		options.tx.repositories.records.set('01k00000000000000000000034', {
+			id: '01k00000000000000000000034',
+			projectId: '01k00000000000000000000030',
+			config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: '01k00000000000000000000040' },
 			created: stamp,
 		})
 		return options

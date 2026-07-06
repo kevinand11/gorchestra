@@ -6,11 +6,10 @@ import type { Repository } from '../domain/repository'
 import type { Slice } from '../domain/slice'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
-import { getRequired, notFound, withTransaction } from '../storage/helpers'
+import { getRequired, listRecords, notFound, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
 import { deliveryReadModel } from './utils/delivery-read-model'
 import { buildQueryHandler } from './utils/handler'
-import { listOrderedDeliverySlices } from './utils/slice-read-model'
 
 export const inputPipe = v.object({ projectId: idPipe, deliveryId: idPipe })
 export type Input = PipeOutput<typeof inputPipe>
@@ -36,7 +35,10 @@ async function getProjectDeliveryReadModel(storage: Parameters<typeof getRequire
 	const repository = await getProjectRepository(storage, delivery.value.target.repositoryId, projectId)
 	if (!repository.ok) return repository
 
-	const slices = await listOrderedDeliverySlices(storage, delivery.value.id)
+	const slices = await listRecords('slice', storage, {
+		where: (filter, fields) => filter.eq(fields.deliveryId, delivery.value.id),
+		orderBy: [{ field: 'id', direction: 'desc' }],
+	})
 	return slices.ok ? deliveryReadModel(delivery.value, new Map([[repository.value.id, repository.value]]), slices.value) : slices
 }
 
@@ -62,7 +64,7 @@ if (import.meta.vitest) {
 			options.tx.projects.fail.get = true
 			const query = createGetDeliveryQuery(options)
 
-			const result = await query({ projectId: '', deliveryId: 'delivery-1' })
+			const result = await query({ projectId: '', deliveryId: '01k00000000000000000000008' })
 
 			expect(result).toMatchObject({
 				ok: false,
@@ -73,16 +75,32 @@ if (import.meta.vitest) {
 
 		it('returns the Delivery read model when it belongs to the Project', async () => {
 			const options = createTestCoreServices()
-			seedProject(options.tx, 'project-1')
-			const storedRepository = repository({ id: 'repository-1', projectId: 'project-1', owner: 'Octo', name: 'Repo' })
-			const storedDelivery = delivery({ id: 'delivery-1', projectId: 'project-1', title: 'Build API', repositoryId: 'repository-1' })
+			seedProject(options.tx, '01k00000000000000000000030')
+			const storedRepository = repository({
+				id: '01k00000000000000000000034',
+				projectId: '01k00000000000000000000030',
+				owner: 'Octo',
+				name: 'Repo',
+			})
+			const storedDelivery = delivery({
+				id: '01k00000000000000000000008',
+				projectId: '01k00000000000000000000030',
+				title: 'Build API',
+				repositoryId: '01k00000000000000000000034',
+			})
 			options.tx.repositories.records.set(storedRepository.id, storedRepository)
 			options.tx.deliveries.records.set(storedDelivery.id, storedDelivery)
-			options.tx.slices.records.set('slice-b', slice({ id: 'slice-b', deliveryId: 'delivery-1', order: 1, title: 'Route' }))
-			options.tx.slices.records.set('slice-a', slice({ id: 'slice-a', deliveryId: 'delivery-1', order: 0, title: 'Schema' }))
+			options.tx.slices.records.set(
+				'01k00000000000000000100039',
+				slice({ id: '01k00000000000000000100039', deliveryId: '01k00000000000000000000008', order: 1, title: 'Route' }),
+			)
+			options.tx.slices.records.set(
+				'01k00000000000000000100038',
+				slice({ id: '01k00000000000000000100038', deliveryId: '01k00000000000000000000008', order: 0, title: 'Schema' }),
+			)
 			const query = createGetDeliveryQuery(options)
 
-			const result = await query({ projectId: 'project-1', deliveryId: 'delivery-1' })
+			const result = await query({ projectId: '01k00000000000000000000030', deliveryId: '01k00000000000000000000008' })
 
 			expect(result).toEqual({
 				ok: true,
@@ -90,8 +108,8 @@ if (import.meta.vitest) {
 					...storedDelivery,
 					target: { type: 'source-control', repository: storedRepository, targetBranch: 'main' },
 					slices: [
-						slice({ id: 'slice-a', deliveryId: 'delivery-1', order: 0, title: 'Schema' }),
-						slice({ id: 'slice-b', deliveryId: 'delivery-1', order: 1, title: 'Route' }),
+						slice({ id: '01k00000000000000000100039', deliveryId: '01k00000000000000000000008', order: 1, title: 'Route' }),
+						slice({ id: '01k00000000000000000100038', deliveryId: '01k00000000000000000000008', order: 0, title: 'Schema' }),
 					],
 				},
 			})
@@ -100,28 +118,38 @@ if (import.meta.vitest) {
 		it('returns not-found when the Project does not exist', async () => {
 			const options = createTestCoreServices()
 			options.tx.deliveries.records.set(
-				'delivery-1',
-				delivery({ id: 'delivery-1', projectId: 'project-1', title: 'Build API', repositoryId: 'repository-1' }),
+				'01k00000000000000000000008',
+				delivery({
+					id: '01k00000000000000000000008',
+					projectId: '01k00000000000000000000030',
+					title: 'Build API',
+					repositoryId: '01k00000000000000000000034',
+				}),
 			)
 			const query = createGetDeliveryQuery(options)
 
-			const result = await query({ projectId: 'project-1', deliveryId: 'delivery-1' })
+			const result = await query({ projectId: '01k00000000000000000000030', deliveryId: '01k00000000000000000000008' })
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'project', id: 'project-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'project', id: '01k00000000000000000000030' } })
 		})
 
 		it('returns not-found when the Delivery does not belong to the Project', async () => {
 			const options = createTestCoreServices()
-			seedProject(options.tx, 'project-1')
+			seedProject(options.tx, '01k00000000000000000000030')
 			options.tx.deliveries.records.set(
-				'delivery-1',
-				delivery({ id: 'delivery-1', projectId: 'project-2', title: 'Build API', repositoryId: 'repository-1' }),
+				'01k00000000000000000000008',
+				delivery({
+					id: '01k00000000000000000000008',
+					projectId: '01k00000000000000000000031',
+					title: 'Build API',
+					repositoryId: '01k00000000000000000000034',
+				}),
 			)
 			const query = createGetDeliveryQuery(options)
 
-			const result = await query({ projectId: 'project-1', deliveryId: 'delivery-1' })
+			const result = await query({ projectId: '01k00000000000000000000030', deliveryId: '01k00000000000000000000008' })
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'delivery', id: 'delivery-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'delivery', id: '01k00000000000000000000008' } })
 		})
 	})
 
@@ -129,7 +157,7 @@ if (import.meta.vitest) {
 		return {
 			id: input.id,
 			projectId: input.projectId,
-			config: { provider: 'github', owner: input.owner, name: input.name, secretId: 'secret-1' },
+			config: { provider: 'github', owner: input.owner, name: input.name, secretId: '01k00000000000000000000040' },
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 		}
 	}
@@ -138,7 +166,7 @@ if (import.meta.vitest) {
 		return {
 			id: input.id,
 			projectId: input.projectId,
-			planId: 'plan-1',
+			planId: '01k00000000000000000000028',
 			title: input.title,
 			target: { type: 'source-control', repositoryId: input.repositoryId, targetBranch: 'main' },
 			config: null,

@@ -67,8 +67,8 @@ if (import.meta.vitest) {
 	describe('updateModelProvider command', () => {
 		it('updates Model Provider mutable config while preserving source', async () => {
 			const options = createTestCoreServices()
-			options.tx.modelProviders.records.set('provider-1', {
-				id: 'provider-1',
+			options.tx.modelProviders.records.set('01k00000000000000000000032', {
+				id: '01k00000000000000000000032',
 				name: 'Provider',
 				source: { type: 'anthropic' },
 				auth: null,
@@ -81,13 +81,24 @@ if (import.meta.vitest) {
 			const command = createUpdateModelProviderCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ modelProviderId: 'provider-1', name: 'Updated', auth: null, headers: [], providerOptions: { beta: true } },
+				{
+					modelProviderId: '01k00000000000000000000032',
+					name: 'Updated',
+					auth: null,
+					headers: [],
+					providerOptions: { beta: true },
+				},
 				context,
 			)
 
 			expect(result).toMatchObject({
 				ok: true,
-				value: { id: 'provider-1', name: 'Updated', source: { type: 'anthropic' }, providerOptions: { beta: true } },
+				value: {
+					id: '01k00000000000000000000032',
+					name: 'Updated',
+					source: { type: 'anthropic' },
+					providerOptions: { beta: true },
+				},
 			})
 		})
 	})

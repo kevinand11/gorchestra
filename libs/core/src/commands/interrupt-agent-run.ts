@@ -102,14 +102,13 @@ if (import.meta.vitest) {
 			const options = planningAgentRunFixture()
 			const command = createInterruptAgentRunCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', reason: 'Pause please.' }, context)
+			const result = await command({ agentRunId: '01k00000000000000000000002', reason: 'Pause please.' }, context)
 
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'agent-run-event-1',
-					agentRunId: 'agent-run-1',
-					cursor: '01J00000000000000000000001',
+					id: '01k00000000000000000010001',
+					agentRunId: '01k00000000000000000000002',
 					occurred: { at: '2026-06-10T12:00:00.000Z' },
 					body: {
 						type: 'interrupt-requested',
@@ -124,18 +123,18 @@ if (import.meta.vitest) {
 			const options = autonomousAgentRunFixture(true)
 			const command = createInterruptAgentRunCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', reason: null }, context)
+			const result = await command({ agentRunId: '01k00000000000000000000002', reason: null }, context)
 
-			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: 'agent-run-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: '01k00000000000000000000002' } })
 		})
 
 		it('rejects revision-planning Agent Runs whose Revision Gate is closed', async () => {
 			const options = revisionPlanningAgentRunFixture(true)
 			const command = createInterruptAgentRunCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', reason: null }, context)
+			const result = await command({ agentRunId: '01k00000000000000000000002', reason: null }, context)
 
-			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: 'agent-run-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: '01k00000000000000000000002' } })
 		})
 	})
 }

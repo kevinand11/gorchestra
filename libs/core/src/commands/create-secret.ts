@@ -23,7 +23,7 @@ export function createCreateSecretCommand(runtime: CoreRuntime): Operation {
 		const stamp = auditStamp(runtime.values, context)
 		if (!stamp.ok) return Promise.resolve(stamp)
 
-		const id = nextId(runtime.values, 'secret')
+		const id = nextId(runtime.values)
 		if (!id.ok) return Promise.resolve(id)
 
 		const secret: Secret = {
@@ -56,7 +56,7 @@ if (import.meta.vitest) {
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'secret-1',
+					id: '01k00000000000000000010001',
 					name: 'GitHub token',
 					valueRef: 'protected-ref',
 					created: localStamp(),

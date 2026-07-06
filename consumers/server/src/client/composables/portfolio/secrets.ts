@@ -4,10 +4,10 @@ import { SecretCreationFormDraft } from '../../forms/secret'
 import { useSelectedPortfolio } from '../auth/session'
 import { useApiAction, useFetchAction } from '../core/action-state'
 import { useOverlay } from '../core/overlay'
+import { usePaginatedFetchAction } from '../core/paginated-fetch-action'
 import { useQueryCache } from '../core/query-cache'
 import { useServerApi, type ServerApi } from '../core/server-api'
 
-type ListedSecret = Awaited<ReturnType<ServerApi['listSecrets']>>[number]
 type SecretDetails = Awaited<ReturnType<ServerApi['getSecret']>>
 type CreatedSecret = Awaited<ReturnType<ServerApi['createSecret']>>
 
@@ -20,19 +20,18 @@ export function useSecretsList() {
 	const { portfolio } = useSelectedPortfolio()
 	const { queryKeys } = useQueryCache()
 	const {
-		data: secrets,
+		items: secrets,
 		isLoading: isLoadingSecrets,
 		error: secretsError,
 		hasExecuted: hasLoadedSecrets,
-		execute: refreshSecrets,
-		reset: resetSecrets,
-	} = useFetchAction(() => serverApi.listSecrets(), {
+		fetchNext: fetchNextSecrets,
+		hasNext: hasNextSecrets,
+	} = usePaginatedFetchAction((input) => serverApi.listSecrets(input), {
 		queryKey: queryKeys.portfolio.secrets(portfolio.value.id),
-		initialData: [] as ListedSecret[],
 	})
 	const isRefreshingSecrets = computed(() => isLoadingSecrets.value && hasLoadedSecrets.value)
 
-	return { secrets, isLoadingSecrets, secretsError, hasLoadedSecrets, isRefreshingSecrets, refreshSecrets, resetSecrets }
+	return { secrets, isLoadingSecrets, secretsError, hasLoadedSecrets, isRefreshingSecrets, fetchNextSecrets, hasNextSecrets }
 }
 
 export function useSecretDetail(secretId: Ref<string>) {

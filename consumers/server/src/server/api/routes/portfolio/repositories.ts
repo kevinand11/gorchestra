@@ -7,6 +7,7 @@ import {
 	portfolioRequestCookieSchema,
 	type CreateRepositoryRequest,
 	type PortfolioRequestCookies,
+	type PaginatedQuery,
 	type RepositoryPreflightEvidence,
 } from './shared'
 import type { ServerApiContext } from '../../context'
@@ -20,9 +21,10 @@ export function createRepositoriesApiRouter(context: ServerApiContext) {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: idPipe }),
+				query: Domain.Commons.paginatedQueryInputPipe,
 				response: Queries.ListRepositories.resultPipe,
 			},
-		})(async (req) => listSelectedProjectRepositories(context, req.cookies, req.params.projectId))
+		})(async (req) => listSelectedProjectRepositories(context, req.cookies, req.params.projectId, req.query))
 		.post('/projects/:projectId/repositories', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
@@ -51,9 +53,10 @@ function listSelectedProjectRepositories(
 	context: ServerApiContext,
 	cookies: PortfolioRequestCookies,
 	projectId: string,
+	query: PaginatedQuery,
 ): Promise<Queries.ListRepositories.Result> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
-		const repositories = await core.queries.listRepositories({ projectId })
+		const repositories = await core.queries.listRepositories({ projectId, ...query })
 		return repositories.ok ? repositories.value : throwCoreOperationError(repositories.error)
 	})
 }

@@ -96,8 +96,8 @@ if (import.meta.vitest) {
 			mode: 'agent-run',
 			protocol: 'openai-responses',
 			model: {
-				id: 'model-1',
-				providerId: 'model-provider-1',
+				id: '01k00000000000000000000024',
+				providerId: '01k00000000000000000000027',
 				name: 'GPT 5',
 				providerModelId: 'gpt-5',
 				providerOptions: null,
@@ -108,7 +108,7 @@ if (import.meta.vitest) {
 				archivePeriods: [],
 			},
 			modelProvider: {
-				id: 'model-provider-1',
+				id: '01k00000000000000000000027',
 				name: 'OpenAI',
 				source: { type: 'openai-responses' },
 				auth: null,

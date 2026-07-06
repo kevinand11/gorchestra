@@ -113,7 +113,7 @@ async function requireAgentRunIdle(
 ): Promise<CoreResult<void, InvalidCoreServiceOutputError | StorageOperationFailedError | AgentRunTurnActiveError>> {
 	const events = await listRecords('agent-run-event', storage, {
 		where: (filter, fields) => filter.eq(fields.agentRunId, agentRunId),
-		orderBy: [{ field: 'cursor', direction: 'asc' }],
+		orderBy: [{ field: 'id', direction: 'asc' }],
 	})
 	return events.ok ? activeTurn(events.value) : events
 }
@@ -123,7 +123,7 @@ function activeTurn(events: AgentRunEvent[]): CoreResult<void, AgentRunTurnActiv
 	if (started === undefined || started.body.type !== 'turn-started') return { ok: true, value: undefined }
 
 	const ended = events.some(
-		(event) => event.cursor > started.cursor && event.body.type === 'turn-ended' && event.body.turnStartedCursor === started.cursor,
+		(event) => event.id > started.id && event.body.type === 'turn-ended' && event.body.turnStartedEventId === started.id,
 	)
 	return ended ? { ok: true, value: undefined } : agentRunTurnActive(started.agentRunId, started.id)
 }
@@ -159,84 +159,83 @@ if (import.meta.vitest) {
 			const options = closePlanFixture()
 			const command = createClosePlanCommand(createTestCoreRuntime(options))
 
-			const result = await command({ projectId: 'project-1', planId: 'plan-1' }, context)
+			const result = await command({ projectId: '01k00000000000000000000030', planId: '01k00000000000000000000028' }, context)
 
 			const expectedPlan = { ...plan(), closed: localStamp() }
 			const expectedAgentRun = { ...planningAgentRun(), completed: { at: localStamp().at } }
 			expect(result).toEqual({ ok: true, value: { ...expectedPlan, agentRun: expectedAgentRun } })
-			expect(options.tx.plans.records.get('plan-1')).toEqual(expectedPlan)
-			expect(options.tx.agentRuns.records.get('agent-run-1')).toEqual(expectedAgentRun)
+			expect(options.tx.plans.records.get('01k00000000000000000000028')).toEqual(expectedPlan)
+			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')).toEqual(expectedAgentRun)
 		})
 
 		it('closes the Plan without overwriting an already completed Planning Agent Run', async () => {
 			const options = closePlanFixture()
 			const previousCompletion = { at: '2026-06-10T11:30:00.000Z' }
-			options.tx.agentRuns.records.get('agent-run-1')!.completed = previousCompletion
+			options.tx.agentRuns.records.get('01k00000000000000000000002')!.completed = previousCompletion
 			const command = createClosePlanCommand(createTestCoreRuntime(options))
 
-			const result = await command({ projectId: 'project-1', planId: 'plan-1' }, context)
+			const result = await command({ projectId: '01k00000000000000000000030', planId: '01k00000000000000000000028' }, context)
 
 			expect(result).toMatchObject({ ok: true, value: { agentRun: { completed: previousCompletion } } })
-			expect(options.tx.agentRuns.records.get('agent-run-1')?.completed).toEqual(previousCompletion)
+			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.completed).toEqual(previousCompletion)
 		})
 
 		it('rejects closed Plans', async () => {
 			const options = closePlanFixture()
-			options.tx.plans.records.get('plan-1')!.closed = localStamp()
+			options.tx.plans.records.get('01k00000000000000000000028')!.closed = localStamp()
 			const command = createClosePlanCommand(createTestCoreRuntime(options))
 
-			const result = await command({ projectId: 'project-1', planId: 'plan-1' }, context)
+			const result = await command({ projectId: '01k00000000000000000000030', planId: '01k00000000000000000000028' }, context)
 
-			expect(result).toEqual({ ok: false, error: { type: 'plan-closed', planId: 'plan-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'plan-closed', planId: '01k00000000000000000000028' } })
 		})
 
 		it('returns not-found for Plans outside the Project boundary', async () => {
 			const options = closePlanFixture()
-			seedProject(options.tx, 'project-2')
+			seedProject(options.tx, '01k00000000000000000000031')
 			const command = createClosePlanCommand(createTestCoreRuntime(options))
 
-			const result = await command({ projectId: 'project-2', planId: 'plan-1' }, context)
+			const result = await command({ projectId: '01k00000000000000000000031', planId: '01k00000000000000000000028' }, context)
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'plan', id: 'plan-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'plan', id: '01k00000000000000000000028' } })
 		})
 
 		it('rejects Plans whose Planning Agent Run has an unmatched active turn', async () => {
 			const options = closePlanFixture()
 			options.tx.agentRunEvents.records.set('turn-started', {
 				id: 'turn-started',
-				agentRunId: 'agent-run-1',
-				cursor: '01J00000000000000000000001',
+				agentRunId: '01k00000000000000000000002',
 				occurred: { at: '2026-06-10T12:00:00.000Z' },
 				body: {
 					type: 'turn-started',
-					contextThroughCursor: '01J00000000000000000000000',
-					reason: { type: 'input', inputEventCursors: ['01J00000000000000000000000'] },
+					contextThroughEventId: '01j00000000000000000000000',
+					reason: { type: 'input', inputEventIds: ['01j00000000000000000000000'] },
 				},
 			})
 			const command = createClosePlanCommand(createTestCoreRuntime(options))
 
-			const result = await command({ projectId: 'project-1', planId: 'plan-1' }, context)
+			const result = await command({ projectId: '01k00000000000000000000030', planId: '01k00000000000000000000028' }, context)
 
 			expect(result).toEqual({
 				ok: false,
-				error: { type: 'agent-run-turn-active', agentRunId: 'agent-run-1', turnStartedEventId: 'turn-started' },
+				error: { type: 'agent-run-turn-active', agentRunId: '01k00000000000000000000002', turnStartedEventId: 'turn-started' },
 			})
-			expect(options.tx.plans.records.get('plan-1')?.closed).toBeNull()
+			expect(options.tx.plans.records.get('01k00000000000000000000028')?.closed).toBeNull()
 		})
 	})
 
 	function closePlanFixture() {
 		const options = createTestCoreServices()
-		seedProject(options.tx, 'project-1')
-		options.tx.plans.records.set('plan-1', plan())
-		options.tx.agentRuns.records.set('agent-run-1', planningAgentRun())
+		seedProject(options.tx, '01k00000000000000000000030')
+		options.tx.plans.records.set('01k00000000000000000000028', plan())
+		options.tx.agentRuns.records.set('01k00000000000000000000002', planningAgentRun())
 		return options
 	}
 
 	function plan(): Plan {
 		return {
-			id: 'plan-1',
-			projectId: 'project-1',
+			id: '01k00000000000000000000028',
+			projectId: '01k00000000000000000000030',
 			title: 'Plan',
 			created: stamp,
 			closed: null,
@@ -245,13 +244,13 @@ if (import.meta.vitest) {
 
 	function planningAgentRun(): AgentRun {
 		return {
-			id: 'agent-run-1',
+			id: '01k00000000000000000000002',
 			agent: { type: 'model' },
-			purpose: { type: 'planning', planId: 'plan-1' },
+			purpose: { type: 'planning', planId: '01k00000000000000000000028' },
 			profile: {
-				agentRunProfileId: 'agent-run-profile-1',
+				agentRunProfileId: '01k00000000000000000000006',
 				name: 'Agent Run Profile',
-				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				runtimeRequirements: [],
 			},
 			modelUseOverride: null,
@@ -259,7 +258,7 @@ if (import.meta.vitest) {
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: null,
-			sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+			sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
 		}

@@ -199,7 +199,7 @@ function sliceArtifactRecord(
 	context: ResolvedDeliveryHandlerContext,
 	input: SliceArtifactCreationInput,
 ): CoreResult<SliceArtifact, DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	const id = nextId(context.values, 'slice-artifact')
+	const id = nextId(context.values)
 	if (!id.ok) return id
 
 	const created = runtimeRecord(context.values)
@@ -227,12 +227,13 @@ if (import.meta.vitest) {
 			expect(sliceArtifactCreationInput(context)).toEqual({
 				ok: true,
 				value: {
-					deliveryId: 'delivery-1',
-					sliceId: 'slice-1',
+					deliveryId: '01k00000000000000000000008',
+					sliceId: '01k00000000000000000000042',
 					repository: context.deliveryContext.repository,
 					accessSecret: context.repositoryAccessSecret,
 					sourceBranch: 'delivery-branch',
-					artifactBranch: 'gorchestra/deliveries/d-ZGVsaXZlcnktMQ/slices/s-c2xpY2UtMQ',
+					artifactBranch:
+						'gorchestra/deliveries/d-MDFrMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDg/slices/s-MDFrMDAwMDAwMDAwMDAwMDAwMDAwMDAwNDI',
 				},
 			})
 		})
@@ -249,16 +250,19 @@ if (import.meta.vitest) {
 			})
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
-			expect(context.tx.sliceArtifacts.records.get('slice-artifact-1')).toEqual({
-				id: 'slice-artifact-1',
-				sliceId: 'slice-1',
-				config: { type: 'source-control', sliceBranch: 'gorchestra/deliveries/d-ZGVsaXZlcnktMQ/slices/s-c2xpY2UtMQ' },
+			expect(context.tx.sliceArtifacts.records.get('01k00000000000000000010001')).toEqual({
+				id: '01k00000000000000000010001',
+				sliceId: '01k00000000000000000000042',
+				config: {
+					type: 'source-control',
+					sliceBranch: 'gorchestra/deliveries/d-MDFrMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDg/slices/s-MDFrMDAwMDAwMDAwMDAwMDAwMDAwMDAwNDI',
+				},
 				created: { at: '2026-06-10T12:00:00.000Z' },
 			})
-			expect(context.tx.actions.records.get('action-1')?.result).toEqual({
+			expect(context.tx.actions.records.get('01k00000000000000000010002')?.result).toEqual({
 				type: 'create-slice-artifact',
-				sliceId: 'slice-1',
-				sliceArtifactId: 'slice-artifact-1',
+				sliceId: '01k00000000000000000000042',
+				sliceArtifactId: '01k00000000000000000010001',
 				dispatchStartedActionId: null,
 			})
 		})
@@ -280,16 +284,16 @@ if (import.meta.vitest) {
 					processedCount: 1,
 					failures: [
 						{
-							scope: { type: 'slice', sliceId: 'slice-1' },
+							scope: { type: 'slice', sliceId: '01k00000000000000000000042' },
 							operation: 'create-artifact',
 							summary: 'GitHub artifact branch diverged from its source branch.',
 						},
 					],
 				},
 			})
-			expect(context.tx.actions.records.get('action-1')?.result).toEqual({
+			expect(context.tx.actions.records.get('01k00000000000000000010001')?.result).toEqual({
 				type: 'record-slice-external-operation-failure',
-				sliceId: 'slice-1',
+				sliceId: '01k00000000000000000000042',
 				evidence: {
 					type: 'external-operation',
 					operation: { type: 'create-artifact' },
@@ -302,6 +306,6 @@ if (import.meta.vitest) {
 	})
 
 	async function handlerContext() {
-		return createDeliveryWorkHandlerTestContext({ sliceId: 'slice-1' })
+		return createDeliveryWorkHandlerTestContext({ sliceId: '01k00000000000000000000042' })
 	}
 }

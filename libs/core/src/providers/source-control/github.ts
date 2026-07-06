@@ -758,9 +758,9 @@ if (import.meta.vitest) {
 
 	function gitHubRepository() {
 		return {
-			id: 'repository-1',
-			projectId: 'project-1',
-			config: { provider: 'github' as const, owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
+			id: '01k00000000000000000000034',
+			projectId: '01k00000000000000000000030',
+			config: { provider: 'github' as const, owner: 'Octo', name: 'Repo', secretId: '01k00000000000000000000040' },
 			created: { origin: 'imported' as const, at: '2026-06-01T00:00:00.000Z' },
 		}
 	}

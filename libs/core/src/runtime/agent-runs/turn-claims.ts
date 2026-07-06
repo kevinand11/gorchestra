@@ -1,26 +1,27 @@
-import type { AgentRunEvent, AgentRunEventCursor } from '../../domain/agent-run'
+import type { AgentRunEvent } from '../../domain/agent-run'
+import type { Id } from '../../domain/commons'
 
 export interface TurnReasonClaim {
 	reason: Extract<AgentRunEvent['body'], { type: 'turn-started' }>['reason']
-	contextThroughCursor: AgentRunEventCursor
+	contextThroughEventId: Id
 }
 
 export function nextTurnClaim(events: AgentRunEvent[]): TurnReasonClaim | null {
 	const reason = nextInputTurnReason(events)
-	const contextThroughCursor = events.at(-1)?.cursor
-	return reason === null || contextThroughCursor === undefined ? null : { reason, contextThroughCursor }
+	const contextThroughEventId = events.at(-1)?.id
+	return reason === null || contextThroughEventId === undefined ? null : { reason, contextThroughEventId }
 }
 
 function nextInputTurnReason(events: AgentRunEvent[]): TurnReasonClaim['reason'] | null {
 	if (hasBlockingOperatorInterrupt(events)) return null
 
-	const inputEventCursors = unprocessedInputEventCursors(events)
-	return inputEventCursors.length === 0 ? null : { type: 'input', inputEventCursors }
+	const inputEventIds = unprocessedInputEventIds(events)
+	return inputEventIds.length === 0 ? null : { type: 'input', inputEventIds }
 }
 
 function hasBlockingOperatorInterrupt(events: AgentRunEvent[]): boolean {
-	const latestInput = latestCursor(events, (event) => event.body.type === 'input-message')
-	const latestOperatorInterrupt = latestCursor(
+	const latestInput = latestEventId(events, (event) => event.body.type === 'input-message')
+	const latestOperatorInterrupt = latestEventId(
 		events,
 		(event) => event.body.type === 'interrupt-requested' && event.body.source.type === 'operator',
 	)
@@ -29,13 +30,13 @@ function hasBlockingOperatorInterrupt(events: AgentRunEvent[]): boolean {
 		: latestOperatorInterrupt !== null && latestOperatorInterrupt > latestInput
 }
 
-function unprocessedInputEventCursors(events: AgentRunEvent[]): AgentRunEventCursor[] {
-	const latestTurnStarted = latestCursor(events, (event) => event.body.type === 'turn-started')
+function unprocessedInputEventIds(events: AgentRunEvent[]): Id[] {
+	const latestTurnStarted = latestEventId(events, (event) => event.body.type === 'turn-started')
 	return events
-		.filter((event) => (latestTurnStarted === null || event.cursor > latestTurnStarted) && event.body.type === 'input-message')
-		.map((event) => event.cursor)
+		.filter((event) => (latestTurnStarted === null || event.id > latestTurnStarted) && event.body.type === 'input-message')
+		.map((event) => event.id)
 }
 
-function latestCursor(events: AgentRunEvent[], predicate: (event: AgentRunEvent) => boolean): AgentRunEventCursor | null {
-	return events.filter(predicate).at(-1)?.cursor ?? null
+function latestEventId(events: AgentRunEvent[], predicate: (event: AgentRunEvent) => boolean): Id | null {
+	return events.filter(predicate).at(-1)?.id ?? null
 }

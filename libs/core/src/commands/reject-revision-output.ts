@@ -64,10 +64,10 @@ async function rejectRevisionOutput(
 	return proposal.ok
 		? appendAgentRunEvent(runtime, storage, proposal.value.agentRunId, {
 				type: 'proposal-rejected',
-				proposalCursor: proposal.value.cursor,
+				proposalEventId: proposal.value.id,
 				authorized: stamp,
 				reason: input.reason,
-				projectedParts: proposalRejectedProjectedParts(proposal.value.cursor, input.reason),
+				projectedParts: proposalRejectedProjectedParts(proposal.value.id, input.reason),
 			})
 		: proposal
 }
@@ -92,6 +92,7 @@ function agentRunNotActive(agentRunId: Id): CoreResult<never, AgentRunNotActiveE
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, stamp } = await import('../utils/test-helpers')
+	const proposalEventId = '01k00000000000000000000003'
 
 	describe('rejectRevisionOutput command', () => {
 		it('validates input before reading storage', async () => {
@@ -112,39 +113,36 @@ if (import.meta.vitest) {
 			const options = proposalFixture()
 			const command = createRejectRevisionOutputCommand(createTestCoreRuntime(options))
 
-			const result = await command({ proposalEventId: 'proposal-event', reason: 'Needs changes.' }, context)
+			const result = await command({ proposalEventId, reason: 'Needs changes.' }, context)
 
-			expect(result).toEqual({
+			expect(result).toMatchObject({
 				ok: true,
 				value: {
-					id: 'agent-run-event-1',
-					agentRunId: 'agent-run-1',
-					cursor: '01J00000000000000000000001',
-					occurred: { at: '2026-06-10T12:00:00.000Z' },
-					body: {
-						type: 'proposal-rejected',
-						proposalCursor: '01J00000000000000000000000',
-						authorized: localStamp(),
-						reason: 'Needs changes.',
-						projectedParts: [
-							{ type: 'text', text: 'Proposal 01J00000000000000000000000 rejected. Needs changes.', metadata: null },
-						],
-					},
+					id: '01k00000000000000000010001',
+					agentRunId: '01k00000000000000000000002',
+					body: { type: 'proposal-rejected', proposalEventId, reason: 'Needs changes.' },
 				},
+			})
+			expect(result.ok ? result.value.body : null).toEqual({
+				type: 'proposal-rejected',
+				proposalEventId,
+				authorized: localStamp(),
+				reason: 'Needs changes.',
+				projectedParts: [{ type: 'text', text: `Proposal ${proposalEventId} rejected. Needs changes.`, metadata: null }],
 			})
 		})
 	})
 
 	function proposalFixture() {
 		const options = createTestCoreServices()
-		options.tx.agentRuns.records.set('agent-run-1', {
-			id: 'agent-run-1',
+		options.tx.agentRuns.records.set('01k00000000000000000000002', {
+			id: '01k00000000000000000000002',
 			agent: { type: 'model' },
-			purpose: { type: 'revision-planning', revisionGateId: 'revision-gate-1' },
+			purpose: { type: 'revision-planning', revisionGateId: '01k00000000000000000000039' },
 			profile: {
-				agentRunProfileId: 'agent-run-profile-1',
+				agentRunProfileId: '01k00000000000000000000006',
 				name: 'Agent Run Profile',
-				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				runtimeRequirements: [],
 			},
 			modelUseOverride: null,
@@ -152,25 +150,28 @@ if (import.meta.vitest) {
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: null,
-			sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+			sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 			started: { at: stamp.at },
 			completed: null,
 		})
-		options.tx.revisionGates.records.set('revision-gate-1', {
-			id: 'revision-gate-1',
-			scope: { type: 'delivery-artifact', deliveryId: 'delivery-1', deliveryArtifactId: 'delivery-artifact-1' },
-			reviewSurfaceId: 'review-surface-1',
+		options.tx.revisionGates.records.set('01k00000000000000000000039', {
+			id: '01k00000000000000000000039',
+			scope: {
+				type: 'delivery-artifact',
+				deliveryId: '01k00000000000000000000008',
+				deliveryArtifactId: '01k00000000000000000000010',
+			},
+			reviewSurfaceId: '01k00000000000000000000037',
 			opened: stamp,
 			closed: null,
 		})
-		options.tx.agentRunEvents.records.set('proposal-event', {
-			id: 'proposal-event',
-			agentRunId: 'agent-run-1',
-			cursor: '01J00000000000000000000000',
+		options.tx.agentRunEvents.records.set(proposalEventId, {
+			id: proposalEventId,
+			agentRunId: '01k00000000000000000000002',
 			occurred: { at: stamp.at },
 			body: {
 				type: 'proposed-revision-output',
-				assistantMessageCursor: '01J00000000000000000000000',
+				assistantMessageEventId: '01j00000000000000000000000',
 				toolCallId: 'call-1',
 				output: { instruction: { body: 'Revise.' }, disposition: { body: 'Because.' } },
 			},

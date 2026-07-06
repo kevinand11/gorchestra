@@ -32,9 +32,17 @@ _Avoid_: archived flag, deleted flag
 A value a Consumer passes through a public core API boundary, including command inputs, query arguments, Snapshot operation inputs, Command Context values, Work Context values, and Open Core options.
 _Avoid_: payload, request body, port result
 
+**Core Id**:
+A Core-owned ULID-format storage identity for Core records. Core-generated Core Ids are sortable and lexicographically creation-ordered, so Core list queries use ids as their canonical order and optional boundary.
+_Avoid_: opaque id, random id, display id
+
 **Core Orchestration API**:
 The public Core command/query surface for operations that read or mutate Core-owned Portfolio state. Consumers use Core queries for standalone reads of Core-owned Portfolio state, and mutations that affect Core invariants or lifecycle facts go through Core commands.
 _Avoid_: UI API, admin API, storage API
+
+**Paginated Query Envelope**:
+The standard Core list-query result boundary that wraps an ordered page or full ordered set of optionally id-bounded items with page navigation and count metadata. A Paginated Query Envelope is an id-bounded list result, not a separate cursor feed or a bare list array.
+_Avoid_: bare list response, cursor feed, infinite-scroll event stream
 
 **Command Context**:
 A Core command boundary value supplied by a Consumer for consumer-authorized Core commands. A Command Context contains the Local Actor Ref and optional opaque correlation id Core uses when it records Audit Stamps for user-authorized operations.
@@ -177,7 +185,7 @@ A Delivery whose closed lifecycle field records an abandoned outcome, removed fr
 _Avoid_: Archived Delivery, Deleted Delivery, canceled Delivery, soft-deleted Delivery
 
 **Slice**:
-An executable and reviewable unit inside exactly one Delivery. A Slice's parent Delivery, immutable Delivery-scoped order, and initial Instruction Source are immutable after acceptance. Slice order records the accepted Plan Output order for Slices within the Delivery and is the source of truth for deterministic same-Delivery Slice ordering. Slices participate in the Portfolio graph, and Slice-level dependencies are represented by Links between Slices in the same Delivery.
+An executable and reviewable unit inside exactly one Delivery. A Slice's parent Delivery, immutable Delivery-scoped order, and initial Instruction Source are immutable after acceptance. Slice order records the accepted Plan Output order for semantic same-Delivery sequencing, while public list/read-model arrays still use Core's canonical id-desc list order. Slices participate in the Portfolio graph, and Slice-level dependencies are represented by Links between Slices in the same Delivery.
 _Avoid_: Step, task, subtask
 
 **Slice Work State**:
@@ -305,7 +313,7 @@ An active Agent Run whose completed lifecycle field is null and whose blocked fi
 _Avoid_: Completed Agent Run, failed Agent Run, paused Agent Run, stopped Agent Run
 
 **Agent Run Event**:
-An ordered event in an Agent Run transcript. Agent Run Events record Core-recognized facts such as Agent Run Model Use Override history, Agent Run Runtime Requirement Overrides, Agent Run Sandbox Preparation and release history, turn context boundaries, interrupt requests, proposed outputs, proposal review, and compaction boundaries, plus durable Agent Run Transcript Parts needed to rebuild future agent context. Input, assistant, and tool transcript messages are recorded by distinct `input-message`, `assistant-message`, and `tool-message` Agent Run Event variants rather than a generic message-appended event, so turn production and tool-response links are represented by the event variant. Each Agent Run Event has a Core storage id and a Core-generated Agent Run Event Cursor; stored event bodies reference other Agent Run Events by cursor while public commands use event ids. Live model or tool update deltas may stream to subscribers without becoming durable Agent Run Events.
+An ordered event in an Agent Run transcript. Agent Run Events record Core-recognized facts such as Agent Run Model Use Override history, Agent Run Runtime Requirement Overrides, Agent Run Sandbox Preparation and release history, turn context boundaries, interrupt requests, proposed outputs, proposal review, and compaction boundaries, plus durable Agent Run Transcript Parts needed to rebuild future agent context. Input, assistant, and tool transcript messages are recorded by distinct `input-message`, `assistant-message`, and `tool-message` Agent Run Event variants rather than a generic message-appended event, so turn production and tool-response links are represented by the event variant. Agent Run Event ids use Core Id ordering semantics for transcript order, event references, context boundaries, and list-query windows. Live model or tool update deltas may stream to subscribers without becoming durable Agent Run Events.
 _Avoid_: Session Entry, transcript row, checkpoint
 
 **Agent Run Transcript Part**:
@@ -313,12 +321,8 @@ A Core-owned persisted AI SDK-compatible message part used for Agent Run history
 _Avoid_: Model Message, raw AI SDK message, provider stream event, streaming delta, Core-invented transcript part
 
 **Agent Run Context Compaction**:
-An Agent Run Event that replaces earlier context-visible transcript content with compacted system-projected Agent Run Transcript Parts for future context rebuilds while preserving the original events for audit and history. Agent Run Context Compaction records the inclusive Agent Run Event Cursor compacted through, rather than the first later event to keep, so the compaction states exactly which prior context the replacement parts cover.
-_Avoid_: Context deletion, transcript truncation, first kept cursor, chat reset
-
-**Agent Run Event Cursor**:
-A Core-generated monotonic ULID-format ordering handle for one Agent Run Event. The cursor is unique within the Agent Run transcript, sorts lexicographically in event order, powers event pagination and context boundaries, and is used by Agent Run Event bodies when they reference other transcript events. Agent Run Event Cursor is not a storage identity; public commands still address Agent Run Events by event id.
-_Avoid_: sequence number, event id, AI SDK call id, provider response id
+An Agent Run Event that replaces earlier context-visible transcript content with compacted system-projected Agent Run Transcript Parts for future context rebuilds while preserving the original events for audit and history. Agent Run Context Compaction records the inclusive Agent Run Event id compacted through, rather than the first later event to keep, so the compaction states exactly which prior context the replacement parts cover.
+_Avoid_: Context deletion, transcript truncation, first kept id, chat reset
 
 **Core Dispatch Request**:
 A Core-originated request for a Consumer to arrange runtime execution for already-recorded Core work, such as an Agent Run model turn, Agent Run Sandbox Preparation, Agent Run Sandbox Release, Delivery Work Scheduler Pass, or Delivery Work Operation. A Core Dispatch Request records that execution should be arranged; it is not proof that execution has started or completed. Each request carries Dispatch Coordination Claims that tell Consumers which readied requests may run concurrently. In v1, Agent Run lifecycle request types are `agent-run-model-turn`, `agent-run-sandbox-preparation`, and `agent-run-sandbox-release`, each with an exclusive Agent Run claim. Dispatch request acceptance and dispatch processing are separate: Core may accept a request transactionally while the Consumer starts processing only after the write transaction succeeds.

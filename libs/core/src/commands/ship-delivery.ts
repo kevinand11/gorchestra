@@ -93,9 +93,9 @@ if (import.meta.vitest) {
 		it('returns not-found when the Delivery does not exist', async () => {
 			const command = createShipDeliveryCommand(createTestCoreRuntime())
 
-			const result = await command({ deliveryId: 'missing-delivery' }, context)
+			const result = await command({ deliveryId: '01k00000000000000000010019' }, context)
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'delivery', id: 'missing-delivery' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'delivery', id: '01k00000000000000000010019' } })
 		})
 
 		it('sets Delivery.closed when a Delivery Review Surface was merged', async () => {
@@ -103,18 +103,18 @@ if (import.meta.vitest) {
 			seedReadyToShipDelivery(options.tx, { integration: 'review-surface-merged' })
 			const command = createShipDeliveryCommand(createTestCoreRuntime(options))
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await command({ deliveryId: '01k00000000000000000000008' }, context)
 
 			const expected = {
-				...options.tx.deliveries.records.get('delivery-1')!,
+				...options.tx.deliveries.records.get('01k00000000000000000000008')!,
 				closed: {
 					type: 'shipped' as const,
 					shipped: localStamp(),
-					integration: { type: 'review-surface-merged' as const, reviewSurfaceId: 'delivery-review' },
+					integration: { type: 'review-surface-merged' as const, reviewSurfaceId: '01k00000000000000000000037' },
 				},
 			}
 			expect(result).toEqual({ ok: true, value: expected })
-			expect(options.tx.deliveries.records.get('delivery-1')).toEqual(expected)
+			expect(options.tx.deliveries.records.get('01k00000000000000000000008')).toEqual(expected)
 		})
 
 		it('records observed artifact integration when no Delivery Review Surface is needed', async () => {
@@ -122,14 +122,14 @@ if (import.meta.vitest) {
 			seedReadyToShipDelivery(options.tx, { integration: 'observed-artifact-integration' })
 			const command = createShipDeliveryCommand(createTestCoreRuntime(options))
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await command({ deliveryId: '01k00000000000000000000008' }, context)
 
 			expect(result).toMatchObject({
 				ok: true,
 				value: {
 					closed: {
 						type: 'shipped',
-						integration: { type: 'observed-artifact-integration', actionId: 'observe-integration' },
+						integration: { type: 'observed-artifact-integration', actionId: '01k00000000000000000000012' },
 					},
 				},
 			})
@@ -137,10 +137,10 @@ if (import.meta.vitest) {
 
 		it('rejects shipping unless Delivery Work State is ready-to-ship', async () => {
 			const options = createTestCoreServices()
-			seedDelivery(options.tx, 'delivery-1')
+			seedDelivery(options.tx, '01k00000000000000000000008')
 			const command = createShipDeliveryCommand(createTestCoreRuntime(options))
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await command({ deliveryId: '01k00000000000000000000008' }, context)
 
 			expectDeliveryWorkStateMismatch(result, { type: 'unqueued' })
 		})
@@ -148,14 +148,14 @@ if (import.meta.vitest) {
 		it('rejects duplicate shipping because closed Deliveries are not ready-to-ship', async () => {
 			const options = createTestCoreServices()
 			seedReadyToShipDelivery(options.tx, { integration: 'observed-artifact-integration' })
-			options.tx.deliveries.records.get('delivery-1')!.closed = {
+			options.tx.deliveries.records.get('01k00000000000000000000008')!.closed = {
 				type: 'shipped',
 				shipped: localStamp(),
-				integration: { type: 'observed-artifact-integration', actionId: 'observe-integration' },
+				integration: { type: 'observed-artifact-integration', actionId: '01k00000000000000000000012' },
 			}
 			const command = createShipDeliveryCommand(createTestCoreRuntime(options))
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await command({ deliveryId: '01k00000000000000000000008' }, context)
 
 			expectDeliveryWorkStateMismatch(result, { type: 'closed', outcome: 'shipped' })
 		})
@@ -166,7 +166,7 @@ if (import.meta.vitest) {
 			ok: false,
 			error: {
 				type: 'delivery-work-state-mismatch',
-				deliveryId: 'delivery-1',
+				deliveryId: '01k00000000000000000000008',
 				expected: ['ready-to-ship'],
 				actual,
 			},
@@ -177,35 +177,35 @@ if (import.meta.vitest) {
 		tx: ReturnType<typeof createTestCoreServices>['tx'],
 		options: { integration: 'review-surface-merged' | 'observed-artifact-integration' },
 	) {
-		seedDelivery(tx, 'delivery-1')
-		seedSlice(tx, 'slice-1', 'delivery-1')
-		tx.deliveryArtifacts.records.set('delivery-artifact-1', {
-			id: 'delivery-artifact-1',
-			deliveryId: 'delivery-1',
+		seedDelivery(tx, '01k00000000000000000000008')
+		seedSlice(tx, '01k00000000000000000000042', '01k00000000000000000000008')
+		tx.deliveryArtifacts.records.set('01k00000000000000000000010', {
+			id: '01k00000000000000000000010',
+			deliveryId: '01k00000000000000000000008',
 			config: { type: 'source-control', deliveryBranch: 'delivery/1' },
 			created: stamp,
 		})
-		tx.deliveries.records.get('delivery-1')!.queued = localStamp()
-		seedAction(tx, 'promote-slice', '2026-06-10T00:01:00.000Z', {
+		tx.deliveries.records.get('01k00000000000000000000008')!.queued = localStamp()
+		seedAction(tx, '01k00000000000000000000011', '2026-06-10T00:01:00.000Z', {
 			type: 'promote-slice-artifact',
-			sliceId: 'slice-1',
+			sliceId: '01k00000000000000000000042',
 			evidence: slicePromotion,
 			dispatchStartedActionId: null,
 		})
-		seedAction(tx, 'slice-complete', '2026-06-10T00:02:00.000Z', {
+		seedAction(tx, '01k00000000000000000100043', '2026-06-10T00:02:00.000Z', {
 			type: 'validate-slice-delivery-artifact',
-			sliceId: 'slice-1',
+			sliceId: '01k00000000000000000000042',
 			evidence: sliceValidation,
 			dispatchStartedActionId: null,
 		})
-		seedAction(tx, 'delivery-validation', '2026-06-10T00:03:00.000Z', {
+		seedAction(tx, '01k00000000000000000000013', '2026-06-10T00:03:00.000Z', {
 			type: 'validate-delivery-artifact',
 			evidence: deliveryValidation,
 			dispatchStartedActionId: null,
 		})
 		if (options.integration === 'review-surface-merged') seedMergedDeliveryReviewSurface(tx)
 		if (options.integration === 'observed-artifact-integration') {
-			seedAction(tx, 'observe-integration', '2026-06-10T00:04:00.000Z', {
+			seedAction(tx, '01k00000000000000000000012', '2026-06-10T00:04:00.000Z', {
 				type: 'observe-delivery-artifact-integration',
 				evidence: observedIntegration,
 				dispatchStartedActionId: null,
@@ -214,13 +214,13 @@ if (import.meta.vitest) {
 	}
 
 	function seedMergedDeliveryReviewSurface(tx: ReturnType<typeof createTestCoreServices>['tx']) {
-		tx.reviewSurfaces.records.set('delivery-review', {
-			id: 'delivery-review',
-			scope: { type: 'delivery', deliveryId: 'delivery-1', deliveryArtifactId: 'delivery-artifact-1' },
+		tx.reviewSurfaces.records.set('01k00000000000000000000037', {
+			id: '01k00000000000000000000037',
+			scope: { type: 'delivery', deliveryId: '01k00000000000000000000008', deliveryArtifactId: '01k00000000000000000000010' },
 			config: {
 				provider: 'github',
 				pullRequestNumber: 1,
-				repositoryId: 'repository-1',
+				repositoryId: '01k00000000000000000000034',
 				sourceBranch: 'delivery/1',
 				targetBranch: 'main',
 			},
@@ -228,13 +228,18 @@ if (import.meta.vitest) {
 			closed: {
 				type: 'merged',
 				merged: { at: stamp.at },
-				config: { type: 'source-control', repositoryId: 'repository-1', sourceBranch: 'delivery/1', targetBranch: 'main' },
+				config: {
+					type: 'source-control',
+					repositoryId: '01k00000000000000000000034',
+					sourceBranch: 'delivery/1',
+					targetBranch: 'main',
+				},
 			},
 			created: { at: stamp.at },
 		})
 	}
 
 	function seedAction(tx: ReturnType<typeof createTestCoreServices>['tx'], id: string, at: string, result: Action['result']) {
-		tx.actions.records.set(id, { id, deliveryId: 'delivery-1', performed: { at }, authorized: null, result })
+		tx.actions.records.set(id, { id, deliveryId: '01k00000000000000000000008', performed: { at }, authorized: null, result })
 	}
 }

@@ -44,10 +44,10 @@ if (import.meta.vitest) {
 	describe('unarchiveSecret command', () => {
 		it('unarchives Secrets while preserving Archive Period history', async () => {
 			const options = createTestCoreServices()
-			seedSecret(options.tx, 'secret-1', true)
+			seedSecret(options.tx, '01k00000000000000000000040', true)
 			const command = createUnarchiveSecretCommand(createTestCoreRuntime(options))
 
-			const result = await command({ secretId: 'secret-1' }, context)
+			const result = await command({ secretId: '01k00000000000000000000040' }, context)
 
 			expect(result).toMatchObject({ ok: true, value: { archivePeriods: [{ archived: stamp, unarchived: localStamp() }] } })
 		})

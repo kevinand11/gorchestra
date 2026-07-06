@@ -1,4 +1,4 @@
-import { type Domain, Queries } from '@gorchestra/core'
+import { Domain, Queries } from '@gorchestra/core'
 import { Router } from 'equipped/server'
 import { v } from 'valleyed'
 
@@ -18,10 +18,14 @@ import { idPipe } from '../../schemas'
 export function createProjectsApiRouter(context: ServerApiContext) {
 	return new Router()
 		.get('/projects', {
-			schema: { cookies: portfolioRequestCookieSchema, response: Queries.ListProjects.resultPipe },
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				query: Domain.Commons.paginatedQueryInputPipe,
+				response: Queries.ListProjects.resultPipe,
+			},
 		})(async (req) =>
 			withSelectedPortfolioCore(context, req.cookies, async ({ core }) => {
-				const projects = await core.queries.listProjects({})
+				const projects = await core.queries.listProjects(req.query)
 				return projects.ok ? projects.value : throwCoreOperationError(projects.error)
 			}),
 		)

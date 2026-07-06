@@ -1,12 +1,13 @@
 import { Domain, Queries } from '@gorchestra/core'
 import { Router } from 'equipped/server'
-import { v, type PipeOutput } from 'valleyed'
+import { v } from 'valleyed'
 
 import {
 	agentRunRuntimeRequirementOverrideRequestSchema,
 	portfolioRequestCookieSchema,
 	sendAgentRunMessageRequestSchema,
 	type AgentRunRuntimeRequirementOverrideRequest,
+	type PaginatedQuery,
 	type PortfolioRequestCookies,
 	type SendAgentRunMessageRequest,
 } from './shared'
@@ -15,11 +16,7 @@ import { throwCoreOperationError } from '../../errors'
 import { withSelectedPortfolioCore } from '../../portfolio-context'
 import { idPipe } from '../../schemas'
 
-const agentRunEventsQuerySchema = v.object({
-	afterCursor: v.optional(Domain.AgentRun.agentRunEventCursorPipe),
-	limit: v.optional(v.fromJson(v.number())),
-})
-type AgentRunEventsQuery = PipeOutput<typeof agentRunEventsQuerySchema>
+const agentRunEventsQuerySchema = Domain.Commons.paginatedQueryInputPipe
 
 export function createAgentRunsApiRouter(context: ServerApiContext) {
 	return new Router()
@@ -28,7 +25,7 @@ export function createAgentRunsApiRouter(context: ServerApiContext) {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ agentRunId: idPipe }),
 				query: agentRunEventsQuerySchema,
-				response: Queries.GetAgentRunEvents.resultPipe,
+				response: Queries.ListAgentRunEvents.resultPipe,
 			},
 		})(async (req) => getSelectedPortfolioAgentRunEvents(context, req.cookies, req.params.agentRunId, req.query))
 		.post('/agent-runs/:agentRunId/messages', {
@@ -53,10 +50,10 @@ function getSelectedPortfolioAgentRunEvents(
 	context: ServerApiContext,
 	cookies: PortfolioRequestCookies,
 	agentRunId: string,
-	query: AgentRunEventsQuery,
-): Promise<Queries.GetAgentRunEvents.Result> {
+	query: PaginatedQuery,
+): Promise<Queries.ListAgentRunEvents.Result> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
-		const events = await core.queries.getAgentRunEvents({ agentRunId, afterCursor: query.afterCursor, limit: query.limit })
+		const events = await core.queries.listAgentRunEvents({ agentRunId, ...query })
 		return events.ok ? events.value : throwCoreOperationError(events.error)
 	})
 }

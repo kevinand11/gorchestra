@@ -11,6 +11,7 @@ import {
 	type CreateModelProviderRequest,
 	type CreateModelRequest,
 	type PortfolioRequestCookies,
+	type PaginatedQuery,
 	type UpdateModelProviderRequest,
 	type UpdateModelRequest,
 } from './shared'
@@ -22,8 +23,12 @@ import { idPipe } from '../../schemas'
 export function createModelProvidersApiRouter(context: ServerApiContext) {
 	return new Router()
 		.get('/model-providers', {
-			schema: { cookies: portfolioRequestCookieSchema, response: Queries.ListModelProviders.resultPipe },
-		})(async (req) => listSelectedModelProviders(context, req.cookies))
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				query: Domain.Commons.paginatedQueryInputPipe,
+				response: Queries.ListModelProviders.resultPipe,
+			},
+		})(async (req) => listSelectedModelProviders(context, req.cookies, req.query))
 		.post('/model-providers', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
@@ -116,9 +121,10 @@ export function createModelProvidersApiRouter(context: ServerApiContext) {
 function listSelectedModelProviders(
 	context: ServerApiContext,
 	cookies: PortfolioRequestCookies,
+	query: PaginatedQuery,
 ): Promise<Queries.ListModelProviders.Result> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
-		const providers = await core.queries.listModelProviders({})
+		const providers = await core.queries.listModelProviders(query)
 		return providers.ok ? providers.value : throwCoreOperationError(providers.error)
 	})
 }

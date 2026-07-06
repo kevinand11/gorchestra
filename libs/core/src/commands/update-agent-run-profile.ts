@@ -79,15 +79,15 @@ if (import.meta.vitest) {
 	describe('updateAgentRunProfile command', () => {
 		it('updates Agent Run Profiles after validating selectable Model Use', async () => {
 			const options = createTestCoreServices()
-			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
-			seedSelectableModel(options.tx, 'model-2')
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
+			seedSelectableModel(options.tx, '01k00000000000000000000026')
 			const command = createUpdateAgentRunProfileCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{
-					agentRunProfileId: 'agent-run-profile-1',
+					agentRunProfileId: '01k00000000000000000000006',
 					name: '  Execution  ',
-					modelUse: { modelId: 'model-2', thinkingLevel: 'none' },
+					modelUse: { modelId: '01k00000000000000000000026', thinkingLevel: 'none' },
 					runtimeRequirements: [],
 				},
 				context,
@@ -97,7 +97,7 @@ if (import.meta.vitest) {
 				ok: true,
 				value: {
 					name: 'Execution',
-					modelUse: { modelId: 'model-2', thinkingLevel: 'none' },
+					modelUse: { modelId: '01k00000000000000000000026', thinkingLevel: 'none' },
 					runtimeRequirements: [],
 					updated: localStamp(),
 				},

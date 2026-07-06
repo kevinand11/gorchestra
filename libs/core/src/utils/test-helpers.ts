@@ -199,22 +199,22 @@ export function seedProject(tx: TestStorageTransaction, id: string, work: Delive
 }
 
 export function seedDelivery(tx: TestStorageTransaction, id: string) {
-	if (!tx.projects.records.has('project-1')) seedProject(tx, 'project-1')
-	if (!tx.repositories.records.has('repository-1')) {
-		tx.repositories.records.set('repository-1', {
-			id: 'repository-1',
-			projectId: 'project-1',
-			config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
+	if (!tx.projects.records.has('01k00000000000000000000030')) seedProject(tx, '01k00000000000000000000030')
+	if (!tx.repositories.records.has('01k00000000000000000000034')) {
+		tx.repositories.records.set('01k00000000000000000000034', {
+			id: '01k00000000000000000000034',
+			projectId: '01k00000000000000000000030',
+			config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: '01k00000000000000000000040' },
 			created: stamp,
 		})
 	}
 
 	tx.deliveries.records.set(id, {
 		id,
-		projectId: 'project-1',
-		planId: 'plan-1',
+		projectId: '01k00000000000000000000030',
+		planId: '01k00000000000000000000028',
 		title: 'Delivery',
-		target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
+		target: { type: 'source-control', repositoryId: '01k00000000000000000000034', targetBranch: 'main' },
 		config: null,
 		accepted: stamp,
 		queued: null,
@@ -240,12 +240,12 @@ export function seedAction(
 	result: Action['result'],
 	authorized: AuditStamp | null = localStamp(),
 ) {
-	tx.actions.records.set(id, { id, deliveryId: 'delivery-1', performed: { at }, authorized, result })
+	tx.actions.records.set(id, { id, deliveryId: '01k00000000000000000000008', performed: { at }, authorized, result })
 }
 
 export function testAgentRunProfileSnapshot(
-	agentRunProfileId = 'agent-run-profile-1',
-	modelId = 'model-1',
+	agentRunProfileId = '01k00000000000000000000006',
+	modelId = '01k00000000000000000000024',
 	runtimeRequirements: AgentRunRuntimeRequirement[] = [],
 ): AgentRunProfileSnapshot {
 	return { agentRunProfileId, name: 'Agent Run Profile', modelUse: { modelId, thinkingLevel: 'none' }, runtimeRequirements }
@@ -260,16 +260,16 @@ export function testModelAgentRun(
 	} = {},
 ): AgentRun {
 	return {
-		id: input.id ?? 'agent-run-1',
+		id: input.id ?? '01k00000000000000000000002',
 		agent: { type: 'model' },
-		purpose: input.purpose ?? { type: 'planning', planId: 'plan-1' },
+		purpose: input.purpose ?? { type: 'planning', planId: '01k00000000000000000000028' },
 		profile: input.profile ?? testAgentRunProfileSnapshot(),
 		modelUseOverride: null,
 		sourceRuntimeRequirements: [],
 		runtimeRequirementOverrides: [],
 		desiredRuntimeRequirements: input.profile?.runtimeRequirements ?? [],
 		blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
-		sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+		sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 		started: { at: '2026-06-10T12:00:00.000Z' },
 		completed: input.completed ?? null,
 	}
@@ -296,9 +296,9 @@ export function seedModelProvider(tx: TestStorageTransaction, id: string, archiv
 export function seedSelectableModel(
 	tx: TestStorageTransaction,
 	id: string,
-	options: { modelArchived?: boolean; providerArchived?: boolean } = {},
+	options: { modelArchived?: boolean; providerArchived?: boolean; providerId?: string } = {},
 ) {
-	const providerId = `${id}-provider`
+	const providerId = options.providerId ?? nextTestId(id)
 	seedModelProvider(tx, providerId, options.providerArchived)
 	tx.models.records.set(id, {
 		id,
@@ -314,10 +314,15 @@ export function seedSelectableModel(
 	})
 }
 
+function nextTestId(id: string): string {
+	const sequence = Number(id.slice(-5))
+	return Number.isSafeInteger(sequence) ? testId(50_000 + sequence) : testId(99999)
+}
+
 export function seedAgentRunProfile(
 	tx: TestStorageTransaction,
 	id: string,
-	modelId = 'model-1',
+	modelId = '01k00000000000000000000024',
 	options: { archived?: boolean; runtimeRequirements?: AgentRunRuntimeRequirement[] } = {},
 ): AgentRunProfile {
 	if (!tx.models.records.has(modelId)) seedSelectableModel(tx, modelId)
@@ -334,7 +339,7 @@ export function seedAgentRunProfile(
 	return profile
 }
 
-export function defaultDeliveryWorkConfig(agentRunProfileId = 'agent-run-profile-1'): DeliveryWorkConfig {
+export function defaultDeliveryWorkConfig(agentRunProfileId = testId(6)): DeliveryWorkConfig {
 	return {
 		maxProcessableSliceSlots: 1,
 		maxCorrectionRetriesPerFailure: 1,
@@ -354,21 +359,15 @@ export function seedSecret(tx: TestStorageTransaction, id: string, archived = fa
 	})
 }
 
+export function testId(sequence: number): string {
+	return `01k000000000000000000${sequence.toString().padStart(5, '0')}`
+}
+
 function deterministicRuntimeValues(): CoreRuntimeValues {
-	const idCounters = new Map<string, number>()
-	const cursorCounters = new Map<string, number>()
+	let idCounter = 10000
 	return {
 		now: () => new Date('2026-06-10T12:00:00.000Z'),
-		nextId: (scope = 'id') => {
-			const next = (idCounters.get(scope) ?? 0) + 1
-			idCounters.set(scope, next)
-			return `${scope}-${next}`
-		},
-		nextCursor: (scope = 'cursor') => {
-			const next = (cursorCounters.get(scope) ?? 0) + 1
-			cursorCounters.set(scope, next)
-			return `01J000000000000000000${next.toString().padStart(5, '0')}`
-		},
+		nextId: () => testId(++idCounter),
 	}
 }
 

@@ -119,7 +119,7 @@ export function prepareAuthorizedAction(
 	const stampResult = auditStamp(runtime.values, context)
 	if (!stampResult.ok) return stampResult
 
-	const actionId = nextId(runtime.values, 'action')
+	const actionId = nextId(runtime.values)
 	if (!actionId.ok) return actionId
 
 	return { ok: true, value: { stamp: stampResult.value, actionId: actionId.value } }

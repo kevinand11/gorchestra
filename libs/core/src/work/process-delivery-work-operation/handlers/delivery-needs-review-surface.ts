@@ -121,10 +121,10 @@ function deliveryReviewSurfaceRecords(
 	{ reviewSurface: ReviewSurface; action: Action },
 	DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
 > {
-	const reviewSurfaceId = nextId(context.values, 'review-surface')
+	const reviewSurfaceId = nextId(context.values)
 	if (!reviewSurfaceId.ok) return reviewSurfaceId
 
-	const actionId = nextId(context.values, 'action')
+	const actionId = nextId(context.values)
 	if (!actionId.ok) return actionId
 
 	const performed = runtimeRecord(context.values)
@@ -218,13 +218,13 @@ if (import.meta.vitest) {
 			})
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
-			expect(context.tx.reviewSurfaces.records.get('review-surface-1')).toEqual({
-				id: 'review-surface-1',
-				scope: { type: 'delivery', deliveryId: 'delivery-1', deliveryArtifactId: 'delivery-artifact-1' },
+			expect(context.tx.reviewSurfaces.records.get('01k00000000000000000010001')).toEqual({
+				id: '01k00000000000000000010001',
+				scope: { type: 'delivery', deliveryId: '01k00000000000000000000008', deliveryArtifactId: '01k00000000000000000000010' },
 				config: {
 					provider: 'github',
 					pullRequestNumber: 12,
-					repositoryId: 'repository-1',
+					repositoryId: '01k00000000000000000000034',
 					sourceBranch: 'delivery-branch',
 					targetBranch: 'main',
 				},
@@ -232,12 +232,16 @@ if (import.meta.vitest) {
 				closed: null,
 				created: { at: '2026-06-10T12:00:00.000Z' },
 			})
-			expect(context.tx.actions.records.get('action-1')).toEqual({
-				id: 'action-1',
-				deliveryId: 'delivery-1',
+			expect(context.tx.actions.records.get('01k00000000000000000010002')).toEqual({
+				id: '01k00000000000000000010002',
+				deliveryId: '01k00000000000000000000008',
 				performed: { at: '2026-06-10T12:00:00.000Z' },
 				authorized: null,
-				result: { type: 'create-delivery-review-surface', reviewSurfaceId: 'review-surface-1', dispatchStartedActionId: null },
+				result: {
+					type: 'create-delivery-review-surface',
+					reviewSurfaceId: '01k00000000000000000010001',
+					dispatchStartedActionId: null,
+				},
 			})
 		})
 
@@ -256,7 +260,7 @@ if (import.meta.vitest) {
 			})
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
-			expect(context.tx.actions.records.get('action-1')?.result).toEqual({
+			expect(context.tx.actions.records.get('01k00000000000000000010001')?.result).toEqual({
 				type: 'observe-delivery-artifact-integration',
 				evidence: {
 					type: 'external-operation',
@@ -290,7 +294,7 @@ if (import.meta.vitest) {
 					failures: [{ scope: { type: 'delivery' }, operation: 'review-surface', summary: 'Failed.' }],
 				},
 			})
-			expect(context.tx.actions.records.get('action-1')?.result).toEqual({
+			expect(context.tx.actions.records.get('01k00000000000000000010001')?.result).toEqual({
 				type: 'record-delivery-external-operation-failure',
 				evidence: {
 					type: 'external-operation',
@@ -304,7 +308,7 @@ if (import.meta.vitest) {
 	})
 
 	function needsReviewSurfaceState(): DeliveryReviewSurfaceState {
-		return { type: 'needs-review-surface', deliveryArtifactId: 'delivery-artifact-1' }
+		return { type: 'needs-review-surface', deliveryArtifactId: '01k00000000000000000000010' }
 	}
 
 	async function handlerContext() {

@@ -1,6 +1,6 @@
 import { Domain, Queries } from '@gorchestra/core'
 import { Router } from 'equipped/server'
-import { v, type PipeOutput } from 'valleyed'
+import { v } from 'valleyed'
 
 import {
 	createMemoryRequestSchema,
@@ -8,6 +8,7 @@ import {
 	portfolioRequestCookieSchema,
 	type CreateMemoryRequest,
 	type CreateMemoryRevisionRequest,
+	type PaginatedQuery,
 	type PortfolioRequestCookies,
 } from './shared'
 import type { ServerApiContext } from '../../context'
@@ -15,8 +16,11 @@ import { throwCoreOperationError } from '../../errors'
 import { withSelectedPortfolioCore } from '../../portfolio-context'
 import { idPipe } from '../../schemas'
 
-const listMemoryChildrenQuerySchema = v.object({ parentId: v.defaults(v.fromJson(v.nullable(idPipe)), null) })
-type ListMemoryChildrenQuery = PipeOutput<typeof listMemoryChildrenQuerySchema>
+const listMemoryChildrenQuerySchema = v.merge(
+	v.object({ parentId: v.defaults(v.fromJson(v.nullable(idPipe)), null) }),
+	Domain.Commons.paginatedQueryInputPipe,
+)
+type ListMemoryChildrenQuery = PaginatedQuery & { parentId: string | null }
 
 export function createMemoriesApiRouter(context: ServerApiContext) {
 	return new Router()
@@ -53,7 +57,7 @@ function listSelectedPortfolioMemoryChildren(
 	query: ListMemoryChildrenQuery,
 ): Promise<Queries.ListMemoryChildren.Result> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
-		const memories = await core.queries.listMemoryChildren({ parentId: query.parentId })
+		const memories = await core.queries.listMemoryChildren(query)
 		return memories.ok ? memories.value : throwCoreOperationError(memories.error)
 	})
 }

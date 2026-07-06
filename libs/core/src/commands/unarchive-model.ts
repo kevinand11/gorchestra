@@ -45,10 +45,10 @@ if (import.meta.vitest) {
 	describe('unarchiveModel command', () => {
 		it('unarchives Models while preserving Archive Period history', async () => {
 			const options = createTestCoreServices()
-			seedSelectableModel(options.tx, 'model-1', { modelArchived: true })
+			seedSelectableModel(options.tx, '01k00000000000000000000024', { modelArchived: true })
 			const command = createUnarchiveModelCommand(createTestCoreRuntime(options))
 
-			const result = await command({ modelId: 'model-1' }, context)
+			const result = await command({ modelId: '01k00000000000000000000024' }, context)
 
 			expect(result).toMatchObject({ ok: true, value: { archivePeriods: [{ archived: stamp, unarchived: localStamp() }] } })
 		})

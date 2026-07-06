@@ -1,8 +1,14 @@
-import { type Domain, Queries } from '@gorchestra/core'
+import { Domain, Queries } from '@gorchestra/core'
 import { Router } from 'equipped/server'
 import { v } from 'valleyed'
 
-import { createSecretRequestSchema, portfolioRequestCookieSchema, type CreateSecretRequest, type PortfolioRequestCookies } from './shared'
+import {
+	createSecretRequestSchema,
+	portfolioRequestCookieSchema,
+	type CreateSecretRequest,
+	type PaginatedQuery,
+	type PortfolioRequestCookies,
+} from './shared'
 import { protectSecretPlaintext } from '../../../modules/secret-protection'
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
@@ -12,8 +18,12 @@ import { idPipe } from '../../schemas'
 export function createSecretsApiRouter(context: ServerApiContext) {
 	return new Router()
 		.get('/secrets', {
-			schema: { cookies: portfolioRequestCookieSchema, response: Queries.ListSecrets.resultPipe },
-		})(async (req) => listSelectedPortfolioSecrets(context, req.cookies))
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				query: Domain.Commons.paginatedQueryInputPipe,
+				response: Queries.ListSecrets.resultPipe,
+			},
+		})(async (req) => listSelectedPortfolioSecrets(context, req.cookies, req.query))
 		.post('/secrets', {
 			schema: { cookies: portfolioRequestCookieSchema, body: createSecretRequestSchema, response: Queries.GetSecret.resultPipe },
 		})(async (req) => createSelectedPortfolioSecret(context, req.cookies, req.body))
@@ -26,9 +36,13 @@ export function createSecretsApiRouter(context: ServerApiContext) {
 		})(async (req) => getSelectedPortfolioSecret(context, req.cookies, req.params.secretId))
 }
 
-function listSelectedPortfolioSecrets(context: ServerApiContext, cookies: PortfolioRequestCookies): Promise<Queries.ListSecrets.Result> {
+function listSelectedPortfolioSecrets(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	query: PaginatedQuery,
+): Promise<Queries.ListSecrets.Result> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
-		const secrets = await core.queries.listSecrets({})
+		const secrets = await core.queries.listSecrets(query)
 		return secrets.ok ? secrets.value : throwCoreOperationError(secrets.error)
 	})
 }

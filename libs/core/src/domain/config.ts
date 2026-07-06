@@ -40,11 +40,11 @@ if (import.meta.vitest) {
 					work: {
 						maxProcessableSliceSlots: 2,
 						maxCorrectionRetriesPerFailure: 1,
-						executionAgentRunProfileId: 'agent-run-profile-1',
+						executionAgentRunProfileId: '01k00000000000000000000006',
 						revisionExecutionAgentRunProfileId: null,
 					},
 				}),
-			).toMatchObject({ work: { executionAgentRunProfileId: 'agent-run-profile-1' } })
+			).toMatchObject({ work: { executionAgentRunProfileId: '01k00000000000000000000006' } })
 		})
 
 		it('normalizes a cleared Delivery Config override to null', () => {

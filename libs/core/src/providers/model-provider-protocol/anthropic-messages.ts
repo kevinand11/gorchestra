@@ -79,8 +79,8 @@ if (import.meta.vitest) {
 			mode: 'agent-run',
 			protocol: 'anthropic-messages',
 			model: {
-				id: 'model-1',
-				providerId: 'model-provider-1',
+				id: '01k00000000000000000000024',
+				providerId: '01k00000000000000000000027',
 				name: 'Claude Sonnet',
 				providerModelId: 'claude-sonnet-4-5',
 				providerOptions: null,
@@ -91,7 +91,7 @@ if (import.meta.vitest) {
 				archivePeriods: [],
 			},
 			modelProvider: {
-				id: 'model-provider-1',
+				id: '01k00000000000000000000027',
 				name: 'Anthropic',
 				source: { type: 'anthropic' },
 				auth: null,

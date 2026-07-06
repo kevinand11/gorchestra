@@ -4,11 +4,12 @@ import { MemoryCreationFormDraft, MemoryRevisionFormDraft } from '../../forms/me
 import { useSelectedPortfolio } from '../auth/session'
 import { useApiAction, useFetchAction } from '../core/action-state'
 import { useOverlay } from '../core/overlay'
+import { usePaginatedFetchAction } from '../core/paginated-fetch-action'
 import { useQueryCache } from '../core/query-cache'
 import { useServerApi, type ServerApi } from '../core/server-api'
 
 type MemoryParentIdRef = Readonly<Ref<string | null>>
-export type ListedMemory = Awaited<ReturnType<ServerApi['listMemoryChildren']>>[number]
+export type ListedMemory = Awaited<ReturnType<ServerApi['listMemoryChildren']>>['items'][number]
 export type MemoryDetails = Awaited<ReturnType<ServerApi['getMemory']>>
 type CreatedMemory = Awaited<ReturnType<ServerApi['createMemory']>>
 
@@ -27,19 +28,18 @@ export function useMemoryChildren(parentId: MemoryParentIdRef) {
 	const { portfolio } = useSelectedPortfolio()
 	const { queryKeys } = useQueryCache()
 	const {
-		data: memories,
+		items: memories,
 		isLoading: isLoadingMemories,
 		error: memoriesError,
 		hasExecuted: hasLoadedMemories,
-		execute: refreshMemories,
-		reset: resetMemories,
-	} = useFetchAction(() => serverApi.listMemoryChildren(parentId.value), {
+		fetchNext: fetchNextMemories,
+		hasNext: hasNextMemories,
+	} = usePaginatedFetchAction((input) => serverApi.listMemoryChildren(parentId.value, input), {
 		queryKey: queryKeys.portfolio.memories(portfolio.value.id, memoryParentScope(parentId.value)),
-		initialData: [] as ListedMemory[],
 	})
 	const isRefreshingMemories = computed(() => isLoadingMemories.value && hasLoadedMemories.value)
 
-	return { memories, isLoadingMemories, memoriesError, hasLoadedMemories, isRefreshingMemories, refreshMemories, resetMemories }
+	return { memories, isLoadingMemories, memoriesError, hasLoadedMemories, isRefreshingMemories, fetchNextMemories, hasNextMemories }
 }
 
 export function useMemoryDetail(memoryId: Ref<string>) {

@@ -11,10 +11,10 @@ import { availableThinkingLevelsForModel, configurableThinkingLevelsForProtocol 
 export function listedModelProviders(modelProviders: ModelProvider[], models: Model[]): ListedModelProvider[] {
 	const modelsByProviderId = groupModelsByProviderId(models)
 
-	return sortByCreatedAtThenId(modelProviders).map((provider) => {
+	return modelProviders.map((provider) => {
 		const { archivePeriods, ...providerFields } = provider
 		const protocol = modelProviderProtocolForSource(provider.source)
-		const providerModels = sortByCreatedAtThenId(modelsByProviderId.get(provider.id) ?? []).map((model) => listedModel(model, provider))
+		const providerModels = (modelsByProviderId.get(provider.id) ?? []).map((model) => listedModel(model, provider))
 		return {
 			...providerFields,
 			protocol,
@@ -57,40 +57,44 @@ function groupModelsByProviderId(models: Model[]): Map<string, Model[]> {
 	return grouped
 }
 
-function sortByCreatedAtThenId<T extends { id: string; created: { at: string } }>(records: T[]): T[] {
-	return [...records].sort((left, right) => left.created.at.localeCompare(right.created.at) || left.id.localeCompare(right.id))
-}
-
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { stamp } = await import('../utils/test-helpers')
 
 	describe('listedModelProviders', () => {
-		it('groups Models under Providers in creation order with archive state and thinking levels', () => {
-			const providerA = modelProvider({ id: 'provider-a', createdAt: '2026-06-09T00:00:00.000Z', archived: true })
-			const providerB = modelProvider({ id: 'provider-b', createdAt: '2026-06-10T00:00:00.000Z' })
-			const modelA = model({ id: 'model-a', providerId: 'provider-a', createdAt: '2026-06-09T00:00:00.000Z' })
+		it('groups Models under Providers while preserving caller order with archive state and thinking levels', () => {
+			const providerA = modelProvider({ id: '01k00000000000000000100052', createdAt: '2026-06-09T00:00:00.000Z', archived: true })
+			const providerB = modelProvider({ id: '01k00000000000000000100053', createdAt: '2026-06-10T00:00:00.000Z' })
+			const modelA = model({
+				id: '01k00000000000000000100045',
+				providerId: '01k00000000000000000100052',
+				createdAt: '2026-06-09T00:00:00.000Z',
+			})
 			const modelB = model({
-				id: 'model-b',
-				providerId: 'provider-a',
+				id: '01k00000000000000000100046',
+				providerId: '01k00000000000000000100052',
 				createdAt: '2026-06-10T00:00:00.000Z',
 				archived: true,
 				thinking: { supportedLevels: ['low', 'high'] },
 			})
-			const modelC = model({ id: 'model-c', providerId: 'missing-provider', createdAt: '2026-06-11T00:00:00.000Z' })
+			const modelC = model({
+				id: '01k00000000000000000100047',
+				providerId: '01k00000000000000000100055',
+				createdAt: '2026-06-11T00:00:00.000Z',
+			})
 
 			expect(listedModelProviders([providerB, providerA], [modelB, modelC, modelA])).toEqual([
-				{
-					...listedProvider(providerA, true),
-					protocol: 'openai-responses',
-					configurableThinkingLevels: ['minimal', 'low', 'medium', 'high', 'xhigh'],
-					models: [listedModelRecord(modelA, false), listedModelRecord(modelB, true, ['none', 'low', 'high'])],
-				},
 				{
 					...listedProvider(providerB, false),
 					protocol: 'openai-responses',
 					configurableThinkingLevels: ['minimal', 'low', 'medium', 'high', 'xhigh'],
 					models: [],
+				},
+				{
+					...listedProvider(providerA, true),
+					protocol: 'openai-responses',
+					configurableThinkingLevels: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+					models: [listedModelRecord(modelB, true, ['none', 'low', 'high']), listedModelRecord(modelA, false)],
 				},
 			])
 		})

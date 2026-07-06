@@ -1,7 +1,7 @@
 import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
 import { isArchived } from '../commands/utils/storage'
-import type { AgentRun, AgentRunEventCursor } from '../domain/agent-run'
+import type { AgentRun } from '../domain/agent-run'
 import type { AgentRunRuntimeRequirement } from '../domain/agent-run-runtime'
 import { idPipe, type Id } from '../domain/commons'
 import type {
@@ -55,7 +55,7 @@ export async function prepareAgentRunSandbox(
 
 	const started = await appendAgentRunEvent(runtime, runtime.services.storage, agentRunId, {
 		type: 'agent-run-sandbox-preparation-started',
-		requestedThroughCursor: latestRuntimeOverrideCursor(assigned.value),
+		requestedThroughEventId: latestRuntimeOverrideEventId(assigned.value),
 	})
 	if (!started.ok) return started
 
@@ -97,7 +97,7 @@ function isPrepared(agentRun: AgentRun): boolean {
 		agentRun.blocked === null &&
 		agentRun.sandbox.assignment !== null &&
 		agentRun.sandbox.appliedRequirements.length === agentRun.desiredRuntimeRequirements.length &&
-		agentRun.sandbox.appliedThroughCursor === latestRuntimeOverrideCursor(agentRun)
+		agentRun.sandbox.appliedThroughEventId === latestRuntimeOverrideEventId(agentRun)
 	)
 }
 
@@ -264,14 +264,14 @@ async function completePreparation(
 	runtime: CoreRuntime,
 	agentRun: AgentRun,
 ): Promise<CoreResult<AgentRun, Exclude<Error, InvalidInputError>>> {
-	const appliedThroughCursor = latestRuntimeOverrideCursor(agentRun)
-	const sandbox = { ...agentRun.sandbox, appliedThroughCursor, released: null }
+	const appliedThroughEventId = latestRuntimeOverrideEventId(agentRun)
+	const sandbox = { ...agentRun.sandbox, appliedThroughEventId, released: null }
 	const updated = await updateRecord('agent-run', runtime.services.storage, agentRun.id, { blocked: null, sandbox })
 	if (!updated.ok) return updated
 
 	const event = await appendAgentRunEvent(runtime, runtime.services.storage, agentRun.id, {
 		type: 'agent-run-sandbox-preparation-completed',
-		appliedThroughCursor,
+		appliedThroughEventId,
 		summary: 'Agent Run sandbox preparation completed.',
 	})
 	return event.ok ? { ok: true, value: { ...agentRun, blocked: null, sandbox } } : event
@@ -302,8 +302,8 @@ async function blockPreparationFailure(
 	return event.ok ? { ok: true, value: { ...agentRun, blocked } } : event
 }
 
-function latestRuntimeOverrideCursor(agentRun: AgentRun): AgentRunEventCursor | null {
-	return agentRun.runtimeRequirementOverrides.at(-1)?.eventCursor ?? null
+function latestRuntimeOverrideEventId(agentRun: AgentRun): Id | null {
+	return agentRun.runtimeRequirementOverrides.at(-1)?.eventId ?? null
 }
 
 if (import.meta.vitest) {
@@ -334,7 +334,7 @@ if (import.meta.vitest) {
 				secrets: {
 					preflight: () => Promise.resolve({ ok: true }),
 					resolveSecrets: () => Promise.resolve([]),
-					resolveSecretValues: () => Promise.resolve({ 'secret-1': 'plaintext-token' }),
+					resolveSecretValues: () => Promise.resolve({ '01k00000000000000000000040': 'plaintext-token' }),
 				},
 				sandbox: {
 					preflight: () => Promise.resolve({ ok: true }),
@@ -346,25 +346,25 @@ if (import.meta.vitest) {
 					release: () => Promise.resolve({ summary: 'released' }),
 				},
 			})
-			seedSecret(options.tx, 'secret-1')
+			seedSecret(options.tx, '01k00000000000000000000040')
 			options.tx.agentRuns.records.set(
-				'agent-run-1',
+				'01k00000000000000000000002',
 				testModelAgentRun({
 					profile: {
-						agentRunProfileId: 'agent-run-profile-1',
+						agentRunProfileId: '01k00000000000000000000006',
 						name: 'Agent Run Profile',
-						modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
-						runtimeRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: 'secret-1' }],
+						modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
+						runtimeRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
 					},
 				}),
 			)
-			options.tx.agentRuns.records.get('agent-run-1')!.desiredRuntimeRequirements = [
-				{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: 'secret-1' },
+			options.tx.agentRuns.records.get('01k00000000000000000000002')!.desiredRuntimeRequirements = [
+				{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' },
 			]
 
 			const operation = createPrepareAgentRunSandboxOperation(createTestCoreRuntime(options))
 
-			const result = await operation({ agentRunId: 'agent-run-1' }, { correlationId: null })
+			const result = await operation({ agentRunId: '01k00000000000000000000002' }, { correlationId: null })
 
 			expect(result).toEqual({ ok: true, value: undefined })
 			expect(commands).toEqual([
@@ -373,12 +373,12 @@ if (import.meta.vitest) {
 					commandSecretEnv: { GORCHESTRA_SECRET_VALUE: 'plaintext-token' },
 				},
 			])
-			expect(options.tx.agentRuns.records.get('agent-run-1')).toMatchObject({
+			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')).toMatchObject({
 				blocked: null,
 				sandbox: {
 					assignment: { ref: 'sandbox-ref' },
-					appliedRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: 'secret-1' }],
-					appliedThroughCursor: null,
+					appliedRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
+					appliedThroughEventId: null,
 					released: null,
 				},
 			})

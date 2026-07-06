@@ -166,10 +166,10 @@ function sliceReviewSurfaceIdentifiers(
 	{ reviewSurfaceId: string; actionId: string },
 	DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
 > {
-	const reviewSurfaceId = nextId(context.values, 'review-surface')
+	const reviewSurfaceId = nextId(context.values)
 	if (!reviewSurfaceId.ok) return reviewSurfaceId
 
-	const actionId = nextId(context.values, 'action')
+	const actionId = nextId(context.values)
 	return actionId.ok ? { ok: true, value: { reviewSurfaceId: reviewSurfaceId.value, actionId: actionId.value } } : actionId
 }
 
@@ -272,13 +272,13 @@ if (import.meta.vitest) {
 			})
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
-			expect(context.tx.reviewSurfaces.records.get('review-surface-1')).toEqual({
-				id: 'review-surface-1',
-				scope: { type: 'slice', sliceId: 'slice-1', sliceArtifactId: 'slice-artifact-1' },
+			expect(context.tx.reviewSurfaces.records.get('01k00000000000000000010001')).toEqual({
+				id: '01k00000000000000000010001',
+				scope: { type: 'slice', sliceId: '01k00000000000000000000042', sliceArtifactId: '01k00000000000000000000045' },
 				config: {
 					provider: 'github',
 					pullRequestNumber: 12,
-					repositoryId: 'repository-1',
+					repositoryId: '01k00000000000000000000034',
 					sourceBranch: 'slice-branch',
 					targetBranch: 'delivery-branch',
 				},
@@ -286,10 +286,10 @@ if (import.meta.vitest) {
 				closed: null,
 				created: { at: '2026-06-10T12:00:00.000Z' },
 			})
-			expect(context.tx.actions.records.get('action-1')?.result).toEqual({
+			expect(context.tx.actions.records.get('01k00000000000000000010002')?.result).toEqual({
 				type: 'create-slice-review-surface',
-				sliceId: 'slice-1',
-				reviewSurfaceId: 'review-surface-1',
+				sliceId: '01k00000000000000000000042',
+				reviewSurfaceId: '01k00000000000000000010001',
 				dispatchStartedActionId: null,
 			})
 		})
@@ -305,9 +305,9 @@ if (import.meta.vitest) {
 			})
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
-			expect(context.tx.actions.records.get('action-1')?.result).toEqual({
+			expect(context.tx.actions.records.get('01k00000000000000000010001')?.result).toEqual({
 				type: 'promote-slice-artifact',
-				sliceId: 'slice-1',
+				sliceId: '01k00000000000000000000042',
 				evidence: {
 					type: 'external-operation',
 					operation: { type: 'merge-review-surface' },
@@ -333,12 +333,18 @@ if (import.meta.vitest) {
 				ok: true,
 				value: {
 					processedCount: 1,
-					failures: [{ scope: { type: 'slice', sliceId: 'slice-1' }, operation: 'review-surface', summary: 'Failed.' }],
+					failures: [
+						{
+							scope: { type: 'slice', sliceId: '01k00000000000000000000042' },
+							operation: 'review-surface',
+							summary: 'Failed.',
+						},
+					],
 				},
 			})
-			expect(context.tx.actions.records.get('action-1')?.result).toEqual({
+			expect(context.tx.actions.records.get('01k00000000000000000010001')?.result).toEqual({
 				type: 'record-slice-external-operation-failure',
-				sliceId: 'slice-1',
+				sliceId: '01k00000000000000000000042',
 				evidence: {
 					type: 'external-operation',
 					operation: { type: 'create-review-surface' },
@@ -351,10 +357,10 @@ if (import.meta.vitest) {
 	})
 
 	async function handlerFixture() {
-		const context = await createDeliveryWorkHandlerTestContext({ sliceId: 'slice-1' })
+		const context = await createDeliveryWorkHandlerTestContext({ sliceId: '01k00000000000000000000042' })
 		const sliceArtifact = {
-			id: 'slice-artifact-1',
-			sliceId: 'slice-1',
+			id: '01k00000000000000000000045',
+			sliceId: '01k00000000000000000000042',
 			config: { type: 'source-control' as const, sliceBranch: 'slice-branch' },
 			created: stamp,
 		}
@@ -363,8 +369,8 @@ if (import.meta.vitest) {
 
 		return {
 			context,
-			slice: context.tx.slices.records.get('slice-1')!,
-			state: { type: 'needs-review-surface' as const, sliceArtifactId: 'slice-artifact-1' },
+			slice: context.tx.slices.records.get('01k00000000000000000000042')!,
+			state: { type: 'needs-review-surface' as const, sliceArtifactId: '01k00000000000000000000045' },
 		}
 	}
 }

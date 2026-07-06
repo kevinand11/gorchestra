@@ -1,9 +1,10 @@
-import type { AgentRunEvent, AgentRunEventCursor } from '../../domain/agent-run'
+import type { AgentRunEvent } from '../../domain/agent-run'
+import type { Id } from '../../domain/commons'
 
 export type AgentRunLiveEvent =
 	| { type: 'persisted'; event: AgentRunEvent }
-	| { type: 'assistant-message-draft-updated'; turnStartedCursor: AgentRunEventCursor; draftId: string; delta: AgentRunModelDelta }
-	| { type: 'tool-call-updated'; turnStartedCursor: AgentRunEventCursor; toolCallId: string; update: AgentRunToolUpdate }
+	| { type: 'assistant-message-draft-updated'; turnStartedEventId: Id; draftId: string; delta: AgentRunModelDelta }
+	| { type: 'tool-call-updated'; turnStartedEventId: Id; toolCallId: string; update: AgentRunToolUpdate }
 
 export type AgentRunModelDelta =
 	| { type: 'model-output-started' }

@@ -134,53 +134,57 @@ if (import.meta.vitest) {
 			const options = closeRevisionGateFixture()
 			const command = createCloseRevisionGateCommand(createTestCoreRuntime(options))
 
-			const result = await command({ revisionGateId: 'revision-gate-1' }, context)
+			const result = await command({ revisionGateId: '01k00000000000000000000039' }, context)
 
 			const expectedGate = { ...revisionGate(), closed: { type: 'closed-without-revision' as const, closed: localStamp() } }
 			const expectedAgentRun = { ...revisionPlanningAgentRun(), completed: { at: localStamp().at } }
 			expect(result).toEqual({ ok: true, value: { revisionGate: expectedGate, agentRun: expectedAgentRun } })
-			expect(options.tx.revisionGates.records.get('revision-gate-1')).toEqual(expectedGate)
-			expect(options.tx.agentRuns.records.get('agent-run-1')).toEqual(expectedAgentRun)
+			expect(options.tx.revisionGates.records.get('01k00000000000000000000039')).toEqual(expectedGate)
+			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')).toEqual(expectedAgentRun)
 		})
 
 		it('closes the Revision Gate without overwriting an already completed Agent Run', async () => {
 			const options = closeRevisionGateFixture()
 			const previousCompletion = { at: '2026-06-10T11:30:00.000Z' }
-			options.tx.agentRuns.records.get('agent-run-1')!.completed = previousCompletion
+			options.tx.agentRuns.records.get('01k00000000000000000000002')!.completed = previousCompletion
 			const command = createCloseRevisionGateCommand(createTestCoreRuntime(options))
 
-			const result = await command({ revisionGateId: 'revision-gate-1' }, context)
+			const result = await command({ revisionGateId: '01k00000000000000000000039' }, context)
 
 			expect(result).toMatchObject({ ok: true, value: { agentRun: { completed: previousCompletion } } })
-			expect(options.tx.agentRuns.records.get('agent-run-1')?.completed).toEqual(previousCompletion)
+			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.completed).toEqual(previousCompletion)
 		})
 
 		it('rejects non-open Revision Gates', async () => {
 			const options = closeRevisionGateFixture()
-			options.tx.revisionGates.records.get('revision-gate-1')!.closed = {
+			options.tx.revisionGates.records.get('01k00000000000000000000039')!.closed = {
 				type: 'closed-without-revision',
 				closed: localStamp(),
 			}
 			const command = createCloseRevisionGateCommand(createTestCoreRuntime(options))
 
-			const result = await command({ revisionGateId: 'revision-gate-1' }, context)
+			const result = await command({ revisionGateId: '01k00000000000000000000039' }, context)
 
-			expect(result).toEqual({ ok: false, error: { type: 'revision-gate-closed', revisionGateId: 'revision-gate-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'revision-gate-closed', revisionGateId: '01k00000000000000000000039' } })
 		})
 	})
 
 	function closeRevisionGateFixture() {
 		const options = createTestCoreServices()
-		options.tx.revisionGates.records.set('revision-gate-1', revisionGate())
-		options.tx.agentRuns.records.set('agent-run-1', revisionPlanningAgentRun())
+		options.tx.revisionGates.records.set('01k00000000000000000000039', revisionGate())
+		options.tx.agentRuns.records.set('01k00000000000000000000002', revisionPlanningAgentRun())
 		return options
 	}
 
 	function revisionGate(): RevisionGate {
 		return {
-			id: 'revision-gate-1',
-			scope: { type: 'delivery-artifact', deliveryId: 'delivery-1', deliveryArtifactId: 'delivery-artifact-1' },
-			reviewSurfaceId: 'review-surface-1',
+			id: '01k00000000000000000000039',
+			scope: {
+				type: 'delivery-artifact',
+				deliveryId: '01k00000000000000000000008',
+				deliveryArtifactId: '01k00000000000000000000010',
+			},
+			reviewSurfaceId: '01k00000000000000000000037',
 			opened: stamp,
 			closed: null,
 		}
@@ -188,13 +192,13 @@ if (import.meta.vitest) {
 
 	function revisionPlanningAgentRun(): AgentRun {
 		return {
-			id: 'agent-run-1',
+			id: '01k00000000000000000000002',
 			agent: { type: 'model' },
-			purpose: { type: 'revision-planning', revisionGateId: 'revision-gate-1' },
+			purpose: { type: 'revision-planning', revisionGateId: '01k00000000000000000000039' },
 			profile: {
-				agentRunProfileId: 'agent-run-profile-1',
+				agentRunProfileId: '01k00000000000000000000006',
 				name: 'Agent Run Profile',
-				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				runtimeRequirements: [],
 			},
 			modelUseOverride: null,
@@ -202,7 +206,7 @@ if (import.meta.vitest) {
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: null,
-			sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+			sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
 		}

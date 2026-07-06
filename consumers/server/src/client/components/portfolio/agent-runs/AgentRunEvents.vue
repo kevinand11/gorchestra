@@ -4,8 +4,13 @@
 			<div class="border-b border-dimmer px-3 py-3">
 				<div class="flex flex-wrap items-center justify-between gap-2">
 					<strong class="block font-semibold">Agent Run events</strong>
-					<UiButton type="button" variant="secondary" :loading="isLoadingAgentRunEvents" @click="refreshAgentRunEvents()">
-						Refresh events
+					<UiButton
+						type="button"
+						variant="secondary"
+						:loading="isLoadingAgentRunEvents"
+						:disabled="!hasNextAgentRunEvents"
+						@click="fetchNextAgentRunEvents()">
+						Load older events
 					</UiButton>
 				</div>
 			</div>
@@ -30,7 +35,7 @@
 					v-for="event in agentRunEvents"
 					:key="event.id"
 					class="wrap-break-word border-b border-dimmer px-3 py-2 last:border-b-0">
-					<span class="font-mono text-sz-micro text-dim">#{{ event.cursor }} · {{ eventTitle(event) }} · {{ event.id }}</span>
+					<span class="font-mono text-sz-micro text-dim">#{{ event.id }} · {{ eventTitle(event) }} · {{ event.id }}</span>
 					<pre class="m-0 mt-1 max-h-36 overflow-auto whitespace-pre-wrap font-mono text-sz-micro text-card-contrast">{{
 						eventSummary(event)
 					}}</pre>
@@ -84,14 +89,15 @@ const emit = defineEmits<{ 'message-sending-change': [isSending: boolean] }>()
 
 const agentRunId = computed<string | null>(() => props.agentRun.id)
 const isAgentRunClosed = computed(() => props.agentRun.completed !== null)
-const { agentRunEvents, isLoadingAgentRunEvents, agentRunEventsError, hasLoadedAgentRunEvents, refreshAgentRunEvents } = useAgentRunEvents(
-	agentRunId,
-	{ immediate: true },
-)
-const { agentRunMessageForm, isSendingAgentRunMessage, sendAgentRunMessageError, sendAgentRunMessage } = useAgentRunMessageSend(
-	agentRunId,
-	{ agentRunEvents, hasLoadedAgentRunEvents },
-)
+const {
+	agentRunEvents,
+	isLoadingAgentRunEvents,
+	agentRunEventsError,
+	hasLoadedAgentRunEvents,
+	fetchNextAgentRunEvents,
+	hasNextAgentRunEvents,
+} = useAgentRunEvents(agentRunId)
+const { agentRunMessageForm, isSendingAgentRunMessage, sendAgentRunMessageError, sendAgentRunMessage } = useAgentRunMessageSend(agentRunId)
 const isComposerDisabled = computed(() => props.disabled || isSendingAgentRunMessage.value || isAgentRunClosed.value)
 const canSendAgentRunMessage = computed(() => agentRunMessageForm.valid && !isComposerDisabled.value)
 
@@ -159,15 +165,15 @@ function eventSummary(event: AgentRunEvent): string {
 		case 'tool-message':
 			return toolMessageSummary(event.body)
 		case 'turn-started':
-			return `Context through ${event.body.contextThroughCursor}\nReason: ${event.body.reason.type}\nInput events: ${event.body.reason.inputEventCursors.join(', ')}`
+			return `Context through ${event.body.contextThroughEventId}\nReason: ${event.body.reason.type}\nInput events: ${event.body.reason.inputEventIds.join(', ')}`
 		case 'turn-ended':
 			return event.body.outcome.type === 'completed' ? 'Completed' : `Error: ${event.body.outcome.reason.type}`
 		case 'proposal-accepted':
-			return `Proposal ${event.body.proposalCursor} accepted.\n${textPartsSummary(event.body.projectedParts)}`
+			return `Proposal ${event.body.proposalEventId} accepted.\n${textPartsSummary(event.body.projectedParts)}`
 		case 'proposal-rejected':
-			return `Proposal ${event.body.proposalCursor} rejected.${event.body.reason === null ? '' : ` ${event.body.reason}`}\n${textPartsSummary(event.body.projectedParts)}`
+			return `Proposal ${event.body.proposalEventId} rejected.${event.body.reason === null ? '' : ` ${event.body.reason}`}\n${textPartsSummary(event.body.projectedParts)}`
 		case 'context-compacted':
-			return `Compacted through ${event.body.compactedThroughCursor}\n${textPartsSummary(event.body.replacementParts)}`
+			return `Compacted through ${event.body.compactedThroughEventId}\n${textPartsSummary(event.body.replacementParts)}`
 		case 'agent-run-model-use-override-changed':
 		case 'agent-run-runtime-requirement-override-added':
 		case 'agent-run-sandbox-assigned':

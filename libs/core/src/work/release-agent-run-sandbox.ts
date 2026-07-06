@@ -102,22 +102,30 @@ if (import.meta.vitest) {
 					},
 				},
 			})
-			options.tx.agentRuns.records.set('agent-run-1', {
+			options.tx.agentRuns.records.set('01k00000000000000000000002', {
 				...testModelAgentRun(),
 				sandbox: {
 					assignment: { ref: 'sandbox-ref', assigned: { at: '2026-06-10T12:00:00.000Z' } },
 					appliedRequirements: [],
-					appliedThroughCursor: null,
+					appliedThroughEventId: null,
 					released: null,
 				},
 			})
 			const operation = createReleaseAgentRunSandboxOperation(createTestCoreRuntime(options))
 
-			await expect(operation({ agentRunId: 'agent-run-1' }, { correlationId: null })).resolves.toEqual({ ok: true, value: undefined })
-			await expect(operation({ agentRunId: 'agent-run-1' }, { correlationId: null })).resolves.toEqual({ ok: true, value: undefined })
+			await expect(operation({ agentRunId: '01k00000000000000000000002' }, { correlationId: null })).resolves.toEqual({
+				ok: true,
+				value: undefined,
+			})
+			await expect(operation({ agentRunId: '01k00000000000000000000002' }, { correlationId: null })).resolves.toEqual({
+				ok: true,
+				value: undefined,
+			})
 
 			expect(releasedRefs).toEqual(['sandbox-ref'])
-			expect(options.tx.agentRuns.records.get('agent-run-1')?.sandbox.released).toEqual({ at: '2026-06-10T12:00:00.000Z' })
+			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.sandbox.released).toEqual({
+				at: '2026-06-10T12:00:00.000Z',
+			})
 		})
 	})
 }

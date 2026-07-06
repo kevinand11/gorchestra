@@ -38,7 +38,7 @@ export function actionRecord(
 	context: DeliveryHandlerContext,
 	result: Action['result'],
 ): CoreResult<Action, DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	const id = nextId(context.values, 'action')
+	const id = nextId(context.values)
 	if (!id.ok) return id
 
 	const performed = runtimeRecord(context.values)

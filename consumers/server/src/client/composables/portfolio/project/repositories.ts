@@ -4,10 +4,11 @@ import { RepositoryCreationFormDraft } from '../../../forms/repository'
 import { useSelectedPortfolio } from '../../auth/session'
 import { useApiAction, useFetchAction } from '../../core/action-state'
 import { useOverlay } from '../../core/overlay'
+import { usePaginatedFetchAction } from '../../core/paginated-fetch-action'
 import { useQueryCache } from '../../core/query-cache'
 import { useServerApi, type ServerApi } from '../../core/server-api'
 
-export type ListedRepository = Awaited<ReturnType<ServerApi['listRepositories']>>[number]
+export type ListedRepository = Awaited<ReturnType<ServerApi['listRepositories']>>['items'][number]
 type RepositoryDetails = Awaited<ReturnType<ServerApi['getRepository']>>
 type CreatedRepository = Awaited<ReturnType<ServerApi['createRepository']>>
 type RepositoryPreflightEvidence = Awaited<ReturnType<ServerApi['preflightRepository']>>
@@ -21,15 +22,14 @@ export function useRepositoriesList(projectId: Ref<string>) {
 	const { portfolio } = useSelectedPortfolio()
 	const { queryKeys } = useQueryCache()
 	const {
-		data: repositories,
+		items: repositories,
 		isLoading: isLoadingRepositories,
 		error: repositoriesError,
 		hasExecuted: hasLoadedRepositories,
-		execute: refreshRepositories,
-		reset: resetRepositories,
-	} = useFetchAction(() => serverApi.listRepositories(projectId.value), {
+		fetchNext: fetchNextRepositories,
+		hasNext: hasNextRepositories,
+	} = usePaginatedFetchAction((input) => serverApi.listRepositories(projectId.value, input), {
 		queryKey: queryKeys.portfolio.repositories(portfolio.value.id, projectId.value),
-		initialData: [] as ListedRepository[],
 	})
 	const isRefreshingRepositories = computed(() => isLoadingRepositories.value && hasLoadedRepositories.value)
 
@@ -39,8 +39,8 @@ export function useRepositoriesList(projectId: Ref<string>) {
 		repositoriesError,
 		hasLoadedRepositories,
 		isRefreshingRepositories,
-		refreshRepositories,
-		resetRepositories,
+		fetchNextRepositories,
+		hasNextRepositories,
 	}
 }
 

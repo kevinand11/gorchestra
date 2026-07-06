@@ -57,8 +57,8 @@ if (import.meta.vitest) {
 					linkPipe,
 					link({
 						type: 'produced',
-						from: { type: 'plan', projectId: 'project-1', id: 'plan-1' },
-						to: { type: 'memory', id: 'memory-1' },
+						from: { type: 'plan', projectId: '01k00000000000000000000030', id: '01k00000000000000000000028' },
+						to: { type: 'memory', id: '01k00000000000000000000019' },
 					}),
 				).valid,
 			).toBe(true)
@@ -67,8 +67,8 @@ if (import.meta.vitest) {
 					linkPipe,
 					link({
 						type: 'produced',
-						from: { type: 'plan', projectId: 'project-1', id: 'plan-1' },
-						to: { type: 'memory-revision', memoryId: 'memory-1', id: 'revision-1' },
+						from: { type: 'plan', projectId: '01k00000000000000000000030', id: '01k00000000000000000000028' },
+						to: { type: 'memory-revision', memoryId: '01k00000000000000000000019', id: '01k00000000000000000000038' },
 					}),
 				).valid,
 			).toBe(true)
@@ -77,8 +77,8 @@ if (import.meta.vitest) {
 					linkPipe,
 					link({
 						type: 'depends-on',
-						from: { type: 'delivery', projectId: 'project-1', id: 'delivery-2' },
-						to: { type: 'delivery', projectId: 'project-1', id: 'delivery-1' },
+						from: { type: 'delivery', projectId: '01k00000000000000000000030', id: '01k00000000000000000000009' },
+						to: { type: 'delivery', projectId: '01k00000000000000000000030', id: '01k00000000000000000000008' },
 					}),
 				).valid,
 			).toBe(true)
@@ -87,8 +87,18 @@ if (import.meta.vitest) {
 					linkPipe,
 					link({
 						type: 'depends-on',
-						from: { type: 'slice', projectId: 'project-1', deliveryId: 'delivery-1', id: 'slice-2' },
-						to: { type: 'slice', projectId: 'project-1', deliveryId: 'delivery-1', id: 'slice-1' },
+						from: {
+							type: 'slice',
+							projectId: '01k00000000000000000000030',
+							deliveryId: '01k00000000000000000000008',
+							id: '01k00000000000000000000043',
+						},
+						to: {
+							type: 'slice',
+							projectId: '01k00000000000000000000030',
+							deliveryId: '01k00000000000000000000008',
+							id: '01k00000000000000000000042',
+						},
 					}),
 				).valid,
 			).toBe(true)
@@ -98,42 +108,52 @@ if (import.meta.vitest) {
 			expect(
 				v.validate(linkDefPipe, {
 					type: 'depends-on',
-					from: { type: 'delivery', projectId: 'project-1', id: 'delivery-2' },
-					to: { type: 'delivery', projectId: 'project-2', id: 'delivery-1' },
+					from: { type: 'delivery', projectId: '01k00000000000000000000030', id: '01k00000000000000000000009' },
+					to: { type: 'delivery', projectId: '01k00000000000000000000031', id: '01k00000000000000000000008' },
 				}).valid,
 			).toBe(false)
 			expect(
 				v.validate(linkDefPipe, {
 					type: 'depends-on',
-					from: { type: 'slice', projectId: 'project-1', deliveryId: 'delivery-1', id: 'slice-2' },
-					to: { type: 'slice', projectId: 'project-1', deliveryId: 'delivery-2', id: 'slice-1' },
+					from: {
+						type: 'slice',
+						projectId: '01k00000000000000000000030',
+						deliveryId: '01k00000000000000000000008',
+						id: '01k00000000000000000000043',
+					},
+					to: {
+						type: 'slice',
+						projectId: '01k00000000000000000000030',
+						deliveryId: '01k00000000000000000000009',
+						id: '01k00000000000000000000042',
+					},
 				}).valid,
 			).toBe(false)
 			expect(
 				v.validate(linkDefPipe, {
 					type: 'depends-on',
-					from: { type: 'delivery', projectId: 'project-1', id: 'delivery-1' },
-					to: { type: 'delivery', projectId: 'project-1', id: 'delivery-1' },
+					from: { type: 'delivery', projectId: '01k00000000000000000000030', id: '01k00000000000000000000008' },
+					to: { type: 'delivery', projectId: '01k00000000000000000000030', id: '01k00000000000000000000008' },
 				}).valid,
 			).toBe(false)
 			expect(
 				v.validate(linkDefPipe, {
 					type: 'produced',
-					from: { type: 'plan', projectId: 'project-1', id: 'plan-1' },
-					to: { type: 'delivery', projectId: 'project-1', id: 'delivery-1' },
+					from: { type: 'plan', projectId: '01k00000000000000000000030', id: '01k00000000000000000000028' },
+					to: { type: 'delivery', projectId: '01k00000000000000000000030', id: '01k00000000000000000000008' },
 				}).valid,
 			).toBe(false)
 			expect(
 				v.validate(linkDefPipe, {
 					type: 'depends-on',
-					from: { type: 'plan', projectId: 'project-1', id: 'plan-1' },
-					to: { type: 'memory', id: 'memory-1' },
+					from: { type: 'plan', projectId: '01k00000000000000000000030', id: '01k00000000000000000000028' },
+					to: { type: 'memory', id: '01k00000000000000000000019' },
 				}).valid,
 			).toBe(false)
 		})
 	})
 
 	function link(def: LinkDef): Link {
-		return { id: 'link-1', def, created: { origin: 'imported', at: '2026-07-03T00:00:00.000Z' } }
+		return { id: '01k00000000000000000000014', def, created: { origin: 'imported', at: '2026-07-03T00:00:00.000Z' } }
 	}
 }

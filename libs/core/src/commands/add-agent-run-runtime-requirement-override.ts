@@ -84,7 +84,7 @@ export function createAddAgentRunRuntimeRequirementOverrideCommand(runtime: Core
 
 				const runtimeRequirementOverrides = [
 					...agentRun.value.runtimeRequirementOverrides,
-					{ requirements: input.requirements, added: stamp, eventId: event.value.id, eventCursor: event.value.cursor },
+					{ requirements: input.requirements, added: stamp, eventId: event.value.id },
 				]
 				const desiredRuntimeRequirements = [...agentRun.value.desiredRuntimeRequirements, ...input.requirements]
 				const updated = await updateRecordValue('agent-run', storage, input.agentRunId, {
@@ -134,40 +134,48 @@ if (import.meta.vitest) {
 					ready: (marker) => readyMarkers.push(marker),
 				},
 			})
-			seedSecret(options.tx, 'secret-1')
+			seedSecret(options.tx, '01k00000000000000000000040')
 			options.tx.agentRuns.records.set(
-				'agent-run-1',
+				'01k00000000000000000000002',
 				testModelAgentRun({
-					purpose: { type: 'execution', deliveryId: 'delivery-1', sliceId: 'slice-1', mode: { type: 'initial' } },
+					purpose: {
+						type: 'execution',
+						deliveryId: '01k00000000000000000000008',
+						sliceId: '01k00000000000000000000042',
+						mode: { type: 'initial' },
+					},
 				}),
 			)
 			const command = createAddAgentRunRuntimeRequirementOverrideCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ agentRunId: 'agent-run-1', requirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: 'secret-1' }] },
+				{
+					agentRunId: '01k00000000000000000000002',
+					requirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
+				},
 				context,
 			)
 
 			expect(result).toMatchObject({
 				ok: true,
-				value: { body: { type: 'agent-run-runtime-requirement-override-added' }, cursor: '01J00000000000000000000001' },
+				value: { body: { type: 'agent-run-runtime-requirement-override-added' }, id: '01k00000000000000000010001' },
 			})
-			expect(options.tx.agentRuns.records.get('agent-run-1')).toMatchObject({
+			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')).toMatchObject({
 				blocked: { type: 'sandbox-preparation-pending' },
-				desiredRuntimeRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: 'secret-1' }],
-				runtimeRequirementOverrides: [{ eventCursor: '01J00000000000000000000001' }],
+				desiredRuntimeRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
+				runtimeRequirementOverrides: [{ eventId: '01k00000000000000000010001' }],
 			})
 			expect(dispatches).toEqual([
 				{
 					type: 'agent-run-sandbox-preparation',
-					agentRunId: 'agent-run-1',
+					agentRunId: '01k00000000000000000000002',
 					coordinationClaims: [
 						{
-							scope: [{ type: 'agent-run', id: 'agent-run-1' }],
+							scope: [{ type: 'agent-run', id: '01k00000000000000000000002' }],
 							mode: { type: 'exclusive' },
 						},
 					],
-					reason: { type: 'runtime-requirement-override-added', eventId: 'agent-run-event-1' },
+					reason: { type: 'runtime-requirement-override-added', eventId: '01k00000000000000000010001' },
 				},
 			])
 			expect(readyMarkers).toEqual(['marker-1'])
@@ -175,16 +183,22 @@ if (import.meta.vitest) {
 
 		it('rejects completed Agent Runs', async () => {
 			const options = createTestCoreServices()
-			seedSecret(options.tx, 'secret-1')
-			options.tx.agentRuns.records.set('agent-run-1', testModelAgentRun({ completed: { at: '2026-06-10T12:10:00.000Z' } }))
+			seedSecret(options.tx, '01k00000000000000000000040')
+			options.tx.agentRuns.records.set(
+				'01k00000000000000000000002',
+				testModelAgentRun({ completed: { at: '2026-06-10T12:10:00.000Z' } }),
+			)
 			const command = createAddAgentRunRuntimeRequirementOverrideCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ agentRunId: 'agent-run-1', requirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: 'secret-1' }] },
+				{
+					agentRunId: '01k00000000000000000000002',
+					requirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
+				},
 				context,
 			)
 
-			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: 'agent-run-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: '01k00000000000000000000002' } })
 		})
 	})
 }

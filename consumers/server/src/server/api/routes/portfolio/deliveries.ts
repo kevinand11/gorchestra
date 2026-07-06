@@ -1,8 +1,8 @@
-import { Queries } from '@gorchestra/core'
+import { Domain, Queries } from '@gorchestra/core'
 import { Router } from 'equipped/server'
 import { v } from 'valleyed'
 
-import { portfolioRequestCookieSchema, type PortfolioRequestCookies } from './shared'
+import { portfolioRequestCookieSchema, type PaginatedQuery, type PortfolioRequestCookies } from './shared'
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
 import { withSelectedPortfolioCore } from '../../portfolio-context'
@@ -14,9 +14,10 @@ export function createDeliveriesApiRouter(context: ServerApiContext) {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: idPipe }),
+				query: Domain.Commons.paginatedQueryInputPipe,
 				response: Queries.ListDeliveries.resultPipe,
 			},
-		})(async (req) => listSelectedProjectDeliveries(context, req.cookies, req.params.projectId))
+		})(async (req) => listSelectedProjectDeliveries(context, req.cookies, req.params.projectId, req.query))
 		.get('/projects/:projectId/deliveries/:deliveryId', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
@@ -30,9 +31,10 @@ function listSelectedProjectDeliveries(
 	context: ServerApiContext,
 	cookies: PortfolioRequestCookies,
 	projectId: string,
+	query: PaginatedQuery,
 ): Promise<Queries.ListDeliveries.Result> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
-		const deliveries = await core.queries.listDeliveries({ projectId })
+		const deliveries = await core.queries.listDeliveries({ projectId, ...query })
 		return deliveries.ok ? deliveries.value : throwCoreOperationError(deliveries.error)
 	})
 }

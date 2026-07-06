@@ -5,10 +5,11 @@ import { ModelProviderFormDraft, type ModelProviderFormModel } from '../../../fo
 import { useSelectedPortfolio } from '../../auth/session'
 import { useApiAction, useFetchAction } from '../../core/action-state'
 import { useOverlay } from '../../core/overlay'
+import { usePaginatedFetchAction } from '../../core/paginated-fetch-action'
 import { useQueryCache } from '../../core/query-cache'
 import { useServerApi, type ServerApi, type UpdateModelProviderInput } from '../../core/server-api'
 
-export type ListedModelProvider = Awaited<ReturnType<ServerApi['listModelProviders']>>[number]
+export type ListedModelProvider = Awaited<ReturnType<ServerApi['listModelProviders']>>['items'][number]
 type ModelProviderDetails = Awaited<ReturnType<ServerApi['getModelProvider']>>
 type CreatedModelProvider = Awaited<ReturnType<ServerApi['createModelProvider']>>
 type UpdatedModelProvider = Awaited<ReturnType<ServerApi['updateModelProvider']>>
@@ -44,19 +45,26 @@ export function useModelProvidersList() {
 	const { portfolio } = useSelectedPortfolio()
 	const { queryKeys } = useQueryCache()
 	const {
-		data: providers,
+		items: providers,
 		isLoading: isLoadingProviders,
 		error: providersError,
 		hasExecuted: hasLoadedProviders,
-		execute: refreshProviders,
-		reset: resetProviders,
-	} = useFetchAction(() => serverApi.listModelProviders(), {
+		fetchNext: fetchNextProviders,
+		hasNext: hasNextProviders,
+	} = usePaginatedFetchAction((input) => serverApi.listModelProviders(input), {
 		queryKey: queryKeys.portfolio.modelProviders(portfolio.value.id),
-		initialData: [] as ListedModelProvider[],
 	})
 	const isRefreshingProviders = computed(() => isLoadingProviders.value && hasLoadedProviders.value)
 
-	return { providers, isLoadingProviders, providersError, hasLoadedProviders, isRefreshingProviders, refreshProviders, resetProviders }
+	return {
+		providers,
+		isLoadingProviders,
+		providersError,
+		hasLoadedProviders,
+		isRefreshingProviders,
+		fetchNextProviders,
+		hasNextProviders,
+	}
 }
 
 export function useModelProviderDetail(modelProviderId: Ref<string>) {

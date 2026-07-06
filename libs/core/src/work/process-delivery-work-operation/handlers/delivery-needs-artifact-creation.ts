@@ -126,7 +126,7 @@ function deliveryArtifactRecord(
 	context: ResolvedDeliveryHandlerContext,
 	deliveryBranch: string,
 ): CoreResult<DeliveryArtifact, DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	const id = nextId(context.values, 'delivery-artifact')
+	const id = nextId(context.values)
 	if (!id.ok) return id
 
 	const created = runtimeRecord(context.values)
@@ -154,11 +154,11 @@ if (import.meta.vitest) {
 			expect(deliveryArtifactCreationInput(context)).toEqual({
 				ok: true,
 				value: {
-					deliveryId: 'delivery-1',
+					deliveryId: '01k00000000000000000000008',
 					repository: context.deliveryContext.repository,
 					accessSecret: context.repositoryAccessSecret,
 					sourceBranch: 'main',
-					artifactBranch: 'gorchestra/deliveries/d-ZGVsaXZlcnktMQ',
+					artifactBranch: 'gorchestra/deliveries/d-MDFrMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDg',
 				},
 			})
 		})
@@ -175,15 +175,15 @@ if (import.meta.vitest) {
 			})
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
-			expect(context.tx.deliveryArtifacts.records.get('delivery-artifact-1')).toEqual({
-				id: 'delivery-artifact-1',
-				deliveryId: 'delivery-1',
-				config: { type: 'source-control', deliveryBranch: 'gorchestra/deliveries/d-ZGVsaXZlcnktMQ' },
+			expect(context.tx.deliveryArtifacts.records.get('01k00000000000000000010001')).toEqual({
+				id: '01k00000000000000000010001',
+				deliveryId: '01k00000000000000000000008',
+				config: { type: 'source-control', deliveryBranch: 'gorchestra/deliveries/d-MDFrMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDg' },
 				created: { at: '2026-06-10T12:00:00.000Z' },
 			})
-			expect(context.tx.actions.records.get('action-1')?.result).toEqual({
+			expect(context.tx.actions.records.get('01k00000000000000000010002')?.result).toEqual({
 				type: 'create-delivery-artifact',
-				deliveryArtifactId: 'delivery-artifact-1',
+				deliveryArtifactId: '01k00000000000000000010001',
 				dispatchStartedActionId: null,
 			})
 		})
@@ -212,7 +212,7 @@ if (import.meta.vitest) {
 					],
 				},
 			})
-			expect(context.tx.actions.records.get('action-1')?.result).toEqual({
+			expect(context.tx.actions.records.get('01k00000000000000000010001')?.result).toEqual({
 				type: 'record-delivery-external-operation-failure',
 				evidence: {
 					type: 'external-operation',

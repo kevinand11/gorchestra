@@ -114,9 +114,9 @@ if (import.meta.vitest) {
 				v.assert(agentRunRuntimeRequirementPipe, {
 					type: 'environment-secret',
 					envName: 'NPM_TOKEN',
-					secretId: 'secret-1',
+					secretId: '01k00000000000000000000040',
 				}),
-			).toEqual({ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: 'secret-1' })
+			).toEqual({ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' })
 		})
 
 		it('rejects invalid environment Secret env names', () => {
@@ -124,7 +124,7 @@ if (import.meta.vitest) {
 				v.validate(agentRunRuntimeRequirementPipe, {
 					type: 'environment-secret',
 					envName: 'npm-token',
-					secretId: 'secret-1',
+					secretId: '01k00000000000000000000040',
 				}),
 			).toMatchObject({ valid: false })
 		})
@@ -135,7 +135,7 @@ if (import.meta.vitest) {
 					type: 'run-command',
 					label: 'Install dependencies',
 					command: { executable: 'pnpm', args: ['install', '--frozen-lockfile'], cwd: '/workspace/repos/repository-1' },
-					commandSecretEnv: { NPM_TOKEN: 'secret-1' },
+					commandSecretEnv: { NPM_TOKEN: '01k00000000000000000000040' },
 				}),
 			).toMatchObject({ type: 'run-command', label: 'Install dependencies' })
 		})
@@ -152,8 +152,8 @@ if (import.meta.vitest) {
 		})
 
 		it('finds exact duplicate requirements without rejecting repeated env names with different Secrets', () => {
-			const first = { type: 'environment-secret' as const, envName: 'NPM_TOKEN', secretId: 'secret-1' }
-			const second = { type: 'environment-secret' as const, envName: 'NPM_TOKEN', secretId: 'secret-2' }
+			const first = { type: 'environment-secret' as const, envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }
+			const second = { type: 'environment-secret' as const, envName: 'NPM_TOKEN', secretId: '01k00000000000000000000041' }
 			expect(firstDuplicateRuntimeRequirement([first, second])).toBeNull()
 			expect(firstDuplicateRuntimeRequirement([first, second, first])).toBe(first)
 		})

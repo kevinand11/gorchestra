@@ -63,10 +63,10 @@ async function rejectPlanOutput(
 	return proposal.ok
 		? appendAgentRunEvent(runtime, storage, proposal.value.agentRunId, {
 				type: 'proposal-rejected',
-				proposalCursor: proposal.value.cursor,
+				proposalEventId: proposal.value.id,
 				authorized: stamp,
 				reason: input.reason,
-				projectedParts: proposalRejectedProjectedParts(proposal.value.cursor, input.reason),
+				projectedParts: proposalRejectedProjectedParts(proposal.value.id, input.reason),
 			})
 		: proposal
 }
@@ -85,6 +85,7 @@ async function loadRejectablePlanProposal(
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedProject, stamp } = await import('../utils/test-helpers')
+	const proposalEventId = '01k00000000000000000000003'
 
 	describe('rejectPlanOutput command', () => {
 		it('validates input before reading storage', async () => {
@@ -105,23 +106,20 @@ if (import.meta.vitest) {
 			const options = proposalFixture()
 			const command = createRejectPlanOutputCommand(createTestCoreRuntime(options))
 
-			const result = await command({ proposalEventId: 'proposal-event', reason: 'Needs changes.' }, context)
+			const result = await command({ proposalEventId, reason: 'Needs changes.' }, context)
 
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'agent-run-event-1',
-					agentRunId: 'agent-run-1',
-					cursor: '01J00000000000000000000001',
+					id: '01k00000000000000000010001',
+					agentRunId: '01k00000000000000000000002',
 					occurred: { at: '2026-06-10T12:00:00.000Z' },
 					body: {
 						type: 'proposal-rejected',
-						proposalCursor: '01J00000000000000000000000',
+						proposalEventId,
 						authorized: localStamp(),
 						reason: 'Needs changes.',
-						projectedParts: [
-							{ type: 'text', text: 'Proposal 01J00000000000000000000000 rejected. Needs changes.', metadata: null },
-						],
+						projectedParts: [{ type: 'text', text: `Proposal ${proposalEventId} rejected. Needs changes.`, metadata: null }],
 					},
 				},
 			})
@@ -130,22 +128,22 @@ if (import.meta.vitest) {
 
 	function proposalFixture() {
 		const options = createTestCoreServices()
-		seedProject(options.tx, 'project-1')
-		options.tx.plans.records.set('plan-1', {
-			id: 'plan-1',
-			projectId: 'project-1',
+		seedProject(options.tx, '01k00000000000000000000030')
+		options.tx.plans.records.set('01k00000000000000000000028', {
+			id: '01k00000000000000000000028',
+			projectId: '01k00000000000000000000030',
 			title: 'Plan',
 			created: stamp,
 			closed: null,
 		})
-		options.tx.agentRuns.records.set('agent-run-1', {
-			id: 'agent-run-1',
+		options.tx.agentRuns.records.set('01k00000000000000000000002', {
+			id: '01k00000000000000000000002',
 			agent: { type: 'model' },
-			purpose: { type: 'planning', planId: 'plan-1' },
+			purpose: { type: 'planning', planId: '01k00000000000000000000028' },
 			profile: {
-				agentRunProfileId: 'agent-run-profile-1',
+				agentRunProfileId: '01k00000000000000000000006',
 				name: 'Agent Run Profile',
-				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				runtimeRequirements: [],
 			},
 			modelUseOverride: null,
@@ -153,18 +151,17 @@ if (import.meta.vitest) {
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: null,
-			sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+			sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 			started: { at: stamp.at },
 			completed: null,
 		})
-		options.tx.agentRunEvents.records.set('proposal-event', {
-			id: 'proposal-event',
-			agentRunId: 'agent-run-1',
-			cursor: '01J00000000000000000000000',
+		options.tx.agentRunEvents.records.set(proposalEventId, {
+			id: proposalEventId,
+			agentRunId: '01k00000000000000000000002',
 			occurred: { at: stamp.at },
 			body: {
 				type: 'proposed-plan-output',
-				assistantMessageCursor: '01J00000000000000000000000',
+				assistantMessageEventId: '01j00000000000000000000000',
 				toolCallId: 'call-1',
 				output: {
 					proposedDeliveries: {},

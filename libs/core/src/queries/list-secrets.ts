@@ -1,37 +1,39 @@
-import { v, type PipeOutput } from 'valleyed'
+import { type PipeInput, type PipeOutput } from 'valleyed'
 
 import { isArchived } from '../commands/utils/storage'
+import { paginatedQueryEnvelopePipe, paginatedQueryInputPipe } from '../domain/commons'
 import { listedSecretPipe, type ListedSecret, type Secret, type SecretReference } from '../domain/secret'
 export type { ListedSecret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
 import { listSecretReferencesBySecretId } from './list-secret-references'
-import { listRecords, withTransaction } from '../storage/helpers'
-import type { Result as CoreResult } from '../utils/types'
+import { listRecordsPaginated, withTransaction } from '../storage/helpers'
+import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
-export const inputPipe = v.object({})
-export type Input = PipeOutput<typeof inputPipe>
+export const inputPipe = paginatedQueryInputPipe
+export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
 
-export const resultPipe = v.array(listedSecretPipe)
+export const resultPipe = paginatedQueryEnvelopePipe(listedSecretPipe)
 export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createListSecretsQuery(options: CoreServices): Operation {
-	return buildQueryHandler('listSecrets', inputPipe, () =>
+	return buildQueryHandler('listSecrets', inputPipe, (input) =>
 		withTransaction(options, async (storage) => {
-			const secrets = await listRecords('secret', storage)
+			const secrets = await listRecordsPaginated('secret', storage, input)
 			if (!secrets.ok) return secrets
 
-			const sortedSecrets = sortByCreatedAtThenId(secrets.value)
 			const references = await listSecretReferencesBySecretId(
 				storage,
-				sortedSecrets.map((secret) => secret.id),
+				secrets.value.items.map((secret) => secret.id),
 			)
-			return references.ok ? { ok: true, value: listSecrets(sortedSecrets, references.value) } : references
+			return references.ok
+				? { ok: true, value: { ...secrets.value, items: listSecrets(secrets.value.items, references.value) } }
+				: references
 		}),
-	)
+	) as Operation
 }
 
 function listSecrets(secrets: Secret[], referencesBySecretId: Map<string, SecretReference[]>): ListedSecret[] {
@@ -41,10 +43,6 @@ function listSecrets(secrets: Secret[], referencesBySecretId: Map<string, Secret
 export function listSecret(secret: Secret, references: SecretReference[]): ListedSecret {
 	const { valueRef: _valueRef, archivePeriods, ...secretFields } = secret
 	return { ...secretFields, archived: isArchived(archivePeriods), references }
-}
-
-function sortByCreatedAtThenId<T extends { id: string; created: { at: string } }>(records: T[]): T[] {
-	return [...records].sort((left, right) => left.created.at.localeCompare(right.created.at) || left.id.localeCompare(right.id))
 }
 
 if (import.meta.vitest) {
@@ -71,16 +69,29 @@ if (import.meta.vitest) {
 
 			const result = await query({})
 
-			expect(result).toEqual({ ok: true, value: [] })
+			expect(result).toEqual({
+				ok: true,
+				value: {
+					items: [],
+					pages: { current: 1, start: 1, last: 1, previous: null, next: null },
+					docs: { limit: 0, total: 0, count: 0 },
+				},
+			})
 		})
 
-		it('lists redacted Secret metadata in creation order with archive state', async () => {
+		it('lists redacted Secret metadata in id-desc order with archive state', async () => {
 			const options = createTestCoreServices()
-			options.tx.secrets.records.set('secret-b', secret({ id: 'secret-b', name: 'Later', createdAt: '2026-06-10T00:00:00.000Z' }))
-			options.tx.secrets.records.set('secret-c', secret({ id: 'secret-c', name: 'Tie C', createdAt: '2026-06-09T00:00:00.000Z' }))
 			options.tx.secrets.records.set(
-				'secret-a',
-				secret({ id: 'secret-a', name: 'Tie A', createdAt: '2026-06-09T00:00:00.000Z', archived: true }),
+				'01k00000000000000000100002',
+				secret({ id: '01k00000000000000000100002', name: 'Later', createdAt: '2026-06-10T00:00:00.000Z' }),
+			)
+			options.tx.secrets.records.set(
+				'01k00000000000000000100003',
+				secret({ id: '01k00000000000000000100003', name: 'Tie C', createdAt: '2026-06-09T00:00:00.000Z' }),
+			)
+			options.tx.secrets.records.set(
+				'01k00000000000000000100001',
+				secret({ id: '01k00000000000000000100001', name: 'Tie A', createdAt: '2026-06-09T00:00:00.000Z', archived: true }),
 			)
 			const query = createListSecretsQuery(options)
 
@@ -88,21 +99,30 @@ if (import.meta.vitest) {
 
 			expect(result).toEqual({
 				ok: true,
-				value: [
-					redactedSecret({ id: 'secret-a', name: 'Tie A', createdAt: '2026-06-09T00:00:00.000Z', archived: true }),
-					redactedSecret({ id: 'secret-c', name: 'Tie C', createdAt: '2026-06-09T00:00:00.000Z' }),
-					redactedSecret({ id: 'secret-b', name: 'Later', createdAt: '2026-06-10T00:00:00.000Z' }),
-				],
+				value: {
+					items: [
+						redactedSecret({ id: '01k00000000000000000100003', name: 'Tie C', createdAt: '2026-06-09T00:00:00.000Z' }),
+						redactedSecret({ id: '01k00000000000000000100002', name: 'Later', createdAt: '2026-06-10T00:00:00.000Z' }),
+						redactedSecret({
+							id: '01k00000000000000000100001',
+							name: 'Tie A',
+							createdAt: '2026-06-09T00:00:00.000Z',
+							archived: true,
+						}),
+					],
+					pages: { current: 1, start: 1, last: 1, previous: null, next: null },
+					docs: { limit: 3, total: 3, count: 3 },
+				},
 			})
 		})
 
 		it('includes Secret References for each listed Secret', async () => {
 			const options = createTestCoreServices()
-			options.tx.secrets.records.set('secret-1', secret({ id: 'secret-1', name: 'GitHub PAT' }))
-			options.tx.repositories.records.set('repository-1', {
-				id: 'repository-1',
-				projectId: 'project-1',
-				config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
+			options.tx.secrets.records.set('01k00000000000000000000040', secret({ id: '01k00000000000000000000040', name: 'GitHub PAT' }))
+			options.tx.repositories.records.set('01k00000000000000000000034', {
+				id: '01k00000000000000000000034',
+				projectId: '01k00000000000000000000030',
+				config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: '01k00000000000000000000040' },
 				created: { origin: 'imported', at: '2026-06-12T00:00:00.000Z' },
 			})
 			const query = createListSecretsQuery(options)
@@ -111,22 +131,26 @@ if (import.meta.vitest) {
 
 			expect(result).toEqual({
 				ok: true,
-				value: [
-					{
-						...redactedSecret({ id: 'secret-1', name: 'GitHub PAT' }),
-						references: [
-							{
-								type: 'repository-access',
-								active: true,
-								repositoryId: 'repository-1',
-								projectId: 'project-1',
-								provider: 'github',
-								owner: 'Octo',
-								name: 'Repo',
-							},
-						],
-					},
-				],
+				value: {
+					items: [
+						{
+							...redactedSecret({ id: '01k00000000000000000000040', name: 'GitHub PAT' }),
+							references: [
+								{
+									type: 'repository-access',
+									active: true,
+									repositoryId: '01k00000000000000000000034',
+									projectId: '01k00000000000000000000030',
+									provider: 'github',
+									owner: 'Octo',
+									name: 'Repo',
+								},
+							],
+						},
+					],
+					pages: { current: 1, start: 1, last: 1, previous: null, next: null },
+					docs: { limit: 1, total: 1, count: 1 },
+				},
 			})
 		})
 

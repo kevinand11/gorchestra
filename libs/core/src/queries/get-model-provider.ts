@@ -25,6 +25,7 @@ export function createGetModelProviderQuery(options: CoreServices): Operation {
 
 			const models = await listRecords('model', storage, {
 				where: (filter, fields) => filter.eq(fields.providerId, provider.value.id),
+				orderBy: [{ field: 'id', direction: 'desc' }],
 			})
 			return models.ok ? { ok: true, value: listedModelProviders([provider.value], models.value)[0]! } : models
 		}),
@@ -51,38 +52,47 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the provider is missing', async () => {
-			const result = await createGetModelProviderQuery(createTestCoreServices())({ modelProviderId: 'provider-1' })
+			const result = await createGetModelProviderQuery(createTestCoreServices())({ modelProviderId: '01k00000000000000000000032' })
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'model-provider', id: 'provider-1' } })
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'not-found', resource: 'model-provider', id: '01k00000000000000000000032' },
+			})
 		})
 
 		it('returns one listed provider with only its nested Models', async () => {
 			const options = createTestCoreServices()
-			seedModelProvider(options.tx, 'provider-1')
-			seedSelectableModel(options.tx, 'model-1')
-			options.tx.modelProviders.records.delete('model-1-provider')
-			options.tx.models.records.set('model-1', { ...options.tx.models.records.get('model-1')!, providerId: 'provider-1' })
-			seedModelProvider(options.tx, 'provider-2')
-			seedSelectableModel(options.tx, 'model-other')
-			options.tx.modelProviders.records.delete('model-other-provider')
-			options.tx.models.records.set('model-other', { ...options.tx.models.records.get('model-other')!, providerId: 'provider-2' })
+			seedModelProvider(options.tx, '01k00000000000000000000032')
+			seedSelectableModel(options.tx, '01k00000000000000000000024')
+			options.tx.modelProviders.records.delete('01k00000000000000000000025')
+			options.tx.models.records.set('01k00000000000000000000024', {
+				...options.tx.models.records.get('01k00000000000000000000024')!,
+				providerId: '01k00000000000000000000032',
+			})
+			seedModelProvider(options.tx, '01k00000000000000000000033')
+			seedSelectableModel(options.tx, '01k00000000000000000100048')
+			options.tx.modelProviders.records.delete('01k00000000000000000100051')
+			options.tx.models.records.set('01k00000000000000000100048', {
+				...options.tx.models.records.get('01k00000000000000000100048')!,
+				providerId: '01k00000000000000000000033',
+			})
 			const query = createGetModelProviderQuery(options)
 
-			const result = await query({ modelProviderId: 'provider-1' })
+			const result = await query({ modelProviderId: '01k00000000000000000000032' })
 
 			expect(result.ok).toBe(true)
 			if (!result.ok) return
-			expect(result.value.id).toBe('provider-1')
+			expect(result.value.id).toBe('01k00000000000000000000032')
 			expect(result.value.archived).toBe(false)
-			expect(result.value.models).toEqual([expect.objectContaining({ id: 'model-1', archived: false })])
+			expect(result.value.models).toEqual([expect.objectContaining({ id: '01k00000000000000000000024', archived: false })])
 		})
 
 		it('returns storage errors when nested Models cannot be listed', async () => {
 			const options = createTestCoreServices()
-			seedModelProvider(options.tx, 'provider-1')
+			seedModelProvider(options.tx, '01k00000000000000000000032')
 			options.tx.models.fail.list = true
 
-			const result = await createGetModelProviderQuery(options)({ modelProviderId: 'provider-1' })
+			const result = await createGetModelProviderQuery(options)({ modelProviderId: '01k00000000000000000000032' })
 
 			expect(result).toEqual({
 				ok: false,

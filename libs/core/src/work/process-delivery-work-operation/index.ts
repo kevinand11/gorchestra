@@ -108,7 +108,7 @@ async function recordStartedDispatchAction(
 	if (!existingStarted.ok) return existingStarted
 	if (existingStarted.value !== null) return { ok: true, value: { type: 'already-started' } }
 
-	const actionId = nextId(runtime.values, 'action')
+	const actionId = nextId(runtime.values)
 	if (!actionId.ok) return actionId
 
 	const performed = runtimeRecord(runtime.values)
@@ -346,7 +346,7 @@ async function writeFailedPreflightFinishAndRequestScheduler(
 	checks: ValidationEvidence[],
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const written = await withTransaction(runtime.services, async (storage) => {
-		const preflightId = nextId(runtime.values, 'action')
+		const preflightId = nextId(runtime.values)
 		if (!preflightId.ok) return preflightId
 		const preflightPerformed = runtimeRecord(runtime.values)
 		if (!preflightPerformed.ok) return preflightPerformed
@@ -394,7 +394,7 @@ async function writeFinishAndAcceptSchedulerRequest(
 	startedActionId: Id,
 	outcome: 'processed' | 'stale-no-op',
 ): Promise<CoreResult<{ marker: string }, Exclude<Error, InvalidInputError>>> {
-	const actionId = nextId(runtime.values, 'action')
+	const actionId = nextId(runtime.values)
 	if (!actionId.ok) return actionId
 
 	const performed = runtimeRecord(runtime.values)

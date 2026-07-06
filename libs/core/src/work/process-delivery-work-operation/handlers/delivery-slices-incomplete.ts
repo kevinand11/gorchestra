@@ -310,34 +310,49 @@ if (import.meta.vitest) {
 	describe('handleDeliverySlicesIncomplete', () => {
 		it('claims executable Slice work up to configured slots in Delivery slice order', async () => {
 			const options = executableDeliveryFixture({ maxProcessableSliceSlots: 3 })
-			seedSlice(options.tx, 'slice-1', 'delivery-1')
-			seedSlice(options.tx, 'slice-2', 'delivery-1')
-			seedSlice(options.tx, 'slice-3', 'delivery-1')
-			seedSliceArtifact(options.tx, 'slice-1')
-			seedSliceArtifact(options.tx, 'slice-2')
-			seedSliceArtifact(options.tx, 'slice-3')
+			seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000008')
+			seedSlice(options.tx, '01k00000000000000000000043', '01k00000000000000000000008')
+			seedSlice(options.tx, '01k00000000000000000000044', '01k00000000000000000000008')
+			seedSliceArtifact(options.tx, '01k00000000000000000000042')
+			seedSliceArtifact(options.tx, '01k00000000000000000000043')
+			seedSliceArtifact(options.tx, '01k00000000000000000000044')
 
 			const result = await handleDeliverySlicesIncomplete(createTestCoreRuntime(options), await handlerContext(options))
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 3, failures: [] } })
 			expect([...options.tx.agentRuns.records.values()].map((run) => run.purpose)).toEqual([
-				{ type: 'execution', deliveryId: 'delivery-1', sliceId: 'slice-1', mode: { type: 'initial' } },
-				{ type: 'execution', deliveryId: 'delivery-1', sliceId: 'slice-2', mode: { type: 'initial' } },
-				{ type: 'execution', deliveryId: 'delivery-1', sliceId: 'slice-3', mode: { type: 'initial' } },
+				{
+					type: 'execution',
+					deliveryId: '01k00000000000000000000008',
+					sliceId: '01k00000000000000000000042',
+					mode: { type: 'initial' },
+				},
+				{
+					type: 'execution',
+					deliveryId: '01k00000000000000000000008',
+					sliceId: '01k00000000000000000000043',
+					mode: { type: 'initial' },
+				},
+				{
+					type: 'execution',
+					deliveryId: '01k00000000000000000000008',
+					sliceId: '01k00000000000000000000044',
+					mode: { type: 'initial' },
+				},
 			])
 		})
 
 		it('prioritizes non-Agent Slice work before executable Slice work', async () => {
 			const options = executableDeliveryFixture({ maxProcessableSliceSlots: 3 })
-			seedSlice(options.tx, 'slice-delivery-validation', 'delivery-1')
-			seedSlice(options.tx, 'slice-artifact-validation', 'delivery-1')
-			seedSlice(options.tx, 'slice-artifact-creation', 'delivery-1')
-			seedSlice(options.tx, 'slice-executable', 'delivery-1')
-			seedSliceArtifact(options.tx, 'slice-delivery-validation')
-			seedSliceArtifact(options.tx, 'slice-artifact-validation')
-			seedSliceArtifact(options.tx, 'slice-executable')
-			seedPromotion(options.tx, 'slice-delivery-validation')
-			seedCompletedSliceExecution(options.tx, 'slice-artifact-validation')
+			seedSlice(options.tx, '01k00000000000000000101001', '01k00000000000000000000008')
+			seedSlice(options.tx, '01k00000000000000000101002', '01k00000000000000000000008')
+			seedSlice(options.tx, '01k00000000000000000101003', '01k00000000000000000000008')
+			seedSlice(options.tx, '01k00000000000000000100044', '01k00000000000000000000008')
+			seedSliceArtifact(options.tx, '01k00000000000000000101001')
+			seedSliceArtifact(options.tx, '01k00000000000000000101002')
+			seedSliceArtifact(options.tx, '01k00000000000000000100044')
+			seedPromotion(options.tx, '01k00000000000000000101001')
+			seedCompletedSliceExecution(options.tx, '01k00000000000000000101002')
 
 			expect(await handleDeliverySlicesIncomplete(createArtifactRuntime(options), await handlerContext(options))).toEqual({
 				ok: true,
@@ -349,7 +364,7 @@ if (import.meta.vitest) {
 					.filter((type) => type !== 'promote-slice-artifact')
 					.slice(0, 3),
 			).toEqual(['validate-slice-delivery-artifact', 'validate-slice-artifact', 'create-slice-artifact'])
-			expect([...options.tx.agentRuns.records.values()].map(executionSliceId)).toContain('slice-executable')
+			expect([...options.tx.agentRuns.records.values()].map(executionSliceId)).toContain('01k00000000000000000100044')
 		})
 
 		it('returns no-eligible-work when no Slice is actionable', async () => {
@@ -375,7 +390,7 @@ if (import.meta.vitest) {
 	}
 
 	async function handlerContext(options: ReturnType<typeof executableDeliveryFixture>): Promise<ResolvedDeliveryHandlerContext> {
-		const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
+		const deliveryContext = await buildDeliveryContext(options.tx, '01k00000000000000000000008')
 		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
 		const workResolution = await resolveDeliveryWork(options.tx, deliveryContext.value)
 		if (!workResolution.ok || workResolution.value.type !== 'passed') throw new Error('Expected Delivery Work Resolution.')
@@ -387,41 +402,43 @@ if (import.meta.vitest) {
 			tx: options.tx,
 			deliveryContext: deliveryContext.value,
 			workResolution: workResolution.value.resolution,
-			repositoryAccessSecret: { secretId: 'secret-1', valueRef: 'protected-ref' },
+			repositoryAccessSecret: { secretId: '01k00000000000000000000040', valueRef: 'protected-ref' },
 		}
 	}
 
 	function executableDeliveryFixture(options: { workConfig?: boolean; maxProcessableSliceSlots?: number } = {}) {
 		const core = createTestCoreServices()
-		seedSelectableModel(core.tx, 'model-1')
-		seedProject(core.tx, 'project-1', defaultDeliveryWorkConfig('agent-run-profile-1'))
-		seedDelivery(core.tx, 'delivery-1')
+		seedSelectableModel(core.tx, '01k00000000000000000000024')
+		seedProject(core.tx, '01k00000000000000000000030', defaultDeliveryWorkConfig('01k00000000000000000000006'))
+		seedDelivery(core.tx, '01k00000000000000000000008')
 		seedQueuedDelivery(core.tx)
 		seedDeliveryArtifact(core.tx)
 		if (options.workConfig !== false) {
-			seedAgentRunProfile(core.tx, 'agent-run-profile-1', 'model-1')
-			core.tx.projects.records.get('project-1')!.config.value.work.maxProcessableSliceSlots = options.maxProcessableSliceSlots ?? 1
+			seedAgentRunProfile(core.tx, '01k00000000000000000000006', '01k00000000000000000000024')
+			core.tx.projects.records.get('01k00000000000000000000030')!.config.value.work.maxProcessableSliceSlots =
+				options.maxProcessableSliceSlots ?? 1
 		}
 
 		return core
 	}
 
 	function seedQueuedDelivery(tx: ReturnType<typeof executableDeliveryFixture>['tx']) {
-		tx.deliveries.records.get('delivery-1')!.queued = localStamp()
+		tx.deliveries.records.get('01k00000000000000000000008')!.queued = localStamp()
 	}
 
 	function seedDeliveryArtifact(tx: ReturnType<typeof executableDeliveryFixture>['tx']) {
-		tx.deliveryArtifacts.records.set('delivery-artifact-1', {
-			id: 'delivery-artifact-1',
-			deliveryId: 'delivery-1',
+		tx.deliveryArtifacts.records.set('01k00000000000000000000010', {
+			id: '01k00000000000000000000010',
+			deliveryId: '01k00000000000000000000008',
 			config: { type: 'source-control', deliveryBranch: 'delivery' },
 			created: stamp,
 		})
 	}
 
 	function seedSliceArtifact(tx: ReturnType<typeof executableDeliveryFixture>['tx'], sliceId: string) {
-		tx.sliceArtifacts.records.set(`${sliceId}-artifact`, {
-			id: `${sliceId}-artifact`,
+		const id = derivedId(sliceId, 20_000)
+		tx.sliceArtifacts.records.set(id, {
+			id,
 			sliceId,
 			config: { type: 'source-control', sliceBranch: `${sliceId}-branch` },
 			created: stamp,
@@ -429,9 +446,10 @@ if (import.meta.vitest) {
 	}
 
 	function seedPromotion(tx: ReturnType<typeof executableDeliveryFixture>['tx'], sliceId: string) {
-		tx.actions.records.set('promote-slice', {
-			id: 'promote-slice',
-			deliveryId: 'delivery-1',
+		const id = derivedId(sliceId, 30_000)
+		tx.actions.records.set(id, {
+			id,
+			deliveryId: '01k00000000000000000000008',
 			performed: { at: '2026-06-10T11:20:00.000Z' },
 			authorized: null,
 			result: {
@@ -449,14 +467,15 @@ if (import.meta.vitest) {
 	}
 
 	function seedCompletedSliceExecution(tx: ReturnType<typeof executableDeliveryFixture>['tx'], sliceId: string) {
-		tx.agentRuns.records.set(`${sliceId}-agent-run`, {
-			id: `${sliceId}-agent-run`,
+		const id = derivedId(sliceId, 40_000)
+		tx.agentRuns.records.set(id, {
+			id,
 			agent: { type: 'model' },
-			purpose: { type: 'execution', deliveryId: 'delivery-1', sliceId, mode: { type: 'initial' } },
+			purpose: { type: 'execution', deliveryId: '01k00000000000000000000008', sliceId, mode: { type: 'initial' } },
 			profile: {
-				agentRunProfileId: 'agent-run-profile-1',
+				agentRunProfileId: '01k00000000000000000000006',
 				name: 'Agent Run Profile',
-				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				runtimeRequirements: [],
 			},
 			modelUseOverride: null,
@@ -464,9 +483,14 @@ if (import.meta.vitest) {
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: null,
-			sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+			sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 			started: { at: '2026-06-10T11:30:00.000Z' },
 			completed: { at: '2026-06-10T11:40:00.000Z' },
 		})
+	}
+
+	function derivedId(id: string, offset: number): string {
+		const sequence = Number(id.slice(-5))
+		return `01k000000000000000000${(offset + sequence).toString().padStart(5, '0')}`
 	}
 }

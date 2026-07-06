@@ -83,9 +83,9 @@ if (import.meta.vitest) {
 	describe('requireInteractiveAgentRunTargetOpen', () => {
 		it('passes for a planning Agent Run with an existing Plan', async () => {
 			const options = createTestCoreServices()
-			options.tx.plans.records.set('plan-1', {
-				id: 'plan-1',
-				projectId: 'project-1',
+			options.tx.plans.records.set('01k00000000000000000000028', {
+				id: '01k00000000000000000000028',
+				projectId: '01k00000000000000000000030',
 				title: 'Plan',
 				created: stamp,
 				closed: null,
@@ -93,16 +93,16 @@ if (import.meta.vitest) {
 			const agentRun = planningAgentRun()
 			options.tx.agentRuns.records.set(agentRun.id, agentRun)
 
-			const result = await requireInteractiveAgentRunTargetOpen(options.storage, 'agent-run-1')
+			const result = await requireInteractiveAgentRunTargetOpen(options.storage, '01k00000000000000000000002')
 
 			expect(result).toEqual({ ok: true, value: agentRun })
 		})
 
 		it('rejects planning Agent Runs whose Plan is closed', async () => {
 			const options = createTestCoreServices()
-			options.tx.plans.records.set('plan-1', {
-				id: 'plan-1',
-				projectId: 'project-1',
+			options.tx.plans.records.set('01k00000000000000000000028', {
+				id: '01k00000000000000000000028',
+				projectId: '01k00000000000000000000030',
 				title: 'Plan',
 				created: stamp,
 				closed: stamp,
@@ -110,52 +110,61 @@ if (import.meta.vitest) {
 			const agentRun = planningAgentRun()
 			options.tx.agentRuns.records.set(agentRun.id, agentRun)
 
-			const result = await requireInteractiveAgentRunTargetOpen(options.storage, 'agent-run-1')
+			const result = await requireInteractiveAgentRunTargetOpen(options.storage, '01k00000000000000000000002')
 
-			expect(result).toEqual({ ok: false, error: { type: 'plan-closed', planId: 'plan-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'plan-closed', planId: '01k00000000000000000000028' } })
 		})
 
 		it('rejects execution Agent Runs as non-interactive', async () => {
 			const options = createTestCoreServices()
-			options.tx.agentRuns.records.set('agent-run-1', {
+			options.tx.agentRuns.records.set('01k00000000000000000000002', {
 				...planningAgentRun(),
-				purpose: { type: 'execution', deliveryId: 'delivery-1', sliceId: 'slice-1', mode: { type: 'initial' } },
+				purpose: {
+					type: 'execution',
+					deliveryId: '01k00000000000000000000008',
+					sliceId: '01k00000000000000000000042',
+					mode: { type: 'initial' },
+				},
 			})
 
-			const result = await requireInteractiveAgentRunTargetOpen(options.storage, 'agent-run-1')
+			const result = await requireInteractiveAgentRunTargetOpen(options.storage, '01k00000000000000000000002')
 
-			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-interactive', agentRunId: 'agent-run-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-interactive', agentRunId: '01k00000000000000000000002' } })
 		})
 
 		it('rejects revision-planning Agent Runs whose Revision Gate is closed', async () => {
 			const options = createTestCoreServices()
-			options.tx.agentRuns.records.set('agent-run-1', {
+			options.tx.agentRuns.records.set('01k00000000000000000000002', {
 				...planningAgentRun(),
-				purpose: { type: 'revision-planning', revisionGateId: 'revision-gate-1' },
+				purpose: { type: 'revision-planning', revisionGateId: '01k00000000000000000000039' },
 			})
-			options.tx.revisionGates.records.set('revision-gate-1', {
-				id: 'revision-gate-1',
-				scope: { type: 'delivery-artifact', deliveryId: 'delivery-1', deliveryArtifactId: 'delivery-artifact-1' },
-				reviewSurfaceId: 'review-surface-1',
+			options.tx.revisionGates.records.set('01k00000000000000000000039', {
+				id: '01k00000000000000000000039',
+				scope: {
+					type: 'delivery-artifact',
+					deliveryId: '01k00000000000000000000008',
+					deliveryArtifactId: '01k00000000000000000000010',
+				},
+				reviewSurfaceId: '01k00000000000000000000037',
 				opened: stamp,
 				closed: { type: 'closed-without-revision', closed: stamp },
 			})
 
-			const result = await requireInteractiveAgentRunTargetOpen(options.storage, 'agent-run-1')
+			const result = await requireInteractiveAgentRunTargetOpen(options.storage, '01k00000000000000000000002')
 
-			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: 'agent-run-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: '01k00000000000000000000002' } })
 		})
 	})
 
 	function planningAgentRun(): AgentRun {
 		return {
-			id: 'agent-run-1',
+			id: '01k00000000000000000000002',
 			agent: { type: 'model' },
-			purpose: { type: 'planning', planId: 'plan-1' },
+			purpose: { type: 'planning', planId: '01k00000000000000000000028' },
 			profile: {
-				agentRunProfileId: 'agent-run-profile-1',
+				agentRunProfileId: '01k00000000000000000000006',
 				name: 'Agent Run Profile',
-				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				runtimeRequirements: [],
 			},
 			modelUseOverride: null,
@@ -163,7 +172,7 @@ if (import.meta.vitest) {
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: null,
-			sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+			sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
 		}

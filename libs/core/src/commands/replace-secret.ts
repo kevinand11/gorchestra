@@ -46,12 +46,15 @@ if (import.meta.vitest) {
 	describe('replaceSecret command', () => {
 		it('replaces Secret protected value references and replacement Audit Stamps', async () => {
 			const options = createTestCoreServices()
-			seedSecret(options.tx, 'secret-1')
+			seedSecret(options.tx, '01k00000000000000000000040')
 			const command = createReplaceSecretCommand(createTestCoreRuntime(options))
 
-			const result = await command({ secretId: 'secret-1', valueRef: ' protected-ref-2 ' }, context)
+			const result = await command({ secretId: '01k00000000000000000000040', valueRef: ' protected-ref-2 ' }, context)
 
-			expect(result).toMatchObject({ ok: true, value: { id: 'secret-1', valueRef: 'protected-ref-2', replaced: localStamp() } })
+			expect(result).toMatchObject({
+				ok: true,
+				value: { id: '01k00000000000000000000040', valueRef: 'protected-ref-2', replaced: localStamp() },
+			})
 		})
 	})
 }

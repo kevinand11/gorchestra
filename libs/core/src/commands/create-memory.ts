@@ -60,10 +60,10 @@ async function validateParent(
 }
 
 function createMemoryValues(runtime: CoreRuntime, context: CommandContext): CoreResult<CreateMemoryValues, InvalidCoreServiceOutputError> {
-	const memoryId = nextId(runtime.values, 'memory')
+	const memoryId = nextId(runtime.values)
 	if (!memoryId.ok) return memoryId
 
-	const revisionId = nextId(runtime.values, 'memory-revision')
+	const revisionId = nextId(runtime.values)
 	if (!revisionId.ok) return revisionId
 
 	const stamp = auditStamp(runtime.values, context)
@@ -127,8 +127,8 @@ if (import.meta.vitest) {
 			const result = await command({ parentId: null, title: '  Brain  ', body: '  Body  ' }, context)
 
 			const revision: MemoryRevision = {
-				id: 'memory-revision-1',
-				memoryId: 'memory-1',
+				id: '01k00000000000000000010002',
+				memoryId: '01k00000000000000000010001',
 				title: 'Brain',
 				body: 'Body',
 				created: localStamp(),
@@ -136,33 +136,33 @@ if (import.meta.vitest) {
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'memory-1',
+					id: '01k00000000000000000010001',
 					parentId: null,
 					created: localStamp(),
 					currentRevision: currentRevision(revision),
 				},
 			})
 			expect(options.tx.memoryRevisions.records.get(revision.id)).toEqual(revision)
-			expect(options.tx.memories.records.get('memory-1')).toEqual(result.ok ? result.value : null)
+			expect(options.tx.memories.records.get('01k00000000000000000010001')).toEqual(result.ok ? result.value : null)
 		})
 
 		it('creates a child Memory after validating the parent exists', async () => {
 			const options = createTestCoreServices()
-			seedMemory(options, 'parent-memory')
+			seedMemory(options, '01k00000000000000000010020')
 			const command = createCreateMemoryCommand(createTestCoreRuntime(options))
 
-			const result = await command({ parentId: 'parent-memory', title: 'Child', body: '' }, context)
+			const result = await command({ parentId: '01k00000000000000000010020', title: 'Child', body: '' }, context)
 
-			expect(result).toMatchObject({ ok: true, value: { id: 'memory-1', parentId: 'parent-memory' } })
+			expect(result).toMatchObject({ ok: true, value: { id: '01k00000000000000000010001', parentId: '01k00000000000000000010020' } })
 		})
 
 		it('rejects missing parent Memories before generating ids', async () => {
 			const options = createTestCoreServices()
 			const command = createCreateMemoryCommand(createTestCoreRuntime(options))
 
-			const result = await command({ parentId: 'missing-parent', title: 'Child', body: '' }, context)
+			const result = await command({ parentId: '01k00000000000000000100054', title: 'Child', body: '' }, context)
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'memory', id: 'missing-parent' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'memory', id: '01k00000000000000000100054' } })
 			expect(options.tx.memoryRevisions.records.size).toBe(0)
 			expect(options.tx.memories.records.size).toBe(0)
 		})
@@ -178,7 +178,7 @@ if (import.meta.vitest) {
 				ok: false,
 				error: {
 					type: 'storage-operation-failed',
-					operation: { type: 'create', resource: 'memory-revision', id: 'memory-revision-1' },
+					operation: { type: 'create', resource: 'memory-revision', id: '01k00000000000000000010002' },
 				},
 			})
 			expect(options.tx.memories.records.size).toBe(0)
@@ -190,7 +190,7 @@ if (import.meta.vitest) {
 			id,
 			parentId: null,
 			created: stamp,
-			currentRevision: { id: `${id}-revision`, title: 'Parent', body: '', created: stamp },
+			currentRevision: { id: '01k00000000000000000010021', title: 'Parent', body: '', created: stamp },
 		})
 	}
 }

@@ -98,7 +98,7 @@ if (import.meta.vitest) {
 				ok: false,
 				error: {
 					type: 'model-thinking-level-unavailable',
-					modelId: 'model-1',
+					modelId: '01k00000000000000000000024',
 					thinkingLevel: 'xhigh',
 					reason: { type: 'provider-thinking-level-unsupported', protocol: 'google-generative-ai' },
 				},
@@ -108,8 +108,8 @@ if (import.meta.vitest) {
 
 	function model(input: Pick<Model['capabilities'], 'thinking'>): Model {
 		return {
-			id: 'model-1',
-			providerId: 'model-provider-1',
+			id: '01k00000000000000000000024',
+			providerId: '01k00000000000000000000027',
 			name: 'Model',
 			providerModelId: 'provider-model',
 			providerOptions: null,

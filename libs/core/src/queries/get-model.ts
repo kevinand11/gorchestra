@@ -52,33 +52,36 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the target Model does not exist', async () => {
-			const result = await createGetModelQuery(createTestCoreServices())({ modelId: 'model-1' })
+			const result = await createGetModelQuery(createTestCoreServices())({ modelId: '01k00000000000000000000024' })
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'model', id: 'model-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'model', id: '01k00000000000000000000024' } })
 		})
 
 		it('returns not-found when the Model Provider does not exist', async () => {
 			const options = createTestCoreServices()
-			seedSelectableModel(options.tx, 'model-1')
-			options.tx.modelProviders.records.delete('model-1-provider')
+			seedSelectableModel(options.tx, '01k00000000000000000000024')
+			options.tx.modelProviders.records.delete('01k00000000000000000050024')
 			const query = createGetModelQuery(options)
 
-			const result = await query({ modelId: 'model-1' })
+			const result = await query({ modelId: '01k00000000000000000000024' })
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'model-provider', id: 'model-1-provider' } })
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'not-found', resource: 'model-provider', id: '01k00000000000000000050024' },
+			})
 		})
 
 		it('returns Model details with Provider summary and derived archive state', async () => {
 			const options = createTestCoreServices()
-			seedModelProvider(options.tx, 'provider-1', true)
-			options.tx.modelProviders.records.set('provider-1', {
-				...options.tx.modelProviders.records.get('provider-1')!,
+			seedModelProvider(options.tx, '01k00000000000000000000032', true)
+			options.tx.modelProviders.records.set('01k00000000000000000000032', {
+				...options.tx.modelProviders.records.get('01k00000000000000000000032')!,
 				name: 'Provider One',
 				source: { type: 'openai-responses' },
 			})
-			options.tx.models.records.set('model-1', {
-				id: 'model-1',
-				providerId: 'provider-1',
+			options.tx.models.records.set('01k00000000000000000000024', {
+				id: '01k00000000000000000000024',
+				providerId: '01k00000000000000000000032',
 				name: 'Model One',
 				providerModelId: 'provider-model-1',
 				providerOptions: { serviceTier: 'flex' },
@@ -90,13 +93,13 @@ if (import.meta.vitest) {
 			})
 			const query = createGetModelQuery(options)
 
-			const result = await query({ modelId: 'model-1' })
+			const result = await query({ modelId: '01k00000000000000000000024' })
 
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'model-1',
-					providerId: 'provider-1',
+					id: '01k00000000000000000000024',
+					providerId: '01k00000000000000000000032',
 					name: 'Model One',
 					providerModelId: 'provider-model-1',
 					providerOptions: { serviceTier: 'flex' },
@@ -107,7 +110,7 @@ if (import.meta.vitest) {
 					updated: null,
 					archived: true,
 					provider: {
-						id: 'provider-1',
+						id: '01k00000000000000000000032',
 						name: 'Provider One',
 						source: { type: 'openai-responses' },
 						protocol: 'openai-responses',
@@ -125,11 +128,14 @@ if (import.meta.vitest) {
 			}
 			const query = createGetModelQuery(options)
 
-			const result = await query({ modelId: 'model-1' })
+			const result = await query({ modelId: '01k00000000000000000000024' })
 
 			expect(result).toEqual({
 				ok: false,
-				error: { type: 'storage-operation-failed', operation: { type: 'get', resource: 'model', id: 'model-1' } },
+				error: {
+					type: 'storage-operation-failed',
+					operation: { type: 'get', resource: 'model', id: '01k00000000000000000000024' },
+				},
 			})
 		})
 	})

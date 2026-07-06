@@ -68,7 +68,7 @@ async function handleAcceptRevisionOutput(
 	const stamp = auditStamp(runtime.values, context)
 	if (!stamp.ok) return stamp
 
-	const revisionId = nextId(runtime.values, 'revision')
+	const revisionId = nextId(runtime.values)
 	if (!revisionId.ok) return revisionId
 
 	const written = await withTransaction(runtime.services, (storage) =>
@@ -310,10 +310,10 @@ async function appendRevisionProposalAcceptance(
 ): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
 	const acceptedEvent = await appendAgentRunEvent(runtime, storage, context.proposal.agentRunId, {
 		type: 'proposal-accepted',
-		proposalCursor: context.proposal.cursor,
+		proposalEventId: context.proposal.id,
 		authorized: stamp,
 		materialized: { type: 'revision-output', revisionId: revision.id },
-		projectedParts: proposalAcceptedProjectedParts(context.proposal.cursor),
+		projectedParts: proposalAcceptedProjectedParts(context.proposal.id),
 	})
 	return acceptedEvent.ok
 		? { ok: true, value: { result: { revision, revisionGate, acceptedEvent: acceptedEvent.value }, dispatchMarker } }
@@ -362,6 +362,8 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedDelivery, seedSlice, stamp } =
 		await import('../utils/test-helpers')
+	const proposalEventId = '01k00000000000000000000003'
+	const reviewEventId = '01k00000000000000000000004'
 
 	describe('acceptRevisionOutput command', () => {
 		it('validates input before reading storage', async () => {
@@ -379,12 +381,16 @@ if (import.meta.vitest) {
 			const options = deliveryRevisionFixture()
 			const command = createAcceptRevisionOutputCommand(createTestCoreRuntime(options))
 
-			const result = await command({ proposalEventId: 'proposal-event' }, context)
+			const result = await command({ proposalEventId: proposalEventId }, context)
 
 			const expectedRevision = {
-				id: 'revision-1',
-				revisionGateId: 'revision-gate-1',
-				scope: { type: 'delivery-artifact' as const, deliveryId: 'delivery-1', deliveryArtifactId: 'delivery-artifact-1' },
+				id: '01k00000000000000000010001',
+				revisionGateId: '01k00000000000000000000039',
+				scope: {
+					type: 'delivery-artifact' as const,
+					deliveryId: '01k00000000000000000000008',
+					deliveryArtifactId: '01k00000000000000000000010',
+				},
 				instruction: { body: 'Revise artifact.' },
 				disposition: { body: 'Address requested changes.' },
 				accepted: localStamp(),
@@ -393,138 +399,146 @@ if (import.meta.vitest) {
 				ok: true,
 				value: {
 					revision: expectedRevision,
-					revisionGate: { closed: { type: 'consumed-by-revision', revisionId: 'revision-1' } },
-					acceptedEvent: { body: { type: 'proposal-accepted', proposalCursor: '01J00000000000000000000000' } },
+					revisionGate: { closed: { type: 'consumed-by-revision', revisionId: '01k00000000000000000010001' } },
+					acceptedEvent: { body: { type: 'proposal-accepted', proposalEventId } },
 				},
 			})
-			expect(options.tx.revisions.records.get('revision-1')).toEqual(expectedRevision)
-			expect(options.tx.agentRuns.records.get('agent-run-1')?.completed).toEqual({ at: localStamp().at })
+			expect(options.tx.revisions.records.get('01k00000000000000000010001')).toEqual(expectedRevision)
+			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.completed).toEqual({ at: localStamp().at })
 		})
 
 		it('consumes the Revision Gate without overwriting an already completed Agent Run', async () => {
 			const options = deliveryRevisionFixture()
 			const previousCompletion = { at: '2026-06-10T11:30:00.000Z' }
-			options.tx.agentRuns.records.get('agent-run-1')!.completed = previousCompletion
+			options.tx.agentRuns.records.get('01k00000000000000000000002')!.completed = previousCompletion
 			const command = createAcceptRevisionOutputCommand(createTestCoreRuntime(options))
 
-			const result = await command({ proposalEventId: 'proposal-event' }, context)
+			const result = await command({ proposalEventId: proposalEventId }, context)
 
 			expect(result).toMatchObject({ ok: true, value: { revisionGate: { closed: { type: 'consumed-by-revision' } } } })
-			expect(options.tx.agentRuns.records.get('agent-run-1')?.completed).toEqual(previousCompletion)
+			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.completed).toEqual(previousCompletion)
 		})
 
 		it('creates a Slice-scoped Revision through the Slice parent Delivery', async () => {
 			const options = sliceRevisionFixture()
 			const command = createAcceptRevisionOutputCommand(createTestCoreRuntime(options))
 
-			const result = await command({ proposalEventId: 'proposal-event' }, context)
+			const result = await command({ proposalEventId: proposalEventId }, context)
 
-			expect(result).toMatchObject({ ok: true, value: { revision: { scope: { type: 'slice-artifact', sliceId: 'slice-1' } } } })
+			expect(result).toMatchObject({
+				ok: true,
+				value: { revision: { scope: { type: 'slice-artifact', sliceId: '01k00000000000000000000042' } } },
+			})
 		})
 
 		it('rejects reviewed, wrong-type, and closed-gate proposals', async () => {
 			const reviewed = deliveryRevisionFixture()
-			reviewed.tx.agentRunEvents.records.set('review-event', {
-				id: 'review-event',
-				agentRunId: 'agent-run-1',
-				cursor: '01J00000000000000000000001',
+			reviewed.tx.agentRunEvents.records.set(reviewEventId, {
+				id: reviewEventId,
+				agentRunId: '01k00000000000000000000002',
 				occurred: { at: stamp.at },
 				body: {
 					type: 'proposal-rejected',
-					proposalCursor: '01J00000000000000000000000',
+					proposalEventId,
 					authorized: stamp,
 					reason: null,
 					projectedParts: [{ type: 'text', text: 'Proposal reviewed.', metadata: null }],
 				},
 			})
 			await expect(
-				createAcceptRevisionOutputCommand(createTestCoreRuntime(reviewed))({ proposalEventId: 'proposal-event' }, context),
+				createAcceptRevisionOutputCommand(createTestCoreRuntime(reviewed))({ proposalEventId: proposalEventId }, context),
 			).resolves.toEqual({
 				ok: false,
-				error: { type: 'proposal-already-reviewed', proposalEventId: 'proposal-event' },
+				error: { type: 'proposal-already-reviewed', proposalEventId: proposalEventId },
 			})
 
 			const wrongType = deliveryRevisionFixture('proposed-plan-output')
 			await expect(
-				createAcceptRevisionOutputCommand(createTestCoreRuntime(wrongType))({ proposalEventId: 'proposal-event' }, context),
+				createAcceptRevisionOutputCommand(createTestCoreRuntime(wrongType))({ proposalEventId: proposalEventId }, context),
 			).resolves.toEqual({
 				ok: false,
 				error: {
 					type: 'proposal-type-mismatch',
-					proposalEventId: 'proposal-event',
+					proposalEventId: proposalEventId,
 					expected: 'proposed-revision-output',
 					actual: 'proposed-plan-output',
 				},
 			})
 
 			const closed = deliveryRevisionFixture()
-			closed.tx.revisionGates.records.get('revision-gate-1')!.closed = { type: 'closed-without-revision', closed: localStamp() }
+			closed.tx.revisionGates.records.get('01k00000000000000000000039')!.closed = {
+				type: 'closed-without-revision',
+				closed: localStamp(),
+			}
 			await expect(
-				createAcceptRevisionOutputCommand(createTestCoreRuntime(closed))({ proposalEventId: 'proposal-event' }, context),
+				createAcceptRevisionOutputCommand(createTestCoreRuntime(closed))({ proposalEventId: proposalEventId }, context),
 			).resolves.toEqual({
 				ok: false,
-				error: { type: 'revision-gate-closed', revisionGateId: 'revision-gate-1' },
+				error: { type: 'revision-gate-closed', revisionGateId: '01k00000000000000000000039' },
 			})
 		})
 	})
 
 	function deliveryRevisionFixture(type: 'proposed-revision-output' | 'proposed-plan-output' = 'proposed-revision-output') {
 		const options = createTestCoreServices()
-		seedDelivery(options.tx, 'delivery-1')
+		seedDelivery(options.tx, '01k00000000000000000000008')
 		seedDeliveryArtifact(options.tx)
-		options.tx.reviewSurfaces.records.set('review-surface-1', deliveryReviewSurface())
-		options.tx.revisionGates.records.set('revision-gate-1', {
-			id: 'revision-gate-1',
-			scope: { type: 'delivery-artifact', deliveryId: 'delivery-1', deliveryArtifactId: 'delivery-artifact-1' },
-			reviewSurfaceId: 'review-surface-1',
+		options.tx.reviewSurfaces.records.set('01k00000000000000000000037', deliveryReviewSurface())
+		options.tx.revisionGates.records.set('01k00000000000000000000039', {
+			id: '01k00000000000000000000039',
+			scope: {
+				type: 'delivery-artifact',
+				deliveryId: '01k00000000000000000000008',
+				deliveryArtifactId: '01k00000000000000000000010',
+			},
+			reviewSurfaceId: '01k00000000000000000000037',
 			opened: stamp,
 			closed: null,
 		})
 		seedRevisionPlanningAgentRun(options.tx)
-		options.tx.agentRunEvents.records.set('proposal-event', proposalEvent(type))
+		options.tx.agentRunEvents.records.set(proposalEventId, proposalEvent(type))
 		return options
 	}
 
 	function sliceRevisionFixture() {
 		const options = createTestCoreServices()
-		seedDelivery(options.tx, 'delivery-1')
-		seedSlice(options.tx, 'slice-1', 'delivery-1')
-		options.tx.sliceArtifacts.records.set('slice-artifact-1', {
-			id: 'slice-artifact-1',
-			sliceId: 'slice-1',
+		seedDelivery(options.tx, '01k00000000000000000000008')
+		seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000008')
+		options.tx.sliceArtifacts.records.set('01k00000000000000000000045', {
+			id: '01k00000000000000000000045',
+			sliceId: '01k00000000000000000000042',
 			config: { type: 'source-control', sliceBranch: 'slice-branch' },
 			created: { at: '2026-06-10T12:00:00.000Z' },
 		})
-		options.tx.reviewSurfaces.records.set('review-surface-1', sliceReviewSurface())
-		options.tx.revisionGates.records.set('revision-gate-1', {
-			id: 'revision-gate-1',
-			scope: { type: 'slice-artifact', sliceId: 'slice-1', sliceArtifactId: 'slice-artifact-1' },
-			reviewSurfaceId: 'review-surface-1',
+		options.tx.reviewSurfaces.records.set('01k00000000000000000000037', sliceReviewSurface())
+		options.tx.revisionGates.records.set('01k00000000000000000000039', {
+			id: '01k00000000000000000000039',
+			scope: { type: 'slice-artifact', sliceId: '01k00000000000000000000042', sliceArtifactId: '01k00000000000000000000045' },
+			reviewSurfaceId: '01k00000000000000000000037',
 			opened: stamp,
 			closed: null,
 		})
 		seedRevisionPlanningAgentRun(options.tx)
-		options.tx.agentRunEvents.records.set('proposal-event', proposalEvent('proposed-revision-output'))
+		options.tx.agentRunEvents.records.set(proposalEventId, proposalEvent('proposed-revision-output'))
 		return options
 	}
 
 	function proposalEvent(type: 'proposed-revision-output' | 'proposed-plan-output'): AgentRunEvent {
 		return {
-			id: 'proposal-event',
-			agentRunId: 'agent-run-1',
-			cursor: '01J00000000000000000000000',
+			id: proposalEventId,
+			agentRunId: '01k00000000000000000000002',
 			occurred: { at: stamp.at },
 			body:
 				type === 'proposed-revision-output'
 					? {
 							type,
-							assistantMessageCursor: '01J00000000000000000000000',
+							assistantMessageEventId: '01j00000000000000000000000',
 							toolCallId: 'call-1',
 							output: revisionOutput(),
 						}
 					: {
 							type,
-							assistantMessageCursor: '01J00000000000000000000000',
+							assistantMessageEventId: '01j00000000000000000000000',
 							toolCallId: 'call-1',
 							output: {
 								proposedDeliveries: {},
@@ -540,14 +554,14 @@ if (import.meta.vitest) {
 	}
 
 	function seedRevisionPlanningAgentRun(tx: ReturnType<typeof createTestCoreServices>['tx']) {
-		tx.agentRuns.records.set('agent-run-1', {
-			id: 'agent-run-1',
+		tx.agentRuns.records.set('01k00000000000000000000002', {
+			id: '01k00000000000000000000002',
 			agent: { type: 'model' },
-			purpose: { type: 'revision-planning', revisionGateId: 'revision-gate-1' },
+			purpose: { type: 'revision-planning', revisionGateId: '01k00000000000000000000039' },
 			profile: {
-				agentRunProfileId: 'agent-run-profile-1',
+				agentRunProfileId: '01k00000000000000000000006',
 				name: 'Agent Run Profile',
-				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				runtimeRequirements: [],
 			},
 			modelUseOverride: null,
@@ -555,16 +569,16 @@ if (import.meta.vitest) {
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: null,
-			sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+			sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
 		})
 	}
 
 	function seedDeliveryArtifact(tx: ReturnType<typeof createTestCoreServices>['tx']) {
-		tx.deliveryArtifacts.records.set('delivery-artifact-1', {
-			id: 'delivery-artifact-1',
-			deliveryId: 'delivery-1',
+		tx.deliveryArtifacts.records.set('01k00000000000000000000010', {
+			id: '01k00000000000000000000010',
+			deliveryId: '01k00000000000000000000008',
 			config: { type: 'source-control', deliveryBranch: 'delivery-branch' },
 			created: { at: '2026-06-10T12:00:00.000Z' },
 		})
@@ -572,12 +586,12 @@ if (import.meta.vitest) {
 
 	function deliveryReviewSurface(): ReviewSurface {
 		return {
-			id: 'review-surface-1',
-			scope: { type: 'delivery', deliveryId: 'delivery-1', deliveryArtifactId: 'delivery-artifact-1' },
+			id: '01k00000000000000000000037',
+			scope: { type: 'delivery', deliveryId: '01k00000000000000000000008', deliveryArtifactId: '01k00000000000000000000010' },
 			config: {
 				provider: 'github',
 				pullRequestNumber: 1,
-				repositoryId: 'repository-1',
+				repositoryId: '01k00000000000000000000034',
 				sourceBranch: 'delivery-branch',
 				targetBranch: 'main',
 			},
@@ -589,12 +603,12 @@ if (import.meta.vitest) {
 
 	function sliceReviewSurface(): ReviewSurface {
 		return {
-			id: 'review-surface-1',
-			scope: { type: 'slice', sliceId: 'slice-1', sliceArtifactId: 'slice-artifact-1' },
+			id: '01k00000000000000000000037',
+			scope: { type: 'slice', sliceId: '01k00000000000000000000042', sliceArtifactId: '01k00000000000000000000045' },
 			config: {
 				provider: 'github',
 				pullRequestNumber: 1,
-				repositoryId: 'repository-1',
+				repositoryId: '01k00000000000000000000034',
 				sourceBranch: 'slice-branch',
 				targetBranch: 'delivery-branch',
 			},

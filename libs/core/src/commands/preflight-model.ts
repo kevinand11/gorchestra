@@ -276,26 +276,29 @@ if (import.meta.vitest) {
 		it('returns not-found when the target Model does not exist', async () => {
 			const command = createPreflightModelCommand(createTestCoreRuntime())
 
-			const result = await command({ modelId: 'model-1' }, context)
+			const result = await command({ modelId: '01k00000000000000000000024' }, context)
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'model', id: 'model-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'model', id: '01k00000000000000000000024' } })
 		})
 
 		it('returns not-found when the referenced Model Provider does not exist', async () => {
 			const options = createTestCoreServices()
-			options.tx.models.records.set('model-1', modelRecord())
+			options.tx.models.records.set('01k00000000000000000000024', modelRecord())
 			const command = createPreflightModelCommand(createTestCoreRuntime(options))
 
-			const result = await command({ modelId: 'model-1' }, context)
+			const result = await command({ modelId: '01k00000000000000000000024' }, context)
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'model-provider', id: 'model-provider-1' } })
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'not-found', resource: 'model-provider', id: '01k00000000000000000000027' },
+			})
 		})
 
 		it('returns failed evidence when the Model is archived', async () => {
 			const options = modelFixture({ modelArchived: true })
 			const command = createPreflightModelCommand(createTestCoreRuntime(options, { providers: neverCalledProviders(options) }))
 
-			const result = await command({ modelId: 'model-1' }, context)
+			const result = await command({ modelId: '01k00000000000000000000024' }, context)
 
 			expect(result).toEqual({ ok: true, value: modelPreflightEvidence(false, 'OpenAI Responses Model is archived.') })
 		})
@@ -304,24 +307,24 @@ if (import.meta.vitest) {
 			const options = modelFixture({ providerArchived: true })
 			const command = createPreflightModelCommand(createTestCoreRuntime(options, { providers: neverCalledProviders(options) }))
 
-			const result = await command({ modelId: 'model-1' }, context)
+			const result = await command({ modelId: '01k00000000000000000000024' }, context)
 
 			expect(result).toEqual({ ok: true, value: modelPreflightEvidence(false, 'OpenAI Responses Model Provider is archived.') })
 		})
 
 		it('returns failed evidence when configured thinking support is unsupported by the Model Provider Protocol', async () => {
 			const options = modelFixture()
-			options.tx.modelProviders.records.set('model-provider-1', {
-				...options.tx.modelProviders.records.get('model-provider-1')!,
+			options.tx.modelProviders.records.set('01k00000000000000000000027', {
+				...options.tx.modelProviders.records.get('01k00000000000000000000027')!,
 				source: { type: 'google' },
 			})
-			options.tx.models.records.set('model-1', {
-				...options.tx.models.records.get('model-1')!,
+			options.tx.models.records.set('01k00000000000000000000024', {
+				...options.tx.models.records.get('01k00000000000000000000024')!,
 				capabilities: { ...defaultModelCapabilities, thinking: { supportedLevels: ['xhigh'] } },
 			})
 			const command = createPreflightModelCommand(createTestCoreRuntime(options, { providers: neverCalledProviders(options) }))
 
-			const result = await command({ modelId: 'model-1' }, context)
+			const result = await command({ modelId: '01k00000000000000000000024' }, context)
 
 			expect(result).toEqual({
 				ok: true,
@@ -331,10 +334,10 @@ if (import.meta.vitest) {
 
 		it('returns failed evidence when the auth Secret is missing', async () => {
 			const options = modelFixture()
-			seedSecret(options.tx, 'secret-2')
+			seedSecret(options.tx, '01k00000000000000000000041')
 			const command = createPreflightModelCommand(createTestCoreRuntime(options, { providers: neverCalledProviders(options) }))
 
-			const result = await command({ modelId: 'model-1' }, context)
+			const result = await command({ modelId: '01k00000000000000000000024' }, context)
 
 			expect(result).toEqual({
 				ok: true,
@@ -344,11 +347,11 @@ if (import.meta.vitest) {
 
 		it('returns failed evidence when a header Secret is inactive', async () => {
 			const options = modelFixture()
-			seedSecret(options.tx, 'secret-1')
-			seedSecret(options.tx, 'secret-2', true)
+			seedSecret(options.tx, '01k00000000000000000000040')
+			seedSecret(options.tx, '01k00000000000000000000041', true)
 			const command = createPreflightModelCommand(createTestCoreRuntime(options, { providers: neverCalledProviders(options) }))
 
-			const result = await command({ modelId: 'model-1' }, context)
+			const result = await command({ modelId: '01k00000000000000000000024' }, context)
 
 			expect(result).toEqual({
 				ok: true,
@@ -358,9 +361,10 @@ if (import.meta.vitest) {
 
 		it('calls Model Provider Protocol providers outside the storage transaction and returns passing evidence', async () => {
 			const options = modelFixture()
-			seedSecret(options.tx, 'secret-1')
-			seedSecret(options.tx, 'secret-2')
-			options.secrets.resolveSecretValues = () => Promise.resolve({ 'secret-1': 'token', 'secret-2': 'org-1' })
+			seedSecret(options.tx, '01k00000000000000000000040')
+			seedSecret(options.tx, '01k00000000000000000000041')
+			options.secrets.resolveSecretValues = () =>
+				Promise.resolve({ '01k00000000000000000000040': 'token', '01k00000000000000000000041': 'org-1' })
 			let providerTransactionCalls: number | null = null
 			const providers = {
 				sourceControl: createTestCoreRuntime(options).providers.sourceControl,
@@ -377,7 +381,7 @@ if (import.meta.vitest) {
 			}
 			const command = createPreflightModelCommand(createTestCoreRuntime(options, { providers }))
 
-			const result = await command({ modelId: 'model-1' }, context)
+			const result = await command({ modelId: '01k00000000000000000000024' }, context)
 
 			expect(result).toEqual({ ok: true, value: modelPreflightEvidence(true, 'OpenAI Responses model preflight passed.') })
 			expect(providerTransactionCalls).toBe(1)
@@ -385,9 +389,10 @@ if (import.meta.vitest) {
 
 		it('maps provider failures to failed evidence', async () => {
 			const options = modelFixture()
-			seedSecret(options.tx, 'secret-1')
-			seedSecret(options.tx, 'secret-2')
-			options.secrets.resolveSecretValues = () => Promise.resolve({ 'secret-1': 'token', 'secret-2': 'org-1' })
+			seedSecret(options.tx, '01k00000000000000000000040')
+			seedSecret(options.tx, '01k00000000000000000000041')
+			options.secrets.resolveSecretValues = () =>
+				Promise.resolve({ '01k00000000000000000000040': 'token', '01k00000000000000000000041': 'org-1' })
 			const providers = {
 				sourceControl: createTestCoreRuntime(options).providers.sourceControl,
 				modelProviderProtocols: {
@@ -405,19 +410,20 @@ if (import.meta.vitest) {
 			}
 			const command = createPreflightModelCommand(createTestCoreRuntime(options, { providers }))
 
-			const result = await command({ modelId: 'model-1' }, context)
+			const result = await command({ modelId: '01k00000000000000000000024' }, context)
 
 			expect(result).toEqual({ ok: true, value: modelPreflightEvidence(false, 'OpenAI Responses model was not found.') })
 		})
 
 		it('returns invalid Core Service Output from Secret value resolution', async () => {
 			const options = modelFixture()
-			seedSecret(options.tx, 'secret-1')
-			seedSecret(options.tx, 'secret-2')
-			options.secrets.resolveSecretValues = () => Promise.resolve({ 'secret-1': 1, 'secret-2': 'org-1' } as never)
+			seedSecret(options.tx, '01k00000000000000000000040')
+			seedSecret(options.tx, '01k00000000000000000000041')
+			options.secrets.resolveSecretValues = () =>
+				Promise.resolve({ '01k00000000000000000000040': 1, '01k00000000000000000000041': 'org-1' } as never)
 			const command = createPreflightModelCommand(createTestCoreRuntime(options))
 
-			const result = await command({ modelId: 'model-1' }, context)
+			const result = await command({ modelId: '01k00000000000000000000024' }, context)
 
 			expect(result).toMatchObject({
 				ok: false,
@@ -428,15 +434,15 @@ if (import.meta.vitest) {
 
 	function modelFixture(options: { modelArchived?: boolean; providerArchived?: boolean } = {}) {
 		const services = createTestCoreServices()
-		services.tx.models.records.set('model-1', modelRecord(options.modelArchived))
-		services.tx.modelProviders.records.set('model-provider-1', modelProviderRecord(options.providerArchived))
+		services.tx.models.records.set('01k00000000000000000000024', modelRecord(options.modelArchived))
+		services.tx.modelProviders.records.set('01k00000000000000000000027', modelProviderRecord(options.providerArchived))
 		return services
 	}
 
 	function modelRecord(archived = false): Model {
 		return {
-			id: 'model-1',
-			providerId: 'model-provider-1',
+			id: '01k00000000000000000000024',
+			providerId: '01k00000000000000000000027',
 			name: 'GPT 5',
 			providerModelId: 'gpt-5',
 			providerOptions: null,
@@ -450,11 +456,11 @@ if (import.meta.vitest) {
 
 	function modelProviderRecord(archived = false): ModelProvider {
 		return {
-			id: 'model-provider-1',
+			id: '01k00000000000000000000027',
 			name: 'OpenAI',
 			source: { type: 'openai-responses' },
-			auth: { value: { type: 'secret', secretId: 'secret-1' } },
-			headers: [{ name: 'OpenAI-Organization', value: { type: 'secret', secretId: 'secret-2' } }],
+			auth: { value: { type: 'secret', secretId: '01k00000000000000000000040' } },
+			headers: [{ name: 'OpenAI-Organization', value: { type: 'secret', secretId: '01k00000000000000000000041' } }],
 			providerOptions: null,
 			created: stamp,
 			updated: null,

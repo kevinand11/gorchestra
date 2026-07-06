@@ -61,7 +61,7 @@ if (import.meta.vitest) {
 				return { ok: true, value: created.id }
 			})
 
-			expect(result).toEqual({ ok: true, value: 'project-1' })
+			expect(result).toEqual({ ok: true, value: '01k00000000000000000000030' })
 			expect(await findProject(storage)).toEqual(projectRecord())
 		})
 
@@ -101,16 +101,16 @@ if (import.meta.vitest) {
 	}
 
 	function createProjectRecord(storage: CoreStorage) {
-		return withExplicitCoreStorageId('project-1', () => storage.on(projectSchema).one().create(projectRecord()))
+		return withExplicitCoreStorageId('01k00000000000000000000030', () => storage.on(projectSchema).one().create(projectRecord()))
 	}
 
 	function findProject(storage: CoreStorage) {
-		return storage.on(projectSchema).one().id('project-1').find()
+		return storage.on(projectSchema).one().id('01k00000000000000000000030').find()
 	}
 
 	function projectRecord() {
 		return {
-			id: 'project-1',
+			id: '01k00000000000000000000030',
 			title: 'Project',
 			source: { type: 'source-control' as const },
 			config: {
@@ -119,7 +119,7 @@ if (import.meta.vitest) {
 					work: {
 						maxProcessableSliceSlots: 1,
 						maxCorrectionRetriesPerFailure: 1,
-						executionAgentRunProfileId: 'agent-run-profile-1',
+						executionAgentRunProfileId: '01k00000000000000000000006',
 						revisionExecutionAgentRunProfileId: null,
 					},
 				},

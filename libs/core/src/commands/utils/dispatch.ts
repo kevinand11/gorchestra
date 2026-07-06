@@ -73,7 +73,7 @@ export function acceptAgentRunSandboxRelease(
 		type: 'agent-run-sandbox-release',
 		agentRunId,
 		coordinationClaims: [exclusiveAgentRunClaim(agentRunId)],
-		reason: { type: 'agent-run-completed' },
+		reason: { type: '01k00000000000000000100019' },
 	})
 }
 

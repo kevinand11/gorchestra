@@ -328,19 +328,19 @@ if (import.meta.vitest) {
 		it('returns not-found when the target Secret does not exist', async () => {
 			const query = createListSecretReferencesQuery(createTestCoreServices())
 
-			const result = await query({ secretId: 'secret-1' })
+			const result = await query({ secretId: '01k00000000000000000000040' })
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'secret', id: 'secret-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'secret', id: '01k00000000000000000000040' } })
 		})
 
 		it('returns display-ready references for all Core Secret usages', async () => {
 			const options = createTestCoreServices()
-			seedSecret(options.tx, 'secret-1')
-			seedSecret(options.tx, 'secret-2')
+			seedSecret(options.tx, '01k00000000000000000000040')
+			seedSecret(options.tx, '01k00000000000000000000041')
 			seedSecretReferenceFixtures(options)
 			const query = createListSecretReferencesQuery(options)
 
-			const result = await query({ secretId: 'secret-1' })
+			const result = await query({ secretId: '01k00000000000000000000040' })
 
 			expect(result).toEqual({
 				ok: true,
@@ -348,8 +348,8 @@ if (import.meta.vitest) {
 					{
 						type: 'repository-access',
 						active: true,
-						repositoryId: 'repository-1',
-						projectId: 'project-1',
+						repositoryId: '01k00000000000000000000034',
+						projectId: '01k00000000000000000000030',
 						provider: 'github',
 						owner: 'Octo',
 						name: 'Repo',
@@ -357,14 +357,14 @@ if (import.meta.vitest) {
 					{
 						type: 'agent-run-profile-environment-secret',
 						active: false,
-						agentRunProfileId: 'agent-run-profile-1',
+						agentRunProfileId: '01k00000000000000000000006',
 						name: 'Agent Run Profile',
 						envName: 'NPM_TOKEN',
 					},
 					{
 						type: 'agent-run-profile-run-command-secret',
 						active: false,
-						agentRunProfileId: 'agent-run-profile-1',
+						agentRunProfileId: '01k00000000000000000000006',
 						name: 'Agent Run Profile',
 						label: 'Install packages',
 						envName: 'NPM_TOKEN',
@@ -372,14 +372,14 @@ if (import.meta.vitest) {
 					{
 						type: 'model-provider-auth',
 						active: false,
-						modelProviderId: 'model-provider-1',
+						modelProviderId: '01k00000000000000000000027',
 						name: 'Anthropic',
 						protocol: 'anthropic-messages',
 					},
 					{
 						type: 'model-provider-header',
 						active: false,
-						modelProviderId: 'model-provider-1',
+						modelProviderId: '01k00000000000000000000027',
 						name: 'Anthropic',
 						protocol: 'anthropic-messages',
 						headerName: 'X-Team',
@@ -390,17 +390,17 @@ if (import.meta.vitest) {
 
 		it('orders active references before inactive references within a reference type', async () => {
 			const options = createTestCoreServices()
-			seedSecret(options.tx, 'secret-1')
-			seedAgentRunProfile(options.tx, 'profile-active-z', 'model-1', {
-				runtimeRequirements: [{ type: 'environment-secret', envName: 'Z_ACTIVE', secretId: 'secret-1' }],
+			seedSecret(options.tx, '01k00000000000000000000040')
+			seedAgentRunProfile(options.tx, 'profile-active-z', '01k00000000000000000000024', {
+				runtimeRequirements: [{ type: 'environment-secret', envName: 'Z_ACTIVE', secretId: '01k00000000000000000000040' }],
 			})
-			seedAgentRunProfile(options.tx, 'profile-inactive-a', 'model-1', {
+			seedAgentRunProfile(options.tx, 'profile-inactive-a', '01k00000000000000000000024', {
 				archived: true,
-				runtimeRequirements: [{ type: 'environment-secret', envName: 'A_INACTIVE', secretId: 'secret-1' }],
+				runtimeRequirements: [{ type: 'environment-secret', envName: 'A_INACTIVE', secretId: '01k00000000000000000000040' }],
 			})
 			const query = createListSecretReferencesQuery(options)
 
-			const result = await query({ secretId: 'secret-1' })
+			const result = await query({ secretId: '01k00000000000000000000040' })
 
 			expect(result).toEqual({
 				ok: true,
@@ -425,11 +425,11 @@ if (import.meta.vitest) {
 
 		it('returns storage errors when reference reads fail', async () => {
 			const options = createTestCoreServices()
-			seedSecret(options.tx, 'secret-1')
+			seedSecret(options.tx, '01k00000000000000000000040')
 			options.tx.repositories.fail.list = true
 			const query = createListSecretReferencesQuery(options)
 
-			const result = await query({ secretId: 'secret-1' })
+			const result = await query({ secretId: '01k00000000000000000000040' })
 
 			expect(result).toEqual({
 				ok: false,
@@ -439,38 +439,38 @@ if (import.meta.vitest) {
 	})
 
 	function seedSecretReferenceFixtures(options: ReturnType<typeof createTestCoreServices>): void {
-		options.tx.repositories.records.set('repository-1', {
-			id: 'repository-1',
-			projectId: 'project-1',
-			config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
+		options.tx.repositories.records.set('01k00000000000000000000034', {
+			id: '01k00000000000000000000034',
+			projectId: '01k00000000000000000000030',
+			config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: '01k00000000000000000000040' },
 			created: stamp,
 		})
-		options.tx.repositories.records.set('repository-2', {
-			id: 'repository-2',
-			projectId: 'project-1',
-			config: { provider: 'github', owner: 'Octo', name: 'Other', secretId: 'secret-2' },
+		options.tx.repositories.records.set('01k00000000000000000000035', {
+			id: '01k00000000000000000000035',
+			projectId: '01k00000000000000000000030',
+			config: { provider: 'github', owner: 'Octo', name: 'Other', secretId: '01k00000000000000000000041' },
 			created: stamp,
 		})
-		seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1', {
+		seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024', {
 			archived: true,
 			runtimeRequirements: [
-				{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: 'secret-1' },
+				{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' },
 				{
 					type: 'run-command',
 					label: 'Install packages',
 					command: { executable: 'pnpm', args: ['install'], cwd: '/workspace/repos/repository-1' },
-					commandSecretEnv: { NPM_TOKEN: 'secret-1', OTHER_TOKEN: 'secret-2' },
+					commandSecretEnv: { NPM_TOKEN: '01k00000000000000000000040', OTHER_TOKEN: '01k00000000000000000000041' },
 				},
 			],
 		})
-		options.tx.modelProviders.records.set('model-provider-1', {
-			id: 'model-provider-1',
+		options.tx.modelProviders.records.set('01k00000000000000000000027', {
+			id: '01k00000000000000000000027',
 			name: 'Anthropic',
 			source: { type: 'anthropic' },
-			auth: { value: { type: 'secret', secretId: 'secret-1' } },
+			auth: { value: { type: 'secret', secretId: '01k00000000000000000000040' } },
 			headers: [
-				{ name: 'X-Team', value: { type: 'secret', secretId: 'secret-1' } },
-				{ name: 'X-Other', value: { type: 'secret', secretId: 'secret-2' } },
+				{ name: 'X-Team', value: { type: 'secret', secretId: '01k00000000000000000000040' } },
+				{ name: 'X-Other', value: { type: 'secret', secretId: '01k00000000000000000000041' } },
 			],
 			providerOptions: null,
 			created: stamp,

@@ -100,12 +100,14 @@ if (import.meta.vitest) {
 			const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ agentRunId: 'agent-run-1', parts: [{ type: 'text', text: 'Please refine the plan.', metadata: null }] },
+				{ agentRunId: '01k00000000000000000000002', parts: [{ type: 'text', text: 'Please refine the plan.', metadata: null }] },
 				context,
 			)
 
-			expect(result).toEqual({ ok: true, value: expectedInputEvent('agent-run-event-1', 1) })
-			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')).toEqual(expectedInputEvent('agent-run-event-1', 1))
+			expect(result).toEqual({ ok: true, value: expectedInputEvent('01k00000000000000000010001', 1) })
+			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010001')).toEqual(
+				expectedInputEvent('01k00000000000000000010001', 1),
+			)
 		})
 
 		it('requests Agent Run Dispatch after appending an operator input message and readies it after commit', async () => {
@@ -126,7 +128,7 @@ if (import.meta.vitest) {
 			const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ agentRunId: 'agent-run-1', parts: [{ type: 'text', text: 'Please refine the plan.', metadata: null }] },
+				{ agentRunId: '01k00000000000000000000002', parts: [{ type: 'text', text: 'Please refine the plan.', metadata: null }] },
 				context,
 			)
 
@@ -134,14 +136,14 @@ if (import.meta.vitest) {
 			expect(dispatches).toEqual([
 				{
 					type: 'agent-run-model-turn',
-					agentRunId: 'agent-run-1',
+					agentRunId: '01k00000000000000000000002',
 					coordinationClaims: [
 						{
-							scope: [{ type: 'agent-run', id: 'agent-run-1' }],
+							scope: [{ type: 'agent-run', id: '01k00000000000000000000002' }],
 							mode: { type: 'exclusive' },
 						},
 					],
-					reason: { type: 'input-appended', inputEventId: 'agent-run-event-1' },
+					reason: { type: 'input-appended', inputEventId: '01k00000000000000000010001' },
 				},
 			])
 			expect(readyMarkers).toEqual(['marker-1'])
@@ -185,49 +187,54 @@ if (import.meta.vitest) {
 
 		it('appends during an active turn for the next safe boundary', async () => {
 			const options = planningAgentRunFixture()
-			options.tx.agentRunEvents.records.set('agent-run-event-1', {
-				id: 'agent-run-event-1',
-				agentRunId: 'agent-run-1',
-				cursor: '01J00000000000000000000000',
+			options.tx.agentRunEvents.records.set('01k00000000000000000000003', {
+				id: '01k00000000000000000000003',
+				agentRunId: '01k00000000000000000000002',
 				occurred: { at: '2026-06-10T12:00:00.000Z' },
 				body: {
 					type: 'turn-started',
-					contextThroughCursor: '01J00000000000000000000000',
-					reason: { type: 'input', inputEventCursors: ['01J00000000000000000000000'] },
+					contextThroughEventId: '01j00000000000000000000000',
+					reason: { type: 'input', inputEventIds: ['01j00000000000000000000000'] },
 				},
 			})
 			const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ agentRunId: 'agent-run-1', parts: [{ type: 'text', text: 'Next turn.', metadata: null }] },
+				{ agentRunId: '01k00000000000000000000002', parts: [{ type: 'text', text: 'Next turn.', metadata: null }] },
 				context,
 			)
 
-			expect(result).toMatchObject({ ok: true, value: { cursor: '01J00000000000000000000001' } })
+			expect(result).toMatchObject({ ok: true, value: { id: '01k00000000000000000010001' } })
 		})
 
 		it('rejects Autonomous Agent Runs as non-interactive', async () => {
 			const options = planningAgentRunFixture()
-			options.tx.agentRuns.records.get('agent-run-1')!.purpose = {
+			options.tx.agentRuns.records.get('01k00000000000000000000002')!.purpose = {
 				type: 'execution',
-				deliveryId: 'delivery-1',
-				sliceId: 'slice-1',
+				deliveryId: '01k00000000000000000000008',
+				sliceId: '01k00000000000000000000042',
 				mode: { type: 'initial' },
 			}
 			const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', parts: [{ type: 'text', text: 'No.', metadata: null }] }, context)
+			const result = await command(
+				{ agentRunId: '01k00000000000000000000002', parts: [{ type: 'text', text: 'No.', metadata: null }] },
+				context,
+			)
 
-			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-interactive', agentRunId: 'agent-run-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-interactive', agentRunId: '01k00000000000000000000002' } })
 		})
 
 		it('rejects revision-planning Agent Runs whose Revision Gate is closed', async () => {
 			const options = revisionPlanningAgentRunFixture(true)
 			const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', parts: [{ type: 'text', text: 'No.', metadata: null }] }, context)
+			const result = await command(
+				{ agentRunId: '01k00000000000000000000002', parts: [{ type: 'text', text: 'No.', metadata: null }] },
+				context,
+			)
 
-			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: 'agent-run-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: '01k00000000000000000000002' } })
 		})
 	})
 
@@ -235,7 +242,7 @@ if (import.meta.vitest) {
 
 	async function sendNextTurn(options: ReturnType<typeof planningAgentRunFixture>): Promise<SendAgentRunMessageResult> {
 		const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
-		return command({ agentRunId: 'agent-run-1', parts: [{ type: 'text', text: 'Next turn.', metadata: null }] }, context)
+		return command({ agentRunId: '01k00000000000000000000002', parts: [{ type: 'text', text: 'Next turn.', metadata: null }] }, context)
 	}
 
 	function transactionFailureCause(result: SendAgentRunMessageResult): unknown {
@@ -250,11 +257,10 @@ if (import.meta.vitest) {
 		expect(options.tx.agentRunEvents.records.size).toBe(0)
 	}
 
-	function expectedInputEvent(id: string, sequence: number): AgentRunEvent {
+	function expectedInputEvent(id: string, _sequence: number): AgentRunEvent {
 		return {
 			id,
-			agentRunId: 'agent-run-1',
-			cursor: `01J000000000000000000${sequence.toString().padStart(5, '0')}`,
+			agentRunId: '01k00000000000000000000002',
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
 			body: {
 				type: 'input-message',

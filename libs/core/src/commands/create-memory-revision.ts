@@ -114,7 +114,7 @@ function createMemoryRevisionValues(
 	runtime: CoreRuntime,
 	context: CommandContext,
 ): CoreResult<CreateMemoryRevisionValues, InvalidCoreServiceOutputError> {
-	const revisionId = nextId(runtime.values, 'memory-revision')
+	const revisionId = nextId(runtime.values)
 	if (!revisionId.ok) return revisionId
 
 	const stamp = auditStamp(runtime.values, context)
@@ -152,7 +152,10 @@ if (import.meta.vitest) {
 			options.tx.memories.fail.get = true
 			const command = createCreateMemoryRevisionCommand(createTestCoreRuntime(options))
 
-			const result = await command({ memoryId: '', expectedCurrentRevisionId: 'revision-1', title: 'Title', body: '' }, context)
+			const result = await command(
+				{ memoryId: '', expectedCurrentRevisionId: '01k00000000000000000000038', title: 'Title', body: '' },
+				context,
+			)
 
 			expect(result).toMatchObject({
 				ok: false,
@@ -163,17 +166,22 @@ if (import.meta.vitest) {
 
 		it('creates a revision and updates the Memory current revision snapshot', async () => {
 			const options = createTestCoreServices()
-			seedMemory(options, 'memory-1')
+			seedMemory(options, '01k00000000000000000000019')
 			const command = createCreateMemoryRevisionCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ memoryId: 'memory-1', expectedCurrentRevisionId: 'memory-revision-current', title: '  Updated  ', body: '  Body  ' },
+				{
+					memoryId: '01k00000000000000000000019',
+					expectedCurrentRevisionId: '01k00000000000000000100010',
+					title: '  Updated  ',
+					body: '  Body  ',
+				},
 				context,
 			)
 
 			const revision: MemoryRevision = {
-				id: 'memory-revision-1',
-				memoryId: 'memory-1',
+				id: '01k00000000000000000010001',
+				memoryId: '01k00000000000000000000019',
 				title: 'Updated',
 				body: 'Body',
 				created: localStamp(),
@@ -181,25 +189,25 @@ if (import.meta.vitest) {
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'memory-1',
+					id: '01k00000000000000000000019',
 					parentId: null,
 					created: stamp,
 					currentRevision: currentRevision(revision),
 				},
 			})
 			expect(options.tx.memoryRevisions.records.get(revision.id)).toEqual(revision)
-			expect(options.tx.memories.records.get('memory-1')).toEqual(result.ok ? result.value : null)
+			expect(options.tx.memories.records.get('01k00000000000000000000019')).toEqual(result.ok ? result.value : null)
 		})
 
 		it('returns the existing Memory without creating a revision when canonical title and body are unchanged', async () => {
 			const options = createTestCoreServices()
-			const memory = seedMemory(options, 'memory-1')
+			const memory = seedMemory(options, '01k00000000000000000000019')
 			const command = createCreateMemoryRevisionCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{
-					memoryId: 'memory-1',
-					expectedCurrentRevisionId: 'memory-revision-current',
+					memoryId: '01k00000000000000000000019',
+					expectedCurrentRevisionId: '01k00000000000000000100010',
 					title: '  Current  ',
 					body: '  Current body  ',
 				},
@@ -212,11 +220,16 @@ if (import.meta.vitest) {
 
 		it('rejects stale expected current revision ids with revision-conflict', async () => {
 			const options = createTestCoreServices()
-			seedMemory(options, 'memory-1')
+			seedMemory(options, '01k00000000000000000000019')
 			const command = createCreateMemoryRevisionCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ memoryId: 'memory-1', expectedCurrentRevisionId: 'old-revision', title: 'Updated', body: '' },
+				{
+					memoryId: '01k00000000000000000000019',
+					expectedCurrentRevisionId: '01k00000000000000000010020',
+					title: 'Updated',
+					body: '',
+				},
 				context,
 			)
 
@@ -224,9 +237,9 @@ if (import.meta.vitest) {
 				ok: false,
 				error: {
 					type: 'revision-conflict',
-					memoryId: 'memory-1',
-					expectedCurrentRevisionId: 'old-revision',
-					actualCurrentRevisionId: 'memory-revision-current',
+					memoryId: '01k00000000000000000000019',
+					expectedCurrentRevisionId: '01k00000000000000000010020',
+					actualCurrentRevisionId: '01k00000000000000000100010',
 				},
 			})
 			expect(options.tx.memoryRevisions.records.size).toBe(0)
@@ -236,11 +249,16 @@ if (import.meta.vitest) {
 			const command = createCreateMemoryRevisionCommand(createTestCoreRuntime(createTestCoreServices()))
 
 			const result = await command(
-				{ memoryId: 'missing-memory', expectedCurrentRevisionId: 'revision-1', title: 'Updated', body: '' },
+				{
+					memoryId: '01k00000000000000000010021',
+					expectedCurrentRevisionId: '01k00000000000000000000038',
+					title: 'Updated',
+					body: '',
+				},
 				context,
 			)
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'memory', id: 'missing-memory' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'memory', id: '01k00000000000000000010021' } })
 		})
 	})
 
@@ -249,7 +267,7 @@ if (import.meta.vitest) {
 			id,
 			parentId: null,
 			created: stamp,
-			currentRevision: { id: 'memory-revision-current', title: 'Current', body: 'Current body', created: stamp },
+			currentRevision: { id: '01k00000000000000000100010', title: 'Current', body: 'Current body', created: stamp },
 		}
 		options.tx.memories.records.set(id, memory)
 		return memory

@@ -95,79 +95,90 @@ if (import.meta.vitest) {
 	describe('setAgentRunModelUseOverride command', () => {
 		it('sets a model-use override for an active Planning Agent Run', async () => {
 			const options = planningAgentRunFixture()
-			seedSelectableModel(options.tx, 'model-2')
+			seedSelectableModel(options.tx, '01k00000000000000000000026')
 			const command = createSetAgentRunModelUseOverrideCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', modelUse: { modelId: 'model-2', thinkingLevel: 'none' } }, context)
+			const result = await command(
+				{ agentRunId: '01k00000000000000000000002', modelUse: { modelId: '01k00000000000000000000026', thinkingLevel: 'none' } },
+				context,
+			)
 
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'agent-run-event-1',
-					agentRunId: 'agent-run-1',
-					cursor: '01J00000000000000000000001',
+					id: '01k00000000000000000010001',
+					agentRunId: '01k00000000000000000000002',
 					occurred: { at: '2026-06-10T12:00:00.000Z' },
 					body: {
 						type: 'agent-run-model-use-override-changed',
-						modelUse: { modelId: 'model-2', thinkingLevel: 'none' },
+						modelUse: { modelId: '01k00000000000000000000026', thinkingLevel: 'none' },
 						authorized: localStamp(),
 					},
 				},
 			})
-			expect(options.tx.agentRuns.records.get('agent-run-1')?.modelUseOverride).toEqual({
-				modelUse: { modelId: 'model-2', thinkingLevel: 'none' },
+			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.modelUseOverride).toEqual({
+				modelUse: { modelId: '01k00000000000000000000026', thinkingLevel: 'none' },
 				selected: localStamp(),
 			})
 		})
 
 		it('clears a model-use override', async () => {
 			const options = planningAgentRunFixture()
-			options.tx.agentRuns.records.get('agent-run-1')!.modelUseOverride = {
-				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+			options.tx.agentRuns.records.get('01k00000000000000000000002')!.modelUseOverride = {
+				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				selected: localStamp(),
 			}
 			const command = createSetAgentRunModelUseOverrideCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', modelUse: null }, context)
+			const result = await command({ agentRunId: '01k00000000000000000000002', modelUse: null }, context)
 
 			expect(result).toMatchObject({ ok: true, value: { body: { type: 'agent-run-model-use-override-changed', modelUse: null } } })
-			expect(options.tx.agentRuns.records.get('agent-run-1')?.modelUseOverride).toBeNull()
+			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.modelUseOverride).toBeNull()
 		})
 
 		it('validates selectable models', async () => {
 			const options = planningAgentRunFixture()
-			seedSelectableModel(options.tx, 'model-2', { modelArchived: true })
+			seedSelectableModel(options.tx, '01k00000000000000000000026', { modelArchived: true })
 			const command = createSetAgentRunModelUseOverrideCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', modelUse: { modelId: 'model-2', thinkingLevel: 'none' } }, context)
+			const result = await command(
+				{ agentRunId: '01k00000000000000000000002', modelUse: { modelId: '01k00000000000000000000026', thinkingLevel: 'none' } },
+				context,
+			)
 
-			expect(result).toEqual({ ok: false, error: { type: 'archived-model-reference', modelId: 'model-2' } })
+			expect(result).toEqual({ ok: false, error: { type: 'archived-model-reference', modelId: '01k00000000000000000000026' } })
 		})
 
 		it('rejects Autonomous Agent Runs', async () => {
 			const options = planningAgentRunFixture()
-			seedSelectableModel(options.tx, 'model-2')
-			options.tx.agentRuns.records.get('agent-run-1')!.purpose = {
+			seedSelectableModel(options.tx, '01k00000000000000000000026')
+			options.tx.agentRuns.records.get('01k00000000000000000000002')!.purpose = {
 				type: 'execution',
-				deliveryId: 'delivery-1',
-				sliceId: 'slice-1',
+				deliveryId: '01k00000000000000000000008',
+				sliceId: '01k00000000000000000000042',
 				mode: { type: 'initial' },
 			}
 			const command = createSetAgentRunModelUseOverrideCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', modelUse: { modelId: 'model-2', thinkingLevel: 'none' } }, context)
+			const result = await command(
+				{ agentRunId: '01k00000000000000000000002', modelUse: { modelId: '01k00000000000000000000026', thinkingLevel: 'none' } },
+				context,
+			)
 
-			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-interactive', agentRunId: 'agent-run-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-interactive', agentRunId: '01k00000000000000000000002' } })
 		})
 
 		it('rejects revision-planning Agent Runs whose Revision Gate is closed', async () => {
 			const options = revisionPlanningAgentRunFixture(true)
-			seedSelectableModel(options.tx, 'model-2')
+			seedSelectableModel(options.tx, '01k00000000000000000000026')
 			const command = createSetAgentRunModelUseOverrideCommand(createTestCoreRuntime(options))
 
-			const result = await command({ agentRunId: 'agent-run-1', modelUse: { modelId: 'model-2', thinkingLevel: 'none' } }, context)
+			const result = await command(
+				{ agentRunId: '01k00000000000000000000002', modelUse: { modelId: '01k00000000000000000000026', thinkingLevel: 'none' } },
+				context,
+			)
 
-			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: 'agent-run-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: '01k00000000000000000000002' } })
 		})
 	})
 }

@@ -505,7 +505,9 @@ if (import.meta.vitest) {
 
 	describe('Model Provider Protocol family', () => {
 		it('resolves OpenAI Responses access Secrets and dispatches to the concrete provider', async () => {
-			const services = coreServices(() => Promise.resolve({ 'secret-1': 'token', 'secret-2': 'org-1' }))
+			const services = coreServices(() =>
+				Promise.resolve({ '01k00000000000000000000040': 'token', '01k00000000000000000000041': 'org-1' }),
+			)
 			let observedAccess: ModelProviderProtocolAccess | null = null
 			const providers = createModelProviderProtocolProviders(services, {
 				openAIResponses: {
@@ -526,7 +528,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns failed preflight when a requested Secret value is missing', async () => {
-			const services = coreServices(() => Promise.resolve({ 'secret-1': 'token' }))
+			const services = coreServices(() => Promise.resolve({ '01k00000000000000000000040': 'token' }))
 			const providers = createModelProviderProtocolProviders(services, { openAIResponses: neverCalledOpenAIResponsesProvider() })
 
 			const result = await providers.preflightModel(openAIResponsesPreflightInput())
@@ -535,7 +537,7 @@ if (import.meta.vitest) {
 				ok: true,
 				value: {
 					type: 'failed',
-					reason: { type: 'model-provider-secret-unresolved', secretId: 'secret-2' },
+					reason: { type: 'model-provider-secret-unresolved', secretId: '01k00000000000000000000041' },
 					summary: 'OpenAI Responses model provider Secret value could not be resolved.',
 				},
 			})
@@ -543,7 +545,7 @@ if (import.meta.vitest) {
 
 		it('loads active Model Provider Secrets for model Agent turns', async () => {
 			const services = coreServicesWithSecrets(
-				[secretRecord('secret-1', 'auth-ref'), secretRecord('secret-2', 'org-ref')],
+				[secretRecord('01k00000000000000000000040', 'auth-ref'), secretRecord('01k00000000000000000000041', 'org-ref')],
 				({ secrets }) =>
 					Promise.resolve(Object.fromEntries(secrets.map((secret) => [secret.secretId, `${secret.valueRef}-plaintext`]))),
 			)
@@ -572,8 +574,8 @@ if (import.meta.vitest) {
 			model: openAIResponsesModel(),
 			modelProvider: openAIResponsesModelProvider(),
 			secrets: [
-				{ secretId: 'secret-1', valueRef: 'protected-ref-1' },
-				{ secretId: 'secret-2', valueRef: 'protected-ref-2' },
+				{ secretId: '01k00000000000000000000040', valueRef: 'protected-ref-1' },
+				{ secretId: '01k00000000000000000000041', valueRef: 'protected-ref-2' },
 			],
 		}
 	}
@@ -589,8 +591,8 @@ if (import.meta.vitest) {
 
 	function openAIResponsesModel(): ModelProviderProtocolPreflightModelInput['model'] {
 		return {
-			id: 'model-1',
-			providerId: 'model-provider-1',
+			id: '01k00000000000000000000024',
+			providerId: '01k00000000000000000000027',
 			name: 'GPT 5',
 			providerModelId: 'gpt-5',
 			providerOptions: null,
@@ -604,11 +606,11 @@ if (import.meta.vitest) {
 
 	function openAIResponsesModelProvider(): ModelProvider {
 		return {
-			id: 'model-provider-1',
+			id: '01k00000000000000000000027',
 			name: 'OpenAI',
 			source: { type: 'openai-responses' },
-			auth: { value: { type: 'secret', secretId: 'secret-1' } },
-			headers: [{ name: 'OpenAI-Organization', value: { type: 'secret', secretId: 'secret-2' } }],
+			auth: { value: { type: 'secret', secretId: '01k00000000000000000000040' } },
+			headers: [{ name: 'OpenAI-Organization', value: { type: 'secret', secretId: '01k00000000000000000000041' } }],
 			providerOptions: null,
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 			updated: null,

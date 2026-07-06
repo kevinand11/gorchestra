@@ -51,15 +51,15 @@ if (import.meta.vitest) {
 
 		it('returns redacted Secret metadata by id', async () => {
 			const options = createTestCoreServices()
-			seedSecret(options.tx, 'secret-1')
+			seedSecret(options.tx, '01k00000000000000000000040')
 			const query = createGetSecretQuery(options)
 
-			const result = await query({ secretId: 'secret-1' })
+			const result = await query({ secretId: '01k00000000000000000000040' })
 
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'secret-1',
+					id: '01k00000000000000000000040',
 					name: 'Secret',
 					created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 					replaced: null,
@@ -71,18 +71,18 @@ if (import.meta.vitest) {
 
 		it('includes Secret References for the target Secret', async () => {
 			const options = createTestCoreServices()
-			seedSecret(options.tx, 'secret-1')
-			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1', {
-				runtimeRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: 'secret-1' }],
+			seedSecret(options.tx, '01k00000000000000000000040')
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024', {
+				runtimeRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
 			})
 			const query = createGetSecretQuery(options)
 
-			const result = await query({ secretId: 'secret-1' })
+			const result = await query({ secretId: '01k00000000000000000000040' })
 
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'secret-1',
+					id: '01k00000000000000000000040',
 					name: 'Secret',
 					created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 					replaced: null,
@@ -91,7 +91,7 @@ if (import.meta.vitest) {
 						{
 							type: 'agent-run-profile-environment-secret',
 							active: true,
-							agentRunProfileId: 'agent-run-profile-1',
+							agentRunProfileId: '01k00000000000000000000006',
 							name: 'Agent Run Profile',
 							envName: 'NPM_TOKEN',
 						},
@@ -103,9 +103,9 @@ if (import.meta.vitest) {
 		it('returns not-found when the target Secret does not exist', async () => {
 			const query = createGetSecretQuery(createTestCoreServices())
 
-			const result = await query({ secretId: 'secret-1' })
+			const result = await query({ secretId: '01k00000000000000000000040' })
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'secret', id: 'secret-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'secret', id: '01k00000000000000000000040' } })
 		})
 	})
 }

@@ -1,44 +1,37 @@
-import { v, type PipeOutput } from 'valleyed'
+import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
-import { idPipe } from '../domain/commons'
+import { idPipe, paginatedQueryEnvelopePipe, paginatedQueryInputPipe } from '../domain/commons'
 import { memoryPipe, type Memory } from '../domain/memory'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices, CoreStorage } from '../services'
-import { getRequired, listRecords, withTransaction } from '../storage/helpers'
-import type { Result as CoreResult } from '../utils/types'
+import { getRequired, listRecordsPaginated, withTransaction } from '../storage/helpers'
+import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
-export const inputPipe = v.object({ parentId: v.nullable(idPipe) })
-export type Input = PipeOutput<typeof inputPipe>
+export const inputPipe = v.merge(v.object({ parentId: v.nullable(idPipe) }), paginatedQueryInputPipe)
+export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
 
-export const resultPipe = v.array(memoryPipe)
+export const resultPipe = paginatedQueryEnvelopePipe(memoryPipe)
 export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createListMemoryChildrenQuery(options: CoreServices): Operation {
 	return buildQueryHandler('listMemoryChildren', inputPipe, (input) =>
-		withTransaction(options, (storage) => listMemoryChildren(storage, input.parentId)),
-	)
+		withTransaction(options, (storage) => listMemoryChildren(storage, input)),
+	) as Operation
 }
 
 async function listMemoryChildren(
 	storage: CoreStorage,
-	parentId: string | null,
+	input: PipeOutput<typeof inputPipe>,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	if (parentId !== null) {
-		const parent = await getRequired('memory', storage, parentId)
+	if (input.parentId !== null) {
+		const parent = await getRequired('memory', storage, input.parentId)
 		if (!parent.ok) return parent
 	}
 
-	const children = await listRecords('memory', storage, { where: (filter, fields) => filter.eq(fields.parentId, parentId) })
-	return children.ok ? { ok: true, value: sortMemoriesByTitleThenId(children.value) } : children
-}
-
-function sortMemoriesByTitleThenId(memories: Memory[]): Memory[] {
-	return [...memories].sort(
-		(left, right) => left.currentRevision.title.localeCompare(right.currentRevision.title) || left.id.localeCompare(right.id),
-	)
+	return await listRecordsPaginated('memory', storage, input, { where: (filter, fields) => filter.eq(fields.parentId, input.parentId) })
 }
 
 if (import.meta.vitest) {
@@ -60,37 +53,51 @@ if (import.meta.vitest) {
 			expect(options.transactionCalls()).toBe(0)
 		})
 
-		it('lists root Memories sorted by current title then id', async () => {
+		it('lists root Memories in id-desc order', async () => {
 			const options = createTestCoreServices()
-			const memoryB = memory({ id: 'memory-b', parentId: null, title: 'Beta' })
-			const memoryA = memory({ id: 'memory-a', parentId: null, title: 'Alpha' })
-			const memoryChild = memory({ id: 'memory-child', parentId: 'memory-a', title: 'Child' })
+			const memoryB = memory({ id: '01k00000000000000000100002', parentId: null, title: 'Beta' })
+			const memoryA = memory({ id: '01k00000000000000000100001', parentId: null, title: 'Alpha' })
+			const memoryChild = memory({ id: '01k00000000000000000100004', parentId: '01k00000000000000000100001', title: 'Child' })
 			options.tx.memories.records.set(memoryB.id, memoryB)
 			options.tx.memories.records.set(memoryA.id, memoryA)
 			options.tx.memories.records.set(memoryChild.id, memoryChild)
 
 			const result = await createListMemoryChildrenQuery(options)({ parentId: null })
 
-			expect(result).toEqual({ ok: true, value: [memoryA, memoryB] })
+			expect(result).toEqual({
+				ok: true,
+				value: {
+					items: [memoryB, memoryA],
+					pages: { current: 1, start: 1, last: 1, previous: null, next: null },
+					docs: { limit: 2, total: 2, count: 2 },
+				},
+			})
 		})
 
 		it('validates a non-null parent before listing direct children', async () => {
 			const options = createTestCoreServices()
-			const parent = memory({ id: 'memory-parent', parentId: null, title: 'Parent' })
-			const childA = memory({ id: 'memory-child-a', parentId: parent.id, title: 'Alpha' })
-			const childB = memory({ id: 'memory-child-b', parentId: parent.id, title: 'Beta' })
-			const grandchild = memory({ id: 'memory-grandchild', parentId: childA.id, title: 'Grandchild' })
+			const parent = memory({ id: '01k00000000000000000100008', parentId: null, title: 'Parent' })
+			const childA = memory({ id: '01k00000000000000000100005', parentId: parent.id, title: 'Alpha' })
+			const childB = memory({ id: '01k00000000000000000100006', parentId: parent.id, title: 'Beta' })
+			const grandchild = memory({ id: '01k00000000000000000100007', parentId: childA.id, title: 'Grandchild' })
 			for (const record of [parent, childB, childA, grandchild]) options.tx.memories.records.set(record.id, record)
 
 			const result = await createListMemoryChildrenQuery(options)({ parentId: parent.id })
 
-			expect(result).toEqual({ ok: true, value: [childA, childB] })
+			expect(result).toEqual({
+				ok: true,
+				value: {
+					items: [childB, childA],
+					pages: { current: 1, start: 1, last: 1, previous: null, next: null },
+					docs: { limit: 2, total: 2, count: 2 },
+				},
+			})
 		})
 
 		it('returns not-found for a missing parent', async () => {
-			const result = await createListMemoryChildrenQuery(createTestCoreServices())({ parentId: 'missing-parent' })
+			const result = await createListMemoryChildrenQuery(createTestCoreServices())({ parentId: '01k00000000000000000100054' })
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'memory', id: 'missing-parent' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'memory', id: '01k00000000000000000100054' } })
 		})
 
 		it('returns storage errors from child listing', async () => {

@@ -122,7 +122,7 @@ async function queueOperations(
 	return withTransaction<{ markers: string[] }, Exclude<Error, InvalidInputError>>(runtime.services, async (storage) => {
 		const markers: string[] = []
 		for (const operation of operations) {
-			const actionId = nextId(runtime.values, 'action')
+			const actionId = nextId(runtime.values)
 			if (!actionId.ok) return actionId
 
 			const performed = runtimeRecord(runtime.values)
@@ -222,7 +222,7 @@ if (import.meta.vitest) {
 				createTestCoreRuntime(options, { providers: neverCalledProviderBackedPreflightProviders() }),
 			)
 
-			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
+			const result = await operation({ deliveryId: '01k00000000000000000000008' }, workContext)
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
 			expect([...options.tx.actions.records.values()].map((action) => action.result)).toEqual([
@@ -231,11 +231,11 @@ if (import.meta.vitest) {
 			expect(dispatches).toEqual([
 				{
 					type: 'delivery-work-operation',
-					deliveryId: 'delivery-1',
-					queuedActionId: 'action-1',
+					deliveryId: '01k00000000000000000000008',
+					queuedActionId: '01k00000000000000000010001',
 					operation: { scope: 'delivery', state: 'needs-artifact-creation' },
-					coordinationClaims: [{ scope: [{ type: 'delivery', id: 'delivery-1' }], mode: { type: 'exclusive' } }],
-					reason: { type: 'delivery-work-operation-queued', queuedActionId: 'action-1' },
+					coordinationClaims: [{ scope: [{ type: 'delivery', id: '01k00000000000000000000008' }], mode: { type: 'exclusive' } }],
+					reason: { type: 'delivery-work-operation-queued', queuedActionId: '01k00000000000000000010001' },
 				},
 			])
 			expect(readyMarkers).toEqual(['marker-1'])
@@ -243,15 +243,17 @@ if (import.meta.vitest) {
 
 		it('records local Delivery preflight failures without running provider-backed checks', async () => {
 			const options = providerPreflightFixture()
-			options.tx.agentRunProfiles.records.get('agent-run-profile-1')!.archivePeriods = [{ archived: localStamp(), unarchived: null }]
+			options.tx.agentRunProfiles.records.get('01k00000000000000000000006')!.archivePeriods = [
+				{ archived: localStamp(), unarchived: null },
+			]
 			const operation = createScheduleDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: neverCalledProviderBackedPreflightProviders() }),
 			)
 
-			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
+			const result = await operation({ deliveryId: '01k00000000000000000000008' }, workContext)
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
-			expect(options.tx.actions.records.get('action-1')?.result).toMatchObject({
+			expect(options.tx.actions.records.get('01k00000000000000000010001')?.result).toMatchObject({
 				type: 'validate-preflight',
 				checks: [{ passed: false, summary: 'Selected Delivery execution Agent Run Profile is archived.' }],
 			})
@@ -269,20 +271,20 @@ if (import.meta.vitest) {
 					ready: () => {},
 				},
 			})
-			options.tx.deliveryArtifacts.records.set('delivery-artifact-1', {
-				id: 'delivery-artifact-1',
-				deliveryId: 'delivery-1',
+			options.tx.deliveryArtifacts.records.set('01k00000000000000000000010', {
+				id: '01k00000000000000000000010',
+				deliveryId: '01k00000000000000000000008',
 				config: { type: 'source-control', deliveryBranch: 'delivery' },
 				created: localStamp(),
 			})
-			seedSlice(options.tx, 'slice-1', 'delivery-1')
-			seedSlice(options.tx, 'slice-2', 'delivery-1')
-			options.tx.projects.records.get('project-1')!.config.value.work.maxProcessableSliceSlots = 2
+			seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000008')
+			seedSlice(options.tx, '01k00000000000000000000043', '01k00000000000000000000008')
+			options.tx.projects.records.get('01k00000000000000000000030')!.config.value.work.maxProcessableSliceSlots = 2
 			const operation = createScheduleDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: neverCalledProviderBackedPreflightProviders() }),
 			)
 
-			const result = await operation({ deliveryId: 'delivery-1' }, workContext)
+			const result = await operation({ deliveryId: '01k00000000000000000000008' }, workContext)
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 2, failures: [] } })
 			expect(dispatches).toHaveLength(2)
@@ -295,12 +297,12 @@ if (import.meta.vitest) {
 
 	function providerPreflightFixture(overrides: Parameters<typeof createTestCoreServices>[0] = {}) {
 		const options = createTestCoreServices(overrides)
-		seedProject(options.tx, 'project-1')
-		seedSecret(options.tx, 'secret-1')
-		seedSelectableModel(options.tx, 'model-1')
-		seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
-		seedDelivery(options.tx, 'delivery-1')
-		options.tx.deliveries.records.get('delivery-1')!.queued = localStamp()
+		seedProject(options.tx, '01k00000000000000000000030')
+		seedSecret(options.tx, '01k00000000000000000000040')
+		seedSelectableModel(options.tx, '01k00000000000000000000024')
+		seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
+		seedDelivery(options.tx, '01k00000000000000000000008')
+		options.tx.deliveries.records.get('01k00000000000000000000008')!.queued = localStamp()
 		return options
 	}
 }

@@ -77,20 +77,26 @@ if (import.meta.vitest) {
 	describe('updateModel command', () => {
 		it('updates Model editable metadata', async () => {
 			const options = createTestCoreServices()
-			seedSelectableModel(options.tx, 'model-1')
+			seedSelectableModel(options.tx, '01k00000000000000000000024')
 			const command = createUpdateModelCommand(createTestCoreRuntime(options))
 			const capabilities = { ...defaultModelCapabilities, maxOutputTokens: 8192 }
 			const pricing = { unit: 'micro-usd-per-million-tokens' as const, input: 1, output: 2, cacheRead: 0, cacheWrite: 0 }
 
 			const result = await command(
-				{ modelId: 'model-1', name: ' Updated ', providerOptions: { serviceTier: 'flex' }, capabilities, pricing },
+				{
+					modelId: '01k00000000000000000000024',
+					name: ' Updated ',
+					providerOptions: { serviceTier: 'flex' },
+					capabilities,
+					pricing,
+				},
 				context,
 			)
 
 			expect(result).toMatchObject({
 				ok: true,
 				value: {
-					id: 'model-1',
+					id: '01k00000000000000000000024',
 					name: 'Updated',
 					providerOptions: { serviceTier: 'flex' },
 					capabilities,
@@ -102,16 +108,16 @@ if (import.meta.vitest) {
 
 		it('rejects Model thinking support that the Model Provider Protocol cannot map', async () => {
 			const options = createTestCoreServices()
-			seedSelectableModel(options.tx, 'model-1')
-			options.tx.modelProviders.records.set('model-1-provider', {
-				...options.tx.modelProviders.records.get('model-1-provider')!,
+			seedSelectableModel(options.tx, '01k00000000000000000000024')
+			options.tx.modelProviders.records.set('01k00000000000000000050024', {
+				...options.tx.modelProviders.records.get('01k00000000000000000050024')!,
 				source: { type: 'google' },
 			})
 			const command = createUpdateModelCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{
-					modelId: 'model-1',
+					modelId: '01k00000000000000000000024',
 					name: 'Gemini',
 					providerOptions: null,
 					capabilities: { ...defaultModelCapabilities, thinking: { supportedLevels: ['xhigh'] } },
@@ -124,7 +130,7 @@ if (import.meta.vitest) {
 				ok: false,
 				error: {
 					type: 'model-thinking-level-unavailable',
-					modelId: 'model-1',
+					modelId: '01k00000000000000000000024',
 					thinkingLevel: 'xhigh',
 					reason: { type: 'provider-thinking-level-unsupported', protocol: 'google-generative-ai' },
 				},

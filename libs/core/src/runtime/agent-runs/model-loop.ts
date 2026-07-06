@@ -38,7 +38,7 @@ async function loadLoopState(storage: CoreStorage, agentRunId: Id): Promise<Resu
 
 	const events = await listRecords('agent-run-event', storage, {
 		where: (filter, fields) => filter.eq(fields.agentRunId, agentRunId),
-		orderBy: [{ field: 'cursor', direction: 'asc' }],
+		orderBy: [{ field: 'id', direction: 'asc' }],
 	})
 	if (!events.ok) return events
 
@@ -50,7 +50,7 @@ function agentRunReadyForModelTurn(agentRun: AgentRun): boolean {
 		agentRun.blocked === null &&
 		agentRun.sandbox.assignment !== null &&
 		agentRun.sandbox.appliedRequirements.length === agentRun.desiredRuntimeRequirements.length &&
-		agentRun.sandbox.appliedThroughCursor === (agentRun.runtimeRequirementOverrides.at(-1)?.eventCursor ?? null)
+		agentRun.sandbox.appliedThroughEventId === (agentRun.runtimeRequirementOverrides.at(-1)?.eventId ?? null)
 	)
 }
 
@@ -65,7 +65,7 @@ async function runTurn(
 }
 
 function turnStartedBody(claim: TurnReasonClaim): AgentRunEvent['body'] {
-	return { type: 'turn-started', contextThroughCursor: claim.contextThroughCursor, reason: claim.reason }
+	return { type: 'turn-started', contextThroughEventId: claim.contextThroughEventId, reason: claim.reason }
 }
 
 async function runStartedTurn(
@@ -89,14 +89,14 @@ async function runStartedTurn(
 		return recordTurnFailure(runtime, state.agentRun.id, turnStarted, resolution.value, options)
 	}
 
-	const modelContext = buildAgentRunModelContext(state.events, claim.contextThroughCursor)
+	const modelContext = buildAgentRunModelContext(state.events, claim.contextThroughEventId)
 	const aiTurn = await runAISDKTurn(runtime, state, turnStarted, turnModelUse.value, modelContext.messages, resolution.value, options)
 	if (!aiTurn.ok) return aiTurn
 
 	const ended = await appendAndEmit(
 		runtime,
 		state.agentRun.id,
-		{ type: 'turn-ended', turnStartedCursor: turnStarted.cursor, outcome: aiTurn.value.turnOutcome },
+		{ type: 'turn-ended', turnStartedEventId: turnStarted.id, outcome: aiTurn.value.turnOutcome },
 		options,
 	)
 	if (!ended.ok) return ended
@@ -127,7 +127,7 @@ async function recordTurnFailure(
 	const turnEnded = await appendAndEmit(
 		runtime,
 		agentRunId,
-		{ type: 'turn-ended', turnStartedCursor: turnStarted.cursor, outcome: { type: 'error', reason } },
+		{ type: 'turn-ended', turnStartedEventId: turnStarted.id, outcome: { type: 'error', reason } },
 		options,
 	)
 	return turnEnded.ok ? { ok: true, value: { type: 'failed' } } : turnEnded
@@ -140,11 +140,11 @@ if (import.meta.vitest) {
 	describe('runModelAgentRun', () => {
 		it('no-ops completed Agent Runs without processing queued input', async () => {
 			const services = planningFixture()
-			services.tx.agentRuns.records.get('agent-run-1')!.completed = { at: '2026-06-10T12:05:00.000Z' }
+			services.tx.agentRuns.records.get('01k00000000000000000000002')!.completed = { at: '2026-06-10T12:05:00.000Z' }
 			const initialEventCount = services.tx.agentRunEvents.records.size
 			const runtime = modelLoopRuntime(services)
 
-			const result = await runModelAgentRun(runtime, 'agent-run-1')
+			const result = await runModelAgentRun(runtime, '01k00000000000000000000002')
 
 			expect(result).toEqual({ ok: true, value: undefined })
 			expect(services.tx.agentRunEvents.records.size).toBe(initialEventCount)
@@ -152,10 +152,9 @@ if (import.meta.vitest) {
 
 		it('blocks after operator interrupts until new input', async () => {
 			const services = planningFixture()
-			services.tx.agentRunEvents.records.set('interrupt', {
-				id: 'interrupt',
-				agentRunId: 'agent-run-1',
-				cursor: cursor(3),
+			services.tx.agentRunEvents.records.set('01k00000000000000000000013', {
+				id: '01k00000000000000000000013',
+				agentRunId: '01k00000000000000000000002',
 				occurred: { at: '2026-06-10T12:00:00.000Z' },
 				body: {
 					type: 'interrupt-requested',
@@ -165,32 +164,31 @@ if (import.meta.vitest) {
 			})
 			const runtime = modelLoopRuntime(services)
 
-			await expect(runModelAgentRun(runtime, 'agent-run-1')).resolves.toEqual({ ok: true, value: undefined })
+			await expect(runModelAgentRun(runtime, '01k00000000000000000000002')).resolves.toEqual({ ok: true, value: undefined })
 			expect([...services.tx.agentRunEvents.records.values()].some((event) => event.body.type === 'turn-started')).toBe(false)
 
-			services.tx.agentRunEvents.records.set('input-2', {
-				id: 'input-2',
-				agentRunId: 'agent-run-1',
-				cursor: cursor(4),
+			services.tx.agentRunEvents.records.set('01k00000000000000000000014', {
+				id: '01k00000000000000000000014',
+				agentRunId: '01k00000000000000000000002',
 				occurred: { at: '2026-06-10T12:00:00.000Z' },
 				body: { type: 'input-message', source: { type: 'runtime' }, parts: [{ type: 'text', text: 'continue', metadata: null }] },
 			})
-			await expect(runModelAgentRun(runtime, 'agent-run-1')).resolves.toMatchObject({ ok: true })
+			await expect(runModelAgentRun(runtime, '01k00000000000000000000002')).resolves.toMatchObject({ ok: true })
 			expect([...services.tx.agentRunEvents.records.values()].some((event) => event.body.type === 'turn-started')).toBe(true)
 		})
 	})
 
 	function planningFixture() {
 		const services = createTestCoreServices()
-		seedSelectableModel(services.tx, 'model-1')
-		services.tx.agentRuns.records.set('agent-run-1', {
-			id: 'agent-run-1',
+		seedSelectableModel(services.tx, '01k00000000000000000000024')
+		services.tx.agentRuns.records.set('01k00000000000000000000002', {
+			id: '01k00000000000000000000002',
 			agent: { type: 'model' },
-			purpose: { type: 'planning', planId: 'plan-1' },
+			purpose: { type: 'planning', planId: '01k00000000000000000000028' },
 			profile: {
-				agentRunProfileId: 'agent-run-profile-1',
+				agentRunProfileId: '01k00000000000000000000006',
 				name: 'Planning',
-				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				runtimeRequirements: [],
 			},
 			modelUseOverride: null,
@@ -201,7 +199,7 @@ if (import.meta.vitest) {
 			sandbox: {
 				assignment: { ref: 'sandbox-ref', assigned: { at: '2026-06-10T12:00:00.000Z' } },
 				appliedRequirements: [],
-				appliedThroughCursor: null,
+				appliedThroughEventId: null,
 				released: null,
 			},
 			started: { at: '2026-06-10T12:00:00.000Z' },
@@ -212,10 +210,9 @@ if (import.meta.vitest) {
 	}
 
 	function seedInitialEvents(services: ReturnType<typeof createTestCoreServices>) {
-		services.tx.agentRunEvents.records.set('input-1', {
-			id: 'input-1',
-			agentRunId: 'agent-run-1',
-			cursor: cursor(1),
+		services.tx.agentRunEvents.records.set('01k00000000000000000000012', {
+			id: '01k00000000000000000000012',
+			agentRunId: '01k00000000000000000000002',
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
 			body: { type: 'input-message', source: { type: 'runtime' }, parts: [{ type: 'text', text: 'start', metadata: null }] },
 		})
@@ -237,9 +234,5 @@ if (import.meta.vitest) {
 				resolveLanguageModel: () => Promise.resolve({ ok: true, value: { type: 'runtime-error' } }),
 			},
 		}
-	}
-
-	function cursor(index: number): string {
-		return `01J000000000000000000${index.toString().padStart(5, '0')}`
 	}
 }

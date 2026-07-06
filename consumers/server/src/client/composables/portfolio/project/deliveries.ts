@@ -2,10 +2,11 @@ import { computed, type Ref } from 'vue'
 
 import { useSelectedPortfolio } from '../../auth/session'
 import { useFetchAction } from '../../core/action-state'
+import { usePaginatedFetchAction } from '../../core/paginated-fetch-action'
 import { useQueryCache } from '../../core/query-cache'
 import { useServerApi, type ServerApi } from '../../core/server-api'
 
-export type ListedDelivery = Awaited<ReturnType<ServerApi['listDeliveries']>>[number]
+export type ListedDelivery = Awaited<ReturnType<ServerApi['listDeliveries']>>['items'][number]
 type DeliveryDetails = Awaited<ReturnType<ServerApi['getDelivery']>>
 
 export function useDeliveriesList(projectId: Ref<string>) {
@@ -13,15 +14,14 @@ export function useDeliveriesList(projectId: Ref<string>) {
 	const { portfolio } = useSelectedPortfolio()
 	const { queryKeys } = useQueryCache()
 	const {
-		data: deliveries,
+		items: deliveries,
 		isLoading: isLoadingDeliveries,
 		error: deliveriesError,
 		hasExecuted: hasLoadedDeliveries,
-		execute: refreshDeliveries,
-		reset: resetDeliveries,
-	} = useFetchAction(() => serverApi.listDeliveries(projectId.value), {
+		fetchNext: fetchNextDeliveries,
+		hasNext: hasNextDeliveries,
+	} = usePaginatedFetchAction((input) => serverApi.listDeliveries(projectId.value, input), {
 		queryKey: queryKeys.portfolio.deliveries(portfolio.value.id, projectId.value),
-		initialData: [] as ListedDelivery[],
 	})
 	const isRefreshingDeliveries = computed(() => isLoadingDeliveries.value && hasLoadedDeliveries.value)
 
@@ -31,8 +31,8 @@ export function useDeliveriesList(projectId: Ref<string>) {
 		deliveriesError,
 		hasLoadedDeliveries,
 		isRefreshingDeliveries,
-		refreshDeliveries,
-		resetDeliveries,
+		fetchNextDeliveries,
+		hasNextDeliveries,
 	}
 }
 

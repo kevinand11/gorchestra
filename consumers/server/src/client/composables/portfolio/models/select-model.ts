@@ -11,7 +11,7 @@ import {
 } from '../../../utils/model-provider-options'
 import type { ModelThinkingLevel, ServerApi } from '../../core/server-api'
 
-type ListedModelProvider = Awaited<ReturnType<ServerApi['listModelProviders']>>[number]
+type ListedModelProvider = Awaited<ReturnType<ServerApi['listModelProviders']>>['items'][number]
 
 type ModelProviderRef = Readonly<Ref<readonly ListedModelProvider[]>>
 

@@ -53,23 +53,17 @@ const nullableFreeFormStringPipe = v.nullable(freeFormStringPipe)
 const unknownPipe = v.any<unknown>()
 const toolCallIdPipe = nonEmptyTrimmedStringPipe
 
-export const agentRunEventCursorPipe = nonEmptyTrimmedStringPipe
-	.pipe((value) => value.toUpperCase())
-	.pipe(v.custom((value) => /^[0-9A-HJKMNP-TV-Z]{26}$/.test(value), 'Expected an Agent Run Event cursor.'))
-export type AgentRunEventCursor = PipeOutput<typeof agentRunEventCursorPipe>
-
 export const agentRunRuntimeRequirementOverridePipe = v.object({
 	requirements: agentRunRuntimeRequirementsPipe,
 	added: auditStampPipe,
 	eventId: idPipe,
-	eventCursor: agentRunEventCursorPipe,
 })
 export type AgentRunRuntimeRequirementOverride = PipeOutput<typeof agentRunRuntimeRequirementOverridePipe>
 
 export const agentRunSandboxStatePipe = v.object({
 	assignment: v.nullable(v.object({ ref: nonEmptyTrimmedStringPipe, assigned: runtimeRecordPipe })),
 	appliedRequirements: agentRunRuntimeRequirementsPipe,
-	appliedThroughCursor: v.nullable(agentRunEventCursorPipe),
+	appliedThroughEventId: v.nullable(idPipe),
 	released: v.nullable(runtimeRecordPipe),
 })
 export type AgentRunSandboxState = PipeOutput<typeof agentRunSandboxStatePipe>
@@ -225,8 +219,8 @@ const runtimeErrorReasonPipes = {
 
 export const turnErrorReasonPipe = v.discriminate((value) => value.type, {
 	...runtimeErrorReasonPipes,
-	'operator-interrupt': v.object({ type: v.eq('operator-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
-	'runtime-interrupt': v.object({ type: v.eq('runtime-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
+	'operator-interrupt': v.object({ type: v.eq('operator-interrupt'), interruptEventId: idPipe }),
+	'runtime-interrupt': v.object({ type: v.eq('runtime-interrupt'), interruptEventId: idPipe }),
 	timeout: v.object({ type: v.eq('timeout') }),
 	'abort-signal': v.object({ type: v.eq('abort-signal') }),
 })
@@ -243,8 +237,8 @@ export const agentRunToolErrorReasonPipe = v.discriminate((value) => value.type,
 	'tool-timeout': v.object({ type: v.eq('tool-timeout') }),
 	'sandbox-error': v.object({ type: v.eq('sandbox-error') }),
 	'external-dependency-error': v.object({ type: v.eq('external-dependency-error') }),
-	'operator-interrupt': v.object({ type: v.eq('operator-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
-	'runtime-interrupt': v.object({ type: v.eq('runtime-interrupt'), interruptEventCursor: agentRunEventCursorPipe }),
+	'operator-interrupt': v.object({ type: v.eq('operator-interrupt'), interruptEventId: idPipe }),
+	'runtime-interrupt': v.object({ type: v.eq('runtime-interrupt'), interruptEventId: idPipe }),
 	timeout: v.object({ type: v.eq('timeout') }),
 	'abort-signal': v.object({ type: v.eq('abort-signal') }),
 	'interrupted-before-execution': v.object({ type: v.eq('interrupted-before-execution') }),
@@ -410,7 +404,7 @@ export const agentRunCompactionSourcePipe = v.discriminate((value) => value.type
 export type AgentRunCompactionSource = PipeOutput<typeof agentRunCompactionSourcePipe>
 
 export const agentRunTurnStartReasonPipe = v.discriminate((value) => value.type, {
-	input: v.object({ type: v.eq('input'), inputEventCursors: v.array(agentRunEventCursorPipe).pipe(v.min(1)) }),
+	input: v.object({ type: v.eq('input'), inputEventIds: v.array(idPipe).pipe(v.min(1)) }),
 })
 export type AgentRunTurnStartReason = PipeOutput<typeof agentRunTurnStartReasonPipe>
 
@@ -444,11 +438,11 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 	}),
 	'agent-run-sandbox-preparation-started': v.object({
 		type: v.eq('agent-run-sandbox-preparation-started'),
-		requestedThroughCursor: v.nullable(agentRunEventCursorPipe),
+		requestedThroughEventId: v.nullable(idPipe),
 	}),
 	'agent-run-sandbox-preparation-completed': v.object({
 		type: v.eq('agent-run-sandbox-preparation-completed'),
-		appliedThroughCursor: v.nullable(agentRunEventCursorPipe),
+		appliedThroughEventId: v.nullable(idPipe),
 		summary: freeFormStringPipe,
 	}),
 	'agent-run-sandbox-preparation-failed': v.object({
@@ -472,12 +466,12 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 	'input-message': v.object({ type: v.eq('input-message'), source: agentRunInputSourcePipe, parts: agentRunInputTranscriptPartsPipe }),
 	'turn-started': v.object({
 		type: v.eq('turn-started'),
-		contextThroughCursor: agentRunEventCursorPipe,
+		contextThroughEventId: idPipe,
 		reason: agentRunTurnStartReasonPipe,
 	}),
 	'turn-ended': v.object({
 		type: v.eq('turn-ended'),
-		turnStartedCursor: agentRunEventCursorPipe,
+		turnStartedEventId: idPipe,
 		outcome: v.discriminate((outcome) => outcome.type, {
 			completed: v.object({ type: v.eq('completed') }),
 			error: v.object({ type: v.eq('error'), reason: turnErrorReasonPipe }),
@@ -485,7 +479,7 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 	}),
 	'assistant-message': v.object({
 		type: v.eq('assistant-message'),
-		turnStartedCursor: agentRunEventCursorPipe,
+		turnStartedEventId: idPipe,
 		model: agentRunAssistantMessageModelPipe,
 		finishReason: v.in(['stop', 'tool-calls', 'length', 'content-filter', 'error', 'other']),
 		usage: agentRunLanguageModelUsagePipe,
@@ -495,8 +489,8 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 	}),
 	'tool-message': v.object({
 		type: v.eq('tool-message'),
-		turnStartedCursor: agentRunEventCursorPipe,
-		respondsToAssistantMessageCursor: agentRunEventCursorPipe,
+		turnStartedEventId: idPipe,
+		respondsToAssistantMessageEventId: idPipe,
 		source: v.discriminate((value) => value.type, {
 			'tool-execution': v.object({ type: v.eq('tool-execution') }),
 			'runtime-recovery': v.object({ type: v.eq('runtime-recovery') }),
@@ -510,26 +504,26 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 	}),
 	'proposed-plan-output': v.object({
 		type: v.eq('proposed-plan-output'),
-		assistantMessageCursor: agentRunEventCursorPipe,
+		assistantMessageEventId: idPipe,
 		toolCallId: toolCallIdPipe,
 		output: planOutputProposalPipe,
 	}),
 	'proposed-revision-output': v.object({
 		type: v.eq('proposed-revision-output'),
-		assistantMessageCursor: agentRunEventCursorPipe,
+		assistantMessageEventId: idPipe,
 		toolCallId: toolCallIdPipe,
 		output: revisionOutputProposalPipe,
 	}),
 	'proposal-accepted': v.object({
 		type: v.eq('proposal-accepted'),
-		proposalCursor: agentRunEventCursorPipe,
+		proposalEventId: idPipe,
 		authorized: auditStampPipe,
 		materialized: agentRunProposalMaterializationPipe,
 		projectedParts: agentRunSystemTranscriptPartsPipe,
 	}),
 	'proposal-rejected': v.object({
 		type: v.eq('proposal-rejected'),
-		proposalCursor: agentRunEventCursorPipe,
+		proposalEventId: idPipe,
 		authorized: auditStampPipe,
 		reason: nullableFreeFormStringPipe,
 		projectedParts: agentRunSystemTranscriptPartsPipe,
@@ -537,7 +531,7 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 	'context-compacted': v.object({
 		type: v.eq('context-compacted'),
 		source: agentRunCompactionSourcePipe,
-		compactedThroughCursor: agentRunEventCursorPipe,
+		compactedThroughEventId: idPipe,
 		replacementParts: agentRunSystemTranscriptPartsPipe,
 	}),
 })
@@ -546,7 +540,6 @@ export type AgentRunEventBody = PipeOutput<typeof agentRunEventBodyPipe>
 export const agentRunEventPipe = v.object({
 	id: idPipe,
 	agentRunId: idPipe,
-	cursor: agentRunEventCursorPipe,
 	occurred: runtimeRecordPipe,
 	body: agentRunEventBodyPipe,
 })
@@ -560,15 +553,15 @@ if (import.meta.vitest) {
 			expect(
 				v.validate(agentRunEventBodyPipe, {
 					type: 'agent-run-model-use-override-changed',
-					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 					authorized: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				}),
 			).toMatchObject({ valid: true })
 			expect(
 				v.validate(agentRunEventBodyPipe, {
 					type: 'turn-started',
-					contextThroughCursor: '01J00000000000000000000001',
-					reason: { type: 'input', inputEventCursors: ['01J00000000000000000000002'] },
+					contextThroughEventId: '01j00000000000000000000001',
+					reason: { type: 'input', inputEventIds: ['01j00000000000000000000002'] },
 				}),
 			).toMatchObject({ valid: true })
 		})
@@ -584,11 +577,11 @@ if (import.meta.vitest) {
 			expect(
 				v.validate(agentRunEventBodyPipe, {
 					type: 'assistant-message',
-					turnStartedCursor: '01J00000000000000000000001',
+					turnStartedEventId: '01j00000000000000000000001',
 					model: {
-						modelId: 'model-1',
+						modelId: '01k00000000000000000000024',
 						thinkingLevel: 'none',
-						modelProviderId: 'provider-1',
+						modelProviderId: '01k00000000000000000000032',
 						providerProtocol: 'anthropic-messages',
 						providerModelId: 'claude-sonnet',
 					},
@@ -618,8 +611,8 @@ if (import.meta.vitest) {
 			expect(
 				v.validate(agentRunEventBodyPipe, {
 					type: 'tool-message',
-					turnStartedCursor: '01J00000000000000000000001',
-					respondsToAssistantMessageCursor: '01J00000000000000000000002',
+					turnStartedEventId: '01j00000000000000000000001',
+					respondsToAssistantMessageEventId: '01j00000000000000000000002',
 					source: { type: 'tool-execution' },
 					parts: [
 						{
@@ -642,14 +635,14 @@ if (import.meta.vitest) {
 			expect(
 				v.validate(agentRunEventBodyPipe, {
 					type: 'model-message-started',
-					turnStartedCursor: '01J00000000000000000000001',
+					turnStartedEventId: '01j00000000000000000000001',
 					aiSdkCallId: null,
 				}),
 			).toMatchObject({ valid: false })
 			expect(
 				v.validate(agentRunEventBodyPipe, {
 					type: 'tool-call-started',
-					modelMessageCursor: '01J00000000000000000000001',
+					modelMessageCursor: '01j00000000000000000000001',
 					toolCallId: 'call-1',
 					toolName: 'tool',
 					input: {},
@@ -657,8 +650,8 @@ if (import.meta.vitest) {
 			).toMatchObject({ valid: false })
 		})
 
-		it('normalizes cursors to uppercase ULIDs', () => {
-			expect(v.assert(agentRunEventCursorPipe, '01j00000000000000000000001')).toBe('01J00000000000000000000001')
+		it('rejects non-lowercase Core ids', () => {
+			expect(v.assert(idPipe, '01j00000000000000000000001')).toBe('01j00000000000000000000001')
 		})
 	})
 }

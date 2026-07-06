@@ -71,10 +71,10 @@ function openRevisionGateRuntimeValues(
 	const stamp = auditStamp(runtime.values, context)
 	if (!stamp.ok) return stamp
 
-	const revisionGateId = nextId(runtime.values, 'revision-gate')
+	const revisionGateId = nextId(runtime.values)
 	if (!revisionGateId.ok) return revisionGateId
 
-	const agentRunId = nextId(runtime.values, 'agent-run')
+	const agentRunId = nextId(runtime.values)
 	if (!agentRunId.ok) return agentRunId
 
 	const started = runtimeRecord(runtime.values)
@@ -194,13 +194,16 @@ if (import.meta.vitest) {
 			const options = openDeliveryRevisionGateFixture()
 			const command = createOpenRevisionGateCommand(createTestCoreRuntime(options))
 
-			const result = await command({ reviewSurfaceId: 'review-surface-1', agentRunProfileId: 'agent-run-profile-1' }, context)
+			const result = await command(
+				{ reviewSurfaceId: '01k00000000000000000000037', agentRunProfileId: '01k00000000000000000000006' },
+				context,
+			)
 
 			const expectedGate = deliveryRevisionGate()
 			const expectedAgentRun = revisionPlanningAgentRun()
 			expect(result).toEqual({ ok: true, value: { revisionGate: expectedGate, agentRun: expectedAgentRun, feedback: [] } })
-			expect(options.tx.revisionGates.records.get('revision-gate-1')).toEqual(expectedGate)
-			expect(options.tx.agentRuns.records.get('agent-run-1')).toEqual(expectedAgentRun)
+			expect(options.tx.revisionGates.records.get('01k00000000000000000010001')).toEqual(expectedGate)
+			expect(options.tx.agentRuns.records.get('01k00000000000000000010002')).toEqual(expectedAgentRun)
 			expect(options.tx.agentRunEvents.records.size).toBe(0)
 		})
 
@@ -208,16 +211,26 @@ if (import.meta.vitest) {
 			const options = openSliceRevisionGateFixture()
 			const command = createOpenRevisionGateCommand(createTestCoreRuntime(options))
 
-			const result = await command({ reviewSurfaceId: 'review-surface-1', agentRunProfileId: 'agent-run-profile-1' }, context)
+			const result = await command(
+				{ reviewSurfaceId: '01k00000000000000000000037', agentRunProfileId: '01k00000000000000000000006' },
+				context,
+			)
 
 			expect(result).toMatchObject({
 				ok: true,
 				value: {
 					revisionGate: {
-						id: 'revision-gate-1',
-						scope: { type: 'slice-artifact', sliceId: 'slice-1', sliceArtifactId: 'slice-artifact-1' },
+						id: '01k00000000000000000010001',
+						scope: {
+							type: 'slice-artifact',
+							sliceId: '01k00000000000000000000042',
+							sliceArtifactId: '01k00000000000000000000045',
+						},
 					},
-					agentRun: { agent: { type: 'model' }, purpose: { type: 'revision-planning', revisionGateId: 'revision-gate-1' } },
+					agentRun: {
+						agent: { type: 'model' },
+						purpose: { type: 'revision-planning', revisionGateId: '01k00000000000000000010001' },
+					},
 					feedback: [],
 				},
 			})
@@ -226,53 +239,69 @@ if (import.meta.vitest) {
 		it('returns not-found when the Review Surface does not exist', async () => {
 			const command = createOpenRevisionGateCommand(createTestCoreRuntime(createTestCoreServices()))
 
-			const result = await command({ reviewSurfaceId: 'review-surface-1', agentRunProfileId: 'agent-run-profile-1' }, context)
+			const result = await command(
+				{ reviewSurfaceId: '01k00000000000000000000037', agentRunProfileId: '01k00000000000000000000006' },
+				context,
+			)
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'review-surface', id: 'review-surface-1' } })
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'not-found', resource: 'review-surface', id: '01k00000000000000000000037' },
+			})
 		})
 
 		it('rejects merged Review Surfaces', async () => {
 			const options = openDeliveryRevisionGateFixture()
-			options.tx.reviewSurfaces.records.get('review-surface-1')!.closed = {
+			options.tx.reviewSurfaces.records.get('01k00000000000000000000037')!.closed = {
 				type: 'merged',
 				merged: { at: '2026-06-10T12:00:00.000Z' },
 				config: {
 					type: 'source-control',
-					repositoryId: 'repository-1',
+					repositoryId: '01k00000000000000000000034',
 					sourceBranch: 'delivery-branch',
 					targetBranch: 'main',
 				},
 			}
 			const command = createOpenRevisionGateCommand(createTestCoreRuntime(options))
 
-			const result = await command({ reviewSurfaceId: 'review-surface-1', agentRunProfileId: 'agent-run-profile-1' }, context)
+			const result = await command(
+				{ reviewSurfaceId: '01k00000000000000000000037', agentRunProfileId: '01k00000000000000000000006' },
+				context,
+			)
 
-			expect(result).toEqual({ ok: false, error: { type: 'review-surface-already-merged', reviewSurfaceId: 'review-surface-1' } })
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'review-surface-already-merged', reviewSurfaceId: '01k00000000000000000000037' },
+			})
 		})
 	})
 
 	function openDeliveryRevisionGateFixture() {
 		const options = createTestCoreServices()
-		seedDelivery(options.tx, 'delivery-1')
-		seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
-		options.tx.reviewSurfaces.records.set('review-surface-1', deliveryReviewSurface())
+		seedDelivery(options.tx, '01k00000000000000000000008')
+		seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
+		options.tx.reviewSurfaces.records.set('01k00000000000000000000037', deliveryReviewSurface())
 		return options
 	}
 
 	function openSliceRevisionGateFixture() {
 		const options = createTestCoreServices()
-		seedDelivery(options.tx, 'delivery-1')
-		seedSlice(options.tx, 'slice-1', 'delivery-1')
-		seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
-		options.tx.reviewSurfaces.records.set('review-surface-1', sliceReviewSurface())
+		seedDelivery(options.tx, '01k00000000000000000000008')
+		seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000008')
+		seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
+		options.tx.reviewSurfaces.records.set('01k00000000000000000000037', sliceReviewSurface())
 		return options
 	}
 
 	function deliveryRevisionGate(): RevisionGate {
 		return {
-			id: 'revision-gate-1',
-			scope: { type: 'delivery-artifact', deliveryId: 'delivery-1', deliveryArtifactId: 'delivery-artifact-1' },
-			reviewSurfaceId: 'review-surface-1',
+			id: '01k00000000000000000010001',
+			scope: {
+				type: 'delivery-artifact',
+				deliveryId: '01k00000000000000000000008',
+				deliveryArtifactId: '01k00000000000000000000010',
+			},
+			reviewSurfaceId: '01k00000000000000000000037',
 			opened: localStamp(),
 			closed: null,
 		}
@@ -280,13 +309,13 @@ if (import.meta.vitest) {
 
 	function revisionPlanningAgentRun(): AgentRun {
 		return {
-			id: 'agent-run-1',
+			id: '01k00000000000000000010002',
 			agent: { type: 'model' },
-			purpose: { type: 'revision-planning', revisionGateId: 'revision-gate-1' },
+			purpose: { type: 'revision-planning', revisionGateId: '01k00000000000000000010001' },
 			profile: {
-				agentRunProfileId: 'agent-run-profile-1',
+				agentRunProfileId: '01k00000000000000000000006',
 				name: 'Agent Run Profile',
-				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				runtimeRequirements: [],
 			},
 			modelUseOverride: null,
@@ -294,7 +323,7 @@ if (import.meta.vitest) {
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
-			sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+			sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
 		}
@@ -302,12 +331,12 @@ if (import.meta.vitest) {
 
 	function deliveryReviewSurface(): ReviewSurface {
 		return {
-			id: 'review-surface-1',
-			scope: { type: 'delivery', deliveryId: 'delivery-1', deliveryArtifactId: 'delivery-artifact-1' },
+			id: '01k00000000000000000000037',
+			scope: { type: 'delivery', deliveryId: '01k00000000000000000000008', deliveryArtifactId: '01k00000000000000000000010' },
 			config: {
 				provider: 'github',
 				pullRequestNumber: 1,
-				repositoryId: 'repository-1',
+				repositoryId: '01k00000000000000000000034',
 				sourceBranch: 'delivery-branch',
 				targetBranch: 'main',
 			},
@@ -319,12 +348,12 @@ if (import.meta.vitest) {
 
 	function sliceReviewSurface(): ReviewSurface {
 		return {
-			id: 'review-surface-1',
-			scope: { type: 'slice', sliceId: 'slice-1', sliceArtifactId: 'slice-artifact-1' },
+			id: '01k00000000000000000000037',
+			scope: { type: 'slice', sliceId: '01k00000000000000000000042', sliceArtifactId: '01k00000000000000000000045' },
 			config: {
 				provider: 'github',
 				pullRequestNumber: 1,
-				repositoryId: 'repository-1',
+				repositoryId: '01k00000000000000000000034',
 				sourceBranch: 'slice-branch',
 				targetBranch: 'delivery-branch',
 			},

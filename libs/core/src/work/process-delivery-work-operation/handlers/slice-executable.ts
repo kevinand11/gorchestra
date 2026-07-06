@@ -57,7 +57,7 @@ function sliceExecutionAgentRun(
 	state: Extract<SliceWorkState, { type: 'executable' }>,
 	resolution: DeliveryWorkResolution,
 ): CoreResult<SliceExecutionAgentRunInput, DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	const agentRunId = nextId(context.values, 'agent-run')
+	const agentRunId = nextId(context.values)
 	if (!agentRunId.ok) return agentRunId
 
 	const started = runtimeRecord(context.values)
@@ -100,7 +100,7 @@ if (import.meta.vitest) {
 			const context = await executableHandlerContext()
 			const result = await handleSliceExecutable(
 				context,
-				context.tx.slices.records.get('slice-1')!,
+				context.tx.slices.records.get('01k00000000000000000000042')!,
 				{ type: 'executable', mode: 'initial' },
 				resolution,
 			)
@@ -110,14 +110,19 @@ if (import.meta.vitest) {
 				value: { processedCount: 1, failures: [], dispatchMarkers: ['dispatch-marker', 'dispatch-marker'] },
 			})
 			expect(context.tx.actions.records.size).toBe(0)
-			expect(context.tx.agentRuns.records.get('agent-run-1')).toEqual({
-				id: 'agent-run-1',
+			expect(context.tx.agentRuns.records.get('01k00000000000000000010001')).toEqual({
+				id: '01k00000000000000000010001',
 				agent: { type: 'model' },
-				purpose: { type: 'execution', deliveryId: 'delivery-1', sliceId: 'slice-1', mode: { type: 'initial' } },
+				purpose: {
+					type: 'execution',
+					deliveryId: '01k00000000000000000000008',
+					sliceId: '01k00000000000000000000042',
+					mode: { type: 'initial' },
+				},
 				profile: {
-					agentRunProfileId: 'agent-run-profile-1',
+					agentRunProfileId: '01k00000000000000000000006',
 					name: 'Execution',
-					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 					runtimeRequirements: [],
 				},
 				modelUseOverride: null,
@@ -125,14 +130,14 @@ if (import.meta.vitest) {
 				runtimeRequirementOverrides: [],
 				desiredRuntimeRequirements: [],
 				blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
-				sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+				sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 				started: { at: '2026-06-10T12:00:00.000Z' },
 				completed: null,
 			})
-			expect(context.tx.agentRunEvents.records.get('agent-run-event-1')?.body).toEqual({
+			expect(context.tx.agentRunEvents.records.get('01k00000000000000000010002')?.body).toEqual({
 				type: 'input-message',
 				source: { type: 'runtime' },
-				parts: [{ type: 'text', text: 'Execute Slice slice-1.', metadata: null }],
+				parts: [{ type: 'text', text: 'Execute Slice 01k00000000000000000000042.', metadata: null }],
 			})
 		})
 
@@ -140,11 +145,11 @@ if (import.meta.vitest) {
 			const context = await executableHandlerContext()
 			const result = await handleSliceExecutable(
 				context,
-				context.tx.slices.records.get('slice-1')!,
+				context.tx.slices.records.get('01k00000000000000000000042')!,
 				{
 					type: 'executable',
 					mode: 'correction',
-					failureChain: { rootActionId: 'failed-validation', correctionRetries: 1 },
+					failureChain: { rootActionId: '01k00000000000000000010020', correctionRetries: 1 },
 				},
 				resolution,
 			)
@@ -153,11 +158,11 @@ if (import.meta.vitest) {
 				ok: true,
 				value: { processedCount: 1, failures: [], dispatchMarkers: ['dispatch-marker', 'dispatch-marker'] },
 			})
-			expect(context.tx.agentRuns.records.get('agent-run-1')?.purpose).toEqual({
+			expect(context.tx.agentRuns.records.get('01k00000000000000000010001')?.purpose).toEqual({
 				type: 'execution',
-				deliveryId: 'delivery-1',
-				sliceId: 'slice-1',
-				mode: { type: 'correction', failureChainRootActionId: 'failed-validation' },
+				deliveryId: '01k00000000000000000000008',
+				sliceId: '01k00000000000000000000042',
+				mode: { type: 'correction', failureChainRootActionId: '01k00000000000000000010020' },
 			})
 		})
 	})
@@ -166,22 +171,22 @@ if (import.meta.vitest) {
 		workConfig: {
 			maxProcessableSliceSlots: 1,
 			maxCorrectionRetriesPerFailure: 1,
-			executionAgentRunProfileId: 'agent-run-profile-1',
+			executionAgentRunProfileId: '01k00000000000000000000006',
 			revisionExecutionAgentRunProfileId: null,
 		},
 		executionProfile: {
-			id: 'agent-run-profile-1',
+			id: '01k00000000000000000000006',
 			name: 'Execution',
-			modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+			modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 			runtimeRequirements: [],
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 			updated: null,
 			archivePeriods: [],
 		},
-		executionModelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+		executionModelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 		executionModel: {
-			id: 'model-1',
-			providerId: 'model-provider-1',
+			id: '01k00000000000000000000024',
+			providerId: '01k00000000000000000000027',
 			name: 'Model',
 			providerModelId: 'provider-model',
 			providerOptions: null,
@@ -192,7 +197,7 @@ if (import.meta.vitest) {
 			archivePeriods: [],
 		},
 		executionModelProvider: {
-			id: 'model-provider-1',
+			id: '01k00000000000000000000027',
 			name: 'Provider',
 			source: { type: 'anthropic' },
 			auth: null,
@@ -206,11 +211,11 @@ if (import.meta.vitest) {
 
 	async function executableHandlerContext() {
 		const options = createTestCoreServices()
-		seedSelectableModel(options.tx, 'model-1')
-		seedDelivery(options.tx, 'delivery-1')
-		seedSlice(options.tx, 'slice-1', 'delivery-1')
+		seedSelectableModel(options.tx, '01k00000000000000000000024')
+		seedDelivery(options.tx, '01k00000000000000000000008')
+		seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000008')
 
-		const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
+		const deliveryContext = await buildDeliveryContext(options.tx, '01k00000000000000000000008')
 		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
 
 		return { services: options, storage: options.tx, values: options.values, tx: options.tx, deliveryContext: deliveryContext.value }

@@ -42,7 +42,7 @@ export function createCreateAgentRunProfileCommand(runtime: CoreRuntime): Operat
 		const stamp = auditStamp(runtime.values, context)
 		if (!stamp.ok) return Promise.resolve(stamp)
 
-		const id = nextId(runtime.values, 'agent-run-profile')
+		const id = nextId(runtime.values)
 		if (!id.ok) return Promise.resolve(id)
 
 		return withTransaction(
@@ -85,20 +85,24 @@ if (import.meta.vitest) {
 	describe('createAgentRunProfile command', () => {
 		it('creates Agent Run Profiles with selectable Model Use validation and explicit runtime requirements', async () => {
 			const options = createTestCoreServices()
-			seedSelectableModel(options.tx, 'model-1')
+			seedSelectableModel(options.tx, '01k00000000000000000000024')
 			const command = createCreateAgentRunProfileCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ name: '  Planning  ', modelUse: { modelId: 'model-1', thinkingLevel: 'none' }, runtimeRequirements: [] },
+				{
+					name: '  Planning  ',
+					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
+					runtimeRequirements: [],
+				},
 				context,
 			)
 
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'agent-run-profile-1',
+					id: '01k00000000000000000010001',
 					name: 'Planning',
-					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 					runtimeRequirements: [],
 					created: localStamp(),
 					updated: null,

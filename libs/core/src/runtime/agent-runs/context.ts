@@ -11,21 +11,21 @@ import type {
 } from '../../domain/agent-run'
 import type { JsonObject } from '../../domain/commons'
 
-export function buildAgentRunModelContext(events: AgentRunEvent[], contextThroughCursor: string | null): AgentRunModelContext {
-	const scoped = eventsForContext(events, contextThroughCursor)
+export function buildAgentRunModelContext(events: AgentRunEvent[], contextThroughEventId: string | null): AgentRunModelContext {
+	const scoped = eventsForContext(events, contextThroughEventId)
 	return { messages: scoped.flatMap((event) => modelVisibleMessages(event)) }
 }
 
-function eventsForContext(events: AgentRunEvent[], contextThroughCursor: string | null): AgentRunEvent[] {
-	const bounded = sortEvents(events.filter((event) => contextThroughCursor === null || event.cursor <= contextThroughCursor))
+function eventsForContext(events: AgentRunEvent[], contextThroughEventId: string | null): AgentRunEvent[] {
+	const bounded = sortEvents(events.filter((event) => contextThroughEventId === null || event.id <= contextThroughEventId))
 	const compaction = latestCompaction(bounded)
 	return compaction === null ? bounded : compactedEventsForContext(bounded, compaction)
 }
 
 function compactedEventsForContext(events: AgentRunEvent[], compaction: AgentRunEventWithBody<'context-compacted'>): AgentRunEvent[] {
-	const kept = events.filter((event) => event.cursor > compaction.body.compactedThroughCursor && event.cursor !== compaction.cursor)
+	const kept = events.filter((event) => event.id > compaction.body.compactedThroughEventId && event.id !== compaction.id)
 	const instruction = latestInstructionSnapshot(events)
-	return instruction === null || kept.some((event) => event.cursor === instruction.cursor)
+	return instruction === null || kept.some((event) => event.id === instruction.id)
 		? [compaction, ...kept]
 		: [instruction, compaction, ...kept]
 }
@@ -49,7 +49,7 @@ function latestInstructionSnapshot(events: AgentRunEvent[]): AgentRunEventWithBo
 }
 
 function sortEvents(events: AgentRunEvent[]): AgentRunEvent[] {
-	return [...events].sort((left, right) => left.cursor.localeCompare(right.cursor))
+	return [...events].sort((left, right) => left.id.localeCompare(right.id))
 }
 
 function modelVisibleMessages(event: AgentRunEvent): ModelMessage[] {
@@ -223,7 +223,7 @@ if (import.meta.vitest) {
 				[
 					event(1, {
 						type: 'agent-run-model-use-override-changed',
-						modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+						modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 						authorized: localStamp(),
 					}),
 					event(2, {
@@ -233,14 +233,14 @@ if (import.meta.vitest) {
 					}),
 					event(3, {
 						type: 'turn-started',
-						contextThroughCursor: cursor(2),
-						reason: { type: 'input', inputEventCursors: [cursor(2)] },
+						contextThroughEventId: eventId(2),
+						reason: { type: 'input', inputEventIds: [eventId(2)] },
 					}),
 					event(4, assistantMessageBody('Hi', 'call-1')),
 					event(5, {
 						type: 'tool-message',
-						turnStartedCursor: cursor(3),
-						respondsToAssistantMessageCursor: cursor(4),
+						turnStartedEventId: eventId(3),
+						respondsToAssistantMessageEventId: eventId(4),
 						source: { type: 'tool-execution' },
 						parts: [
 							{
@@ -257,7 +257,7 @@ if (import.meta.vitest) {
 						],
 					}),
 				],
-				cursor(5),
+				eventId(5),
 			)
 
 			expect(context.messages).toEqual([
@@ -287,7 +287,7 @@ if (import.meta.vitest) {
 					event(2, {
 						type: 'context-compacted',
 						source: { type: 'runtime' },
-						compactedThroughCursor: cursor(1),
+						compactedThroughEventId: eventId(1),
 						replacementParts: [{ type: 'text', text: 'summary', metadata: null }],
 					}),
 					event(3, {
@@ -296,7 +296,7 @@ if (import.meta.vitest) {
 						parts: [{ type: 'text', text: 'new', metadata: null }],
 					}),
 				],
-				cursor(3),
+				eventId(3),
 			)
 
 			expect(context.messages).toEqual([
@@ -308,26 +308,25 @@ if (import.meta.vitest) {
 
 	function event(index: number, body: AgentRunEvent['body']): AgentRunEvent {
 		return {
-			id: `event-${index}`,
-			agentRunId: 'agent-run-1',
-			cursor: cursor(index),
+			id: eventId(index),
+			agentRunId: '01k00000000000000000000002',
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
 			body,
 		}
 	}
 
-	function cursor(index: number): string {
-		return `01J000000000000000000${index.toString().padStart(5, '0')}`
+	function eventId(index: number): string {
+		return `01k000000000000000000${index.toString().padStart(5, '0')}`
 	}
 
 	function assistantMessageBody(text: string, toolCallId: string): Extract<AgentRunEvent['body'], { type: 'assistant-message' }> {
 		return {
 			type: 'assistant-message',
-			turnStartedCursor: cursor(3),
+			turnStartedEventId: eventId(3),
 			model: {
-				modelId: 'model-1',
+				modelId: '01k00000000000000000000024',
 				thinkingLevel: 'none',
-				modelProviderId: 'provider-1',
+				modelProviderId: '01k00000000000000000000032',
 				providerProtocol: 'anthropic-messages',
 				providerModelId: 'claude-sonnet',
 			},

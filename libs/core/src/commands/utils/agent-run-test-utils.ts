@@ -5,39 +5,43 @@ import { createTestCoreServices, stamp, testModelAgentRun } from '../../utils/te
 
 export function planningAgentRunFixture(overrides: Partial<Pick<CoreServices, 'dispatcher'>> = {}) {
 	const options = createTestCoreServices(overrides)
-	options.tx.plans.records.set('plan-1', {
-		id: 'plan-1',
-		projectId: 'project-1',
+	options.tx.plans.records.set('01k00000000000000000000028', {
+		id: '01k00000000000000000000028',
+		projectId: '01k00000000000000000000030',
 		title: 'Plan',
 		created: stamp,
 		closed: null,
 	})
-	options.tx.agentRuns.records.set('agent-run-1', planningAgentRun())
+	options.tx.agentRuns.records.set('01k00000000000000000000002', planningAgentRun())
 	return options
 }
 
 export function revisionPlanningAgentRunFixture(closed: boolean, overrides: Partial<Pick<CoreServices, 'dispatcher'>> = {}) {
 	const options = createTestCoreServices(overrides)
-	options.tx.agentRuns.records.set('agent-run-1', revisionPlanningAgentRun())
-	options.tx.revisionGates.records.set('revision-gate-1', revisionGate(closed))
+	options.tx.agentRuns.records.set('01k00000000000000000000002', revisionPlanningAgentRun())
+	options.tx.revisionGates.records.set('01k00000000000000000000039', revisionGate(closed))
 	return options
 }
 
 export function autonomousAgentRunFixture(completed: boolean, overrides: Partial<Pick<CoreServices, 'dispatcher'>> = {}) {
 	const options = createTestCoreServices(overrides)
-	options.tx.agentRuns.records.set('agent-run-1', {
+	options.tx.agentRuns.records.set('01k00000000000000000000002', {
 		...planningAgentRun(),
-		purpose: { type: 'execution', deliveryId: 'delivery-1', sliceId: 'slice-1', mode: { type: 'initial' } },
+		purpose: {
+			type: 'execution',
+			deliveryId: '01k00000000000000000000008',
+			sliceId: '01k00000000000000000000042',
+			mode: { type: 'initial' },
+		},
 		completed: completed ? { at: '2026-06-10T12:05:00.000Z' } : null,
 	})
 	return options
 }
 
-export function inputEvent(id: string, agentRunId: string, sequence: number): AgentRunEvent {
+export function inputEvent(id: string, agentRunId: string, _sequence: number): AgentRunEvent {
 	return {
 		id,
 		agentRunId,
-		cursor: `01J000000000000000000${sequence.toString().padStart(5, '0')}`,
 		occurred: { at: '2026-06-10T12:00:00.000Z' },
 		body: {
 			type: 'input-message',
@@ -48,21 +52,21 @@ export function inputEvent(id: string, agentRunId: string, sequence: number): Ag
 }
 
 export function planningAgentRun(): AgentRun {
-	return testModelAgentRun({ purpose: { type: 'planning', planId: 'plan-1' } })
+	return testModelAgentRun({ purpose: { type: 'planning', planId: '01k00000000000000000000028' } })
 }
 
 export function revisionPlanningAgentRun(): AgentRun {
 	return {
 		...planningAgentRun(),
-		purpose: { type: 'revision-planning', revisionGateId: 'revision-gate-1' },
+		purpose: { type: 'revision-planning', revisionGateId: '01k00000000000000000000039' },
 	}
 }
 
 function revisionGate(closed: boolean): RevisionGate {
 	return {
-		id: 'revision-gate-1',
-		scope: { type: 'delivery-artifact', deliveryId: 'delivery-1', deliveryArtifactId: 'delivery-artifact-1' },
-		reviewSurfaceId: 'review-surface-1',
+		id: '01k00000000000000000000039',
+		scope: { type: 'delivery-artifact', deliveryId: '01k00000000000000000000008', deliveryArtifactId: '01k00000000000000000000010' },
+		reviewSurfaceId: '01k00000000000000000000037',
 		opened: stamp,
 		closed: closed ? { type: 'closed-without-revision', closed: stamp } : null,
 	}

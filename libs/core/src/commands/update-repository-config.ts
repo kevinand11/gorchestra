@@ -89,28 +89,31 @@ if (import.meta.vitest) {
 	describe('updateRepositoryConfig command', () => {
 		it('updates Repository config after validating active Secret references', async () => {
 			const options = createTestCoreServices()
-			seedProject(options.tx, 'project-1')
-			seedSecret(options.tx, 'secret-1')
-			seedSecret(options.tx, 'secret-2')
-			options.tx.repositories.records.set('repository-1', {
-				id: 'repository-1',
-				projectId: 'project-1',
-				config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
+			seedProject(options.tx, '01k00000000000000000000030')
+			seedSecret(options.tx, '01k00000000000000000000040')
+			seedSecret(options.tx, '01k00000000000000000000041')
+			options.tx.repositories.records.set('01k00000000000000000000034', {
+				id: '01k00000000000000000000034',
+				projectId: '01k00000000000000000000030',
+				config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: '01k00000000000000000000040' },
 				created: localStamp(),
 			})
 			const command = createUpdateRepositoryConfigCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ repositoryId: 'repository-1', config: { provider: 'github', owner: 'Octo', name: 'Renamed', secretId: 'secret-2' } },
+				{
+					repositoryId: '01k00000000000000000000034',
+					config: { provider: 'github', owner: 'Octo', name: 'Renamed', secretId: '01k00000000000000000000041' },
+				},
 				context,
 			)
 
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'repository-1',
-					projectId: 'project-1',
-					config: { provider: 'github', owner: 'Octo', name: 'Renamed', secretId: 'secret-2' },
+					id: '01k00000000000000000000034',
+					projectId: '01k00000000000000000000030',
+					config: { provider: 'github', owner: 'Octo', name: 'Renamed', secretId: '01k00000000000000000000041' },
 					created: localStamp(),
 				},
 			})

@@ -135,18 +135,18 @@ export function requireAgentRunPurpose<TExpected extends AgentRun['purpose']['ty
 		: agentRunPurposeMismatch(agentRun, [expected])
 }
 
-export function proposalAcceptedProjectedParts(proposalCursor: AgentRunEvent['cursor']): AgentRunSystemTranscriptPart[] {
-	return [{ type: 'text', text: `Proposal ${proposalCursor} accepted.`, metadata: null }]
+export function proposalAcceptedProjectedParts(proposalEventId: AgentRunEvent['id']): AgentRunSystemTranscriptPart[] {
+	return [{ type: 'text', text: `Proposal ${proposalEventId} accepted.`, metadata: null }]
 }
 
 export function proposalRejectedProjectedParts(
-	proposalCursor: AgentRunEvent['cursor'],
+	proposalEventId: AgentRunEvent['id'],
 	reason: string | null,
 ): AgentRunSystemTranscriptPart[] {
 	return [
 		{
 			type: 'text',
-			text: `Proposal ${proposalCursor} rejected.${reason === null ? '' : ` ${reason}`}`,
+			text: `Proposal ${proposalEventId} rejected.${reason === null ? '' : ` ${reason}`}`,
 			metadata: null,
 		},
 	]
@@ -163,7 +163,7 @@ function proposalReviewState(proposal: AgentRunEvent, events: AgentRunEvent[]): 
 }
 
 function isReviewForProposal(proposal: AgentRunEvent, event: AgentRunEvent): boolean {
-	return event.cursor > proposal.cursor && isProposalReviewBody(event.body) && event.body.proposalCursor === proposal.cursor
+	return event.id > proposal.id && isProposalReviewBody(event.body) && event.body.proposalEventId === proposal.id
 }
 
 function isProposalReviewBody(body: AgentRunEvent['body']): body is Extract<AgentRunEvent['body'], { type: ProposalReviewBodyType }> {
@@ -203,7 +203,7 @@ if (import.meta.vitest) {
 			})
 
 			const accepted = proposalFixture()
-			const acceptedEvent = reviewEvent('agent-run-event-2', 'proposal-accepted')
+			const acceptedEvent = reviewEvent('01k00000000000000000000004', 'proposal-accepted')
 			accepted.tx.agentRunEvents.records.set(acceptedEvent.id, acceptedEvent)
 			await expect(deriveProposalReviewState(accepted.storage, accepted.proposal)).resolves.toEqual({
 				ok: true,
@@ -211,7 +211,7 @@ if (import.meta.vitest) {
 			})
 
 			const rejected = proposalFixture()
-			const rejectedEvent = reviewEvent('agent-run-event-2', 'proposal-rejected')
+			const rejectedEvent = reviewEvent('01k00000000000000000000004', 'proposal-rejected')
 			rejected.tx.agentRunEvents.records.set(rejectedEvent.id, rejectedEvent)
 			await expect(deriveProposalReviewState(rejected.storage, rejected.proposal)).resolves.toEqual({
 				ok: true,
@@ -219,11 +219,17 @@ if (import.meta.vitest) {
 			})
 
 			const corrupt = proposalFixture()
-			corrupt.tx.agentRunEvents.records.set('agent-run-event-2', reviewEvent('agent-run-event-2', 'proposal-accepted'))
-			corrupt.tx.agentRunEvents.records.set('agent-run-event-3', reviewEvent('agent-run-event-3', 'proposal-rejected', 3))
+			corrupt.tx.agentRunEvents.records.set(
+				'01k00000000000000000000004',
+				reviewEvent('01k00000000000000000000004', 'proposal-accepted'),
+			)
+			corrupt.tx.agentRunEvents.records.set(
+				'01k00000000000000000000005',
+				reviewEvent('01k00000000000000000000005', 'proposal-rejected', 3),
+			)
 			await expect(deriveProposalReviewState(corrupt.storage, corrupt.proposal)).resolves.toEqual({
 				ok: false,
-				error: { type: 'invariant-violation', message: 'Proposal Event agent-run-event-1 has multiple terminal reviews.' },
+				error: { type: 'invariant-violation', message: 'Proposal Event 01k00000000000000000000003 has multiple terminal reviews.' },
 			})
 		})
 	})
@@ -237,13 +243,12 @@ if (import.meta.vitest) {
 
 	function proposalEvent(): AgentRunEvent {
 		return {
-			id: 'agent-run-event-1',
-			agentRunId: 'agent-run-1',
-			cursor: '01J00000000000000000000001',
+			id: '01k00000000000000000000003',
+			agentRunId: '01k00000000000000000000002',
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
 			body: {
 				type: 'proposed-plan-output',
-				assistantMessageCursor: '01J00000000000000000000000',
+				assistantMessageEventId: '01k00000000000000000000002',
 				toolCallId: 'call-1',
 				output: {
 					proposedDeliveries: {},
@@ -254,17 +259,16 @@ if (import.meta.vitest) {
 		}
 	}
 
-	function reviewEvent(id: string, type: ProposalReviewBodyType, sequence = 2): AgentRunEvent {
+	function reviewEvent(id: string, type: ProposalReviewBodyType, _sequence = 2): AgentRunEvent {
 		return {
 			id,
-			agentRunId: 'agent-run-1',
-			cursor: `01J000000000000000000${sequence.toString().padStart(5, '0')}`,
+			agentRunId: '01k00000000000000000000002',
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
 			body:
 				type === 'proposal-accepted'
 					? {
 							type,
-							proposalCursor: '01J00000000000000000000001',
+							proposalEventId: '01k00000000000000000000003',
 							authorized: localStamp(),
 							materialized: {
 								type: 'plan-output',
@@ -278,7 +282,7 @@ if (import.meta.vitest) {
 						}
 					: {
 							type,
-							proposalCursor: '01J00000000000000000000001',
+							proposalEventId: '01k00000000000000000000003',
 							authorized: localStamp(),
 							reason: null,
 							projectedParts: [{ type: 'text', text: 'Proposal reviewed.', metadata: null }],

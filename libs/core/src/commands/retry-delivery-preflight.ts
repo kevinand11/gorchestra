@@ -184,16 +184,16 @@ if (import.meta.vitest) {
 
 		it('rejects retry unless Delivery Work State is preflight-failed', async () => {
 			const options = createTestCoreServices()
-			seedDelivery(options.tx, 'delivery-1')
+			seedDelivery(options.tx, '01k00000000000000000000008')
 			const command = createRetryDeliveryPreflightCommand(createTestCoreRuntime(options))
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await command({ deliveryId: '01k00000000000000000000008' }, context)
 
 			expect(result).toEqual({
 				ok: false,
 				error: {
 					type: 'delivery-work-state-mismatch',
-					deliveryId: 'delivery-1',
+					deliveryId: '01k00000000000000000000008',
 					expected: ['preflight-failed'],
 					actual: { type: 'unqueued' },
 				},
@@ -202,23 +202,23 @@ if (import.meta.vitest) {
 
 		it('records a passing preflight retry Action that clears preflight-failed Work State', async () => {
 			const options = preflightFailedFixture()
-			seedProject(options.tx, 'project-1')
+			seedProject(options.tx, '01k00000000000000000000030')
 			seedPassingAgentRunProfile(options)
 			seedRepository(options)
 			const command = createRetryDeliveryPreflightCommand(
 				createTestCoreRuntime(options, { providers: passingProviderBackedPreflightProviders() }),
 			)
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await command({ deliveryId: '01k00000000000000000000008' }, context)
 
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					delivery: options.tx.deliveries.records.get('delivery-1'),
-					action: expectedPassingProviderPreflightAction('action-1'),
+					delivery: options.tx.deliveries.records.get('01k00000000000000000000008'),
+					action: expectedPassingProviderPreflightAction('01k00000000000000000010001'),
 				},
 			})
-			const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
+			const deliveryContext = await buildDeliveryContext(options.tx, '01k00000000000000000000008')
 			if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
 			expect(getDeliveryState(deliveryContext.value)).not.toMatchObject({
 				ok: true,
@@ -228,14 +228,14 @@ if (import.meta.vitest) {
 
 		it('records all failed provider-backed preflight checks on retry', async () => {
 			const options = preflightFailedFixture()
-			seedProject(options.tx, 'project-1')
+			seedProject(options.tx, '01k00000000000000000000030')
 			seedPassingAgentRunProfile(options)
 			seedRepository(options)
 			const command = createRetryDeliveryPreflightCommand(
 				createTestCoreRuntime(options, { providers: failingProviderBackedPreflightProviders() }),
 			)
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await command({ deliveryId: '01k00000000000000000000008' }, context)
 
 			expect(result).toMatchObject({
 				ok: true,
@@ -255,108 +255,123 @@ if (import.meta.vitest) {
 
 		it('returns operation error when the selected execution Agent Run Profile is missing', async () => {
 			const options = preflightFailedFixture()
-			seedProject(options.tx, 'project-1')
+			seedProject(options.tx, '01k00000000000000000000030')
 
 			expect(await retry(options)).toEqual({
 				ok: false,
-				error: { type: 'not-found', resource: 'agent-run-profile', id: 'agent-run-profile-1' },
+				error: { type: 'not-found', resource: 'agent-run-profile', id: '01k00000000000000000000006' },
 			})
 		})
 
 		it('returns operation error when the Delivery Project is missing', async () => {
 			const options = preflightFailedFixture()
-			options.tx.projects.records.delete('project-1')
+			options.tx.projects.records.delete('01k00000000000000000000030')
 
-			expect(await retry(options)).toEqual({ ok: false, error: { type: 'not-found', resource: 'project', id: 'project-1' } })
+			expect(await retry(options)).toEqual({
+				ok: false,
+				error: { type: 'not-found', resource: 'project', id: '01k00000000000000000000030' },
+			})
 		})
 
 		it('returns operation error when the selected execution Model is missing', async () => {
 			const options = preflightFailedFixture()
-			seedProject(options.tx, 'project-1')
+			seedProject(options.tx, '01k00000000000000000000030')
 			seedPassingAgentRunProfile(options)
-			options.tx.models.records.delete('model-1')
+			options.tx.models.records.delete('01k00000000000000000000024')
 
-			expect(await retry(options)).toEqual({ ok: false, error: { type: 'not-found', resource: 'model', id: 'model-1' } })
+			expect(await retry(options)).toEqual({
+				ok: false,
+				error: { type: 'not-found', resource: 'model', id: '01k00000000000000000000024' },
+			})
 		})
 
 		it('records failed evidence when the selected execution Model is archived', async () => {
 			const options = preflightFailedFixture()
-			seedProject(options.tx, 'project-1')
-			seedSelectableModel(options.tx, 'model-1', { modelArchived: true })
-			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
+			seedProject(options.tx, '01k00000000000000000000030')
+			seedSelectableModel(options.tx, '01k00000000000000000000024', { modelArchived: true })
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
 
 			expectRetrySummary(await retry(options), 'Selected Delivery execution Model is archived.')
 		})
 
 		it('records failed evidence when the selected execution Model Provider is archived', async () => {
 			const options = preflightFailedFixture()
-			seedProject(options.tx, 'project-1')
-			seedSelectableModel(options.tx, 'model-1', { providerArchived: true })
-			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
+			seedProject(options.tx, '01k00000000000000000000030')
+			seedSelectableModel(options.tx, '01k00000000000000000000024', { providerArchived: true })
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
 
 			expectRetrySummary(await retry(options), 'Selected Delivery execution Model Provider is archived.')
 		})
 
 		it('records failed evidence when the selected execution Agent Run Profile is archived', async () => {
 			const options = preflightFailedFixture()
-			seedProject(options.tx, 'project-1')
-			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1', { archived: true })
+			seedProject(options.tx, '01k00000000000000000000030')
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024', { archived: true })
 
 			expectRetrySummary(await retry(options), 'Selected Delivery execution Agent Run Profile is archived.')
 		})
 
 		it('returns a preflight claim conflict when provider-backed retry inputs become stale', async () => {
 			const options = preflightFailedFixture()
-			seedProject(options.tx, 'project-1')
+			seedProject(options.tx, '01k00000000000000000000030')
 			const profile = seedPassingAgentRunProfile(options)
-			seedSelectableModel(options.tx, 'model-2')
+			seedSelectableModel(options.tx, '01k00000000000000000000026')
 			seedRepository(options)
 			const providers = passingProviderBackedPreflightProviders()
 			providers.modelProviderProtocols.preflightModel = () => {
-				profile.modelUse = { modelId: 'model-2', thinkingLevel: 'none' }
+				profile.modelUse = { modelId: '01k00000000000000000000026', thinkingLevel: 'none' }
 				return Promise.resolve({ ok: true, value: { type: 'passed', summary: 'Anthropic Messages model preflight passed.' } })
 			}
 			const command = createRetryDeliveryPreflightCommand(createTestCoreRuntime(options, { providers }))
 
-			const result = await command({ deliveryId: 'delivery-1' }, context)
+			const result = await command({ deliveryId: '01k00000000000000000000008' }, context)
 
-			expect(result).toEqual({ ok: false, error: { type: 'delivery-preflight-claim-conflict', deliveryId: 'delivery-1' } })
-			expect(options.tx.actions.records.has('action-1')).toBe(false)
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'delivery-preflight-claim-conflict', deliveryId: '01k00000000000000000000008' },
+			})
+			expect(options.tx.actions.records.has('01k00000000000000000010001')).toBe(false)
 		})
 
 		it('returns a preflight claim conflict when local retry inputs become stale', async () => {
 			const options = preflightFailedFixture()
-			seedProject(options.tx, 'project-1')
-			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1', { archived: true })
+			seedProject(options.tx, '01k00000000000000000000030')
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024', { archived: true })
 			seedRepository(options)
 			staleLocalPreflightOnSecondTransaction(options, () => {
-				options.tx.agentRunProfiles.records.get('agent-run-profile-1')!.archivePeriods = []
+				options.tx.agentRunProfiles.records.get('01k00000000000000000000006')!.archivePeriods = []
 			})
 
 			const result = await retry(options)
 
-			expect(result).toEqual({ ok: false, error: { type: 'delivery-preflight-claim-conflict', deliveryId: 'delivery-1' } })
-			expect(options.tx.actions.records.has('action-1')).toBe(false)
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'delivery-preflight-claim-conflict', deliveryId: '01k00000000000000000000008' },
+			})
+			expect(options.tx.actions.records.has('01k00000000000000000010001')).toBe(false)
 		})
 
 		it('returns operation errors for storage failures instead of recording preflight evidence', async () => {
 			const options = preflightFailedFixture()
-			seedProject(options.tx, 'project-1')
+			seedProject(options.tx, '01k00000000000000000000030')
 			seedPassingAgentRunProfile(options)
 			seedRepository(options)
 			options.tx.actions.fail.put = true
 
 			expect(await retry(options)).toEqual({
 				ok: false,
-				error: { type: 'storage-operation-failed', operation: { type: 'create', resource: 'action', id: 'action-1' } },
+				error: {
+					type: 'storage-operation-failed',
+					operation: { type: 'create', resource: 'action', id: '01k00000000000000000010001' },
+				},
 			})
 		})
 	})
 
 	async function expectMissingDelivery(command: Operation) {
-		expect(await command({ deliveryId: 'missing-delivery' }, context)).toEqual({
+		expect(await command({ deliveryId: '01k00000000000000000010019' }, context)).toEqual({
 			ok: false,
-			error: { type: 'not-found', resource: 'delivery', id: 'missing-delivery' },
+			error: { type: 'not-found', resource: 'delivery', id: '01k00000000000000000010019' },
 		})
 	}
 
@@ -369,11 +384,11 @@ if (import.meta.vitest) {
 
 	function preflightFailedFixture() {
 		const options = createTestCoreServices()
-		seedDelivery(options.tx, 'delivery-1')
-		options.tx.deliveries.records.get('delivery-1')!.queued = localStamp()
+		seedDelivery(options.tx, '01k00000000000000000000008')
+		options.tx.deliveries.records.get('01k00000000000000000000008')!.queued = localStamp()
 		options.tx.actions.records.set('preflight-failed', {
 			id: 'preflight-failed',
-			deliveryId: 'delivery-1',
+			deliveryId: '01k00000000000000000000008',
 			performed: { at: '2026-06-10T00:01:00.000Z' },
 			authorized: localStamp(),
 			result: { type: 'validate-preflight', checks: [validationEvidence('delivery-preflight', false, 'Missing config.')] },
@@ -385,7 +400,7 @@ if (import.meta.vitest) {
 	async function retry(options: ReturnType<typeof preflightFailedFixture>) {
 		return createRetryDeliveryPreflightCommand(
 			createTestCoreRuntime(options, { providers: passingProviderBackedPreflightProviders() }),
-		)({ deliveryId: 'delivery-1' }, context)
+		)({ deliveryId: '01k00000000000000000000008' }, context)
 	}
 
 	function staleLocalPreflightOnSecondTransaction(options: ReturnType<typeof createTestCoreServices>, stale: () => void) {
@@ -399,27 +414,27 @@ if (import.meta.vitest) {
 	}
 
 	function seedRepository(options: ReturnType<typeof preflightFailedFixture>) {
-		seedSecret(options.tx, 'secret-1')
-		options.tx.repositories.records.set('repository-1', {
-			id: 'repository-1',
-			projectId: 'project-1',
-			config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
+		seedSecret(options.tx, '01k00000000000000000000040')
+		options.tx.repositories.records.set('01k00000000000000000000034', {
+			id: '01k00000000000000000000034',
+			projectId: '01k00000000000000000000030',
+			config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: '01k00000000000000000000040' },
 			created: localStamp(),
 		})
 	}
 
 	function seedPassingAgentRunProfile(options: ReturnType<typeof preflightFailedFixture>) {
-		return seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
+		return seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
 	}
 
 	function expectRetrySummary(result: CoreResult<Result, Error>, summary: string) {
-		expect(result).toMatchObject({ ok: true, value: { action: expectedPreflightAction('action-1', false, summary) } })
+		expect(result).toMatchObject({ ok: true, value: { action: expectedPreflightAction('01k00000000000000000010001', false, summary) } })
 	}
 
 	function expectedPassingProviderPreflightAction(id: string): Action {
 		return {
 			id,
-			deliveryId: 'delivery-1',
+			deliveryId: '01k00000000000000000000008',
 			performed: { at: '2026-06-10T12:00:00.000Z' },
 			authorized: localStamp(),
 			result: {
@@ -435,7 +450,7 @@ if (import.meta.vitest) {
 	function expectedPreflightAction(id: string, passed: boolean, summary: string): Action {
 		return {
 			id,
-			deliveryId: 'delivery-1',
+			deliveryId: '01k00000000000000000000008',
 			performed: { at: '2026-06-10T12:00:00.000Z' },
 			authorized: localStamp(),
 			result: { type: 'validate-preflight', checks: [validationEvidence('delivery-preflight', passed, summary)] },

@@ -1,16 +1,9 @@
-import type {
-	AgentRun,
-	AgentRunEvent,
-	AgentRunEventBody,
-	AgentRunEventCursor,
-	AgentRunProfileSnapshot,
-	AgentRunPurpose,
-} from '../domain/agent-run'
+import type { AgentRun, AgentRunEvent, AgentRunEventBody, AgentRunProfileSnapshot, AgentRunPurpose } from '../domain/agent-run'
 import { appendUniqueRuntimeRequirements, type AgentRunRuntimeRequirement } from '../domain/agent-run-runtime'
 import type { Id, RuntimeRecord } from '../domain/commons'
 import type { InvalidCoreServiceOutputError, InvariantViolationError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreStorage } from '../services'
-import { nextCursor, nextId, runtimeRecord, type CoreRuntimeValues } from './runtime-values'
+import { nextId, runtimeRecord, type CoreRuntimeValues } from './runtime-values'
 import type { Result } from './types'
 import { createRecord, getRequired } from '../storage/helpers'
 
@@ -61,7 +54,7 @@ function modelAgentRun<TPurpose extends AgentRunPurpose>(input: {
 		runtimeRequirementOverrides: [],
 		desiredRuntimeRequirements,
 		blocked: { type: 'sandbox-preparation-pending', blocked: input.started },
-		sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+		sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 		started: input.started,
 		completed: null,
 	}
@@ -82,26 +75,21 @@ export async function appendAgentRunEvent(
 
 interface AgentRunEventFacts {
 	eventId: Id
-	cursor: AgentRunEventCursor
 	occurred: RuntimeRecord
 }
 
 function agentRunEventFacts(values: CoreRuntimeValues): Result<AgentRunEventFacts, InvalidCoreServiceOutputError> {
-	const eventId = nextId(values, 'agent-run-event')
+	const eventId = nextId(values)
 	if (!eventId.ok) return eventId
 
-	const cursor = nextCursor(values, 'agent-run-event')
-	if (!cursor.ok) return cursor
-
 	const occurred = runtimeRecord(values)
-	return occurred.ok ? { ok: true, value: { eventId: eventId.value, cursor: cursor.value, occurred: occurred.value } } : occurred
+	return occurred.ok ? { ok: true, value: { eventId: eventId.value, occurred: occurred.value } } : occurred
 }
 
 function agentRunEventRecord(agentRunId: Id, facts: AgentRunEventFacts, body: AgentRunEventBody): AgentRunEvent {
 	return {
 		id: facts.eventId,
 		agentRunId,
-		cursor: facts.cursor,
 		occurred: facts.occurred,
 		body,
 	}
@@ -116,13 +104,13 @@ if (import.meta.vitest) {
 			const options = createTestCoreServices()
 
 			const result = await createModelAgentRunWithProfileSnapshot(options.storage, {
-				agentRunId: 'agent-run-1',
-				purpose: { type: 'planning', planId: 'plan-1' },
+				agentRunId: '01k00000000000000000000002',
+				purpose: { type: 'planning', planId: '01k00000000000000000000028' },
 				started: { at: '2026-06-10T12:00:00.000Z' },
 				profile: {
-					agentRunProfileId: 'agent-run-profile-1',
+					agentRunProfileId: '01k00000000000000000000006',
 					name: 'Planning',
-					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 					runtimeRequirements: [],
 				},
 			})
@@ -130,13 +118,13 @@ if (import.meta.vitest) {
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'agent-run-1',
+					id: '01k00000000000000000000002',
 					agent: { type: 'model' },
-					purpose: { type: 'planning', planId: 'plan-1' },
+					purpose: { type: 'planning', planId: '01k00000000000000000000028' },
 					profile: {
-						agentRunProfileId: 'agent-run-profile-1',
+						agentRunProfileId: '01k00000000000000000000006',
 						name: 'Planning',
-						modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+						modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 						runtimeRequirements: [],
 					},
 					modelUseOverride: null,
@@ -144,7 +132,7 @@ if (import.meta.vitest) {
 					runtimeRequirementOverrides: [],
 					desiredRuntimeRequirements: [],
 					blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
-					sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+					sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 					started: { at: '2026-06-10T12:00:00.000Z' },
 					completed: null,
 				},
@@ -156,14 +144,14 @@ if (import.meta.vitest) {
 	describe('appendAgentRunEvent', () => {
 		it('appends Agent Run Events with monotonic cursors', async () => {
 			const options = createTestCoreServices()
-			options.tx.agentRuns.records.set('agent-run-1', {
-				id: 'agent-run-1',
+			options.tx.agentRuns.records.set('01k00000000000000000000002', {
+				id: '01k00000000000000000000002',
 				agent: { type: 'model' },
-				purpose: { type: 'planning', planId: 'plan-1' },
+				purpose: { type: 'planning', planId: '01k00000000000000000000028' },
 				profile: {
-					agentRunProfileId: 'agent-run-profile-1',
+					agentRunProfileId: '01k00000000000000000000006',
 					name: 'Planning',
-					modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 					runtimeRequirements: [],
 				},
 				modelUseOverride: null,
@@ -171,26 +159,26 @@ if (import.meta.vitest) {
 				runtimeRequirementOverrides: [],
 				desiredRuntimeRequirements: [],
 				blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
-				sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+				sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 				started: { at: '2026-06-10T12:00:00.000Z' },
 				completed: null,
 			})
 
-			const first = await appendAgentRunEvent(options, options.storage, 'agent-run-1', {
+			const first = await appendAgentRunEvent(options, options.storage, '01k00000000000000000000002', {
 				type: 'input-message',
 				source: { type: 'runtime' },
 				parts: [{ type: 'text', text: 'hello', metadata: null }],
 			})
-			const second = await appendAgentRunEvent(options, options.storage, 'agent-run-1', {
+			const second = await appendAgentRunEvent(options, options.storage, '01k00000000000000000000002', {
 				type: 'interrupt-requested',
 				source: { type: 'runtime' },
 				reason: null,
 			})
 
-			expect(first).toMatchObject({ ok: true, value: { id: 'agent-run-event-1', cursor: '01J00000000000000000000001' } })
-			expect(second).toMatchObject({ ok: true, value: { id: 'agent-run-event-2', cursor: '01J00000000000000000000002' } })
-			expect(options.tx.agentRunEvents.records.get('agent-run-event-1')).toMatchObject({ cursor: '01J00000000000000000000001' })
-			expect(options.tx.agentRunEvents.records.get('agent-run-event-2')).toMatchObject({ cursor: '01J00000000000000000000002' })
+			expect(first).toMatchObject({ ok: true, value: { id: '01k00000000000000000010001' } })
+			expect(second).toMatchObject({ ok: true, value: { id: '01k00000000000000000010002' } })
+			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010001')).toMatchObject({ id: '01k00000000000000000010001' })
+			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010002')).toMatchObject({ id: '01k00000000000000000010002' })
 		})
 	})
 }

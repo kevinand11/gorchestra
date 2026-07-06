@@ -1,21 +1,20 @@
-import { v, type PipeOutput } from 'valleyed'
+import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
-import { idPipe } from '../domain/commons'
-import { deliveryReadModelPipe, type Delivery, type DeliveryReadModel } from '../domain/delivery'
+import { idPipe, paginatedQueryEnvelopePipe, paginatedQueryInputPipe, type PaginatedQueryEnvelope } from '../domain/commons'
+import { deliveryReadModelPipe, type Delivery } from '../domain/delivery'
 import type { Repository } from '../domain/repository'
 import type { Slice } from '../domain/slice'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices, CoreStorage } from '../services'
-import { getRequired, listRecords, withTransaction, type StorageBoundaryError } from '../storage/helpers'
-import type { Result as CoreResult } from '../utils/types'
+import { getRequired, listRecords, listRecordsPaginated, withTransaction, type StorageBoundaryError } from '../storage/helpers'
+import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 import { deliveryReadModels } from './utils/delivery-read-model'
 import { buildQueryHandler } from './utils/handler'
-import { listOrderedDeliverySlices } from './utils/slice-read-model'
 
-export const inputPipe = v.object({ projectId: idPipe })
-export type Input = PipeOutput<typeof inputPipe>
+export const inputPipe = v.merge(v.object({ projectId: idPipe }), paginatedQueryInputPipe)
+export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
 
-export const resultPipe = v.array(deliveryReadModelPipe)
+export const resultPipe = paginatedQueryEnvelopePipe(deliveryReadModelPipe)
 export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
@@ -26,37 +25,64 @@ export function createListDeliveriesQuery(options: CoreServices): Operation {
 			const project = await getRequired('project', storage, input.projectId)
 			if (!project.ok) return project
 
-			return await listProjectDeliveries(storage, project.value.id)
+			return await listProjectDeliveries(storage, input, project.value.id)
 		}),
-	)
+	) as Operation
 }
 
 async function listProjectDeliveries(
 	storage: CoreStorage,
+	input: PipeOutput<typeof inputPipe>,
 	projectId: string,
-): Promise<CoreResult<DeliveryReadModel[], Exclude<Error, InvalidInputError>>> {
-	const deliveries = await listRecords('delivery', storage, { where: (filter, fields) => filter.eq(fields.projectId, projectId) })
+): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+	const deliveries = await listRecordsPaginated('delivery', storage, input, {
+		where: (filter, fields) => filter.eq(fields.projectId, projectId),
+	})
 	if (!deliveries.ok) return deliveries
 
-	const repositories = await listRecords('repository', storage, { where: (filter, fields) => filter.eq(fields.projectId, projectId) })
+	const repositoryIds = deliveries.value.items.flatMap((delivery) =>
+		delivery.target.type === 'source-control' ? [delivery.target.repositoryId] : [],
+	)
+	const repositories =
+		repositoryIds.length === 0
+			? { ok: true as const, value: [] }
+			: await listRecords('repository', storage, {
+					where: (filter, fields) => filter.in(fields.id, repositoryIds),
+					orderBy: [{ field: 'id', direction: 'desc' }],
+				})
 	if (!repositories.ok) return repositories
 
 	const slices = await listSlicesByDeliveryId(storage, deliveries.value)
-	return slices.ok ? deliveryReadModels(deliveries.value, repositories.value, slices.value) : slices
+	if (!slices.ok) return slices
+
+	const readModels = deliveryReadModels(deliveries.value.items, repositories.value, slices.value)
+	return readModels.ok ? { ok: true, value: { ...deliveries.value, items: readModels.value } } : readModels
 }
 
 async function listSlicesByDeliveryId(
 	storage: CoreStorage,
-	deliveries: Delivery[],
+	deliveries: PaginatedQueryEnvelope<Delivery>,
 ): Promise<CoreResult<Map<string, Slice[]>, StorageBoundaryError>> {
-	const slicesByDeliveryId = new Map<string, Slice[]>()
-	for (const delivery of deliveries) {
-		const slices = await listOrderedDeliverySlices(storage, delivery.id)
-		if (!slices.ok) return slices
-		slicesByDeliveryId.set(delivery.id, slices.value)
-	}
+	const deliveryIds = deliveries.items.map((delivery) => delivery.id)
+	if (deliveryIds.length === 0) return { ok: true, value: new Map() }
 
-	return { ok: true, value: slicesByDeliveryId }
+	const slices = await listRecords('slice', storage, {
+		where: (filter, fields) => filter.in(fields.deliveryId, deliveryIds),
+		orderBy: [{ field: 'id', direction: 'desc' }],
+	})
+	if (!slices.ok) return slices
+
+	return { ok: true, value: groupSlicesByDeliveryId(slices.value) }
+}
+
+function groupSlicesByDeliveryId(slices: Slice[]): Map<string, Slice[]> {
+	const grouped = new Map<string, Slice[]>()
+	for (const slice of slices) {
+		const deliverySlices = grouped.get(slice.deliveryId) ?? []
+		deliverySlices.push(slice)
+		grouped.set(slice.deliveryId, deliverySlices)
+	}
+	return grouped
 }
 
 if (import.meta.vitest) {
@@ -81,88 +107,123 @@ if (import.meta.vitest) {
 		it('returns not-found when the target Project does not exist', async () => {
 			const query = createListDeliveriesQuery(createTestCoreServices())
 
-			const result = await query({ projectId: 'project-1' })
+			const result = await query({ projectId: '01k00000000000000000000030' })
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'project', id: 'project-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'project', id: '01k00000000000000000000030' } })
 		})
 
 		it('lists Deliveries for one Project with repository targets and ordered Slices', async () => {
 			const options = createTestCoreServices()
-			seedProject(options.tx, 'project-1')
-			seedProject(options.tx, 'project-2')
-			const repositoryOne = repository({ id: 'repository-1', projectId: 'project-1', owner: 'Octo', name: 'Repo' })
-			const repositoryOther = repository({ id: 'repository-other', projectId: 'project-2', owner: 'Other', name: 'Repo' })
+			seedProject(options.tx, '01k00000000000000000000030')
+			seedProject(options.tx, '01k00000000000000000000031')
+			const repositoryOne = repository({
+				id: '01k00000000000000000000034',
+				projectId: '01k00000000000000000000030',
+				owner: 'Octo',
+				name: 'Repo',
+			})
+			const repositoryOther = repository({
+				id: '01k00000000000000000100028',
+				projectId: '01k00000000000000000000031',
+				owner: 'Other',
+				name: 'Repo',
+			})
 			options.tx.repositories.records.set(repositoryOne.id, repositoryOne)
 			options.tx.repositories.records.set(repositoryOther.id, repositoryOther)
 			options.tx.deliveries.records.set(
-				'delivery-b',
+				'01k00000000000000000100030',
 				delivery({
-					id: 'delivery-b',
-					projectId: 'project-1',
+					id: '01k00000000000000000100030',
+					projectId: '01k00000000000000000000030',
 					title: 'Later',
-					repositoryId: 'repository-1',
+					repositoryId: '01k00000000000000000000034',
 					acceptedAt: '2026-06-10T00:00:00.000Z',
 				}),
 			)
 			options.tx.deliveries.records.set(
-				'delivery-a',
+				'01k00000000000000000100029',
 				delivery({
-					id: 'delivery-a',
-					projectId: 'project-1',
+					id: '01k00000000000000000100029',
+					projectId: '01k00000000000000000000030',
 					title: 'Earlier',
-					repositoryId: 'repository-1',
+					repositoryId: '01k00000000000000000000034',
 					acceptedAt: '2026-06-09T00:00:00.000Z',
 				}),
 			)
 			options.tx.deliveries.records.set(
-				'delivery-other',
-				delivery({ id: 'delivery-other', projectId: 'project-2', title: 'Other', repositoryId: 'repository-other' }),
+				'01k00000000000000000100031',
+				delivery({
+					id: '01k00000000000000000100031',
+					projectId: '01k00000000000000000000031',
+					title: 'Other',
+					repositoryId: '01k00000000000000000100028',
+				}),
 			)
-			options.tx.slices.records.set('slice-b', slice({ id: 'slice-b', deliveryId: 'delivery-a', order: 1, title: 'Second' }))
-			options.tx.slices.records.set('slice-a', slice({ id: 'slice-a', deliveryId: 'delivery-a', order: 0, title: 'First' }))
+			options.tx.slices.records.set(
+				'01k00000000000000000100039',
+				slice({ id: '01k00000000000000000100039', deliveryId: '01k00000000000000000100029', order: 1, title: 'Second' }),
+			)
+			options.tx.slices.records.set(
+				'01k00000000000000000100038',
+				slice({ id: '01k00000000000000000100038', deliveryId: '01k00000000000000000100029', order: 0, title: 'First' }),
+			)
 			const query = createListDeliveriesQuery(options)
 
-			const result = await query({ projectId: 'project-1' })
+			const result = await query({ projectId: '01k00000000000000000000030' })
 
 			expect(result).toEqual({
 				ok: true,
-				value: [
-					{
-						...delivery({
-							id: 'delivery-a',
-							projectId: 'project-1',
-							title: 'Earlier',
-							repositoryId: 'repository-1',
-							acceptedAt: '2026-06-09T00:00:00.000Z',
-						}),
-						target: { type: 'source-control', repository: repositoryOne, targetBranch: 'main' },
-						slices: [
-							slice({ id: 'slice-a', deliveryId: 'delivery-a', order: 0, title: 'First' }),
-							slice({ id: 'slice-b', deliveryId: 'delivery-a', order: 1, title: 'Second' }),
-						],
-					},
-					{
-						...delivery({
-							id: 'delivery-b',
-							projectId: 'project-1',
-							title: 'Later',
-							repositoryId: 'repository-1',
-							acceptedAt: '2026-06-10T00:00:00.000Z',
-						}),
-						target: { type: 'source-control', repository: repositoryOne, targetBranch: 'main' },
-						slices: [],
-					},
-				],
+				value: {
+					items: [
+						{
+							...delivery({
+								id: '01k00000000000000000100030',
+								projectId: '01k00000000000000000000030',
+								title: 'Later',
+								repositoryId: '01k00000000000000000000034',
+								acceptedAt: '2026-06-10T00:00:00.000Z',
+							}),
+							target: { type: 'source-control', repository: repositoryOne, targetBranch: 'main' },
+							slices: [],
+						},
+						{
+							...delivery({
+								id: '01k00000000000000000100029',
+								projectId: '01k00000000000000000000030',
+								title: 'Earlier',
+								repositoryId: '01k00000000000000000000034',
+								acceptedAt: '2026-06-09T00:00:00.000Z',
+							}),
+							target: { type: 'source-control', repository: repositoryOne, targetBranch: 'main' },
+							slices: [
+								slice({
+									id: '01k00000000000000000100039',
+									deliveryId: '01k00000000000000000100029',
+									order: 1,
+									title: 'Second',
+								}),
+								slice({
+									id: '01k00000000000000000100038',
+									deliveryId: '01k00000000000000000100029',
+									order: 0,
+									title: 'First',
+								}),
+							],
+						},
+					],
+					pages: { current: 1, start: 1, last: 1, previous: null, next: null },
+					docs: { limit: 2, total: 2, count: 2 },
+				},
 			})
 		})
 
 		it('returns storage errors when Delivery reads fail', async () => {
 			const options = createTestCoreServices()
-			seedProject(options.tx, 'project-1')
+			seedProject(options.tx, '01k00000000000000000000030')
 			options.tx.deliveries.fail.list = true
 			const query = createListDeliveriesQuery(options)
 
-			const result = await query({ projectId: 'project-1' })
+			const result = await query({ projectId: '01k00000000000000000000030' })
 
 			expect(result).toEqual({
 				ok: false,
@@ -175,7 +236,7 @@ if (import.meta.vitest) {
 		return {
 			id: input.id,
 			projectId: input.projectId,
-			config: { provider: 'github', owner: input.owner, name: input.name, secretId: 'secret-1' },
+			config: { provider: 'github', owner: input.owner, name: input.name, secretId: '01k00000000000000000000040' },
 			created: { origin: 'imported', at: input.createdAt ?? stamp.at },
 		}
 	}
@@ -185,7 +246,7 @@ if (import.meta.vitest) {
 		return {
 			id: input.id,
 			projectId: input.projectId,
-			planId: 'plan-1',
+			planId: '01k00000000000000000000028',
 			title: input.title,
 			target: { type: 'source-control', repositoryId: input.repositoryId, targetBranch: 'main' },
 			config: null,

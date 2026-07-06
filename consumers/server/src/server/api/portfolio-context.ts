@@ -157,7 +157,14 @@ if (import.meta.vitest) {
 					return { selectedContext, projects }
 				})
 
-				expect(result.projects).toEqual({ ok: true, value: [] })
+				expect(result.projects).toEqual({
+					ok: true,
+					value: {
+						items: [],
+						pages: { current: 1, start: 1, last: 1, previous: null, next: null },
+						docs: { limit: 0, total: 0, count: 0 },
+					},
+				})
 				expect(result.selectedContext.session).toEqual(session.session)
 				expect(result.selectedContext.workspace).toEqual(provisioned.workspace)
 				expect(result.selectedContext.workspaceMember).toEqual(provisioned.workspaceMember)

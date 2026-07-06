@@ -4,10 +4,11 @@ import { PlanCreationFormDraft } from '../../../forms/plan'
 import { useSelectedPortfolio } from '../../auth/session'
 import { useApiAction, useFetchAction } from '../../core/action-state'
 import { useOverlay } from '../../core/overlay'
+import { usePaginatedFetchAction } from '../../core/paginated-fetch-action'
 import { useQueryCache } from '../../core/query-cache'
 import { useServerApi, type ServerApi } from '../../core/server-api'
 
-export type ListedPlan = Awaited<ReturnType<ServerApi['listPlans']>>[number]
+export type ListedPlan = Awaited<ReturnType<ServerApi['listPlans']>>['items'][number]
 type PlanDetails = Awaited<ReturnType<ServerApi['getPlan']>>
 type CreatedPlan = Awaited<ReturnType<ServerApi['createPlan']>>
 type ClosedPlan = Awaited<ReturnType<ServerApi['closePlan']>>
@@ -25,19 +26,18 @@ export function usePlansList(projectId: Ref<string>) {
 	const { portfolio } = useSelectedPortfolio()
 	const { queryKeys } = useQueryCache()
 	const {
-		data: plans,
+		items: plans,
 		isLoading: isLoadingPlans,
 		error: plansError,
 		hasExecuted: hasLoadedPlans,
-		execute: refreshPlans,
-		reset: resetPlans,
-	} = useFetchAction(() => serverApi.listPlans(projectId.value), {
+		fetchNext: fetchNextPlans,
+		hasNext: hasNextPlans,
+	} = usePaginatedFetchAction((input) => serverApi.listPlans(projectId.value, input), {
 		queryKey: queryKeys.portfolio.plans(portfolio.value.id, projectId.value),
-		initialData: [] as ListedPlan[],
 	})
 	const isRefreshingPlans = computed(() => isLoadingPlans.value && hasLoadedPlans.value)
 
-	return { plans, isLoadingPlans, plansError, hasLoadedPlans, isRefreshingPlans, refreshPlans, resetPlans }
+	return { plans, isLoadingPlans, plansError, hasLoadedPlans, isRefreshingPlans, fetchNextPlans, hasNextPlans }
 }
 
 export function usePlanDetail(projectId: Ref<string>, planId: Ref<string>) {

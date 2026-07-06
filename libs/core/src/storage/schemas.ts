@@ -7,7 +7,6 @@ import { actionResultPipe, type Action } from '../domain/action'
 import {
 	agentPipe,
 	agentRunEventBodyPipe,
-	agentRunEventCursorPipe,
 	agentRunModelUseOverridePipe,
 	agentRunProfileSnapshotPipe,
 	agentRunPurposePipe,
@@ -191,7 +190,6 @@ export const agentRunSchema = Schema.from('agent_runs')
 export const agentRunEventSchema = Schema.from('agent_run_events')
 	.pk('id', idPipe, explicitCoreIdRequired)
 	.field('agentRunId', idPipe)
-	.field('cursor', agentRunEventCursorPipe)
 	.field('occurred', runtimeRecordPipe)
 	.field('body', agentRunEventBodyPipe)
 	.build()

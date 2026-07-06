@@ -1,41 +1,47 @@
-import { v, type PipeOutput } from 'valleyed'
+import { type PipeInput, type PipeOutput } from 'valleyed'
 
+import { paginatedQueryEnvelopePipe, paginatedQueryInputPipe } from '../domain/commons'
 import { listedProjectPipe, type ListedProject, type Project } from '../domain/project'
 export type { ListedProject, SourceControlProjectListSource } from '../domain/project'
 import type { Repository } from '../domain/repository'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
-import { listRecords, withTransaction } from '../storage/helpers'
-import type { Result as CoreResult } from '../utils/types'
+import { listRecords, listRecordsPaginated, withTransaction } from '../storage/helpers'
+import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
-export const inputPipe = v.object({})
-export type Input = PipeOutput<typeof inputPipe>
+export const inputPipe = paginatedQueryInputPipe
+export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
 
-export const resultPipe = v.array(listedProjectPipe)
+export const resultPipe = paginatedQueryEnvelopePipe(listedProjectPipe)
 export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createListProjectsQuery(options: CoreServices): Operation {
-	return buildQueryHandler('listProjects', inputPipe, () =>
+	return buildQueryHandler('listProjects', inputPipe, (input) =>
 		withTransaction(options, async (storage) => {
-			const projects = await listRecords('project', storage)
+			const projects = await listRecordsPaginated('project', storage, input)
 			if (!projects.ok) return projects
 
-			const repositories = await listRecords('repository', storage)
+			const projectIds = projects.value.items.map((project) => project.id)
+			const repositories =
+				projectIds.length === 0
+					? { ok: true as const, value: [] }
+					: await listRecords('repository', storage, {
+							where: (filter, fields) => filter.in(fields.projectId, projectIds),
+							orderBy: [{ field: 'id', direction: 'desc' }],
+						})
 			if (!repositories.ok) return repositories
 
-			return { ok: true, value: listProjects(projects.value, repositories.value) }
+			return { ok: true, value: { ...projects.value, items: listProjects(projects.value.items, repositories.value) } }
 		}),
-	)
+	) as Operation
 }
 
 function listProjects(projects: Project[], repositories: Repository[]): ListedProject[] {
-	const repositoriesByProjectId = groupRepositoriesByProjectId(sortByCreatedAtThenId(repositories))
-	return sortByCreatedAtThenId(projects).map((project) =>
-		listedProjectFromProjectAndRepositories(project, repositoriesByProjectId.get(project.id) ?? []),
-	)
+	const repositoriesByProjectId = groupRepositoriesByProjectId(repositories)
+	return projects.map((project) => listedProjectFromProjectAndRepositories(project, repositoriesByProjectId.get(project.id) ?? []))
 }
 
 export function listedProjectFromProjectAndRepositories(project: Project, repositories: Repository[]): ListedProject {
@@ -57,10 +63,6 @@ function groupRepositoriesByProjectId(repositories: Repository[]): Map<string, R
 		grouped.set(repository.projectId, projectRepositories)
 	}
 	return grouped
-}
-
-export function sortByCreatedAtThenId<T extends { id: string; created: { at: string } }>(records: T[]): T[] {
-	return [...records].sort((left, right) => left.created.at.localeCompare(right.created.at) || left.id.localeCompare(right.id))
 }
 
 if (import.meta.vitest) {
@@ -88,56 +90,63 @@ if (import.meta.vitest) {
 
 			const result = await query({})
 
-			expect(result).toEqual({ ok: true, value: [] })
+			expect(result).toEqual({
+				ok: true,
+				value: {
+					items: [],
+					pages: { current: 1, start: 1, last: 1, previous: null, next: null },
+					docs: { limit: 0, total: 0, count: 0 },
+				},
+			})
 		})
 
-		it('lists Projects and nested Source Control Repositories in creation order with id tie-breakers', async () => {
+		it('lists Projects and nested Source Control Repositories in id-desc order', async () => {
 			const options = createTestCoreServices()
 			options.tx.projects.records.set(
-				'project-b',
-				project({ id: 'project-b', title: 'Later', createdAt: '2026-06-10T00:00:00.000Z' }),
+				'01k00000000000000000100023',
+				project({ id: '01k00000000000000000100023', title: 'Later', createdAt: '2026-06-10T00:00:00.000Z' }),
 			)
 			options.tx.projects.records.set(
-				'project-c',
-				project({ id: 'project-c', title: 'Tie C', createdAt: '2026-06-09T00:00:00.000Z' }),
+				'01k00000000000000000100024',
+				project({ id: '01k00000000000000000100024', title: 'Tie C', createdAt: '2026-06-09T00:00:00.000Z' }),
 			)
 			options.tx.projects.records.set(
-				'project-a',
-				project({ id: 'project-a', title: 'Tie A', createdAt: '2026-06-09T00:00:00.000Z' }),
+				'01k00000000000000000100022',
+				project({ id: '01k00000000000000000100022', title: 'Tie A', createdAt: '2026-06-09T00:00:00.000Z' }),
 			)
 			options.tx.repositories.records.set(
-				'repository-b',
+				'01k00000000000000000100026',
 				repository({
-					id: 'repository-b',
-					projectId: 'project-a',
+					id: '01k00000000000000000100026',
+					projectId: '01k00000000000000000100022',
 					owner: 'Octo',
 					name: 'Beta',
 					createdAt: '2026-06-10T00:00:00.000Z',
 				}),
 			)
 			options.tx.repositories.records.set(
-				'repository-c',
+				'01k00000000000000000100027',
 				repository({
-					id: 'repository-c',
-					projectId: 'project-a',
+					id: '01k00000000000000000100027',
+					projectId: '01k00000000000000000100022',
 					owner: 'Octo',
 					name: 'Tie C',
 					createdAt: '2026-06-09T00:00:00.000Z',
 				}),
 			)
 			options.tx.repositories.records.set(
-				'repository-a',
+				'01k00000000000000000100025',
 				repository({
-					id: 'repository-a',
-					projectId: 'project-a',
+					id: '01k00000000000000000100025',
+					projectId: '01k00000000000000000100022',
 					owner: 'Octo',
 					name: 'Tie A',
 					createdAt: '2026-06-09T00:00:00.000Z',
 				}),
 			)
 			options.tx.repositories.records.set(
-				'repository-other',
-				repository({ id: 'repository-other', projectId: 'missing-project', owner: 'Other', name: 'Repo' }),
+				'01k00000000000000000100028',
+				repository({ id: '01k00000000000000000100028', projectId: '01k00000000000000000100029', owner: 'Other', name: 'Repo' }),
 			)
 			const query = createListProjectsQuery(options)
 
@@ -145,45 +154,49 @@ if (import.meta.vitest) {
 
 			expect(result).toEqual({
 				ok: true,
-				value: [
-					{
-						...project({ id: 'project-a', title: 'Tie A', createdAt: '2026-06-09T00:00:00.000Z' }),
-						source: {
-							type: 'source-control',
-							repositories: [
-								repository({
-									id: 'repository-a',
-									projectId: 'project-a',
-									owner: 'Octo',
-									name: 'Tie A',
-									createdAt: '2026-06-09T00:00:00.000Z',
-								}),
-								repository({
-									id: 'repository-c',
-									projectId: 'project-a',
-									owner: 'Octo',
-									name: 'Tie C',
-									createdAt: '2026-06-09T00:00:00.000Z',
-								}),
-								repository({
-									id: 'repository-b',
-									projectId: 'project-a',
-									owner: 'Octo',
-									name: 'Beta',
-									createdAt: '2026-06-10T00:00:00.000Z',
-								}),
-							],
+				value: {
+					items: [
+						{
+							...project({ id: '01k00000000000000000100024', title: 'Tie C', createdAt: '2026-06-09T00:00:00.000Z' }),
+							source: { type: 'source-control', repositories: [] },
 						},
-					},
-					{
-						...project({ id: 'project-c', title: 'Tie C', createdAt: '2026-06-09T00:00:00.000Z' }),
-						source: { type: 'source-control', repositories: [] },
-					},
-					{
-						...project({ id: 'project-b', title: 'Later', createdAt: '2026-06-10T00:00:00.000Z' }),
-						source: { type: 'source-control', repositories: [] },
-					},
-				],
+						{
+							...project({ id: '01k00000000000000000100023', title: 'Later', createdAt: '2026-06-10T00:00:00.000Z' }),
+							source: { type: 'source-control', repositories: [] },
+						},
+						{
+							...project({ id: '01k00000000000000000100022', title: 'Tie A', createdAt: '2026-06-09T00:00:00.000Z' }),
+							source: {
+								type: 'source-control',
+								repositories: [
+									repository({
+										id: '01k00000000000000000100027',
+										projectId: '01k00000000000000000100022',
+										owner: 'Octo',
+										name: 'Tie C',
+										createdAt: '2026-06-09T00:00:00.000Z',
+									}),
+									repository({
+										id: '01k00000000000000000100026',
+										projectId: '01k00000000000000000100022',
+										owner: 'Octo',
+										name: 'Beta',
+										createdAt: '2026-06-10T00:00:00.000Z',
+									}),
+									repository({
+										id: '01k00000000000000000100025',
+										projectId: '01k00000000000000000100022',
+										owner: 'Octo',
+										name: 'Tie A',
+										createdAt: '2026-06-09T00:00:00.000Z',
+									}),
+								],
+							},
+						},
+					],
+					pages: { current: 1, start: 1, last: 1, previous: null, next: null },
+					docs: { limit: 3, total: 3, count: 3 },
+				},
 			})
 		})
 
@@ -196,6 +209,10 @@ if (import.meta.vitest) {
 			})
 
 			const repositoryReadFailure = createTestCoreServices()
+			repositoryReadFailure.tx.projects.records.set(
+				'01k00000000000000000100022',
+				project({ id: '01k00000000000000000100022', title: 'Project' }),
+			)
 			repositoryReadFailure.tx.repositories.fail.list = true
 			await expect(createListProjectsQuery(repositoryReadFailure)({})).resolves.toEqual({
 				ok: false,
@@ -216,7 +233,7 @@ if (import.meta.vitest) {
 						work: {
 							maxProcessableSliceSlots: 1,
 							maxCorrectionRetriesPerFailure: 1,
-							executionAgentRunProfileId: 'agent-run-profile-1',
+							executionAgentRunProfileId: '01k00000000000000000000006',
 							revisionExecutionAgentRunProfileId: null,
 						},
 					},
@@ -226,7 +243,7 @@ if (import.meta.vitest) {
 			repository: (input: { id: string; projectId: string; owner: string; name: string; createdAt?: string }): Repository => ({
 				id: input.id,
 				projectId: input.projectId,
-				config: { provider: 'github', owner: input.owner, name: input.name, secretId: 'secret-1' },
+				config: { provider: 'github', owner: input.owner, name: input.name, secretId: '01k00000000000000000000040' },
 				created: { origin: 'imported', at: input.createdAt ?? '2026-06-10T00:00:00.000Z' },
 			}),
 		}

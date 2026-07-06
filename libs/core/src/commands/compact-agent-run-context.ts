@@ -53,7 +53,7 @@ export function createCompactAgentRunContextCommand(runtime: CoreRuntime): Opera
 			return appendAgentRunEvent(runtime, storage, input.agentRunId, {
 				type: 'context-compacted',
 				source: { type: 'operator', authorized: stamp },
-				compactedThroughCursor: compactedThrough.value.cursor,
+				compactedThroughEventId: compactedThrough.value.id,
 				replacementParts: input.replacementParts,
 			})
 		}),
@@ -82,18 +82,21 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { context, createTestCoreRuntime, localStamp } = await import('../utils/test-helpers')
 	const { inputEvent, planningAgentRunFixture } = await import('./utils/agent-run-test-utils')
+	const existingEventId = '01k00000000000000000000003'
+	const outsideEventId = '01k00000000000000000000004'
+	const outsideAgentRunId = '01k00000000000000000100021'
 
 	describe('compactAgentRunContext command', () => {
 		it('appends an operator context compaction for an active Planning Agent Run', async () => {
 			const options = planningAgentRunFixture()
-			options.tx.agentRunEvents.records.set('existing-event', inputEvent('existing-event', 'agent-run-1', 0))
+			options.tx.agentRunEvents.records.set(existingEventId, inputEvent(existingEventId, '01k00000000000000000000002', 0))
 			const command = createCompactAgentRunContextCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{
-					agentRunId: 'agent-run-1',
+					agentRunId: '01k00000000000000000000002',
 					replacementParts: [{ type: 'text', text: 'Earlier context summary.', metadata: null }],
-					compactedThroughEventId: 'existing-event',
+					compactedThroughEventId: existingEventId,
 				},
 				context,
 			)
@@ -101,14 +104,13 @@ if (import.meta.vitest) {
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'agent-run-event-1',
-					agentRunId: 'agent-run-1',
-					cursor: '01J00000000000000000000001',
+					id: '01k00000000000000000010001',
+					agentRunId: '01k00000000000000000000002',
 					occurred: { at: '2026-06-10T12:00:00.000Z' },
 					body: {
 						type: 'context-compacted',
 						source: { type: 'operator', authorized: localStamp() },
-						compactedThroughCursor: '01J00000000000000000000000',
+						compactedThroughEventId: existingEventId,
 						replacementParts: [{ type: 'text', text: 'Earlier context summary.', metadata: null }],
 					},
 				},
@@ -117,37 +119,40 @@ if (import.meta.vitest) {
 
 		it('rejects inactive targets', async () => {
 			const options = planningAgentRunFixture()
-			options.tx.agentRuns.records.get('agent-run-1')!.completed = { at: '2026-06-10T12:05:00.000Z' }
-			options.tx.agentRunEvents.records.set('existing-event', inputEvent('existing-event', 'agent-run-1', 0))
+			options.tx.agentRuns.records.get('01k00000000000000000000002')!.completed = { at: '2026-06-10T12:05:00.000Z' }
+			options.tx.agentRunEvents.records.set(existingEventId, inputEvent(existingEventId, '01k00000000000000000000002', 0))
 			const command = createCompactAgentRunContextCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{
-					agentRunId: 'agent-run-1',
+					agentRunId: '01k00000000000000000000002',
 					replacementParts: [{ type: 'text', text: 'Summary.', metadata: null }],
-					compactedThroughEventId: 'existing-event',
+					compactedThroughEventId: existingEventId,
 				},
 				context,
 			)
 
-			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: 'agent-run-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: '01k00000000000000000000002' } })
 		})
 
 		it('rejects first kept events outside the Agent Run', async () => {
 			const outsideEventOptions = planningAgentRunFixture()
-			outsideEventOptions.tx.agentRunEvents.records.set('agent-run-event-1', inputEvent('agent-run-event-1', 'agent-run-other', 1))
+			outsideEventOptions.tx.agentRunEvents.records.set(outsideEventId, inputEvent(outsideEventId, outsideAgentRunId, 1))
 			await expect(
 				createCompactAgentRunContextCommand(createTestCoreRuntime(outsideEventOptions))(
 					{
-						agentRunId: 'agent-run-1',
+						agentRunId: '01k00000000000000000000002',
 						replacementParts: [{ type: 'text', text: 'Summary.', metadata: null }],
-						compactedThroughEventId: 'agent-run-event-1',
+						compactedThroughEventId: outsideEventId,
 					},
 					context,
 				),
 			).resolves.toEqual({
 				ok: false,
-				error: { type: 'invariant-violation', message: 'Agent Run Event agent-run-event-1 is outside Agent Run agent-run-1.' },
+				error: {
+					type: 'invariant-violation',
+					message: `Agent Run Event ${outsideEventId} is outside Agent Run 01k00000000000000000000002.`,
+				},
 			})
 		})
 	})

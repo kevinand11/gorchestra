@@ -227,39 +227,43 @@ if (import.meta.vitest) {
 	function validOutput(): RawPlanOutputProposal {
 		return {
 			proposedDeliveries: {
-				'delivery-a': {
+				'01k00000000000000000100029': {
 					title: 'Delivery A',
-					target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
+					target: { type: 'source-control', repositoryId: '01k00000000000000000000034', targetBranch: 'main' },
 					slices: {
-						'slice-a': {
+						'01k00000000000000000100038': {
 							order: 0,
 							title: 'Slice A',
 							instruction: { body: 'Do A.' },
 							dependsOnProposedSliceKeys: {},
 						},
-						'slice-b': {
+						'01k00000000000000000100039': {
 							order: 1,
 							title: 'Slice B',
 							instruction: { body: 'Do B.' },
-							dependsOnProposedSliceKeys: { 'slice-a': true },
+							dependsOnProposedSliceKeys: { '01k00000000000000000100038': true },
 						},
 					},
-					dependsOnDeliveryIds: { 'delivery-existing': true },
+					dependsOnDeliveryIds: { '01k00000000000000000100032': true },
 					dependsOnProposedDeliveryKeys: {},
 				},
 			},
 			proposedMemoryCreations: {
-				'memory-a': {
+				'01k00000000000000000100001': {
 					parentId: null,
 					title: 'Memory A',
 					body: 'Remember A.',
 					children: {
-						'memory-b': { title: 'Memory B', body: 'Remember B.', children: {} },
+						'01k00000000000000000100002': { title: 'Memory B', body: 'Remember B.', children: {} },
 					},
 				},
 			},
 			proposedMemoryRevisions: {
-				'memory-existing': { expectedCurrentRevisionId: 'memory-revision-current', title: 'Memory', body: 'Updated.' },
+				'01k00000000000000000100009': {
+					expectedCurrentRevisionId: '01k00000000000000000100010',
+					title: 'Memory',
+					body: 'Updated.',
+				},
 			},
 		}
 	}
@@ -268,12 +272,22 @@ if (import.meta.vitest) {
 		return {
 			...emptyOutput(),
 			proposedDeliveries: {
-				'delivery-a': {
+				'01k00000000000000000100029': {
 					title: 'Delivery A',
-					target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
+					target: { type: 'source-control', repositoryId: '01k00000000000000000000034', targetBranch: 'main' },
 					slices: {
-						'slice-a': { order: 0, title: 'Slice A', instruction: { body: 'Do A.' }, dependsOnProposedSliceKeys: {} },
-						'slice-b': { order: 2, title: 'Slice B', instruction: { body: 'Do B.' }, dependsOnProposedSliceKeys: {} },
+						'01k00000000000000000100038': {
+							order: 0,
+							title: 'Slice A',
+							instruction: { body: 'Do A.' },
+							dependsOnProposedSliceKeys: {},
+						},
+						'01k00000000000000000100039': {
+							order: 2,
+							title: 'Slice B',
+							instruction: { body: 'Do B.' },
+							dependsOnProposedSliceKeys: {},
+						},
 					},
 					dependsOnDeliveryIds: {},
 					dependsOnProposedDeliveryKeys: {},
@@ -284,37 +298,50 @@ if (import.meta.vitest) {
 
 	function outputWithUnknownSliceDependency(): RawPlanOutputProposal {
 		const output = validOutput()
-		output.proposedDeliveries['delivery-a']!.slices['slice-a']!.dependsOnProposedSliceKeys = { missing: true }
+		output.proposedDeliveries['01k00000000000000000100029']!.slices['01k00000000000000000100038']!.dependsOnProposedSliceKeys = {
+			missing: true,
+		}
 		return output
 	}
 
 	function outputWithDeliveryCycle(): RawPlanOutputProposal {
 		const output = validOutput()
-		output.proposedDeliveries['delivery-b'] = {
+		output.proposedDeliveries['01k00000000000000000100030'] = {
 			title: 'Delivery B',
-			target: { type: 'source-control', repositoryId: 'repository-1', targetBranch: 'main' },
-			slices: { 'slice-c': { order: 0, title: 'Slice C', instruction: { body: 'Do C.' }, dependsOnProposedSliceKeys: {} } },
+			target: { type: 'source-control', repositoryId: '01k00000000000000000000034', targetBranch: 'main' },
+			slices: {
+				'01k00000000000000000100040': {
+					order: 0,
+					title: 'Slice C',
+					instruction: { body: 'Do C.' },
+					dependsOnProposedSliceKeys: {},
+				},
+			},
 			dependsOnDeliveryIds: {},
-			dependsOnProposedDeliveryKeys: { 'delivery-a': true },
+			dependsOnProposedDeliveryKeys: { '01k00000000000000000100029': true },
 		}
-		output.proposedDeliveries['delivery-a']!.dependsOnProposedDeliveryKeys = { 'delivery-b': true }
+		output.proposedDeliveries['01k00000000000000000100029']!.dependsOnProposedDeliveryKeys = { '01k00000000000000000100030': true }
 		return output
 	}
 
 	function outputWithSliceCycle(): RawPlanOutputProposal {
 		const output = validOutput()
-		output.proposedDeliveries['delivery-a']!.slices['slice-a']!.dependsOnProposedSliceKeys = { 'slice-b': true }
-		output.proposedDeliveries['delivery-a']!.slices['slice-b']!.dependsOnProposedSliceKeys = { 'slice-a': true }
+		output.proposedDeliveries['01k00000000000000000100029']!.slices['01k00000000000000000100038']!.dependsOnProposedSliceKeys = {
+			'01k00000000000000000100039': true,
+		}
+		output.proposedDeliveries['01k00000000000000000100029']!.slices['01k00000000000000000100039']!.dependsOnProposedSliceKeys = {
+			'01k00000000000000000100038': true,
+		}
 		return output
 	}
 
 	function outputWithDuplicateNestedMemoryKey(): RawPlanOutputProposal {
 		const output = validOutput()
-		output.proposedMemoryCreations['memory-c'] = {
+		output.proposedMemoryCreations['01k00000000000000000100003'] = {
 			parentId: null,
 			title: 'Memory C',
 			body: 'Remember C.',
-			children: { 'memory-a': { title: 'Duplicate', body: '', children: {} } },
+			children: { '01k00000000000000000100001': { title: 'Duplicate', body: '', children: {} } },
 		}
 		return output
 	}

@@ -23,24 +23,24 @@ if (import.meta.vitest) {
 	describe('handleSliceNeedsArtifactValidation', () => {
 		it('records passing no-op Slice Artifact validation', async () => {
 			const { context, options } = await validationHandlerFixture()
-			const slice = options.tx.slices.records.get('slice-1')
+			const slice = options.tx.slices.records.get('01k00000000000000000000042')
 			if (slice === undefined) throw new Error('Expected Slice.')
 
 			const result = await handleSliceNeedsArtifactValidation(context, slice, {
 				type: 'needs-artifact-validation',
 				mode: 'initial',
-				sliceArtifactId: 'slice-artifact-1',
+				sliceArtifactId: '01k00000000000000000000045',
 			})
 
 			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
-			expect(options.tx.actions.records.get('action-1')).toEqual({
-				id: 'action-1',
-				deliveryId: 'delivery-1',
+			expect(options.tx.actions.records.get('01k00000000000000000010001')).toEqual({
+				id: '01k00000000000000000010001',
+				deliveryId: '01k00000000000000000000008',
 				performed: { at: '2026-06-10T12:00:00.000Z' },
 				authorized: null,
 				result: {
 					type: 'validate-slice-artifact',
-					sliceId: 'slice-1',
+					sliceId: '01k00000000000000000000042',
 					evidence: validationEvidence('slice-branch-validation', true, 'No Slice Artifact validation is configured.'),
 					dispatchStartedActionId: null,
 				},
@@ -50,15 +50,15 @@ if (import.meta.vitest) {
 
 	async function validationHandlerFixture() {
 		const options = createTestCoreServices()
-		seedDelivery(options.tx, 'delivery-1')
-		seedSlice(options.tx, 'slice-1', 'delivery-1')
-		options.tx.sliceArtifacts.records.set('slice-artifact-1', {
-			id: 'slice-artifact-1',
-			sliceId: 'slice-1',
+		seedDelivery(options.tx, '01k00000000000000000000008')
+		seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000008')
+		options.tx.sliceArtifacts.records.set('01k00000000000000000000045', {
+			id: '01k00000000000000000000045',
+			sliceId: '01k00000000000000000000042',
 			config: { type: 'source-control', sliceBranch: 'slice' },
 			created: stamp,
 		})
-		const deliveryContext = await buildDeliveryContext(options.tx, 'delivery-1')
+		const deliveryContext = await buildDeliveryContext(options.tx, '01k00000000000000000000008')
 		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
 
 		return {

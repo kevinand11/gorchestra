@@ -1,6 +1,7 @@
 import { OrmValidationError, type FilterGroup, type SchemaFields } from 'equipped/orm'
 import { PipeError } from 'valleyed'
 
+import type { PaginatedQueryEnvelope, ParsedPaginatedQueryInput } from '../domain/commons'
 import type {
 	CoreIdResource,
 	CoreResource,
@@ -69,6 +70,13 @@ export interface ListRecordsOptions<Resource extends CoreIdResource> {
 	limit?: number
 }
 
+interface PaginatedListQuery {
+	orderBy(field: string, direction?: 'asc' | 'desc'): PaginatedListQuery
+	limit(limit: number): PaginatedListQuery
+	page(page: number): PaginatedListQuery
+	paginate(): Promise<unknown>
+}
+
 export async function listRecords<Resource extends CoreIdResource>(
 	resource: Resource,
 	storage: CoreStorage,
@@ -78,6 +86,27 @@ export async function listRecords<Resource extends CoreIdResource>(
 		const schema = coreIdResourceSchemas[resource]
 		const records = await listRecordsQuery(storage, schema, options).find()
 		return { ok: true, value: records as unknown as Array<CoreIdStorageRecord<Resource>> }
+	} catch (error) {
+		return readStorageError(resource, { type: 'list', resource }, error)
+	}
+}
+
+export async function listRecordsPaginated<Resource extends CoreIdResource>(
+	resource: Resource,
+	storage: CoreStorage,
+	pagination: ParsedPaginatedQueryInput,
+	options: Pick<ListRecordsOptions<Resource>, 'where'> = {},
+): Promise<Result<PaginatedQueryEnvelope<CoreIdStorageRecord<Resource>>, StorageBoundaryError>> {
+	try {
+		const schema = coreIdResourceSchemas[resource]
+		const where = boundedListRecordsWhere(options.where, pagination.beforeId)
+		const queryOptions = where === undefined ? {} : { where }
+		const baseQuery: PaginatedListQuery = listRecordsQuery(storage, schema, queryOptions)
+		let query = baseQuery.orderBy('id', 'desc')
+		if (pagination.limit !== undefined) query = query.limit(pagination.limit)
+		if ('page' in pagination && pagination.page !== undefined) query = query.page(pagination.page)
+		const page = await query.paginate()
+		return { ok: true, value: page as PaginatedQueryEnvelope<CoreIdStorageRecord<Resource>> }
 	} catch (error) {
 		return readStorageError(resource, { type: 'list', resource }, error)
 	}
@@ -97,6 +126,14 @@ function listRecordsQuery<Resource extends CoreIdResource>(
 					.where((filter) => options.where?.(filter, schema.fields as SchemaFields<CoreIdResourceSchema<Resource>>) ?? filter)
 
 	return applyListRecordsLimit(applyListRecordsOrdering(query, options.orderBy ?? []), options.limit)
+}
+
+function boundedListRecordsWhere<Resource extends CoreIdResource>(
+	where: ListRecordsWhere<Resource> | undefined,
+	beforeId: string | undefined,
+): ListRecordsWhere<Resource> | undefined {
+	if (beforeId === undefined) return where
+	return (filter, fields) => (where?.(filter, fields) ?? filter).lt(fields.id, beforeId)
 }
 
 function applyListRecordsOrdering<
@@ -197,21 +234,21 @@ if (import.meta.vitest) {
 		it('passes filters to the storage adapter', async () => {
 			const options = createTestCoreServices()
 			const matching = {
-				id: 'repository-1',
-				projectId: 'project-1',
-				config: { provider: 'github' as const, owner: 'Octo', name: 'Repo', secretId: 'secret-1' },
+				id: '01k00000000000000000000034',
+				projectId: '01k00000000000000000000030',
+				config: { provider: 'github' as const, owner: 'Octo', name: 'Repo', secretId: '01k00000000000000000000040' },
 				created: localStamp(),
 			}
 			options.tx.repositories.records.set(matching.id, matching)
-			options.tx.repositories.records.set('repository-2', {
-				id: 'repository-2',
-				projectId: 'project-2',
-				config: { provider: 'github', owner: 'Octo', name: 'Other', secretId: 'secret-1' },
+			options.tx.repositories.records.set('01k00000000000000000000035', {
+				id: '01k00000000000000000000035',
+				projectId: '01k00000000000000000000031',
+				config: { provider: 'github', owner: 'Octo', name: 'Other', secretId: '01k00000000000000000000040' },
 				created: localStamp(),
 			})
 
 			const result = await listRecords('repository', options.storage, {
-				where: (filter, fields) => filter.eq(fields.projectId, 'project-1'),
+				where: (filter, fields) => filter.eq(fields.projectId, '01k00000000000000000000030'),
 			})
 
 			expect(result).toEqual({ ok: true, value: [matching] })
@@ -219,16 +256,16 @@ if (import.meta.vitest) {
 
 		it('applies ordering and limits to storage adapter reads', async () => {
 			const options = createTestCoreServices()
-			const first = agentRunEvent('agent-run-event-1', 1)
-			const second = agentRunEvent('agent-run-event-2', 2)
-			const third = agentRunEvent('agent-run-event-3', 3)
+			const first = agentRunEvent('01k00000000000000000000003', 1)
+			const second = agentRunEvent('01k00000000000000000000004', 2)
+			const third = agentRunEvent('01k00000000000000000000005', 3)
 			options.tx.agentRunEvents.records.set(third.id, third)
 			options.tx.agentRunEvents.records.set(first.id, first)
 			options.tx.agentRunEvents.records.set(second.id, second)
 
 			const result = await listRecords('agent-run-event', options.storage, {
-				where: (filter, fields) => filter.eq(fields.agentRunId, 'agent-run-1'),
-				orderBy: [{ field: 'cursor', direction: 'asc' }],
+				where: (filter, fields) => filter.eq(fields.agentRunId, '01k00000000000000000000002'),
+				orderBy: [{ field: 'id', direction: 'asc' }],
 				limit: 2,
 			})
 
@@ -239,8 +276,7 @@ if (import.meta.vitest) {
 	function agentRunEvent(id: string, sequence: number) {
 		return {
 			id,
-			agentRunId: 'agent-run-1',
-			cursor: `01J000000000000000000${sequence.toString().padStart(5, '0')}`,
+			agentRunId: '01k00000000000000000000002',
 			occurred: { at: '2026-06-10T12:00:00.000Z' },
 			body: {
 				type: 'input-message' as const,

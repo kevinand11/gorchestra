@@ -35,7 +35,7 @@ export function createCreateProjectCommand(runtime: CoreRuntime): Operation {
 		const stampResult = auditStamp(runtime.values, context)
 		if (!stampResult.ok) return Promise.resolve(stampResult)
 
-		const idResult = nextId(runtime.values, 'project')
+		const idResult = nextId(runtime.values)
 		if (!idResult.ok) return Promise.resolve(idResult)
 
 		return withTransaction(runtime.services, async (storage): Promise<CoreResult<Project, Exclude<Error, InvalidInputError>>> => {
@@ -62,7 +62,7 @@ if (import.meta.vitest) {
 	describe('createProject command', () => {
 		it('creates Projects with normalized titles, immutable source, required config, and Audit Stamps', async () => {
 			const options = createTestCoreServices()
-			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
 			const command = createCreateProjectCommand(createTestCoreRuntime(options))
 
 			const result = await command(
@@ -73,25 +73,32 @@ if (import.meta.vitest) {
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'project-1',
+					id: '01k00000000000000000010001',
 					title: 'Build Gorchestra',
 					source: { type: 'source-control' },
 					config: { configured: localStamp(), value: { work: defaultDeliveryWorkConfig() } },
 					created: localStamp(),
 				},
 			})
-			expect(options.tx.projects.records.get('project-1')).toEqual(result.ok ? result.value : null)
+			expect(options.tx.projects.records.get('01k00000000000000000010001')).toEqual(result.ok ? result.value : null)
 		})
 
 		it('rejects missing Agent Run Profile references', async () => {
 			const command = createCreateProjectCommand(createTestCoreRuntime(createTestCoreServices()))
 
 			const result = await command(
-				{ title: 'Project', source: { type: 'source-control' }, config: { work: defaultDeliveryWorkConfig('missing-profile') } },
+				{
+					title: 'Project',
+					source: { type: 'source-control' },
+					config: { work: defaultDeliveryWorkConfig('01k00000000000000000010020') },
+				},
 				context,
 			)
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'agent-run-profile', id: 'missing-profile' } })
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'not-found', resource: 'agent-run-profile', id: '01k00000000000000000010020' },
+			})
 		})
 	})
 }

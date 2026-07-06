@@ -65,7 +65,7 @@ if (import.meta.vitest) {
 
 	describe('Core Agent Run tools', () => {
 		it('exposes provider tool parameters from Valleyed pipes', () => {
-			const [tool] = toolsForAgentRunPurpose({ type: 'planning', planId: 'plan-1' })
+			const [tool] = toolsForAgentRunPurpose({ type: 'planning', planId: '01k00000000000000000000028' })
 
 			expect(providerTool(tool!).parameters).toMatchObject({ type: 'object' })
 		})

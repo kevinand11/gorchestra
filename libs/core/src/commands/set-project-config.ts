@@ -63,24 +63,27 @@ if (import.meta.vitest) {
 	describe('setProjectConfig command', () => {
 		it('sets Project config as a required retained config record', async () => {
 			const options = createTestCoreServices()
-			seedProject(options.tx, 'project-1')
-			seedAgentRunProfile(options.tx, 'agent-run-profile-2', 'model-1')
+			seedProject(options.tx, '01k00000000000000000000030')
+			seedAgentRunProfile(options.tx, '01k00000000000000000000007', '01k00000000000000000000024')
 			const command = createSetProjectConfigCommand(createTestCoreRuntime(options))
 
-			const config = { work: defaultDeliveryWorkConfig('agent-run-profile-2') }
-			const result = await command({ projectId: 'project-1', config }, context)
+			const config = { work: defaultDeliveryWorkConfig('01k00000000000000000000007') }
+			const result = await command({ projectId: '01k00000000000000000000030', config }, context)
 
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					id: 'project-1',
+					id: '01k00000000000000000000030',
 					title: 'Project',
 					source: { type: 'source-control' },
 					config: { configured: localStamp(), value: config },
 					created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				},
 			})
-			expect(options.tx.projects.records.get('project-1')?.config).toEqual({ configured: localStamp(), value: config })
+			expect(options.tx.projects.records.get('01k00000000000000000000030')?.config).toEqual({
+				configured: localStamp(),
+				value: config,
+			})
 		})
 	})
 }

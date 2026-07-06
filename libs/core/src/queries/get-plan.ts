@@ -79,7 +79,7 @@ if (import.meta.vitest) {
 			const options = createTestCoreServices()
 			options.tx.projects.fail.get = true
 
-			const result = await createGetPlanQuery(options)({ projectId: '', planId: 'plan-1' })
+			const result = await createGetPlanQuery(options)({ projectId: '', planId: '01k00000000000000000000028' })
 
 			expect(result).toMatchObject({
 				ok: false,
@@ -91,21 +91,30 @@ if (import.meta.vitest) {
 
 	function registerPlanReadModelTests() {
 		it('returns the Plan with its Planning Agent Run when it belongs to the Project', async () => {
-			const records = seedPlanDetailRecords('project-1')
+			const records = seedPlanDetailRecords('01k00000000000000000000030')
 
-			const result = await createGetPlanQuery(records.options)({ projectId: 'project-1', planId: 'plan-1' })
+			const result = await createGetPlanQuery(records.options)({
+				projectId: '01k00000000000000000000030',
+				planId: '01k00000000000000000000028',
+			})
 
 			expect(result).toEqual({ ok: true, value: { ...records.plan, agentRun: records.agentRun } })
 		})
 
 		it('returns invariant violations when the Plan is missing its Planning Agent Run', async () => {
-			const records = seedPlanDetailRecords('project-1', { agentRun: false })
+			const records = seedPlanDetailRecords('01k00000000000000000000030', { agentRun: false })
 
-			const result = await createGetPlanQuery(records.options)({ projectId: 'project-1', planId: 'plan-1' })
+			const result = await createGetPlanQuery(records.options)({
+				projectId: '01k00000000000000000000030',
+				planId: '01k00000000000000000000028',
+			})
 
 			expect(result).toEqual({
 				ok: false,
-				error: { type: 'invariant-violation', message: 'Plan plan-1 expected exactly one Planning Agent Run but found 0.' },
+				error: {
+					type: 'invariant-violation',
+					message: 'Plan 01k00000000000000000000028 expected exactly one Planning Agent Run but found 0.',
+				},
 			})
 		})
 	}
@@ -113,30 +122,39 @@ if (import.meta.vitest) {
 	function registerProjectBoundaryTests() {
 		it('returns not-found when the Project does not exist', async () => {
 			const options = createTestCoreServices()
-			options.tx.plans.records.set('plan-1', plan({ id: 'plan-1', projectId: 'project-1', title: 'Plan setup' }))
+			options.tx.plans.records.set(
+				'01k00000000000000000000028',
+				plan({ id: '01k00000000000000000000028', projectId: '01k00000000000000000000030', title: 'Plan setup' }),
+			)
 
-			const result = await createGetPlanQuery(options)({ projectId: 'project-1', planId: 'plan-1' })
+			const result = await createGetPlanQuery(options)({
+				projectId: '01k00000000000000000000030',
+				planId: '01k00000000000000000000028',
+			})
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'project', id: 'project-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'project', id: '01k00000000000000000000030' } })
 		})
 	}
 
 	function registerPlanBoundaryTests() {
 		it('returns not-found when the Plan does not belong to the Project', async () => {
-			const records = seedPlanDetailRecords('project-2')
-			seedProject(records.options.tx, 'project-1')
+			const records = seedPlanDetailRecords('01k00000000000000000000031')
+			seedProject(records.options.tx, '01k00000000000000000000030')
 
-			const result = await createGetPlanQuery(records.options)({ projectId: 'project-1', planId: 'plan-1' })
+			const result = await createGetPlanQuery(records.options)({
+				projectId: '01k00000000000000000000030',
+				planId: '01k00000000000000000000028',
+			})
 
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'plan', id: 'plan-1' } })
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'plan', id: '01k00000000000000000000028' } })
 		})
 	}
 
 	function seedPlanDetailRecords(projectId: string, options: { agentRun?: boolean } = {}) {
 		const services = createTestCoreServices()
 		seedProject(services.tx, projectId)
-		const storedPlan = plan({ id: 'plan-1', projectId, title: 'Plan setup' })
-		const storedAgentRun = planningRun('agent-run-1', 'plan-1')
+		const storedPlan = plan({ id: '01k00000000000000000000028', projectId, title: 'Plan setup' })
+		const storedAgentRun = planningRun('01k00000000000000000000002', '01k00000000000000000000028')
 		services.tx.plans.records.set(storedPlan.id, storedPlan)
 		if (options.agentRun !== false) services.tx.agentRuns.records.set(storedAgentRun.id, storedAgentRun)
 		return { options: services, plan: storedPlan, agentRun: storedAgentRun }
@@ -159,9 +177,9 @@ if (import.meta.vitest) {
 			agent: modelAgent(),
 			purpose: { type: 'planning' as const, planId },
 			profile: {
-				agentRunProfileId: 'agent-run-profile-1',
+				agentRunProfileId: '01k00000000000000000000006',
 				name: 'Agent Run Profile',
-				modelUse: { modelId: 'model-1', thinkingLevel: 'none' as const },
+				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' as const },
 				runtimeRequirements: [],
 			},
 			modelUseOverride: null,
@@ -169,7 +187,7 @@ if (import.meta.vitest) {
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: null,
-			sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+			sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 			started: { at: stamp.at },
 			completed: null,
 		}

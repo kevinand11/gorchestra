@@ -61,7 +61,7 @@ Tiny keyed-shape example fragment:
   "proposedDeliveries": {
     "api-contract": {
       "title": "Add API contract",
-      "target": { "type": "source-control", "repositoryId": "repository-1", "targetBranch": "main" },
+      "target": { "type": "source-control", "repositoryId": "01k00000000000000000000034", "targetBranch": "main" },
       "slices": {
         "schema": {
           "order": 0,
@@ -92,7 +92,7 @@ if (import.meta.vitest) {
 	describe('planningInstructionForProject', () => {
 		it('builds source-control Planning instructions', () => {
 			const result = planningInstructionForProject({
-				id: 'project-1',
+				id: '01k00000000000000000000030',
 				title: 'Project',
 				source: { type: 'source-control' },
 				config: { configured: stamp, value: { work: defaultDeliveryWorkConfig() } },

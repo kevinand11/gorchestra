@@ -68,6 +68,7 @@ export type DeliveryWorkConfigInput = {
 export type ProjectConfigInput = { work: DeliveryWorkConfigInput }
 
 export type SendAgentRunMessageInput = { parts: Array<{ type: 'text'; text: string; metadata: Record<string, unknown> | null }> }
+export type PaginatedQueryInput = { beforeId?: string; limit?: number } | { beforeId?: string; limit: number; page: number }
 
 export type CreateModelProviderInput = {
 	name: string
@@ -159,8 +160,8 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async listWorkspacePortfolios() {
 			return routes.request('get', '/api/workspaces/portfolios')
 		},
-		async listProjects() {
-			return routes.request('get', '/api/portfolio/projects')
+		async listProjects(input: PaginatedQueryInput) {
+			return routes.request('get', '/api/portfolio/projects', { query: paginationQuery(input) })
 		},
 		async createProject(input: { title: string; config: ProjectConfigInput }) {
 			return routes.request('post', '/api/portfolio/projects', { body: input })
@@ -171,8 +172,11 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async setProjectConfig(projectId: string, input: { config: ProjectConfigInput }) {
 			return routes.request('put', '/api/portfolio/projects/:projectId/config', { params: { projectId }, body: input })
 		},
-		async listPlans(projectId: string) {
-			return routes.request('get', '/api/portfolio/projects/:projectId/plans', { params: { projectId } })
+		async listPlans(projectId: string, input: PaginatedQueryInput) {
+			return routes.request('get', '/api/portfolio/projects/:projectId/plans', {
+				params: { projectId },
+				query: paginationQuery(input),
+			})
 		},
 		async createPlan(projectId: string, input: { title: string; initialMessage: string; agentRunProfileId: string }) {
 			return routes.request('post', '/api/portfolio/projects/:projectId/plans', { params: { projectId }, body: input })
@@ -183,10 +187,10 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async closePlan(projectId: string, planId: string) {
 			return routes.request('post', '/api/portfolio/projects/:projectId/plans/:planId/close', { params: { projectId, planId } })
 		},
-		async getAgentRunEvents(agentRunId: string, input: { afterCursor?: string; limit?: number } = {}) {
+		async listAgentRunEvents(agentRunId: string, input: PaginatedQueryInput) {
 			return routes.request('get', '/api/portfolio/agent-runs/:agentRunId/events', {
 				params: { agentRunId },
-				query: { afterCursor: input.afterCursor, limit: input.limit },
+				query: paginationQuery(input),
 			})
 		},
 		async sendAgentRunMessage(agentRunId: string, input: SendAgentRunMessageInput) {
@@ -198,8 +202,8 @@ export function createServerApi(options: ServerApiOptions = {}) {
 				body: input,
 			})
 		},
-		async listAgentRunProfiles() {
-			return routes.request('get', '/api/portfolio/agent-run-profiles')
+		async listAgentRunProfiles(input: PaginatedQueryInput) {
+			return routes.request('get', '/api/portfolio/agent-run-profiles', { query: paginationQuery(input) })
 		},
 		async createAgentRunProfile(input: AgentRunProfileInput) {
 			return routes.request('post', '/api/portfolio/agent-run-profiles', { body: input })
@@ -226,8 +230,8 @@ export function createServerApi(options: ServerApiOptions = {}) {
 				params: { agentRunProfileId },
 			})
 		},
-		async listModelProviders() {
-			return routes.request('get', '/api/portfolio/model-providers')
+		async listModelProviders(input: PaginatedQueryInput) {
+			return routes.request('get', '/api/portfolio/model-providers', { query: paginationQuery(input) })
 		},
 		async createModelProvider(input: CreateModelProviderInput) {
 			return routes.request('post', '/api/portfolio/model-providers', { body: input })
@@ -281,16 +285,22 @@ export function createServerApi(options: ServerApiOptions = {}) {
 				params: { modelProviderId, modelId },
 			})
 		},
-		async listDeliveries(projectId: string) {
-			return routes.request('get', '/api/portfolio/projects/:projectId/deliveries', { params: { projectId } })
+		async listDeliveries(projectId: string, input: PaginatedQueryInput) {
+			return routes.request('get', '/api/portfolio/projects/:projectId/deliveries', {
+				params: { projectId },
+				query: paginationQuery(input),
+			})
 		},
 		async getDelivery(projectId: string, deliveryId: string) {
 			return routes.request('get', '/api/portfolio/projects/:projectId/deliveries/:deliveryId', {
 				params: { projectId, deliveryId },
 			})
 		},
-		async listRepositories(projectId: string) {
-			return routes.request('get', '/api/portfolio/projects/:projectId/repositories', { params: { projectId } })
+		async listRepositories(projectId: string, input: PaginatedQueryInput) {
+			return routes.request('get', '/api/portfolio/projects/:projectId/repositories', {
+				params: { projectId },
+				query: paginationQuery(input),
+			})
 		},
 		async createRepository(
 			projectId: string,
@@ -308,8 +318,8 @@ export function createServerApi(options: ServerApiOptions = {}) {
 				params: { projectId, repositoryId },
 			})
 		},
-		async listSecrets() {
-			return routes.request('get', '/api/portfolio/secrets')
+		async listSecrets(input: PaginatedQueryInput) {
+			return routes.request('get', '/api/portfolio/secrets', { query: paginationQuery(input) })
 		},
 		async createSecret(input: { name: string; value: string }) {
 			return routes.request('post', '/api/portfolio/secrets', { body: input })
@@ -317,8 +327,10 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async getSecret(secretId: string) {
 			return routes.request('get', '/api/portfolio/secrets/:secretId', { params: { secretId } })
 		},
-		async listMemoryChildren(parentId: string | null) {
-			return routes.request('get', '/api/portfolio/memories', { query: { parentId: queryValue(parentId) } })
+		async listMemoryChildren(parentId: string | null, input: PaginatedQueryInput) {
+			return routes.request('get', '/api/portfolio/memories', {
+				query: { parentId: queryValue(parentId), ...paginationQuery(input) },
+			})
 		},
 		async createMemory(input: CreateMemoryInput) {
 			return routes.request('post', '/api/portfolio/memories', { body: input })
@@ -345,6 +357,16 @@ export function createServerApi(options: ServerApiOptions = {}) {
 }
 
 export type ServerApi = ReturnType<typeof createServerApi>
+
+type ParsedPaginationQuery =
+	| { beforeId: string | undefined; limit: number | undefined }
+	| { beforeId: string | undefined; limit: number; page: number }
+
+function paginationQuery(input: PaginatedQueryInput): ParsedPaginationQuery {
+	return 'page' in input
+		? { beforeId: input.beforeId, limit: input.limit, page: input.page }
+		: { beforeId: input.beforeId, limit: input.limit }
+}
 
 function queryValue<T>(value: T): T {
 	return (typeof value === 'string' ? value : JSON.stringify(value)) as T

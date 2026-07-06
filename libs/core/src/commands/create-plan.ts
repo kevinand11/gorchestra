@@ -88,10 +88,10 @@ function planCreationRuntimeValues(
 	const stamp = auditStamp(runtime.values, context)
 	if (!stamp.ok) return stamp
 
-	const planId = nextId(runtime.values, 'plan')
+	const planId = nextId(runtime.values)
 	if (!planId.ok) return planId
 
-	const agentRunId = nextId(runtime.values, 'agent-run')
+	const agentRunId = nextId(runtime.values)
 	if (!agentRunId.ok) return agentRunId
 
 	const started = runtimeRecord(runtime.values)
@@ -235,7 +235,12 @@ if (import.meta.vitest) {
 			const command = createCreatePlanCommand(createTestCoreRuntime(options))
 
 			const result = await command(
-				{ projectId: 'project-1', title: 'Plan', initialMessage: ' ', agentRunProfileId: 'profile-1' },
+				{
+					projectId: '01k00000000000000000000030',
+					title: 'Plan',
+					initialMessage: ' ',
+					agentRunProfileId: '01k00000000000000000000029',
+				},
 				context,
 			)
 
@@ -245,24 +250,24 @@ if (import.meta.vitest) {
 
 		it('creates a Plan and Planning Agent Run with the selected profile snapshot', async () => {
 			const options = createTestCoreServices()
-			seedProject(options.tx, 'project-1')
-			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
+			seedProject(options.tx, '01k00000000000000000000030')
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
 			const command = createCreatePlanCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{
-					projectId: 'project-1',
+					projectId: '01k00000000000000000000030',
 					title: '  Plan setup  ',
 					initialMessage: '  Please plan repository onboarding.  ',
-					agentRunProfileId: 'agent-run-profile-1',
+					agentRunProfileId: '01k00000000000000000000006',
 				},
 				context,
 			)
 
 			expect(result).toEqual({ ok: true, value: { ...expectedPlan(), agentRun: expectedPlanningAgentRun() } })
-			expect(options.tx.plans.records.get('plan-1')).toEqual(expectedPlan())
-			expect(options.tx.agentRuns.records.get('agent-run-1')).toEqual(expectedPlanningAgentRun())
-			const instructionBody = options.tx.agentRunEvents.records.get('agent-run-event-1')?.body
+			expect(options.tx.plans.records.get('01k00000000000000000010001')).toEqual(expectedPlan())
+			expect(options.tx.agentRuns.records.get('01k00000000000000000010002')).toEqual(expectedPlanningAgentRun())
+			const instructionBody = options.tx.agentRunEvents.records.get('01k00000000000000000010003')?.body
 			expect(instructionBody).toMatchObject({
 				type: 'instruction-snapshot',
 				instruction: { type: 'source-control-planning', version: 1 },
@@ -271,7 +276,7 @@ if (import.meta.vitest) {
 				type: 'text',
 				metadata: null,
 			})
-			expect(options.tx.agentRunEvents.records.get('agent-run-event-2')?.body).toEqual({
+			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010004')?.body).toEqual({
 				type: 'input-message',
 				source: { type: 'operator', authorized: localStamp() },
 				parts: [{ type: 'text', text: 'Please plan repository onboarding.', metadata: null }],
@@ -293,8 +298,8 @@ if (import.meta.vitest) {
 					},
 				},
 			})
-			seedProject(options.tx, 'project-1')
-			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1')
+			seedProject(options.tx, '01k00000000000000000000030')
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
 			const command = createCreatePlanCommand(createTestCoreRuntime(options))
 
 			const result = await command(validPlanCreationInput(), context)
@@ -303,10 +308,10 @@ if (import.meta.vitest) {
 			expect(dispatches).toEqual([
 				{
 					type: 'agent-run-sandbox-preparation',
-					agentRunId: 'agent-run-1',
+					agentRunId: '01k00000000000000000010002',
 					coordinationClaims: [
 						{
-							scope: [{ type: 'agent-run', id: 'agent-run-1' }],
+							scope: [{ type: 'agent-run', id: '01k00000000000000000010002' }],
 							mode: { type: 'exclusive' },
 						},
 					],
@@ -314,31 +319,31 @@ if (import.meta.vitest) {
 				},
 				{
 					type: 'agent-run-model-turn',
-					agentRunId: 'agent-run-1',
+					agentRunId: '01k00000000000000000010002',
 					coordinationClaims: [
 						{
-							scope: [{ type: 'agent-run', id: 'agent-run-1' }],
+							scope: [{ type: 'agent-run', id: '01k00000000000000000010002' }],
 							mode: { type: 'exclusive' },
 						},
 					],
-					reason: { type: 'input-appended', inputEventId: 'agent-run-event-2' },
+					reason: { type: 'input-appended', inputEventId: '01k00000000000000000010004' },
 				},
 			])
 			expect(readyMarkers).toEqual(['marker-1', 'marker-1'])
-			expect(options.tx.agentRunEvents.records.get('agent-run-event-2')?.body.type).toBe('input-message')
+			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010004')?.body.type).toBe('input-message')
 		})
 
 		it('rejects archived selected profiles', async () => {
 			const options = createTestCoreServices()
-			seedProject(options.tx, 'project-1')
-			seedAgentRunProfile(options.tx, 'agent-run-profile-1', 'model-1', { archived: true })
+			seedProject(options.tx, '01k00000000000000000000030')
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024', { archived: true })
 			const command = createCreatePlanCommand(createTestCoreRuntime(options))
 
 			const result = await command(validPlanCreationInput(), context)
 
 			expect(result).toEqual({
 				ok: false,
-				error: { type: 'archived-agent-run-profile-reference', agentRunProfileId: 'agent-run-profile-1' },
+				error: { type: 'archived-agent-run-profile-reference', agentRunProfileId: '01k00000000000000000000006' },
 			})
 			expect(options.tx.plans.records.size).toBe(0)
 			expect(options.tx.agentRuns.records.size).toBe(0)
@@ -346,13 +351,18 @@ if (import.meta.vitest) {
 	})
 
 	function validPlanCreationInput(): Input {
-		return { projectId: 'project-1', title: 'Plan', initialMessage: 'Plan this.', agentRunProfileId: 'agent-run-profile-1' }
+		return {
+			projectId: '01k00000000000000000000030',
+			title: 'Plan',
+			initialMessage: 'Plan this.',
+			agentRunProfileId: '01k00000000000000000000006',
+		}
 	}
 
 	function expectedPlan(): Plan {
 		return {
-			id: 'plan-1',
-			projectId: 'project-1',
+			id: '01k00000000000000000010001',
+			projectId: '01k00000000000000000000030',
 			title: 'Plan setup',
 			created: localStamp(),
 			closed: null,
@@ -361,13 +371,13 @@ if (import.meta.vitest) {
 
 	function expectedPlanningAgentRun(): PlanWithPlanningAgentRun['agentRun'] {
 		return {
-			id: 'agent-run-1',
+			id: '01k00000000000000000010002',
 			agent: { type: 'model' },
-			purpose: { type: 'planning', planId: 'plan-1' },
+			purpose: { type: 'planning', planId: '01k00000000000000000010001' },
 			profile: {
-				agentRunProfileId: 'agent-run-profile-1',
+				agentRunProfileId: '01k00000000000000000000006',
 				name: 'Agent Run Profile',
-				modelUse: { modelId: 'model-1', thinkingLevel: 'none' },
+				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				runtimeRequirements: [],
 			},
 			modelUseOverride: null,
@@ -375,7 +385,7 @@ if (import.meta.vitest) {
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
-			sandbox: { assignment: null, appliedRequirements: [], appliedThroughCursor: null, released: null },
+			sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
 		}

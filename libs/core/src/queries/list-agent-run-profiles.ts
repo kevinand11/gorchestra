@@ -1,31 +1,31 @@
-import { v, type PipeOutput } from 'valleyed'
+import { type PipeInput, type PipeOutput } from 'valleyed'
 
-import { listedAgentRunProfilePipe, type AgentRunProfile } from '../domain/agent-run-profile'
-import type { ArchivePeriod } from '../domain/commons'
+import { listedAgentRunProfilePipe, type AgentRunProfile, type ListedAgentRunProfile } from '../domain/agent-run-profile'
+import { mapPaginatedQueryEnvelope, paginatedQueryEnvelopePipe, paginatedQueryInputPipe, type ArchivePeriod } from '../domain/commons'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
-import { listRecords, withTransaction } from '../storage/helpers'
-import type { Result as CoreResult } from '../utils/types'
+import { listRecordsPaginated, withTransaction } from '../storage/helpers'
+import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
-export const inputPipe = v.object({})
-export type Input = PipeOutput<typeof inputPipe>
+export const inputPipe = paginatedQueryInputPipe
+export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
 
-export const resultPipe = v.array(listedAgentRunProfilePipe)
+export const resultPipe = paginatedQueryEnvelopePipe(listedAgentRunProfilePipe)
 export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createListAgentRunProfilesQuery(options: CoreServices): Operation {
-	return buildQueryHandler('listAgentRunProfiles', inputPipe, () =>
+	return buildQueryHandler('listAgentRunProfiles', inputPipe, (input) =>
 		withTransaction(options, async (storage) => {
-			const profiles = await listRecords('agent-run-profile', storage, { orderBy: [{ field: 'name' }, { field: 'id' }] })
-			return profiles.ok ? { ok: true, value: profiles.value.map(listedAgentRunProfile) } : profiles
+			const profiles = await listRecordsPaginated('agent-run-profile', storage, input)
+			return profiles.ok ? { ok: true, value: mapPaginatedQueryEnvelope(profiles.value, listedAgentRunProfile) } : profiles
 		}),
-	)
+	) as Operation
 }
 
-function listedAgentRunProfile(profile: AgentRunProfile): Result[number] {
+function listedAgentRunProfile(profile: AgentRunProfile): ListedAgentRunProfile {
 	return {
 		id: profile.id,
 		name: profile.name,

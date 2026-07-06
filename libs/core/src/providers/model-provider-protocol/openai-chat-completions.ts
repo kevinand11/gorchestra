@@ -116,8 +116,8 @@ if (import.meta.vitest) {
 			mode: 'agent-run',
 			protocol: 'openai-chat-completions',
 			model: {
-				id: 'model-1',
-				providerId: 'model-provider-1',
+				id: '01k00000000000000000000024',
+				providerId: '01k00000000000000000000027',
 				name: 'Groq GPT OSS 120B',
 				providerModelId: 'openai/gpt-oss-120b',
 				providerOptions: null,
@@ -128,7 +128,7 @@ if (import.meta.vitest) {
 				archivePeriods: [],
 			},
 			modelProvider: {
-				id: 'model-provider-1',
+				id: '01k00000000000000000000027',
 				name: 'Groq',
 				source: { type: 'groq' },
 				auth: null,

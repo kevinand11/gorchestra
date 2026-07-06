@@ -49,7 +49,7 @@ export function createCreateModelCommand(runtime: CoreRuntime): Operation {
 		const stamp = auditStamp(runtime.values, context)
 		if (!stamp.ok) return Promise.resolve(stamp)
 
-		const id = nextId(runtime.values, 'model')
+		const id = nextId(runtime.values)
 		if (!id.ok) return Promise.resolve(id)
 
 		return withTransaction(runtime.services, async (storage): Promise<CoreResult<Model, Exclude<Error, InvalidInputError>>> => {
@@ -81,12 +81,12 @@ if (import.meta.vitest) {
 	describe('createModel command', () => {
 		it('creates Models under active Providers', async () => {
 			const options = createTestCoreServices()
-			seedModelProvider(options.tx, 'provider-1')
+			seedModelProvider(options.tx, '01k00000000000000000000032')
 			const command = createCreateModelCommand(createTestCoreRuntime(options))
 
 			const result = await command(
 				{
-					providerId: 'provider-1',
+					providerId: '01k00000000000000000000032',
 					name: ' Sonnet ',
 					providerModelId: ' claude-sonnet ',
 					providerOptions: { serviceTier: 'flex' },
@@ -97,8 +97,8 @@ if (import.meta.vitest) {
 			expect(result).toMatchObject({
 				ok: true,
 				value: {
-					id: 'model-1',
-					providerId: 'provider-1',
+					id: '01k00000000000000000010001',
+					providerId: '01k00000000000000000000032',
 					name: 'Sonnet',
 					providerModelId: 'claude-sonnet',
 					providerOptions: { serviceTier: 'flex' },

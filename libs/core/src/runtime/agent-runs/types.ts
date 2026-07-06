@@ -2,7 +2,7 @@ import type { ModelMessage } from 'ai'
 
 import type { AgentRunLiveEvent } from './live-events'
 import type { CoreAgentRunTool } from './tools'
-import type { AgentRun, AgentRunEvent, AgentRunEventCursor, AgentRunToolOutput } from '../../domain/agent-run'
+import type { AgentRun, AgentRunEvent, AgentRunToolOutput } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
 import type { ModelThinkingLevel } from '../../domain/model'
 import type {
@@ -36,7 +36,7 @@ export interface ModelAgentTurnInput {
 
 export interface CoreAgentRunToolContext {
 	agentRunId: Id
-	assistantMessageCursor: AgentRunEventCursor
+	assistantMessageEventId: Id
 	toolCallId: string
 	onUpdate(
 		update:

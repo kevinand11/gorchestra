@@ -86,12 +86,7 @@ export const coreStorageMigrations = [
 				objectField('started'),
 				nullableField(objectField('completed')),
 			]),
-			createTable('agent_run_events', [
-				stringField('agentRunId'),
-				stringField('cursor'),
-				objectField('occurred'),
-				objectField('body'),
-			]),
+			createTable('agent_run_events', [stringField('agentRunId'), objectField('occurred'), objectField('body')]),
 			createTable('review_surfaces', [
 				objectField('scope'),
 				objectField('config'),
