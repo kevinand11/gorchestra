@@ -37,18 +37,12 @@ import {
 	type ModelProviderProtocol,
 } from '../../domain/model-provider'
 import type { Secret } from '../../domain/secret'
-import type { CoreStorageOperation } from '../../errors'
-import {
-	resolvedSecretValuesPipe,
-	type CoreServices,
-	type CoreStorage,
-	type ResolvableSecretValue,
-	type ResolvedSecretValues,
-} from '../../services'
+import type { CoreStorageOperation, SecretResolutionFailedError } from '../../errors'
+import type { CoreServices, CoreStorage, ResolvableSecretValue } from '../../services'
 import { secretSchema } from '../../storage/schemas'
 import { withTransaction } from '../../storage/transactions'
+import { resolveSecretValueRefs } from '../../utils/secret-values'
 import type { Result } from '../../utils/types'
-import { validateCoreServiceOutput } from '../../validation'
 
 export interface ModelProviderProtocolProviderImplementations {
 	anthropicMessages?: AnthropicMessagesModelProviderProtocolProvider
@@ -176,7 +170,6 @@ export function modelProviderProtocolPreflight(
 		: { type: 'failed', reason: preflight.reason, summary: modelProviderProtocolFailureSummary(protocol, preflight.reason) }
 }
 
-type SecretValueResolution = { type: 'resolved'; output: unknown } | { type: 'failed'; preflight: ModelProviderProtocolPreflight }
 type ModelProviderSecretReadiness =
 	| { type: 'passed'; secrets: ResolvableSecretValue[] }
 	| { type: 'failed'; preflight: ModelProviderProtocolPreflight }
@@ -321,55 +314,40 @@ async function resolveModelProviderProtocolAccess(
 	const protocol = modelProviderProtocolForSource(modelProvider.source)
 	if (missingSecret !== undefined) return { ok: true, value: unresolvedSecretPreflight(protocol, missingSecret.secretId) }
 
-	const resolution = await resolveSecretValueOutput(services, protocol, secretValues.filter(isResolvableSecretValue))
-	return resolution.ok ? accessFromSecretValueResolution(resolution.value, modelProvider) : resolution
+	const resolution = await resolveSecretValueRefs(services, secretValues.filter(isResolvableSecretValue))
+	if (!resolution.ok) return resolution
+
+	const unresolvedSecretId = secretIds.find((secretId) => {
+		const resolved = resolution.value[secretId]
+		return resolved === undefined || !resolved.ok
+	})
+	return unresolvedSecretId === undefined
+		? { ok: true, value: resolvedAccess(modelProvider, resolution.value) }
+		: { ok: true, value: unresolvedSecretPreflight(protocol, unresolvedSecretId) }
 }
 
-async function resolveSecretValueOutput(
-	services: CoreServices,
-	protocol: ModelProviderProtocol,
-	secrets: ResolvableSecretValue[],
-): Promise<Result<SecretValueResolution, ModelProviderProtocolPreflightError>> {
-	try {
-		return { ok: true, value: { type: 'resolved', output: await services.secrets.resolveSecretValues({ secrets }) } }
-	} catch {
-		return { ok: true, value: { type: 'failed', preflight: unresolvedSecretPreflight(protocol, secrets[0]!.secretId) } }
-	}
-}
-
-function accessFromSecretValueResolution(
-	resolution: SecretValueResolution,
+function resolvedAccess(
 	modelProvider: ModelProvider,
-): Result<ModelProviderProtocolAccess | ModelProviderProtocolPreflight, ModelProviderProtocolPreflightError> {
-	return resolution.type === 'failed'
-		? { ok: true, value: resolution.preflight }
-		: accessFromResolvedSecretValues(resolution.output, modelProvider)
-}
-
-function accessFromResolvedSecretValues(
-	output: unknown,
-	modelProvider: ModelProvider,
-): Result<ModelProviderProtocolAccess | ModelProviderProtocolPreflight, ModelProviderProtocolPreflightError> {
-	const shapeValidation = validateCoreServiceOutput(resolvedSecretValuesPipe, output, 'secrets', 'resolveSecretValues')
-	if (!shapeValidation.ok) return shapeValidation
-
-	const missingSecretId = secretIdsFromModelProvider(modelProvider).find((secretId) => shapeValidation.value[secretId] === undefined)
-	return missingSecretId === undefined
-		? { ok: true, value: resolvedAccess(modelProvider, shapeValidation.value) }
-		: { ok: true, value: unresolvedSecretPreflight(modelProviderProtocolForSource(modelProvider.source), missingSecretId) }
-}
-
-function resolvedAccess(modelProvider: ModelProvider, values: ResolvedSecretValues): ModelProviderProtocolAccess {
+	values: Record<Id, Result<string, SecretResolutionFailedError>>,
+): ModelProviderProtocolAccess {
 	return {
-		auth:
-			modelProvider.auth === null
-				? null
-				: { type: 'apiKey', plaintext: values[secretIdFromAccessValue(modelProvider.auth.value)] ?? '' },
-		headers: modelProvider.headers.map((header) => ({
-			name: header.name,
-			plaintext: values[secretIdFromAccessValue(header.value)] ?? '',
-		})),
+		auth: resolvedAuthAccess(modelProvider, values),
+		headers: modelProvider.headers.map((header) => {
+			const secretId = secretIdFromAccessValue(header.value)
+			const value = values[secretId]
+			return { name: header.name, plaintext: value?.ok === true ? value.value : '' }
+		}),
 	}
+}
+
+function resolvedAuthAccess(
+	modelProvider: ModelProvider,
+	values: Record<Id, Result<string, SecretResolutionFailedError>>,
+): ModelProviderProtocolAccess['auth'] {
+	if (modelProvider.auth === null) return null
+	const secretId = secretIdFromAccessValue(modelProvider.auth.value)
+	const value = values[secretId]
+	return { type: 'apiKey', plaintext: value?.ok === true ? value.value : '' }
 }
 
 function secretIdsFromModelProvider(modelProvider: ModelProvider): Id[] {
@@ -650,15 +628,16 @@ if (import.meta.vitest) {
 	function noopSandbox(): CoreServices['sandbox'] {
 		return {
 			kind: 'consumer-managed',
-			create: ({ key }) => Promise.resolve(noopSandboxInstance(key)),
-			find: ({ key }) => Promise.resolve(noopSandboxInstance(key)),
+			create: () => Promise.resolve(noopSandboxInstance()),
+			find: () => Promise.resolve(noopSandboxInstance()),
 		}
 	}
 
-	function noopSandboxInstance(key: string) {
+	function noopSandboxInstance() {
 		return {
-			key,
 			runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command completed.', stdout: null, stderr: null }),
+			readFile: () => Promise.resolve(null),
+			writeFile: () => Promise.resolve(),
 			release: () => Promise.resolve({ summary: 'Sandbox released.' }),
 		}
 	}

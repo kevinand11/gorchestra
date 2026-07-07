@@ -41,8 +41,8 @@ export type AgentRunRuntimeRequirement = PipeOutput<typeof agentRunRuntimeRequir
 export const agentRunRuntimeRequirementsPipe = v.array(agentRunRuntimeRequirementPipe)
 export type AgentRunRuntimeRequirements = PipeOutput<typeof agentRunRuntimeRequirementsPipe>
 
-export const vercelSandboxRuntimePipe = v.in(['node26', 'node24', 'node22', 'python3.13'])
-export type VercelSandboxRuntime = PipeOutput<typeof vercelSandboxRuntimePipe>
+export const vercelRuntimePipe = v.in(['node26', 'node24', 'node22', 'python3.13'])
+export type VercelRuntime = PipeOutput<typeof vercelRuntimePipe>
 
 export const vercelSandboxCredentialsSecretRefsPipe = v.object({
 	tokenSecretId: idPipe,
@@ -59,7 +59,7 @@ export type ConsumerManagedSandboxSourceConfig = PipeOutput<typeof consumerManag
 
 export const vercelRuntimeSandboxSourceConfigPipe = v.object({
 	type: v.eq('vercel-runtime'),
-	runtime: vercelSandboxRuntimePipe,
+	runtime: vercelRuntimePipe,
 	credentials: vercelSandboxCredentialsSecretRefsPipe,
 })
 export type VercelRuntimeSandboxSourceConfig = PipeOutput<typeof vercelRuntimeSandboxSourceConfigPipe>

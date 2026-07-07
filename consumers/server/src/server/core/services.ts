@@ -1,6 +1,6 @@
 import type { CoreServices, CoreStorage } from '@gorchestra/core'
 
-import { createMicrosandboxSandboxRuntime } from './sandbox'
+import { createMicrosandboxSandboxProvider } from './sandbox'
 import { revealSecretPlaintext, type SecretEncryptionKey } from '../modules/secret-protection'
 
 export type CreateCoreServicesOptions = {
@@ -18,7 +18,7 @@ export function createCoreServices(storage: CoreStorage, options: CreateCoreServ
 			resolveSecrets: () => Promise.resolve([]),
 			resolveSecretValues: ({ secrets }) => Promise.resolve(resolveSecretValues(secrets, options.secretEncryptionKey)),
 		},
-		sandbox: createMicrosandboxSandboxRuntime({
+		sandbox: createMicrosandboxSandboxProvider({
 			coreStorageNamespace: options.coreStorageNamespace,
 		}),
 		dispatcher: options.dispatcher,
@@ -41,7 +41,7 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
 	describe('Server Core services', () => {
-		it('resolves inline protected Secret value refs and wires consumer-managed sandbox runtime', async () => {
+		it('resolves inline protected Secret value refs and wires consumer-managed sandbox provider', async () => {
 			const { mkdtemp, rm } = await import('node:fs/promises')
 			const { tmpdir } = await import('node:os')
 			const { join } = await import('node:path')

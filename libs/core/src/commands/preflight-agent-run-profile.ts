@@ -4,12 +4,18 @@ import type { CommandContext } from './types'
 import type { AgentRunProfile } from '../domain/agent-run-profile'
 import { idPipe } from '../domain/commons'
 import type { ValidationEvidence } from '../domain/evidence'
-import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
+import type {
+	InvalidCoreServiceOutputError,
+	InvalidInputError,
+	ResourceNotFoundError,
+	SandboxOperationFailedError,
+	StorageOperationFailedError,
+} from '../errors'
 import type { CoreRuntime } from '../runtime'
-import { sandboxRuntimeForConfig, sandboxSmokeCommand, type SandboxRuntimeResolutionError } from '../runtime/agent-runs/sandbox-runtime'
-import { sandboxCommandOutputPipe, sandboxReleaseOutputPipe, type CoreStorage, type Sandbox, type SandboxRuntime } from '../services'
+import { managedSandboxProviderForConfig, type SandboxProviderResolutionError } from '../runtime/sandboxes'
+import type { ManagedSandbox, ManagedSandboxProvider } from '../runtime/sandboxes/managed'
+import type { CoreStorage } from '../services'
 import type { Result as CoreResult } from '../utils/types'
-import { validateCoreServiceOutput } from '../validation'
 import { buildCommandHandler } from './utils/handler'
 import { getRequired, isArchived, nextId, withTransaction } from './utils/storage'
 
@@ -22,20 +28,31 @@ export type Operation = (input: Input, context: CommandContext) => Promise<CoreR
 
 type ProfilePreflightReadiness = { type: 'passed'; profile: AgentRunProfile } | { type: 'failed'; summary: string }
 
+const preflightEnv = { name: 'GORCHESTRA_PREFLIGHT', value: 'ok' } as const
+const preflightCommand = {
+	executable: 'sh',
+	args: ['-lc', 'test "$GORCHESTRA_PREFLIGHT" = "ok"'],
+	cwd: '/workspace',
+} as const
+
 export function createPreflightAgentRunProfileCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('preflightAgentRunProfile', preflightAgentRunProfileInputPipe, async (input) => {
 		const readiness = await readProfilePreflightReadiness(runtime.services, input.agentRunProfileId)
 		if (!readiness.ok) return readiness
 		if (readiness.value.type === 'failed') return { ok: true, value: profilePreflightEvidence(false, readiness.value.summary) }
 
-		const sandboxRuntime = await sandboxRuntimeForConfig(runtime, runtime.services.storage, readiness.value.profile.sandboxConfig)
-		if (!sandboxRuntime.ok) return sandboxRuntimeResolutionResult(sandboxRuntime.error)
+		const sandboxProvider = await managedSandboxProviderForConfig(
+			runtime,
+			runtime.services.storage,
+			readiness.value.profile.sandboxConfig,
+		)
+		if (!sandboxProvider.ok) return sandboxProviderResolutionResult(sandboxProvider.error)
 
 		const preflightId = nextId(runtime.values)
 		if (!preflightId.ok) return preflightId
 
 		return runSandboxSmokePreflight(
-			sandboxRuntime.value,
+			sandboxProvider.value,
 			readiness.value.profile,
 			`preflight-${readiness.value.profile.id}-${preflightId.value}`,
 		)
@@ -62,59 +79,47 @@ async function readProfilePreflightReadinessFromStorage(
 }
 
 async function runSandboxSmokePreflight(
-	sandboxRuntime: SandboxRuntime,
+	sandboxProvider: ManagedSandboxProvider,
 	profile: AgentRunProfile,
 	key: string,
 ): Promise<CoreResult<ValidationEvidence, InvalidCoreServiceOutputError>> {
-	let sandbox: Sandbox | null = null
-	let result: CoreResult<ValidationEvidence, InvalidCoreServiceOutputError> = {
-		ok: true,
-		value: profilePreflightEvidence(false, 'Agent Run Profile sandbox preflight failed.'),
-	}
+	const created = await sandboxProvider.create({ key, config: profile.sandboxConfig })
+	if (!created.ok) return sandboxOperationPreflightResult(created.error)
 
-	try {
-		sandbox = await sandboxRuntime.create({ key, config: profile.sandboxConfig })
-		const output = await sandbox.runCommand({
-			label: 'Agent Run Profile sandbox smoke check',
-			command: { executable: sandboxSmokeCommand.executable, args: [...sandboxSmokeCommand.args], cwd: sandboxSmokeCommand.cwd },
-			commandSecretEnv: {},
-			timeoutMs: 30_000,
-		})
-		const validated = validateCoreServiceOutput(sandboxCommandOutputPipe, output, 'sandbox', 'runCommand')
-		result = validated.ok
-			? validated.value.exitCode === 0
-				? { ok: true, value: profilePreflightEvidence(true, 'Agent Run Profile sandbox preflight passed.') }
-				: { ok: true, value: profilePreflightEvidence(false, validated.value.summary) }
-			: validated
-	} catch {
-		result = { ok: true, value: profilePreflightEvidence(false, 'Agent Run Profile sandbox preflight failed.') }
-	}
-
-	if (sandbox !== null) {
-		try {
-			const release = await sandbox.release()
-			const validatedRelease = validateCoreServiceOutput(sandboxReleaseOutputPipe, release, 'sandbox', 'release')
-			if (!validatedRelease.ok) return validatedRelease
-		} catch {
-			return { ok: true, value: profilePreflightEvidence(false, 'Agent Run Profile sandbox release failed.') }
-		}
-	}
-
-	return result
+	const result = await verifySandboxRuntimeEnv(created.value)
+	const release = await created.value.release()
+	return release.ok ? result : sandboxOperationPreflightResult(release.error)
 }
 
-function sandboxRuntimeResolutionResult(error: SandboxRuntimeResolutionError): CoreResult<ValidationEvidence, Error> {
-	if (error.type === 'not-found' && error.resource === 'secret') {
-		return { ok: true, value: profilePreflightEvidence(false, 'Vercel sandbox credential Secret is missing.') }
-	}
-	if (error.type === 'secret-not-active') {
-		return { ok: true, value: profilePreflightEvidence(false, 'Vercel sandbox credential Secret is not active.') }
-	}
-	if (error.type === 'sandbox-runtime-resolution-failed') {
-		return { ok: true, value: profilePreflightEvidence(false, error.summary) }
-	}
+async function verifySandboxRuntimeEnv(sandbox: ManagedSandbox): Promise<CoreResult<ValidationEvidence, InvalidCoreServiceOutputError>> {
+	const env = await sandbox.setEnv(preflightEnv)
+	if (!env.ok) return sandboxOperationPreflightResult(env.error)
+	if (env.value.exitCode !== 0) return { ok: true, value: profilePreflightEvidence(false, env.value.summary) }
 
-	return { ok: false, error }
+	const output = await sandbox.runCommand({
+		label: 'Agent Run Profile sandbox runtime environment check',
+		command: { executable: preflightCommand.executable, args: [...preflightCommand.args], cwd: preflightCommand.cwd },
+		commandSecretEnv: {},
+		timeoutMs: 30_000,
+	})
+	if (!output.ok) return sandboxOperationPreflightResult(output.error)
+	return output.value.exitCode === 0
+		? { ok: true, value: profilePreflightEvidence(true, 'Agent Run Profile sandbox preflight passed.') }
+		: { ok: true, value: profilePreflightEvidence(false, output.value.summary) }
+}
+
+function sandboxOperationPreflightResult(
+	error: InvalidCoreServiceOutputError | SandboxOperationFailedError,
+): CoreResult<ValidationEvidence, InvalidCoreServiceOutputError> {
+	return error.type === 'sandbox-operation-failed'
+		? { ok: true, value: profilePreflightEvidence(false, error.summary) }
+		: { ok: false, error }
+}
+
+function sandboxProviderResolutionResult(error: SandboxProviderResolutionError): CoreResult<ValidationEvidence, Error> {
+	return error.type === 'sandbox-provider-resolution-failed'
+		? { ok: true, value: profilePreflightEvidence(false, error.summary) }
+		: { ok: false, error }
 }
 
 function profilePreflightEvidence(passed: boolean, summary: string): ValidationEvidence {
@@ -151,18 +156,23 @@ if (import.meta.vitest) {
 			expect(result).toEqual({ ok: true, value: profilePreflightEvidence(false, 'Agent Run Profile is archived.') })
 		})
 
-		it('creates a temporary sandbox, runs the smoke command, and releases it', async () => {
+		it('creates a temporary sandbox, verifies managed runtime env, and releases it', async () => {
 			const runCommands: unknown[] = []
 			const releases: string[] = []
+			const files = new Map<string, string>()
 			const options = createTestCoreServices({
 				sandbox: {
 					kind: 'consumer-managed',
 					create: ({ key }) =>
 						Promise.resolve({
-							key,
 							runCommand: (input) => {
 								runCommands.push(input)
-								return Promise.resolve({ exitCode: 0, summary: 'Command succeeded.', stdout: null, stderr: null })
+								return Promise.resolve({ exitCode: 0, summary: 'Raw command succeeded.', stdout: null, stderr: null })
+							},
+							readFile: (path) => Promise.resolve(files.get(path) ?? null),
+							writeFile: (path, contents) => {
+								files.set(path, contents)
+								return Promise.resolve()
 							},
 							release: () => {
 								releases.push(key)
@@ -180,12 +190,12 @@ if (import.meta.vitest) {
 			expect(result).toEqual({ ok: true, value: profilePreflightEvidence(true, 'Agent Run Profile sandbox preflight passed.') })
 			expect(runCommands).toEqual([
 				{
-					label: 'Agent Run Profile sandbox smoke check',
-					command: { executable: 'true', args: [], cwd: '/workspace' },
-					commandSecretEnv: {},
+					command: { executable: 'sh', args: ['-lc', 'test "$GORCHESTRA_PREFLIGHT" = "ok"'], cwd: '/workspace' },
+					env: { GORCHESTRA_PREFLIGHT: 'ok' },
 					timeoutMs: 30_000,
 				},
 			])
+			expect(files.get('/workspace/.gorchestra/runtime-env.json')).toBe('{}\n')
 			expect(releases).toEqual(['preflight-01k00000000000000000000006-01k00000000000000000010001'])
 		})
 
@@ -209,19 +219,24 @@ if (import.meta.vitest) {
 
 			const result = await command({ agentRunProfileId: '01k00000000000000000000006' }, context)
 
-			expect(result).toEqual({ ok: true, value: profilePreflightEvidence(false, 'Vercel sandbox credential Secret is missing.') })
+			expect(result).toEqual({ ok: true, value: profilePreflightEvidence(false, 'Vercel sandbox token Secret is missing.') })
 		})
 
 		it('returns failed evidence when the smoke command exits non-zero and still releases the sandbox', async () => {
 			let released = false
+			const files = new Map<string, string>()
 			const options = createTestCoreServices({
 				sandbox: {
 					kind: 'consumer-managed',
-					create: ({ key }) =>
+					create: () =>
 						Promise.resolve({
-							key,
 							runCommand: () =>
 								Promise.resolve({ exitCode: 1, summary: 'Smoke command failed.', stdout: null, stderr: 'bad' }),
+							readFile: (path) => Promise.resolve(files.get(path) ?? null),
+							writeFile: (path, contents) => {
+								files.set(path, contents)
+								return Promise.resolve()
+							},
 							release: () => {
 								released = true
 								return Promise.resolve({ summary: 'Sandbox released.' })
@@ -238,7 +253,7 @@ if (import.meta.vitest) {
 
 			const result = await command({ agentRunProfileId: '01k00000000000000000000006' }, context)
 
-			expect(result).toEqual({ ok: true, value: profilePreflightEvidence(false, 'Smoke command failed.') })
+			expect(result).toEqual({ ok: true, value: profilePreflightEvidence(false, 'Command exited with status 1.') })
 			expect(released).toBe(true)
 		})
 
@@ -263,7 +278,7 @@ if (import.meta.vitest) {
 
 			const result = await command({ agentRunProfileId: '01k00000000000000000000006' }, context)
 
-			expect(result).toEqual({ ok: true, value: profilePreflightEvidence(false, 'Vercel sandbox credential Secret is not active.') })
+			expect(result).toEqual({ ok: true, value: profilePreflightEvidence(false, 'Vercel sandbox token Secret is not active.') })
 		})
 	})
 }

@@ -118,16 +118,16 @@ export type SandboxCommandOutput = PipeOutput<typeof sandboxCommandOutputPipe>
 export const sandboxReleaseOutputPipe = v.object({ summary: nonEmptyTrimmedStringPipe })
 export type SandboxReleaseOutput = PipeOutput<typeof sandboxReleaseOutputPipe>
 
-export interface SandboxRunCommandInput {
-	label: string
-	command: { executable: string; args: string[]; cwd: string | null }
-	commandSecretEnv: Record<string, string>
+export interface RawSandboxRunCommandInput {
+	command: { executable: string; args: string[]; cwd: string }
+	env: Record<string, string>
 	timeoutMs: number
 }
 
-export interface Sandbox {
-	key: string
-	runCommand(input: SandboxRunCommandInput): Promise<unknown>
+export interface RawSandbox {
+	runCommand(input: RawSandboxRunCommandInput): Promise<unknown>
+	readFile(path: string): Promise<unknown>
+	writeFile(path: string, contents: string): Promise<unknown>
 	release(): Promise<unknown>
 }
 
@@ -135,20 +135,21 @@ export type AgentRunSandboxConfigForSource<SourceConfig extends AgentRunSandboxS
 	source: SourceConfig
 }
 
-export interface SandboxRuntime<SourceConfig extends AgentRunSandboxSourceConfig = AgentRunSandboxSourceConfig> {
+export interface RawSandboxProvider<SourceConfig extends AgentRunSandboxSourceConfig = AgentRunSandboxSourceConfig> {
 	kind: SourceConfig['type']
-	create(input: { key: string; config: AgentRunSandboxConfigForSource<SourceConfig> }): Promise<Sandbox>
-	find(input: { key: string }): Promise<Sandbox | null>
+	create(input: { key: string; config: AgentRunSandboxConfigForSource<SourceConfig> }): Promise<RawSandbox>
+	find(input: { key: string }): Promise<RawSandbox | null>
 }
 
-export type ConsumerManagedSandboxRuntime = SandboxRuntime<ConsumerManagedSandboxSourceConfig>
+export type ConsumerManagedSandboxProvider = RawSandboxProvider<ConsumerManagedSandboxSourceConfig>
 
-export const sandboxPipe = v.object({
-	key: nonEmptyTrimmedStringPipe,
-	runCommand: typedFunctionDependencyPipe<Sandbox['runCommand']>(),
-	release: typedFunctionDependencyPipe<Sandbox['release']>(),
+export const rawSandboxPipe = v.object({
+	runCommand: typedFunctionDependencyPipe<RawSandbox['runCommand']>(),
+	readFile: typedFunctionDependencyPipe<RawSandbox['readFile']>(),
+	writeFile: typedFunctionDependencyPipe<RawSandbox['writeFile']>(),
+	release: typedFunctionDependencyPipe<RawSandbox['release']>(),
 })
-export type SandboxOutput = PipeOutput<typeof sandboxPipe>
+export type RawSandboxOutput = PipeOutput<typeof rawSandboxPipe>
 
 export type CoreEvent = never
 
@@ -167,10 +168,10 @@ export type CoreSecretsService = PipeOutput<typeof coreSecretsServicePipe>
 
 export const coreSandboxServicePipe = v.object({
 	kind: v.eq('consumer-managed'),
-	create: typedFunctionDependencyPipe<ConsumerManagedSandboxRuntime['create']>(),
-	find: typedFunctionDependencyPipe<ConsumerManagedSandboxRuntime['find']>(),
+	create: typedFunctionDependencyPipe<ConsumerManagedSandboxProvider['create']>(),
+	find: typedFunctionDependencyPipe<ConsumerManagedSandboxProvider['find']>(),
 })
-export type CoreSandboxService = ConsumerManagedSandboxRuntime
+export type CoreSandboxService = ConsumerManagedSandboxProvider
 
 export const coreDispatcherServicePipe = v.object({
 	preflight: typedFunctionDependencyPipe<PreflightFn>(),

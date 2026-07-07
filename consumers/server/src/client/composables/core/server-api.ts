@@ -56,11 +56,11 @@ export type AgentRunRunCommandRequirement = {
 	commandSecretEnv: Record<string, string>
 }
 export type AgentRunRuntimeRequirement = AgentRunEnvironmentSecretRequirement | AgentRunRunCommandRequirement
-export type VercelSandboxRuntime = 'node26' | 'node24' | 'node22' | 'python3.13'
+export type VercelRuntime = 'node26' | 'node24' | 'node22' | 'python3.13'
 export type VercelSandboxCredentialsSecretRefs = { tokenSecretId: string; teamIdSecretId: string; projectIdSecretId: string }
 export type AgentRunSandboxSourceConfig =
 	| { type: 'consumer-managed'; ociImage: string }
-	| { type: 'vercel-runtime'; runtime: VercelSandboxRuntime; credentials: VercelSandboxCredentialsSecretRefs }
+	| { type: 'vercel-runtime'; runtime: VercelRuntime; credentials: VercelSandboxCredentialsSecretRefs }
 	| { type: 'vercel-vcr-image'; vcrImage: string; credentials: VercelSandboxCredentialsSecretRefs }
 export type AgentRunSandboxResources = { vcpus: number }
 export type AgentRunSandboxNetworkPolicy =

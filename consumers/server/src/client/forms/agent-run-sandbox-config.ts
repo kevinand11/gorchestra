@@ -5,7 +5,7 @@ import type {
 	AgentRunSandboxConfig,
 	AgentRunSandboxNetworkPolicy,
 	AgentRunSandboxSourceConfig,
-	VercelSandboxRuntime,
+	VercelRuntime,
 } from '../composables/core/server-api'
 
 type VercelCredentialsModel = { tokenSecretId: string; teamIdSecretId: string; projectIdSecretId: string }
@@ -29,7 +29,7 @@ type SandboxSourceType = AgentRunSandboxSourceConfig['type']
 type SandboxSourceFields = {
 	type: SandboxSourceType
 	ociImage: string
-	runtime: VercelSandboxRuntime
+	runtime: VercelRuntime
 	vcrImage: string
 	credentials: VercelSecretCredentialsFormDraft
 }

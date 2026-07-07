@@ -142,6 +142,19 @@ export interface SecretNotActiveError {
 	secretId: Id
 }
 
+export interface SecretResolutionFailedError {
+	type: 'secret-resolution-failed'
+	secretId: Id
+}
+
+export type SandboxOperation = 'create' | 'find' | 'set-env' | 'run-command' | 'release'
+
+export interface SandboxOperationFailedError {
+	type: 'sandbox-operation-failed'
+	operation: SandboxOperation
+	summary: string
+}
+
 export interface DuplicateRepositoryTargetError {
 	type: 'duplicate-repository-target'
 	projectId: Id
@@ -303,6 +316,8 @@ export type CoreError =
 	| ModelPreflightFailedError
 	| ModelNotSelectableError
 	| SecretNotActiveError
+	| SecretResolutionFailedError
+	| SandboxOperationFailedError
 	| DeliveryPreflightClaimConflictError
 	| DuplicateRepositoryTargetError
 	| ProjectSourceTypeMismatchError

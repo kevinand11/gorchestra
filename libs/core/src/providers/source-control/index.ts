@@ -16,9 +16,9 @@ import type {
 } from './types'
 import type { Id } from '../../domain/commons'
 import type { Repository } from '../../domain/repository'
-import { resolvedSecretValuesPipe, type CoreServices, type ResolvableSecretValue, type ResolvedSecretValues } from '../../services'
+import type { CoreServices, ResolvableSecretValue } from '../../services'
+import { resolveSecretValueRefs } from '../../utils/secret-values'
 import type { Result } from '../../utils/types'
-import { validateCoreServiceOutput } from '../../validation'
 
 export interface SourceControlProviderImplementations {
 	github?: GitHubSourceControlProvider
@@ -104,54 +104,17 @@ async function preflightGitHubRepository(
 	return { ok: true, value: gitHubRepositoryPreflight(providerPreflight) }
 }
 
-type SecretValueResolution = { type: 'resolved'; output: unknown } | { type: 'failed'; preflight: SourceControlRepositoryPreflight }
-
 async function resolveRepositoryAccessToken(
 	services: CoreServices,
 	secret: ResolvableSecretValue,
 ): Promise<Result<SourceControlAccessToken | SourceControlRepositoryPreflight, SourceControlRepositoryPreflightError>> {
-	const resolution = await resolveSecretValueOutput(services, secret)
-	return resolution.ok ? accessTokenFromSecretValueResolution(resolution.value, secret.secretId) : resolution
-}
+	const resolution = await resolveSecretValueRefs(services, [secret])
+	if (!resolution.ok) return resolution
 
-async function resolveSecretValueOutput(
-	services: CoreServices,
-	secret: ResolvableSecretValue,
-): Promise<Result<SecretValueResolution, SourceControlRepositoryPreflightError>> {
-	try {
-		return { ok: true, value: { type: 'resolved', output: await services.secrets.resolveSecretValues({ secrets: [secret] }) } }
-	} catch {
-		return { ok: true, value: { type: 'failed', preflight: unresolvedAccessSecretPreflight(secret.secretId) } }
-	}
-}
-
-function accessTokenFromSecretValueResolution(
-	resolution: SecretValueResolution,
-	secretId: Id,
-): Result<SourceControlAccessToken | SourceControlRepositoryPreflight, SourceControlRepositoryPreflightError> {
-	return resolution.type === 'failed'
-		? { ok: true, value: resolution.preflight }
-		: accessTokenFromResolvedSecretValues(resolution.output, secretId)
-}
-
-function accessTokenFromResolvedSecretValues(
-	output: unknown,
-	secretId: Id,
-): Result<SourceControlAccessToken | SourceControlRepositoryPreflight, SourceControlRepositoryPreflightError> {
-	const shapeValidation = validateCoreServiceOutput(resolvedSecretValuesPipe, output, 'secrets', 'resolveSecretValues')
-	if (!shapeValidation.ok) return shapeValidation
-
-	return exactAccessToken(secretId, shapeValidation.value)
-}
-
-function exactAccessToken(
-	secretId: Id,
-	values: ResolvedSecretValues,
-): Result<SourceControlAccessToken | SourceControlRepositoryPreflight, never> {
-	const plaintext = values[secretId]
-	return plaintext === undefined
-		? { ok: true, value: unresolvedAccessSecretPreflight(secretId) }
-		: { ok: true, value: { type: 'access-token', plaintext } }
+	const value = resolution.value[secret.secretId]
+	return value === undefined || !value.ok
+		? { ok: true, value: unresolvedAccessSecretPreflight(secret.secretId) }
+		: { ok: true, value: { type: 'access-token', plaintext: value.value } }
 }
 
 function gitHubRepositoryPreflight(
@@ -399,8 +362,8 @@ if (import.meta.vitest) {
 			},
 			sandbox: {
 				kind: 'consumer-managed',
-				create: ({ key }) => Promise.resolve(noopSandboxInstance(key)),
-				find: ({ key }) => Promise.resolve(noopSandboxInstance(key)),
+				create: () => Promise.resolve(noopSandboxInstance()),
+				find: () => Promise.resolve(noopSandboxInstance()),
 			},
 			dispatcher: {
 				preflight: () => Promise.resolve({ ok: true }),
@@ -410,10 +373,11 @@ if (import.meta.vitest) {
 		}
 	}
 
-	function noopSandboxInstance(key: string) {
+	function noopSandboxInstance() {
 		return {
-			key,
 			runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command completed.', stdout: null, stderr: null }),
+			readFile: () => Promise.resolve(null),
+			writeFile: () => Promise.resolve(),
 			release: () => Promise.resolve({ summary: 'Sandbox released.' }),
 		}
 	}

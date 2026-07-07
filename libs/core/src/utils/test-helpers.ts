@@ -173,14 +173,15 @@ export function createTestCoreServices(overrides: Partial<Pick<CoreServices, 'di
 
 const noopSandbox: CoreServices['sandbox'] = {
 	kind: 'consumer-managed',
-	create: ({ key }) => Promise.resolve(noopSandboxInstance(key)),
-	find: ({ key }) => Promise.resolve(noopSandboxInstance(key)),
+	create: () => Promise.resolve(noopSandboxInstance()),
+	find: () => Promise.resolve(noopSandboxInstance()),
 }
 
-function noopSandboxInstance(key: string) {
+function noopSandboxInstance() {
 	return {
-		key,
 		runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command succeeded.', stdout: null, stderr: null }),
+		readFile: () => Promise.resolve(null),
+		writeFile: () => Promise.resolve(),
 		release: () => Promise.resolve({ summary: 'Sandbox released.' }),
 	}
 }

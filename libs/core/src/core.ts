@@ -127,16 +127,18 @@ if (import.meta.vitest) {
 
 	const sandbox: CoreServices['sandbox'] = {
 		kind: 'consumer-managed',
-		create: ({ key }) =>
+		create: () =>
 			Promise.resolve({
-				key,
 				runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command succeeded.', stdout: null, stderr: null }),
+				readFile: () => Promise.resolve(null),
+				writeFile: () => Promise.resolve(),
 				release: () => Promise.resolve({ summary: 'Sandbox released.' }),
 			}),
-		find: ({ key }) =>
+		find: () =>
 			Promise.resolve({
-				key,
 				runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command succeeded.', stdout: null, stderr: null }),
+				readFile: () => Promise.resolve(null),
+				writeFile: () => Promise.resolve(),
 				release: () => Promise.resolve({ summary: 'Sandbox released.' }),
 			}),
 	}

@@ -1,5 +1,7 @@
 import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
+import type { WorkContext } from './types'
+import { buildWorkHandler } from './utils/handler'
 import type { AgentRun } from '../domain/agent-run'
 import { idPipe, type Id } from '../domain/commons'
 import type {
@@ -10,15 +12,11 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import { sandboxRuntimeForConfig, type SandboxRuntimeResolutionError } from '../runtime/agent-runs/sandbox-runtime'
-import { sandboxPipe, sandboxReleaseOutputPipe } from '../services'
+import { managedSandboxProviderForConfig, type SandboxProviderResolutionError } from '../runtime/sandboxes'
 import { getRequired, updateRecord } from '../storage/helpers'
 import { appendAgentRunEvent } from '../utils/agent-run-events'
 import { runtimeRecord } from '../utils/runtime-values'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
-import { validateCoreServiceOutput } from '../validation'
-import type { WorkContext } from './types'
-import { buildWorkHandler } from './utils/handler'
 
 const inputPipe = v.object({ agentRunId: idPipe })
 type ParsedInput = PipeOutput<typeof inputPipe>
@@ -44,29 +42,24 @@ export async function releaseAgentRunSandbox(
 	if (!agentRun.ok) return agentRun
 	if (agentRun.value.sandbox.created === null || agentRun.value.sandbox.released !== null) return { ok: true, value: undefined }
 
-	const sandboxRuntime = await sandboxRuntimeForConfig(runtime, runtime.services.storage, agentRun.value.profile.sandboxConfig)
-	if (!sandboxRuntime.ok) return recordReleaseResolutionFailure(runtime, agentRunId, sandboxRuntime.error)
+	const provider = await managedSandboxProviderForConfig(runtime, runtime.services.storage, agentRun.value.profile.sandboxConfig)
+	if (!provider.ok) return recordReleaseResolutionFailure(runtime, agentRunId, provider.error)
 
-	let sandboxOutput: unknown
-	try {
-		sandboxOutput = await sandboxRuntime.value.find({ key: agentRun.value.sandbox.key })
-	} catch {
-		return recordReleaseFailure(runtime, agentRunId, 'Sandbox release failed.')
+	const sandbox = await provider.value.find({ key: agentRun.value.sandbox.key })
+	if (!sandbox.ok) {
+		return sandbox.error.type === 'sandbox-operation-failed'
+			? recordReleaseFailure(runtime, agentRunId, sandbox.error.summary)
+			: { ok: false, error: sandbox.error }
 	}
-	if (sandboxOutput === null) return recordReleased(runtime, agentRun.value, 'Agent Run sandbox was already absent.')
+	if (sandbox.value === null) return recordReleased(runtime, agentRun.value, 'Agent Run sandbox was already absent.')
 
-	const sandbox = validateCoreServiceOutput(sandboxPipe, sandboxOutput, 'sandbox', 'find')
-	if (!sandbox.ok) return sandbox
-
-	let output: unknown
-	try {
-		output = await sandbox.value.release()
-	} catch {
-		return recordReleaseFailure(runtime, agentRunId, 'Sandbox release failed.')
+	const release = await sandbox.value.release()
+	if (!release.ok) {
+		return release.error.type === 'sandbox-operation-failed'
+			? recordReleaseFailure(runtime, agentRunId, release.error.summary)
+			: { ok: false, error: release.error }
 	}
-
-	const release = validateCoreServiceOutput(sandboxReleaseOutputPipe, output, 'sandbox', 'release')
-	return release.ok ? recordReleased(runtime, agentRun.value, release.value.summary) : release
+	return recordReleased(runtime, agentRun.value, release.value.summary)
 }
 
 async function recordReleased(
@@ -103,17 +96,11 @@ async function recordReleaseFailure(
 function recordReleaseResolutionFailure(
 	runtime: CoreRuntime,
 	agentRunId: Id,
-	error: SandboxRuntimeResolutionError,
+	error: SandboxProviderResolutionError,
 ): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> | CoreResult<never, Exclude<Error, InvalidInputError>> {
-	if (error.type === 'not-found' && error.resource === 'secret') {
-		return recordReleaseFailure(runtime, agentRunId, 'Vercel sandbox credential Secret is missing.')
-	}
-	if (error.type === 'secret-not-active') {
-		return recordReleaseFailure(runtime, agentRunId, 'Vercel sandbox credential Secret is not active.')
-	}
-	if (error.type === 'sandbox-runtime-resolution-failed') return recordReleaseFailure(runtime, agentRunId, error.summary)
-
-	return { ok: false, error }
+	return error.type === 'sandbox-provider-resolution-failed'
+		? recordReleaseFailure(runtime, agentRunId, error.summary)
+		: { ok: false, error }
 }
 
 if (import.meta.vitest) {
@@ -135,38 +122,23 @@ if (import.meta.vitest) {
 			expect(options.transactionCalls()).toBe(0)
 		})
 
-		it('releases created sandboxes idempotently', async () => {
+		it('releases created sandboxes idempotently and wipes runtime env before raw release', async () => {
 			const releasedKeys: string[] = []
+			const files = new Map<string, string>()
 			const options = createTestCoreServices({
 				sandbox: {
 					kind: 'consumer-managed',
-					create: ({ key }) =>
-						Promise.resolve({
-							key,
-							runCommand: () => Promise.resolve({ exitCode: 0, summary: 'ok', stdout: null, stderr: null }),
-							release: () => Promise.resolve({ summary: 'released' }),
-						}),
+					create: () => Promise.resolve(rawSandbox(files, () => Promise.resolve({ summary: 'released' }))),
 					find: ({ key }) =>
-						Promise.resolve({
-							key,
-							runCommand: () => Promise.resolve({ exitCode: 0, summary: 'ok', stdout: null, stderr: null }),
-							release: () => {
+						Promise.resolve(
+							rawSandbox(files, () => {
 								releasedKeys.push(key)
 								return Promise.resolve({ summary: 'released' })
-							},
-						}),
+							}),
+						),
 				},
 			})
-			options.tx.agentRuns.records.set('01k00000000000000000000002', {
-				...testModelAgentRun(),
-				sandbox: {
-					key: '01k00000000000000000000002',
-					created: { at: '2026-06-10T12:00:00.000Z' },
-					appliedRequirements: [],
-					appliedThroughEventId: null,
-					released: null,
-				},
-			})
+			seedCreatedAgentRun(options)
 			const operation = createReleaseAgentRunSandboxOperation(createTestCoreRuntime(options))
 
 			await expect(operation({ agentRunId: '01k00000000000000000000002' }, { correlationId: null })).resolves.toEqual({
@@ -178,10 +150,63 @@ if (import.meta.vitest) {
 				value: undefined,
 			})
 
+			expect(files.get('/workspace/.gorchestra/runtime-env.json')).toBe('{}\n')
 			expect(releasedKeys).toEqual(['01k00000000000000000000002'])
 			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.sandbox.released).toEqual({
 				at: '2026-06-10T12:00:00.000Z',
 			})
 		})
+
+		it('records release completion when runtime env wipe fails but raw release succeeds', async () => {
+			const options = createTestCoreServices({
+				sandbox: {
+					kind: 'consumer-managed',
+					create: () => Promise.resolve(rawSandbox(new Map(), () => Promise.resolve({ summary: 'released' }))),
+					find: () =>
+						Promise.resolve({
+							runCommand: () => Promise.resolve({ exitCode: 0, summary: 'ok', stdout: null, stderr: null }),
+							readFile: () => Promise.resolve(null),
+							writeFile: () => Promise.reject(new Error('no write')),
+							release: () => Promise.resolve({ summary: 'released' }),
+						}),
+				},
+			})
+			seedCreatedAgentRun(options)
+			const operation = createReleaseAgentRunSandboxOperation(createTestCoreRuntime(options))
+
+			await expect(operation({ agentRunId: '01k00000000000000000000002' }, { correlationId: null })).resolves.toEqual({
+				ok: true,
+				value: undefined,
+			})
+			expect(Array.from(options.tx.agentRunEvents.records.values()).at(-1)?.body).toMatchObject({
+				type: 'agent-run-sandbox-release-completed',
+				summary: 'released',
+			})
+		})
 	})
+
+	function seedCreatedAgentRun(options: ReturnType<typeof createTestCoreServices>): void {
+		options.tx.agentRuns.records.set('01k00000000000000000000002', {
+			...testModelAgentRun(),
+			sandbox: {
+				key: '01k00000000000000000000002',
+				created: { at: '2026-06-10T12:00:00.000Z' },
+				appliedRequirements: [],
+				appliedThroughEventId: null,
+				released: null,
+			},
+		})
+	}
+
+	function rawSandbox(files: Map<string, string>, release: () => Promise<{ summary: string }>) {
+		return {
+			runCommand: () => Promise.resolve({ exitCode: 0, summary: 'ok', stdout: null, stderr: null }),
+			readFile: (path: string) => Promise.resolve(files.get(path) ?? null),
+			writeFile: (path: string, contents: string) => {
+				files.set(path, contents)
+				return Promise.resolve()
+			},
+			release,
+		}
+	}
 }
