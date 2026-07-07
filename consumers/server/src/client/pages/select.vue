@@ -9,113 +9,155 @@
 
 		<header class="border-b border-dimmer px-3 py-3">
 			<h1 class="m-0 text-sz-section font-semibold tracking-[-0.01em]">Select Portfolio</h1>
-			<p class="m-0 mt-1 text-sz-helper text-dim">Selection is explicit and revalidated before Portfolio-scoped work.</p>
+			<p class="m-0 mt-1 text-sz-helper text-dim">
+				Workspaces contain Portfolios. Select a Portfolio before opening Portfolio-scoped work.
+			</p>
 		</header>
 
 		<section>
+			<div class="flex min-h-12 items-center justify-between gap-3 border-b border-dimmer px-3 py-2">
+				<div class="min-w-0">
+					<strong class="block font-semibold">Workspace hierarchy</strong>
+					<p class="m-0 mt-0.5 text-sz-helper text-dim">
+						Create Workspaces separately, then add Portfolios under owned Workspaces.
+					</p>
+				</div>
+				<UiButton v-if="!isWorkspaceCreationOpen" type="button" variant="secondary" @click="openWorkspaceCreation()">
+					New Workspace
+				</UiButton>
+			</div>
+
+			<div v-if="isWorkspaceCreationOpen" class="border-b border-dimmer px-3 py-3">
+				<UiForm class="max-w-[520px]" @submit.prevent="createWorkspace()">
+					<UiFormGroup label="Workspace display name" for-id="workspace-name" :error="workspaceCreationForm.errors.displayName">
+						<UiInput
+							id="workspace-name"
+							v-model="workspaceCreationForm.displayName"
+							required
+							placeholder="Delivery Ops"
+							:invalid="!!workspaceCreationForm.errors.displayName" />
+					</UiFormGroup>
+					<div class="flex flex-wrap items-center gap-2">
+						<UiButton type="submit" :loading="isCreatingWorkspace" :disabled="!workspaceCreationForm.valid">
+							Create Workspace
+						</UiButton>
+						<UiButton type="button" variant="ghost" :disabled="isCreatingWorkspace" @click="closeWorkspaceCreation()"
+							>Cancel</UiButton
+						>
+					</div>
+					<UiText v-if="createWorkspaceError" tone="error">{{ createWorkspaceError }}</UiText>
+				</UiForm>
+			</div>
+
 			<div v-if="isLoadingWorkspaces && !hasLoadedWorkspaces" class="border-b border-dimmer px-3 py-4 text-dim">
 				Loading your Workspaces…
 			</div>
 			<div v-else-if="workspacesError" class="border-b border-dimmer px-3 py-4 text-error">
 				{{ workspacesError }}
 			</div>
+			<div v-else-if="hasNoWorkspaces" class="border-b border-dimmer px-3 py-4">
+				<strong class="block font-semibold">No Workspaces yet</strong>
+				<p class="m-0 mt-1 text-sz-helper text-dim">
+					Create a Workspace first. Portfolio Creation stays inside the Workspace after it exists.
+				</p>
+				<UiButton type="button" class="mt-3" variant="secondary" @click="openWorkspaceCreation()">New Workspace</UiButton>
+			</div>
 			<div v-else>
-				<div v-if="hasNoSelectablePortfolios" class="border-b border-dimmer px-3 py-3">
-					<h2 class="m-0 text-sz-subsection font-semibold">
-						{{ workspaces.length === 0 ? 'Provision your first Workspace' : 'Provision a Workspace with a Default Portfolio' }}
-					</h2>
-					<p class="m-0 mt-1 text-sz-helper text-dim">
-						No accessible Portfolio is available yet. Workspace Provisioning creates a Workspace, registers its Default
-						Portfolio, and selects it for this browser.
-					</p>
-					<UiForm class="mt-4 max-w-[520px]" @submit.prevent="provisionWorkspace()">
-						<UiFormGroup
-							label="Workspace display name"
-							for-id="workspace-name"
-							:error="provisionWorkspaceForm.errors.workspaceDisplayName">
-							<UiInput
-								id="workspace-name"
-								v-model="provisionWorkspaceForm.workspaceDisplayName"
-								required
-								placeholder="Delivery Ops"
-								:invalid="!!provisionWorkspaceForm.errors.workspaceDisplayName" />
-						</UiFormGroup>
-						<UiFormGroup
-							label="Portfolio display name"
-							for-id="portfolio-name"
-							:error="provisionWorkspaceForm.errors.portfolioDisplayName">
-							<UiInput
-								id="portfolio-name"
-								v-model="provisionWorkspaceForm.portfolioDisplayName"
-								required
-								placeholder="Main Portfolio"
-								:invalid="!!provisionWorkspaceForm.errors.portfolioDisplayName" />
-						</UiFormGroup>
-						<UiButton type="submit" :loading="isProvisioningWorkspace" :disabled="!provisionWorkspaceForm.valid">
-							Create Workspace and select Default Portfolio
+				<div v-if="isRefreshingWorkspaces" class="border-b border-dimmer px-3 py-2 text-sz-helper text-dim">Refreshing…</div>
+				<section v-for="workspace in workspaces" :key="workspace.id" class="border-b border-dimmer">
+					<div class="grid min-h-[58px] grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2">
+						<span class="grid size-5 place-items-center border border-dimmer text-sz-micro text-dim">W</span>
+						<span class="min-w-0">
+							<strong class="block truncate font-semibold">{{ workspace.displayName }}</strong>
+							<span class="block truncate text-sz-helper text-dim">
+								{{ workspace.ownerRole ? 'Active Workspace Owner' : 'Active Member' }}
+							</span>
+						</span>
+						<UiButton
+							v-if="workspace.ownerRole && !isPortfolioCreationOpen(workspace.id)"
+							type="button"
+							variant="secondary"
+							:disabled="isCreatingPortfolio"
+							@click="openPortfolioCreation(workspace.id)">
+							New Portfolio
 						</UiButton>
-						<UiText v-if="provisionWorkspaceError" tone="error">{{ provisionWorkspaceError }}</UiText>
-					</UiForm>
-				</div>
-
-				<div v-if="workspaces.length > 0">
-					<div class="flex min-h-11 items-center justify-between gap-3 border-b border-dimmer px-3 py-2">
-						<strong class="font-semibold">Available Workspaces</strong>
-						<span v-if="isRefreshingWorkspaces" class="text-sz-helper text-dim">Refreshing…</span>
 					</div>
-					<div>
-						<div v-for="workspace in workspaces" :key="workspace.id" class="border-b border-dimmer">
-							<div class="grid min-h-[58px] grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2">
-								<span class="grid size-5 place-items-center border border-dimmer text-sz-micro text-dim">W</span>
+
+					<div v-if="isPortfolioCreationOpen(workspace.id)" class="border-t border-dimmer">
+						<div class="grid grid-cols-[16px_minmax(0,520px)] gap-3 px-3 py-3 pl-8">
+							<span class="self-stretch border-l border-dimmer"></span>
+							<UiForm @submit.prevent="createPortfolio()">
+								<UiFormGroup
+									label="Portfolio display name"
+									:for-id="`portfolio-name-${workspace.id}`"
+									:error="portfolioCreationForm.errors.displayName">
+									<UiInput
+										:id="`portfolio-name-${workspace.id}`"
+										v-model="portfolioCreationForm.displayName"
+										required
+										placeholder="Main Portfolio"
+										:invalid="!!portfolioCreationForm.errors.displayName" />
+								</UiFormGroup>
+								<div class="flex flex-wrap items-center gap-2">
+									<UiButton type="submit" :loading="isCreatingPortfolio" :disabled="!portfolioCreationForm.valid">
+										Create Portfolio
+									</UiButton>
+									<UiButton
+										type="button"
+										variant="ghost"
+										:disabled="isCreatingPortfolio"
+										@click="closePortfolioCreation()">
+										Cancel
+									</UiButton>
+								</div>
+								<UiText v-if="createPortfolioError" tone="error">{{ createPortfolioError }}</UiText>
+							</UiForm>
+						</div>
+					</div>
+
+					<div v-if="workspace.portfolios.length === 0" class="border-t border-dimmer">
+						<div
+							class="grid min-h-[48px] grid-cols-[16px_minmax(0,1fr)] items-center gap-3 px-3 py-2 pl-8 text-sz-helper text-dim">
+							<span class="self-stretch border-l border-dimmer"></span>
+							<span>
+								{{
+									workspace.ownerRole
+										? 'No Portfolios registered for this Workspace.'
+										: 'No Portfolios registered for this Workspace. Ask a Workspace Owner to create one.'
+								}}
+							</span>
+						</div>
+					</div>
+					<div v-else>
+						<div v-for="portfolio in workspace.portfolios" :key="portfolio.id" class="border-t border-dimmer">
+							<div class="grid min-h-[52px] grid-cols-[16px_24px_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 pl-8">
+								<span class="self-stretch border-l border-dimmer"></span>
+								<span class="grid size-5 place-items-center border border-dimmer text-sz-micro text-dim">P</span>
 								<span class="min-w-0">
-									<strong class="block truncate font-semibold">{{ workspace.displayName }}</strong>
-									<span class="block truncate text-sz-helper text-dim">
-										{{ workspace.ownerRole ? 'Active Workspace Owner' : 'Active Member' }}
-									</span>
+									<strong class="block truncate font-semibold">{{ portfolio.displayName }}</strong>
 								</span>
-								<span class="text-sz-helper text-dim">{{ workspace.portfolios.length }} Portfolios</span>
-							</div>
-							<div v-if="workspace.portfolios.length === 0" class="px-9 pb-3 text-sz-helper text-dim">
-								No Portfolios registered for this Workspace.
-							</div>
-							<div v-else>
-								<div
-									v-for="portfolio in workspace.portfolios"
-									:key="portfolio.id"
-									class="grid min-h-[52px] grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 border-t border-dimmer px-3 py-2">
-									<span class="ml-4 grid size-5 place-items-center border border-dimmer text-sz-micro text-dim">P</span>
-									<span class="min-w-0">
-										<strong class="block truncate font-semibold">{{ portfolio.displayName }}</strong>
-										<span class="block truncate text-sz-helper text-dim">{{ workspace.displayName }}</span>
-									</span>
-									<NuxtLink
-										v-if="isCurrentSelection(workspace.id, portfolio.id)"
-										class="border border-primary bg-primary px-3 py-1.5 text-sz-helper font-semibold text-primary-contrast"
-										to="/projects">
-										Go to Projects
-									</NuxtLink>
-									<div v-else class="grid justify-items-end gap-1">
-										<UiButton
-											type="button"
-											:disabled="isSelectingPortfolio"
-											:loading="isSelectingThisPortfolio(workspace.id, portfolio.id)"
-											@click="selectPortfolio(workspace.id, portfolio.id)">
-											{{ isSelectingThisPortfolio(workspace.id, portfolio.id) ? 'Selecting…' : 'Select Portfolio' }}
-										</UiButton>
-										<UiText v-if="portfolioSelectionError(workspace.id, portfolio.id)" tone="error" size="helper">
-											{{ portfolioSelectionError(workspace.id, portfolio.id) }}
-										</UiText>
-									</div>
+								<NuxtLink
+									v-if="isCurrentSelection(workspace.id, portfolio.id)"
+									class="border border-dimmer bg-secondary px-3 py-1.5 text-sz-helper font-semibold text-secondary-contrast hover:border-dim hover:brightness-110"
+									to="/projects">
+									Open Projects
+								</NuxtLink>
+								<div v-else class="grid justify-items-end gap-1">
+									<UiButton
+										type="button"
+										:disabled="isSelectingPortfolio"
+										:loading="isSelectingThisPortfolio(workspace.id, portfolio.id)"
+										@click="selectPortfolio(workspace.id, portfolio.id)">
+										{{ isSelectingThisPortfolio(workspace.id, portfolio.id) ? 'Selecting…' : 'Select' }}
+									</UiButton>
+									<UiText v-if="portfolioSelectionError(workspace.id, portfolio.id)" tone="error" size="helper">
+										{{ portfolioSelectionError(workspace.id, portfolio.id) }}
+									</UiText>
 								</div>
 							</div>
 						</div>
-						<div v-if="hasNextWorkspaces" class="border-b border-dimmer px-3 py-3">
-							<UiButton type="button" variant="secondary" :loading="isLoadingWorkspaces" @click="fetchNextWorkspaces()">
-								Load more Workspaces
-							</UiButton>
-						</div>
 					</div>
-				</div>
+				</section>
 			</div>
 		</section>
 
@@ -127,9 +169,9 @@
 					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">{{ selection.workspace.displayName }}</p>
 				</div>
 				<div class="grid gap-2 px-3 py-3">
-					<UiButton type="button" variant="secondary" :loading="isClearingSelection" @click="clearSelection()"
-						>Clear selection</UiButton
-					>
+					<UiButton type="button" variant="secondary" :loading="isClearingSelection" @click="clearSelection()">
+						Clear selection
+					</UiButton>
 					<UiText v-if="clearSelectionError" tone="error">{{ clearSelectionError }}</UiText>
 				</div>
 			</div>
@@ -147,31 +189,40 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
+
 import UiButton from '../components/ui/UiButton.vue'
 import UiForm from '../components/ui/UiForm.vue'
 import UiFormGroup from '../components/ui/UiFormGroup.vue'
 import UiInput from '../components/ui/UiInput.vue'
 import UiText from '../components/ui/UiText.vue'
 import { useAuth, useSelectionClear, useSignout } from '../composables/auth/session'
-import { useDefaultWorkspaceProvision, usePortfolioSelection, useWorkspacesList } from '../composables/auth/workspaces'
+import {
+	usePortfolioSelection,
+	useWorkspaceCreation,
+	useWorkspacePortfolioCreation,
+	useWorkspacesList,
+} from '../composables/auth/workspaces'
 
 definePageMeta({ middleware: ['is-authenticated'] })
 
-const {
-	workspaces,
-	isLoadingWorkspaces,
-	workspacesError,
-	hasLoadedWorkspaces,
-	isRefreshingWorkspaces,
-	fetchNextWorkspaces,
-	hasNextWorkspaces,
-	hasNoSelectablePortfolios,
-} = useWorkspacesList()
-const { provisionWorkspaceForm, isProvisioningWorkspace, provisionWorkspaceError, provisionWorkspace } = useDefaultWorkspaceProvision({
-	onSuccess: async () => {
-		await navigateTo('/projects')
+const isWorkspaceCreationOpen = ref(false)
+const { workspaces, isLoadingWorkspaces, workspacesError, hasLoadedWorkspaces, isRefreshingWorkspaces, hasNoWorkspaces } =
+	useWorkspacesList()
+const { workspaceCreationForm, isCreatingWorkspace, createWorkspaceError, createWorkspace, resetCreateWorkspace } = useWorkspaceCreation({
+	onSuccess: () => {
+		isWorkspaceCreationOpen.value = false
 	},
 })
+const {
+	portfolioCreationForm,
+	isCreatingPortfolio,
+	createPortfolioError,
+	createPortfolio,
+	openPortfolioCreation,
+	closePortfolioCreation,
+	isPortfolioCreationOpen,
+} = useWorkspacePortfolioCreation({ workspaces })
 const { isSelectingPortfolio, selectPortfolio, isSelectingThisPortfolio, portfolioSelectionError } = usePortfolioSelection({
 	onSuccess: async () => {
 		await navigateTo('/projects')
@@ -181,6 +232,18 @@ const { isSelectingPortfolio, selectPortfolio, isSelectingThisPortfolio, portfol
 const { selection } = useAuth()
 const { isClearingSelection, clearSelectionError, clearSelection } = useSelectionClear()
 const { isSigningOut, signOutError, signOut } = useSignout()
+
+function openWorkspaceCreation(): void {
+	resetCreateWorkspace()
+	workspaceCreationForm.reset()
+	isWorkspaceCreationOpen.value = true
+}
+
+function closeWorkspaceCreation(): void {
+	resetCreateWorkspace()
+	workspaceCreationForm.reset()
+	isWorkspaceCreationOpen.value = false
+}
 
 function isCurrentSelection(workspaceId: string, portfolioId: string): boolean {
 	return (

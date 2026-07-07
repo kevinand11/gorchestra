@@ -13,8 +13,8 @@ A Server Consumer-owned lowercase 26-character monotonic storage identity genera
 _Avoid_: Core Id, UUID, opaque id
 
 **Server Consumer Paginated Query Envelope**:
-The Server Consumer-owned list response boundary for Server-owned records and aggregates. It uses `{ items, pages, docs }`, accepts optional `limit`, `page`, and `beforeId`, and orders stored-record-backed list items by Server Id descending unless a local endpoint documents a different primary Server-owned record.
-_Avoid_: Core query envelope, bare list response
+The default Server Consumer-owned list response boundary for Server-owned records and aggregates. It uses `{ items, pages, docs }`, accepts optional `limit`, `page`, and `beforeId`, and orders stored-record-backed list items by Server Id descending unless a local endpoint documents a different primary Server-owned record or a bounded selector list intentionally returns an unpaginated response.
+_Avoid_: Core query envelope
 
 **Server Dispatcher**:
 The Server Consumer capability that receives Core Dispatch Requests and arranges runtime execution for the selected Portfolio. The dispatcher is responsible for execution arrangement, not for deciding Core Agent Run or Delivery work behavior. The v1 dispatcher returns opaque markers for accepted requests and starts processing only when the marker is readied after the Core transaction succeeds. It scopes Core Dispatch Coordination Claims by Portfolio storage namespace and runs readied requests only when all claims can be acquired.
@@ -52,9 +52,9 @@ _Avoid_: Pending User, pending account
 A first-party onboarding path where a verified Authentication Identity creates a new User and Session without requiring an invitation. Self-sign-up does not create a Workspace or Portfolio.
 _Avoid_: Workspace provisioning, invited-user creation
 
-**Workspace Provisioning**:
-A user-initiated workflow that creates a Workspace, creates the initiating User's Workspace Member identity and Workspace Owner role, registers the Workspace's Default Portfolio, and selects that new Workspace and Portfolio. In v1, Workspace Provisioning is exposed only when the signed-in User has no accessible Workspace and Portfolio to select.
-_Avoid_: Self-sign-up, Portfolio-only creation
+**Workspace Creation**:
+The Server Consumer action where a signed-in User establishes a Workspace and becomes its Active Workspace Owner through a Workspace Member identity. Workspace Creation does not create a Portfolio or produce a Portfolio selection.
+_Avoid_: Workspace Provisioning, Self-sign-up, Portfolio creation
 
 **Session**:
 A server-managed browser sign-in state for one User. A Session does not store Workspace or Portfolio selection and does not itself grant Workspace access or Workspace Owner authority.
@@ -84,8 +84,12 @@ _Avoid_: Current project space, portfolio claim
 A Server Consumer registration of a Core Portfolio inside a Workspace. The Portfolio Registry Entry owns the Portfolio's non-unique user-facing display name and storage location.
 _Avoid_: Core Portfolio record, Portfolio metadata in Core
 
+**Portfolio Creation**:
+The Server Consumer action where an Active Workspace Owner registers a Portfolio inside a Workspace. A created Portfolio belongs to its Workspace and is selected separately from Workspace Creation.
+_Avoid_: Workspace Creation, Workspace Provisioning, Portfolio-only creation
+
 **Default Portfolio**:
-The oldest Portfolio registered for a Workspace. The Default Portfolio is administered by the Workspace's Active Workspace Owners.
+The oldest Portfolio registered for a Workspace when that Workspace has at least one Portfolio. The Default Portfolio is administered by the Workspace's Active Workspace Owners.
 _Avoid_: Personal Portfolio, Workspace data
 
 **Agent Run Profiles**:

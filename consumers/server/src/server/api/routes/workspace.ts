@@ -1,28 +1,23 @@
 import { Router } from 'equipped/server'
 import { v } from 'valleyed'
 
-import { buildSelectionCookie } from '../../modules/selection-cookie'
-import { provisionWorkspaceWithDefaultPortfolio } from '../../modules/workspace-provisioning'
-import { hasAccessibleWorkspacePortfolios, listAccessibleWorkspaces } from '../../modules/workspaces'
+import { createPortfolioForWorkspace } from '../../modules/portfolio-creation'
+import { createWorkspaceForUser } from '../../modules/workspace-creation'
+import { listAccessibleWorkspaces, validateWorkspaceOwnerAccess } from '../../modules/workspaces'
 import type { ServerApiContext } from '../context'
 import { throwNotAuthorized, throwSessionAuthenticationError } from '../errors'
-import { moduleCookiesToResponseCookies } from '../http'
 import {
+	idPipe,
 	portfolioRegistryEntryResponseSchema,
-	selectedPortfolioResponseSchema,
-	selectionResponseCookieSchema,
-	serverPaginatedQueryEnvelopePipe,
-	serverPaginatedQueryInputPipe,
 	workspaceMemberResponseSchema,
 	workspaceOwnerRoleResponseSchema,
 	workspaceResponseSchema,
 } from '../schemas'
 import { authenticateApiSession, getSessionToken, sessionCookieSchema } from '../session'
 
-const provisionDefaultWorkspaceBodySchema = v.object({
-	workspaceDisplayName: displayNamePipe(),
-	portfolioDisplayName: displayNamePipe(),
-})
+const workspaceCreationBodySchema = v.object({ displayName: displayNamePipe() })
+const portfolioCreationBodySchema = v.object({ displayName: displayNamePipe() })
+const workspaceParamsSchema = v.object({ workspaceId: idPipe })
 
 const accessibleWorkspaceResponseSchema = v.merge(
 	workspaceResponseSchema,
@@ -38,8 +33,7 @@ export function createWorkspaceApiRouter(context: ServerApiContext) {
 		.get('/', {
 			schema: {
 				cookies: sessionCookieSchema,
-				query: serverPaginatedQueryInputPipe,
-				response: serverPaginatedQueryEnvelopePipe(accessibleWorkspaceResponseSchema),
+				response: v.array(accessibleWorkspaceResponseSchema),
 			},
 		})(async (req) => {
 			const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
@@ -48,51 +42,51 @@ export function createWorkspaceApiRouter(context: ServerApiContext) {
 			return await listAccessibleWorkspaces({
 				serverStorage: context.serverStorage,
 				userId: authentication.session.userId,
-				query: req.query,
 			})
 		})
-		.post('/provision-default', {
+		.post('/', {
 			schema: {
-				body: provisionDefaultWorkspaceBodySchema,
+				body: workspaceCreationBodySchema,
 				cookies: sessionCookieSchema,
-				response: v.object({
-					workspace: workspaceResponseSchema,
-					workspaceMember: workspaceMemberResponseSchema,
-					workspaceOwnerRole: workspaceOwnerRoleResponseSchema,
-					portfolio: portfolioRegistryEntryResponseSchema,
-					selection: selectedPortfolioResponseSchema,
-				}),
-				responseCookies: selectionResponseCookieSchema,
+				response: workspaceResponseSchema,
+			},
+		})(async (req) => {
+			const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
+			if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
+
+			const created = await createWorkspaceForUser({
+				serverStorage: context.serverStorage,
+				userId: authentication.session.userId,
+				displayName: req.body.displayName,
+				now: context.now(),
+			})
+			return created.workspace
+		})
+		.post('/:workspaceId/portfolios', {
+			schema: {
+				params: workspaceParamsSchema,
+				body: portfolioCreationBodySchema,
+				cookies: sessionCookieSchema,
+				response: portfolioRegistryEntryResponseSchema,
 			},
 		})(async (req) => {
 		const authentication = await authenticateApiSession(context, getSessionToken(req.cookies))
 		if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
 
-		const existingAccess = await hasAccessibleWorkspacePortfolios({
+		const access = await validateWorkspaceOwnerAccess({
 			serverStorage: context.serverStorage,
 			userId: authentication.session.userId,
+			workspaceId: req.params.workspaceId,
 		})
-		if (existingAccess) throwNotAuthorized('Workspace Provisioning is only available when no Workspace and Portfolio can be selected')
+		if (!access.authorized) throwNotAuthorized('Workspace Owner authority is required to create Portfolios for this Workspace')
 
-		const now = context.now()
-		const provisioned = await provisionWorkspaceWithDefaultPortfolio({
+		return await createPortfolioForWorkspace({
 			serverStorage: context.serverStorage,
-			userId: authentication.session.userId,
-			workspaceDisplayName: req.body.workspaceDisplayName,
-			portfolioDisplayName: req.body.portfolioDisplayName,
+			workspaceId: access.workspace.id,
+			displayName: req.body.displayName,
 			corePortfolioStorage: context.corePortfolioStorage,
-			now,
+			now: context.now(),
 			secretEncryptionKey: context.security.secretEncryptionKey,
-		})
-		const selection = buildSelectionCookie({
-			workspaceId: provisioned.workspace.id,
-			portfolioId: provisioned.portfolio.id,
-			now,
-			signingKey: context.security.selectionSigningKey,
-		})
-		return req.res({
-			body: { ...provisioned, selection: selection.selection },
-			cookies: moduleCookiesToResponseCookies(selection.cookie),
 		})
 	})
 }

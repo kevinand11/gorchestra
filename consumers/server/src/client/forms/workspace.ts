@@ -1,72 +1,69 @@
 import { FormDraft } from '@gorchestra/form-draft'
 import { v } from 'valleyed'
 
-type ProvisionWorkspaceFormFields = {
-	workspaceDisplayName: string
-	portfolioDisplayName: string
+type DisplayNameFormFields = {
+	displayName: string
 }
 
-type ProvisionWorkspaceFormModel = {
-	workspaceDisplayName: string
-	portfolioDisplayName: string
+type DisplayNameFormModel = {
+	displayName: string
 }
 
 const displayNamePipe = v.string().pipe(v.min<string>(1, 'Enter a display name'))
 
-export class ProvisionWorkspaceFormDraft extends FormDraft<
-	ProvisionWorkspaceFormModel,
-	ProvisionWorkspaceFormModel,
-	ProvisionWorkspaceFormFields
-> {
-	protected readonly rules = {
-		workspaceDisplayName: displayNamePipe,
-		portfolioDisplayName: displayNamePipe,
-	}
+abstract class DisplayNameFormDraft extends FormDraft<DisplayNameFormModel, DisplayNameFormModel, DisplayNameFormFields> {
+	protected readonly rules = { displayName: displayNamePipe }
 
 	constructor() {
-		super({ workspaceDisplayName: 'Delivery Ops', portfolioDisplayName: 'Main Portfolio' })
+		super({ displayName: '' })
+		this.revalidate()
 	}
 
-	protected model = (): ProvisionWorkspaceFormModel => ({
-		workspaceDisplayName: this.workspaceDisplayName,
-		portfolioDisplayName: this.portfolioDisplayName,
-	})
+	protected model = (): DisplayNameFormModel => ({ displayName: this.displayName })
 
-	protected load = (entity: ProvisionWorkspaceFormModel): void => {
-		this.workspaceDisplayName = entity.workspaceDisplayName
-		this.portfolioDisplayName = entity.portfolioDisplayName
+	protected load = (entity: DisplayNameFormModel): void => {
+		this.displayName = entity.displayName
 	}
 }
+
+export class WorkspaceCreationFormDraft extends DisplayNameFormDraft {}
+
+export class PortfolioCreationFormDraft extends DisplayNameFormDraft {}
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
-	describe('ProvisionWorkspaceFormDraft', () => {
-		it('starts valid with default display names', () => {
-			const factory = new ProvisionWorkspaceFormDraft()
+	describe('WorkspaceCreationFormDraft', () => {
+		it('starts invalid with an empty display name', () => {
+			const draft = new WorkspaceCreationFormDraft()
 
-			expect(factory.valid).toBe(true)
-			expect(factory.toModel()).toEqual({ workspaceDisplayName: 'Delivery Ops', portfolioDisplayName: 'Main Portfolio' })
+			expect(draft.valid).toBe(false)
+			expect(draft.errors.displayName).toBe('')
 		})
 
-		it('models display names without transforming visible fields', () => {
-			const factory = new ProvisionWorkspaceFormDraft()
+		it('models the visible display name without transforming it', () => {
+			const draft = new WorkspaceCreationFormDraft()
 
-			factory.workspaceDisplayName = '  Team Ops  '
-			factory.portfolioDisplayName = '  Launch Portfolio  '
+			draft.displayName = '  Delivery Ops  '
 
-			expect(factory.toModel()).toEqual({ workspaceDisplayName: '  Team Ops  ', portfolioDisplayName: '  Launch Portfolio  ' })
+			expect(draft.toModel()).toEqual({ displayName: '  Delivery Ops  ' })
+		})
+	})
+
+	describe('PortfolioCreationFormDraft', () => {
+		it('starts invalid with an empty display name', () => {
+			const draft = new PortfolioCreationFormDraft()
+
+			expect(draft.valid).toBe(false)
+			expect(draft.errors.displayName).toBe('')
 		})
 
-		it('rejects empty display names', () => {
-			const factory = new ProvisionWorkspaceFormDraft()
+		it('models the visible display name without transforming it', () => {
+			const draft = new PortfolioCreationFormDraft()
 
-			factory.workspaceDisplayName = ''
-			factory.portfolioDisplayName = ''
+			draft.displayName = '  Main Portfolio  '
 
-			expect(factory.valid).toBe(false)
-			expect(factory.errors.workspaceDisplayName).toBe('Enter a display name')
-			expect(factory.errors.portfolioDisplayName).toBe('Enter a display name')
+			expect(draft.toModel()).toEqual({ displayName: '  Main Portfolio  ' })
 		})
 	})
 }

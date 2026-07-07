@@ -1,0 +1,3 @@
+# Independent Workspace and Portfolio creation
+
+Gorchestra v1 lets any signed-in User create a new Workspace without creating a Portfolio or producing a Portfolio selection; the creator becomes an Active Workspace Owner through their Workspace Member identity. Portfolio Creation is a separate Active Workspace Owner action inside an existing Workspace and does not mutate Portfolio selection, because selection remains an explicit user action and Workspace-owner authority should continue to guard Workspace-scoped setup. This supersedes the earlier mandatory Default Portfolio provisioning path while preserving Default Portfolio as the oldest Portfolio registered for a Workspace when one exists.

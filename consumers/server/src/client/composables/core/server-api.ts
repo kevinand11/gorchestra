@@ -157,8 +157,8 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async logout() {
 			return routes.request('delete', '/api/auth/session')
 		},
-		async listWorkspaces(input: PaginatedQueryInput) {
-			return routes.request('get', '/api/workspaces', { query: paginationQuery(input) })
+		async listWorkspaces() {
+			return routes.request('get', '/api/workspaces')
 		},
 		async listProjects(input: PaginatedQueryInput) {
 			return routes.request('get', '/api/portfolio/projects', { query: paginationQuery(input) })
@@ -341,8 +341,11 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async createMemoryRevision(memoryId: string, input: CreateMemoryRevisionInput) {
 			return routes.request('post', '/api/portfolio/memories/:memoryId/revisions', { params: { memoryId }, body: input })
 		},
-		async provisionDefaultWorkspace(input: { workspaceDisplayName: string; portfolioDisplayName: string }) {
-			return routes.request('post', '/api/workspaces/provision-default', { body: input })
+		async createWorkspace(input: { displayName: string }) {
+			return routes.request('post', '/api/workspaces', { body: input })
+		},
+		async createWorkspacePortfolio(workspaceId: string, input: { displayName: string }) {
+			return routes.request('post', '/api/workspaces/:workspaceId/portfolios', { params: { workspaceId }, body: input })
 		},
 		async getSelection() {
 			return routes.request('get', '/api/selection')

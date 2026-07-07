@@ -1,6 +1,4 @@
 import { requireServerId } from '../server-id'
-import type { ServerPaginatedQueryEnvelope, ServerPaginatedQueryInput } from '../server-pagination'
-import { emptyServerPaginatedQueryEnvelope } from '../server-pagination'
 import type { ServerStorage } from '../storage/repo'
 import {
 	portfolioRegistryEntrySchema,
@@ -45,7 +43,6 @@ export type CreatePortfolioRegistryEntryInput = {
 export type ListAccessibleWorkspacesInput = {
 	serverStorage: ServerStorage
 	userId: string
-	query?: ServerPaginatedQueryInput
 }
 
 export type AccessibleWorkspace = Workspace & {
@@ -54,12 +51,11 @@ export type AccessibleWorkspace = Workspace & {
 	portfolios: PortfolioRegistryEntry[]
 }
 
-interface PaginatedListQuery {
-	orderBy(field: string, direction?: 'asc' | 'desc'): PaginatedListQuery
-	limit(limit: number): PaginatedListQuery
-	page(page: number): PaginatedListQuery
-	paginate(): Promise<unknown>
-}
+export type WorkspaceOwnerAccessFailureReason = 'user-not-found' | 'workspace-not-found' | 'not-active-member' | 'not-active-owner'
+
+export type WorkspaceOwnerAccessResult =
+	| { authorized: true; workspace: Workspace; workspaceMember: WorkspaceMember; workspaceOwnerRole: WorkspaceOwnerRole }
+	| { authorized: false; reason: WorkspaceOwnerAccessFailureReason }
 
 export async function createWorkspace(input: CreateWorkspaceInput): Promise<Workspace> {
 	return input.serverStorage.repo
@@ -111,63 +107,41 @@ export async function createPortfolioRegistryEntry(input: CreatePortfolioRegistr
 		})
 }
 
-export async function listAccessibleWorkspaces(
-	input: ListAccessibleWorkspacesInput,
-): Promise<ServerPaginatedQueryEnvelope<AccessibleWorkspace>> {
+export async function listAccessibleWorkspaces(input: ListAccessibleWorkspacesInput): Promise<AccessibleWorkspace[]> {
 	await assertUserExists(input.serverStorage, input.userId)
 	const activeWorkspaceMembers = await findActiveWorkspaceMembersForUser(input.serverStorage, input.userId)
-	if (activeWorkspaceMembers.length === 0) return emptyServerPaginatedQueryEnvelope()
+	if (activeWorkspaceMembers.length === 0) return []
 
 	const workspaces = await findAccessibleWorkspaces(
 		input.serverStorage,
 		activeWorkspaceMembers.map((workspaceMember) => workspaceMember.workspaceId),
-		input.query ?? {},
 	)
-	return {
-		...workspaces,
-		items: await hydrateAccessibleWorkspaces(input.serverStorage, activeWorkspaceMembers, workspaces.items),
-	}
+	return await hydrateAccessibleWorkspaces(input.serverStorage, activeWorkspaceMembers, workspaces)
 }
 
-export async function hasAccessibleWorkspacePortfolios(input: Omit<ListAccessibleWorkspacesInput, 'query'>): Promise<boolean> {
-	await assertUserExists(input.serverStorage, input.userId)
-	const activeWorkspaceMembers = await findActiveWorkspaceMembersForUser(input.serverStorage, input.userId)
-	if (activeWorkspaceMembers.length === 0) return false
-	const portfolios = await input.serverStorage.repo
-		.on(portfolioRegistryEntrySchema)
-		.all()
-		.where((query) =>
-			query.in(
-				portfolioRegistryEntrySchema.fields.workspaceId,
-				activeWorkspaceMembers.map((workspaceMember) => workspaceMember.workspaceId),
-			),
-		)
-		.limit(1)
-		.find()
-	return portfolios.length > 0
+export async function validateWorkspaceOwnerAccess(input: {
+	serverStorage: ServerStorage
+	userId: string
+	workspaceId: string
+}): Promise<WorkspaceOwnerAccessResult> {
+	const user = await findUser(input.serverStorage, input.userId)
+	if (!user) return { authorized: false, reason: 'user-not-found' }
+	const workspace = await findWorkspace(input.serverStorage, input.workspaceId)
+	if (!workspace) return { authorized: false, reason: 'workspace-not-found' }
+	const workspaceMember = await findActiveWorkspaceMember(input.serverStorage, input.userId, workspace.id)
+	if (!workspaceMember) return { authorized: false, reason: 'not-active-member' }
+	const workspaceOwnerRole = await findActiveWorkspaceOwnerRole(input.serverStorage, workspaceMember.id)
+	if (!workspaceOwnerRole) return { authorized: false, reason: 'not-active-owner' }
+	return { authorized: true, workspace, workspaceMember, workspaceOwnerRole }
 }
 
-async function findAccessibleWorkspaces(
-	serverStorage: ServerStorage,
-	workspaceIds: string[],
-	pagination: ServerPaginatedQueryInput,
-): Promise<ServerPaginatedQueryEnvelope<Workspace>> {
-	const baseQuery = serverStorage.repo
+async function findAccessibleWorkspaces(serverStorage: ServerStorage, workspaceIds: string[]): Promise<Workspace[]> {
+	return serverStorage.repo
 		.on(workspaceSchema)
 		.all()
-		.where((query) =>
-			pagination.beforeId === undefined
-				? query.in(workspaceSchema.fields.id, workspaceIds)
-				: query.and([
-						(clause) => clause.in(workspaceSchema.fields.id, workspaceIds),
-						(clause) => clause.lt(workspaceSchema.fields.id, pagination.beforeId),
-					]),
-		)
-
-	let query: PaginatedListQuery = baseQuery.orderBy('id', 'desc')
-	if (pagination.limit !== undefined) query = query.limit(pagination.limit)
-	if ('page' in pagination && pagination.page !== undefined) query = query.page(pagination.page)
-	return (await query.paginate()) as ServerPaginatedQueryEnvelope<Workspace>
+		.where((query) => query.in(workspaceSchema.fields.id, workspaceIds))
+		.orderBy('id', 'desc')
+		.find()
 }
 
 async function hydrateAccessibleWorkspaces(
@@ -207,6 +181,32 @@ async function assertUserExists(serverStorage: ServerStorage, userId: string): P
 
 async function assertWorkspaceExists(serverStorage: ServerStorage, workspaceId: string): Promise<Workspace> {
 	return serverStorage.repo.on(workspaceSchema).one().id(requireIdentifier(workspaceId, 'Workspace id is required')).required().find()
+}
+
+async function findUser(serverStorage: ServerStorage, userId: string): Promise<ServerUser | null> {
+	return serverStorage.repo.on(userSchema).one().id(requireIdentifier(userId, 'User id is required')).find()
+}
+
+async function findWorkspace(serverStorage: ServerStorage, workspaceId: string): Promise<Workspace | null> {
+	return serverStorage.repo.on(workspaceSchema).one().id(requireIdentifier(workspaceId, 'Workspace id is required')).find()
+}
+
+async function findActiveWorkspaceMember(
+	serverStorage: ServerStorage,
+	userId: string,
+	workspaceId: string,
+): Promise<WorkspaceMember | null> {
+	const members = await serverStorage.repo
+		.on(workspaceMemberSchema)
+		.all()
+		.where((query) =>
+			query.and([
+				(clause) => clause.eq(workspaceMemberSchema.fields.userId, requireIdentifier(userId, 'User id is required')),
+				(clause) => clause.eq(workspaceMemberSchema.fields.workspaceId, requireIdentifier(workspaceId, 'Workspace id is required')),
+			]),
+		)
+		.find()
+	return members.find(isActiveWorkspaceMember) ?? null
 }
 
 async function findActiveWorkspaceMembersForUser(serverStorage: ServerStorage, userId: string): Promise<WorkspaceMember[]> {
@@ -398,66 +398,13 @@ if (import.meta.vitest) {
 
 			const accessible = await listAccessibleWorkspaces({ serverStorage, userId: user.id })
 
-			expect(accessible.items.map(({ displayName }) => displayName)).toEqual([
-				'Empty Workspace',
-				'Second Workspace',
-				'First Workspace',
-			])
-			expect(accessible.items.map(({ id }) => id)).toEqual([emptyWorkspace.id, secondWorkspace.id, firstWorkspace.id])
-			expect(accessible.items[0]).toMatchObject({ ...emptyWorkspace, member: emptyMember, ownerRole: null, portfolios: [] })
-			expect(accessible.items[1]).toMatchObject({ ...secondWorkspace, member: secondMember, ownerRole: null })
-			expect(accessible.items[1]?.portfolios).toEqual([thirdPortfolio])
-			expect(accessible.items[2]).toMatchObject({ ...firstWorkspace, member: firstMember, ownerRole })
-			expect(accessible.items[2]?.portfolios).toEqual([firstPortfolio, secondPortfolio])
-			expect(accessible.pages).toEqual({ current: 1, start: 1, last: 1, previous: null, next: null })
-			expect(accessible.docs).toEqual({ limit: 3, total: 3, count: 3 })
-		})
-	}
-
-	async function testPaginatesAccessibleWorkspaces(): Promise<void> {
-		await withTempServerStorage(async (serverStorage) => {
-			const user = await createTestUser(serverStorage)
-			const firstWorkspace = await createWorkspace({ serverStorage, displayName: 'First Workspace', now: later(1) })
-			const secondWorkspace = await createWorkspace({ serverStorage, displayName: 'Second Workspace', now: later(2) })
-			const thirdWorkspace = await createWorkspace({ serverStorage, displayName: 'Third Workspace', now: later(3) })
-			await createWorkspaceMember({ serverStorage, workspaceId: firstWorkspace.id, userId: user.id, now: later(4) })
-			await createWorkspaceMember({ serverStorage, workspaceId: secondWorkspace.id, userId: user.id, now: later(5) })
-			await createWorkspaceMember({ serverStorage, workspaceId: thirdWorkspace.id, userId: user.id, now: later(6) })
-			await createPortfolioRegistryEntry({
-				serverStorage,
-				workspaceId: firstWorkspace.id,
-				displayName: 'First Portfolio',
-				coreStorageNamespace: 'first-portfolio',
-				now: later(7),
-			})
-			await createPortfolioRegistryEntry({
-				serverStorage,
-				workspaceId: secondWorkspace.id,
-				displayName: 'Second Portfolio',
-				coreStorageNamespace: 'second-portfolio',
-				now: later(8),
-			})
-			await createPortfolioRegistryEntry({
-				serverStorage,
-				workspaceId: thirdWorkspace.id,
-				displayName: 'Third Portfolio',
-				coreStorageNamespace: 'third-portfolio',
-				now: later(9),
-			})
-
-			const firstPage = await listAccessibleWorkspaces({ serverStorage, userId: user.id, query: { limit: 2 } })
-			const secondPage = await listAccessibleWorkspaces({
-				serverStorage,
-				userId: user.id,
-				query: { beforeId: firstPage.items[1]?.id, limit: 2 },
-			})
-
-			expect(firstPage.items.map(({ id }) => id)).toEqual([thirdWorkspace.id, secondWorkspace.id])
-			expect(firstPage.pages.next).toBe(2)
-			expect(firstPage.docs).toEqual({ limit: 2, total: 3, count: 2 })
-			expect(secondPage.items.map(({ id }) => id)).toEqual([firstWorkspace.id])
-			expect(secondPage.pages.next).toBeNull()
-			expect(secondPage.docs).toEqual({ limit: 2, total: 1, count: 1 })
+			expect(accessible.map(({ displayName }) => displayName)).toEqual(['Empty Workspace', 'Second Workspace', 'First Workspace'])
+			expect(accessible.map(({ id }) => id)).toEqual([emptyWorkspace.id, secondWorkspace.id, firstWorkspace.id])
+			expect(accessible[0]).toMatchObject({ ...emptyWorkspace, member: emptyMember, ownerRole: null, portfolios: [] })
+			expect(accessible[1]).toMatchObject({ ...secondWorkspace, member: secondMember, ownerRole: null })
+			expect(accessible[1]?.portfolios).toEqual([thirdPortfolio])
+			expect(accessible[2]).toMatchObject({ ...firstWorkspace, member: firstMember, ownerRole })
+			expect(accessible[2]?.portfolios).toEqual([firstPortfolio, secondPortfolio])
 		})
 	}
 
@@ -469,8 +416,7 @@ if (import.meta.vitest) {
 
 			const accessible = await listAccessibleWorkspaces({ serverStorage, userId: user.id })
 
-			expect(accessible.items).toEqual([{ ...workspace, member, ownerRole: null, portfolios: [] }])
-			expect(await hasAccessibleWorkspacePortfolios({ serverStorage, userId: user.id })).toBe(false)
+			expect(accessible).toEqual([{ ...workspace, member, ownerRole: null, portfolios: [] }])
 		})
 	}
 
@@ -493,8 +439,7 @@ if (import.meta.vitest) {
 				.required()
 				.update({ membershipEndedAt: later(3).toISOString() })
 
-			expect(await listAccessibleWorkspaces({ serverStorage, userId: user.id })).toEqual(emptyServerPaginatedQueryEnvelope())
-			expect(await hasAccessibleWorkspacePortfolios({ serverStorage, userId: user.id })).toBe(false)
+			expect(await listAccessibleWorkspaces({ serverStorage, userId: user.id })).toEqual([])
 		})
 	}
 
@@ -510,15 +455,46 @@ if (import.meta.vitest) {
 		})
 	}
 
+	async function testValidatesWorkspaceOwnerAccess(): Promise<void> {
+		await withTempServerStorage(async (serverStorage) => {
+			const owner = await createTestUser(serverStorage)
+			const memberUser = await createUser({ serverStorage, now: later(1) })
+			const workspace = await createWorkspace({ serverStorage, displayName: 'Workspace', now: later(2) })
+			const ownerMember = await createWorkspaceMember({ serverStorage, workspaceId: workspace.id, userId: owner.id, now: later(3) })
+			const member = await createWorkspaceMember({ serverStorage, workspaceId: workspace.id, userId: memberUser.id, now: later(4) })
+			const ownerRole = await assignWorkspaceOwnerRole({ serverStorage, workspaceMemberId: ownerMember.id, now: later(5) })
+
+			await expect(validateWorkspaceOwnerAccess({ serverStorage, userId: owner.id, workspaceId: workspace.id })).resolves.toEqual({
+				authorized: true,
+				workspace,
+				workspaceMember: ownerMember,
+				workspaceOwnerRole: ownerRole,
+			})
+			await expect(
+				validateWorkspaceOwnerAccess({ serverStorage, userId: memberUser.id, workspaceId: workspace.id }),
+			).resolves.toEqual({ authorized: false, reason: 'not-active-owner' })
+
+			await serverStorage.repo
+				.on(workspaceMemberSchema)
+				.one()
+				.id(member.id)
+				.required()
+				.update({ membershipEndedAt: later(6).toISOString() })
+			await expect(
+				validateWorkspaceOwnerAccess({ serverStorage, userId: memberUser.id, workspaceId: workspace.id }),
+			).resolves.toEqual({ authorized: false, reason: 'not-active-member' })
+		})
+	}
+
 	describe('Workspace registry module', () => {
 		it(
 			'creates Workspace, Workspace Member, Workspace Owner role, and Portfolio Registry Entry records',
 			testCreatesWorkspaceRegistryRecords,
 		)
 		it('lists accessible Workspaces for an Active Member in Workspace id-desc order', testListsAccessibleWorkspaces)
-		it('paginates accessible Workspaces by Workspace id', testPaginatesAccessibleWorkspaces)
 		it('includes Active Member Workspaces without accessible Portfolios', testIncludesEmptyWorkspaceWithoutAccessiblePortfolios)
 		it('excludes inactive Workspace Members from accessible Workspaces', testExcludesInactiveWorkspaceMembers)
 		it('does not duplicate an active Workspace Owner role assignment', testOwnerRoleAssignmentIsIdempotentWhileActive)
+		it('validates target Workspace Owner access', testValidatesWorkspaceOwnerAccess)
 	})
 }

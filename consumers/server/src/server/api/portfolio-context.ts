@@ -138,7 +138,8 @@ if (import.meta.vitest) {
 	const { createUser } = await import('../modules/identities')
 	const { buildSelectionCookie } = await import('../modules/selection-cookie')
 	const { sessionCookieName, createSession } = await import('../modules/sessions')
-	const { provisionWorkspaceWithDefaultPortfolio } = await import('../modules/workspace-provisioning')
+	const { createPortfolioForWorkspace } = await import('../modules/portfolio-creation')
+	const { createWorkspaceForUser } = await import('../modules/workspace-creation')
 	const { createServerApiContext } = await import('./context')
 
 	const { cleanupTempServerStorage, createTempServerDataDir } = createTempServerStorageTestHarness('gorchestra-server-portfolio-context-')
@@ -281,16 +282,17 @@ if (import.meta.vitest) {
 			signingKey: sessionSigningKey,
 			generateSessionId: () => fixtureSessionId,
 		})
-		const provisioned = await provisionWorkspaceWithDefaultPortfolio({
+		const createdWorkspace = await createWorkspaceForUser({ serverStorage, userId: user.id, displayName: 'Workspace', now })
+		const portfolio = await createPortfolioForWorkspace({
 			serverStorage,
-			userId: user.id,
-			workspaceDisplayName: 'Workspace',
-			portfolioDisplayName: 'Portfolio',
+			workspaceId: createdWorkspace.workspace.id,
+			displayName: 'Portfolio',
 			corePortfolioStorage: apiContext.corePortfolioStorage,
 			now,
 			secretEncryptionKey: apiContext.security.secretEncryptionKey,
 			coreStorageNamespaceFactory: () => `portfolios/${crypto.randomUUID()}`,
 		})
+		const provisioned = { ...createdWorkspace, portfolio }
 		const selection = buildSelectionCookie({
 			workspaceId: provisioned.workspace.id,
 			portfolioId: provisioned.portfolio.id,

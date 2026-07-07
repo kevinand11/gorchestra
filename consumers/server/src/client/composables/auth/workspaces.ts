@@ -1,19 +1,26 @@
-import { computed, ref } from 'vue'
+import { computed, ref, type Ref } from 'vue'
 
 import { useSetAuth } from './session'
-import { ProvisionWorkspaceFormDraft } from '../../forms/workspace'
-import { useApiAction } from '../core/action-state'
+import { PortfolioCreationFormDraft, WorkspaceCreationFormDraft } from '../../forms/workspace'
+import { useApiAction, useFetchAction } from '../core/action-state'
 import { useOverlay } from '../core/overlay'
-import { usePaginatedFetchAction } from '../core/paginated-fetch-action'
 import { useQueryCache } from '../core/query-cache'
 import { useServerApi, type ServerApi } from '../core/server-api'
 
-type Workspace = Awaited<ReturnType<ServerApi['listWorkspaces']>>['items'][number]
-type ProvisionDefaultWorkspaceResponse = Awaited<ReturnType<ServerApi['provisionDefaultWorkspace']>>
+type Workspace = Awaited<ReturnType<ServerApi['listWorkspaces']>>[number]
+type Portfolio = Workspace['portfolios'][number]
+type CreatedWorkspace = Awaited<ReturnType<ServerApi['createWorkspace']>>
+type CreatedPortfolio = Awaited<ReturnType<ServerApi['createWorkspacePortfolio']>>
 type SelectionAccess = Awaited<ReturnType<ServerApi['setSelection']>>
+type QueryCacheAccess = ReturnType<typeof useQueryCache>
 
-type DefaultWorkspaceProvisionOptions = {
-	onSuccess?: (response: ProvisionDefaultWorkspaceResponse) => void | Promise<void>
+type WorkspaceCreationOptions = {
+	onSuccess?: (workspace: CreatedWorkspace) => void | Promise<void>
+}
+
+type WorkspacePortfolioCreationOptions = {
+	workspaces: Readonly<Ref<readonly Workspace[]>>
+	onSuccess?: (portfolio: CreatedPortfolio) => void | Promise<void>
 }
 
 type PortfolioSelectionOptions = {
@@ -24,18 +31,19 @@ export function useWorkspacesList() {
 	const serverApi = useServerApi()
 	const { queryKeys } = useQueryCache()
 	const {
-		items: workspaces,
+		data: workspaces,
 		isLoading: isLoadingWorkspaces,
 		error: workspacesError,
 		hasExecuted: hasLoadedWorkspaces,
-		fetchNext: fetchNextWorkspaces,
-		hasNext: hasNextWorkspaces,
-	} = usePaginatedFetchAction<Workspace>((input) => serverApi.listWorkspaces(input), {
+		execute: refreshWorkspaces,
+	} = useFetchAction(() => serverApi.listWorkspaces(), {
 		queryKey: queryKeys.workspaces(),
+		initialData: [] as Workspace[],
 	})
 	const isRefreshingWorkspaces = computed(() => isLoadingWorkspaces.value && hasLoadedWorkspaces.value)
 	const hasSelectablePortfolios = computed(() => workspaces.value.some((workspace) => workspace.portfolios.length > 0))
 	const hasNoSelectablePortfolios = computed(() => hasLoadedWorkspaces.value && !hasSelectablePortfolios.value)
+	const hasNoWorkspaces = computed(() => hasLoadedWorkspaces.value && workspaces.value.length === 0)
 
 	return {
 		workspaces,
@@ -43,42 +51,87 @@ export function useWorkspacesList() {
 		workspacesError,
 		hasLoadedWorkspaces,
 		isRefreshingWorkspaces,
-		fetchNextWorkspaces,
-		hasNextWorkspaces,
+		refreshWorkspaces,
 		hasSelectablePortfolios,
 		hasNoSelectablePortfolios,
+		hasNoWorkspaces,
 	}
 }
 
-export function useDefaultWorkspaceProvision(options: DefaultWorkspaceProvisionOptions = {}) {
+export function useWorkspaceCreation(options: WorkspaceCreationOptions = {}) {
 	const serverApi = useServerApi()
-	const { setSelection } = useSetAuth()
 	const queryCache = useQueryCache()
 	const { queryKeys } = queryCache
 	const { toast } = useOverlay()
-	const provisionWorkspaceForm = new ProvisionWorkspaceFormDraft()
+	const workspaceCreationForm = new WorkspaceCreationFormDraft()
 	const {
-		isLoading: isProvisioningWorkspace,
-		error: provisionWorkspaceError,
-		execute: provisionWorkspace,
-		reset: resetProvisionWorkspace,
+		isLoading: isCreatingWorkspace,
+		error: createWorkspaceError,
+		execute: createWorkspace,
+		reset: resetCreateWorkspace,
 	} = useApiAction(async () => {
-		const response = await serverApi.provisionDefaultWorkspace(provisionWorkspaceForm.toModel())
+		const workspace = await serverApi.createWorkspace(workspaceCreationForm.toModel())
 		queryCache.invalidate(queryKeys.workspaces())
-		setSelection({
-			selected: true,
-			selection: response.selection,
-			workspace: response.workspace,
-			workspaceMember: response.workspaceMember,
-			portfolio: response.portfolio,
-			activeWorkspaceOwnerRole: response.workspaceOwnerRole,
-		})
-		toast.success({ title: 'Workspace created and Portfolio selected.' })
-		await options.onSuccess?.(response)
-		return response
+		workspaceCreationForm.reset()
+		toast.success({ title: 'Workspace created.', body: workspace.displayName })
+		await options.onSuccess?.(workspace)
+		return workspace
 	})
 
-	return { provisionWorkspaceForm, isProvisioningWorkspace, provisionWorkspaceError, provisionWorkspace, resetProvisionWorkspace }
+	return { workspaceCreationForm, isCreatingWorkspace, createWorkspaceError, createWorkspace, resetCreateWorkspace }
+}
+
+export function useWorkspacePortfolioCreation(options: WorkspacePortfolioCreationOptions) {
+	const serverApi = useServerApi()
+	const queryCache = useQueryCache()
+	const { toast } = useOverlay()
+	const portfolioCreationForm = new PortfolioCreationFormDraft()
+	const portfolioCreationWorkspaceId = ref<string | null>(null)
+	const {
+		isLoading: isCreatingPortfolio,
+		error: createPortfolioError,
+		execute: createPortfolio,
+		reset: resetCreatePortfolio,
+	} = useApiAction(async () => {
+		const workspaceId = requireActiveWorkspaceId(portfolioCreationWorkspaceId.value)
+		const portfolio = await serverApi.createWorkspacePortfolio(workspaceId, portfolioCreationForm.toModel())
+		writePortfolioToWorkspaceCache(queryCache, options.workspaces.value, portfolio)
+		portfolioCreationForm.reset()
+		portfolioCreationWorkspaceId.value = null
+		toast.success({ title: 'Portfolio created.', body: portfolio.displayName })
+		await options.onSuccess?.(portfolio)
+		return portfolio
+	})
+
+	function openPortfolioCreation(workspaceId: string): void {
+		if (portfolioCreationWorkspaceId.value !== workspaceId) {
+			resetCreatePortfolio()
+			portfolioCreationForm.reset()
+		}
+		portfolioCreationWorkspaceId.value = workspaceId
+	}
+
+	function closePortfolioCreation(): void {
+		resetCreatePortfolio()
+		portfolioCreationForm.reset()
+		portfolioCreationWorkspaceId.value = null
+	}
+
+	function isPortfolioCreationOpen(workspaceId: string): boolean {
+		return portfolioCreationWorkspaceId.value === workspaceId
+	}
+
+	return {
+		portfolioCreationForm,
+		portfolioCreationWorkspaceId,
+		isCreatingPortfolio,
+		createPortfolioError,
+		createPortfolio,
+		resetCreatePortfolio,
+		openPortfolioCreation,
+		closePortfolioCreation,
+		isPortfolioCreationOpen,
+	}
 }
 
 export function usePortfolioSelection(options: PortfolioSelectionOptions = {}) {
@@ -121,6 +174,30 @@ export function usePortfolioSelection(options: PortfolioSelectionOptions = {}) {
 		isSelectingThisPortfolio,
 		portfolioSelectionError,
 	}
+}
+
+function writePortfolioToWorkspaceCache(queryCache: QueryCacheAccess, cachedWorkspaces: readonly Workspace[], portfolio: Portfolio): void {
+	let foundWorkspace = false
+	const nextWorkspaces = cachedWorkspaces.map((workspace) => {
+		if (workspace.id !== portfolio.workspaceId) return workspace
+		foundWorkspace = true
+		return {
+			...workspace,
+			portfolios: [portfolio, ...workspace.portfolios.filter((existingPortfolio) => existingPortfolio.id !== portfolio.id)],
+		}
+	})
+
+	if (!foundWorkspace) {
+		queryCache.invalidate(queryCache.queryKeys.workspaces())
+		return
+	}
+
+	queryCache.set(queryCache.queryKeys.workspaces(), nextWorkspaces)
+}
+
+function requireActiveWorkspaceId(workspaceId: string | null): string {
+	if (workspaceId === null) throw new Error('Choose a Workspace before creating a Portfolio')
+	return workspaceId
 }
 
 function portfolioActionKey(workspaceId: string, portfolioId: string): string {
