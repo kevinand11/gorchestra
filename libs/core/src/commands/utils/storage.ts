@@ -54,11 +54,13 @@ import {
 	type StorageBoundaryError,
 } from '../../storage/helpers'
 import type { CoreIdStorageRecord } from '../../storage/schemas'
+import { secretIdsFromRuntimeRequirements, validateRuntimeRequirementSecretReferences } from '../../utils/runtime-requirement-secrets'
 import { auditStamp, nextId, runtimeRecord } from '../../utils/runtime-values'
 import type { Result } from '../../utils/types'
 import type { CommandContext } from '../types'
 
 export { auditStamp, createRecord, getRecord, getRequired, listRecords, nextId, notFound, runtimeRecord, updateRecord, withTransaction }
+export { secretIdsFromRuntimeRequirements, validateRuntimeRequirementSecretReferences }
 
 export type { StorageBoundaryError }
 
@@ -520,10 +522,6 @@ export function secretReferencesFromModelProviderConfig(auth: ModelProviderAuth 
 	])
 }
 
-export function secretIdsFromRuntimeRequirements(requirements: AgentRunRuntimeRequirement[]): Id[] {
-	return uniqueIds(requirements.flatMap(secretIdsFromRuntimeRequirement))
-}
-
 export async function validateAgentRunProfileConfig(
 	storage: CoreStorage,
 	input: { modelUse: ModelUseConfig; runtimeRequirements: AgentRunRuntimeRequirement[]; sandboxConfig: AgentRunSandboxConfig },
@@ -550,13 +548,6 @@ export async function validateAgentRunProfileConfig(
 	return validateSandboxConfigSecretReferences(storage, input.sandboxConfig)
 }
 
-export function validateRuntimeRequirementSecretReferences(
-	storage: CoreStorage,
-	requirements: AgentRunRuntimeRequirement[],
-): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError | ArchivedSecretReferenceError>> {
-	return validateActiveSecretReferences(storage, secretIdsFromRuntimeRequirements(requirements))
-}
-
 export function validateSandboxConfigSecretReferences(
 	storage: CoreStorage,
 	config: AgentRunSandboxConfig,
@@ -569,17 +560,6 @@ export function validateSandboxConfigSecretReferences(
 			return validateActiveSecretReferences(storage, secretIdsFromVercelCredentials(config.source.credentials))
 		default:
 			throw new Error(`Unexpected Agent Run Sandbox source type: ${String(config.source satisfies never)}`)
-	}
-}
-
-function secretIdsFromRuntimeRequirement(requirement: AgentRunRuntimeRequirement): Id[] {
-	switch (requirement.type) {
-		case 'environment-secret':
-			return [requirement.secretId]
-		case 'run-command':
-			return Object.values(requirement.commandSecretEnv)
-		default:
-			throw new Error(`Unexpected Agent Run Runtime Requirement type: ${String(requirement satisfies never)}`)
 	}
 }
 

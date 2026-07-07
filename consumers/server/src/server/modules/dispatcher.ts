@@ -178,12 +178,9 @@ export function createServerDispatcher(input: CreateServerDispatcherInput) {
 					if (!result.ok) globalThis.console.error('Agent Run model turn work failed', result.error)
 					return
 				}
-				case 'agent-run-sandbox-preparation': {
-					const result = await opened.value.work.prepareAgentRunSandbox(
-						{ agentRunId: item.request.agentRunId },
-						{ correlationId: null },
-					)
-					if (!result.ok) globalThis.console.error('Agent Run sandbox preparation work failed', result.error)
+				case 'agent-run-preparation': {
+					const result = await opened.value.work.prepareAgentRun({ agentRunId: item.request.agentRunId }, { correlationId: null })
+					if (!result.ok) globalThis.console.error('Agent Run preparation work failed', result.error)
 					return
 				}
 				case 'agent-run-sandbox-release': {

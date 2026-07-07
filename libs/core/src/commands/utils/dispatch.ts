@@ -1,8 +1,6 @@
-import type { AgentRun, AgentRunPurpose } from '../../domain/agent-run'
-import { nonEmptyTrimmedStringPipe, type Id, type RuntimeRecord } from '../../domain/commons'
+import { nonEmptyTrimmedStringPipe, type Id } from '../../domain/commons'
 import type { InvalidCoreServiceOutputError } from '../../errors'
-import type { CoreDispatchRequest, CoreServices, CoreStorage, DispatchCoordinationClaim } from '../../services'
-import { completeSingleAgentRunByPurpose, getSingleAgentRunByPurpose, type AgentRunCompletionError } from '../../utils/agent-runs'
+import type { CoreDispatchRequest, CoreServices, DispatchCoordinationClaim } from '../../services'
 import type { Result } from '../../utils/types'
 import { validateCoreServiceOutput } from '../../validation'
 
@@ -39,13 +37,13 @@ export async function acceptDispatchRequest(
 	return validateCoreServiceOutput(nonEmptyTrimmedStringPipe, marker, 'dispatcher', 'request')
 }
 
-export function acceptAgentRunSandboxPreparation(
+export function acceptAgentRunPreparation(
 	dispatcher: CoreServices['dispatcher'],
 	agentRunId: Id,
-	reason: Extract<CoreDispatchRequest, { type: 'agent-run-sandbox-preparation' }>['reason'],
+	reason: Extract<CoreDispatchRequest, { type: 'agent-run-preparation' }>['reason'],
 ): Promise<Result<string, InvalidCoreServiceOutputError>> {
 	return acceptDispatchRequest(dispatcher, {
-		type: 'agent-run-sandbox-preparation',
+		type: 'agent-run-preparation',
 		agentRunId,
 		coordinationClaims: [exclusiveAgentRunClaim(agentRunId)],
 		reason,
@@ -75,21 +73,4 @@ export function acceptAgentRunSandboxRelease(
 		coordinationClaims: [exclusiveAgentRunClaim(agentRunId)],
 		reason: { type: '01k00000000000000000100019' },
 	})
-}
-
-export async function completeAgentRunByPurposeAndAcceptSandboxRelease(
-	storage: CoreStorage,
-	dispatcher: CoreServices['dispatcher'],
-	purpose: AgentRunPurpose,
-	completed: RuntimeRecord,
-): Promise<Result<{ agentRun: AgentRun; dispatchMarker: string | null }, AgentRunCompletionError | InvalidCoreServiceOutputError>> {
-	const current = await getSingleAgentRunByPurpose(storage, purpose)
-	if (!current.ok) return current
-	if (current.value.completed !== null) return { ok: true, value: { agentRun: current.value, dispatchMarker: null } }
-
-	const agentRun = await completeSingleAgentRunByPurpose(storage, purpose, completed)
-	if (!agentRun.ok) return agentRun
-
-	const dispatchMarker = await acceptAgentRunSandboxRelease(dispatcher, agentRun.value.id)
-	return dispatchMarker.ok ? { ok: true, value: { agentRun: agentRun.value, dispatchMarker: dispatchMarker.value } } : dispatchMarker
 }

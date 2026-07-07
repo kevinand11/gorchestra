@@ -5,14 +5,14 @@ import type { AgentRunEvent } from '../domain/agent-run'
 import { idPipe, nonEmptyTrimmedStringPipe, type AuditStamp, type Id, type RuntimeRecord } from '../domain/commons'
 import type { Plan, PlanWithPlanningAgentRun } from '../domain/plan'
 import type { Project } from '../domain/project'
-import type { InvalidInputError } from '../errors'
+import type { ArchivedSecretReferenceError, InvalidInputError } from '../errors'
 import type { CoreRuntime } from '../runtime'
+import { acceptAgentRunModelTurn } from './utils/dispatch'
 import { planningInstructionForProject } from '../runtime/agent-runs/instructions'
 import type { CoreDispatchRequest, CoreStorage } from '../services'
-import { appendAgentRunEvent, createInstructedModelAgentRunAndRequestSandboxPreparation } from '../utils/agent-run-events'
+import { appendAgentRunEvent, createInstructedModelAgentRunAndRequestPreparation } from '../utils/agent-runs'
 import type { CoreRuntimeValues } from '../utils/runtime-values'
 import type { Result as CoreResult } from '../utils/types'
-import { acceptAgentRunModelTurn } from './utils/dispatch'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { buildCommandHandler } from './utils/handler'
 import {
@@ -35,7 +35,7 @@ const createPlanInputPipe = v.object({
 export type Input = PipeOutput<typeof createPlanInputPipe>
 
 export type Result = PlanWithPlanningAgentRun
-export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
+export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError | ArchivedSecretReferenceError
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreatePlanCommand(runtime: CoreRuntime): Operation {
@@ -175,7 +175,7 @@ async function writePlanningAgentRun(
 	plan: Plan,
 	facts: PlanCreationFacts,
 ): Promise<CoreResult<DispatchedPlanCreation, Exclude<Error, InvalidInputError>>> {
-	const created = await createInstructedModelAgentRunAndRequestSandboxPreparation(
+	const created = await createInstructedModelAgentRunAndRequestPreparation(
 		{ values: facts.runtimeValues, dispatcher: runtime.services.dispatcher },
 		storage,
 		{
@@ -282,7 +282,7 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('requests sandbox preparation and initial model turn dispatch and readies them after commit', async () => {
+		it('requests Agent Run preparation and initial model turn dispatch and readies them after commit', async () => {
 			const dispatches: CoreDispatchRequest[] = []
 			const readyMarkers: string[] = []
 			const options = createTestCoreServices({
@@ -306,7 +306,7 @@ if (import.meta.vitest) {
 			expect(result).toMatchObject({ ok: true })
 			expect(dispatches).toEqual([
 				{
-					type: 'agent-run-sandbox-preparation',
+					type: 'agent-run-preparation',
 					agentRunId: '01k00000000000000000010002',
 					coordinationClaims: [
 						{
@@ -384,7 +384,7 @@ if (import.meta.vitest) {
 			sourceRuntimeRequirements: [],
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
-			blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
+			blocked: { type: 'preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
 			sandbox: null,
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,

@@ -14,7 +14,7 @@ import type {
 import type { CoreRuntime } from '../runtime'
 import { managedSandboxProviderForConfig, type SandboxProviderResolutionError } from '../runtime/sandboxes'
 import { getRequired, updateRecord } from '../storage/helpers'
-import { appendAgentRunEvent } from '../utils/agent-run-events'
+import { appendAgentRunEvent } from '../utils/agent-runs'
 import { runtimeRecord } from '../utils/runtime-values'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 

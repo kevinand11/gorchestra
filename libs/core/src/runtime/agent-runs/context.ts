@@ -57,9 +57,9 @@ function modelVisibleMessages(event: AgentRunEvent): ModelMessage[] {
 		case 'agent-run-model-use-override-changed':
 		case 'agent-run-runtime-requirement-override-added':
 		case 'agent-run-sandbox-created':
-		case 'agent-run-sandbox-preparation-started':
-		case 'agent-run-sandbox-preparation-completed':
-		case 'agent-run-sandbox-preparation-failed':
+		case 'agent-run-preparation-started':
+		case 'agent-run-preparation-completed':
+		case 'agent-run-preparation-failed':
 		case 'agent-run-sandbox-release-completed':
 		case 'agent-run-sandbox-release-failed':
 		case 'turn-started':

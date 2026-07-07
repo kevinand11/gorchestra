@@ -1,6 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { CommandContext } from './types'
 import type { AgentRun, AgentRunEvent } from '../domain/agent-run'
 import { idPipe, type AuditStamp, type Id } from '../domain/commons'
 import type { Plan, PlanWithPlanningAgentRun } from '../domain/plan'
@@ -15,9 +14,9 @@ import type {
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
+import type { CommandContext } from './types'
 import { listRecords, notFound } from '../storage/helpers'
-import { getSingleAgentRunByPurpose } from '../utils/agent-runs'
-import { completeAgentRunByPurposeAndAcceptSandboxRelease } from './utils/dispatch'
+import { completeAgentRunByPurposeAndAcceptSandboxRelease, getSingleAgentRunByPurpose } from '../utils/agent-runs'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
 import { getRequired, updateRecordValue, withAuditStampTransaction } from './utils/storage'

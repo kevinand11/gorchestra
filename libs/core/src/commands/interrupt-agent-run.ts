@@ -1,6 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { CommandContext } from './types'
 import type { AgentRun, AgentRunEvent } from '../domain/agent-run'
 import { freeFormStringPipe, idPipe } from '../domain/commons'
 import type {
@@ -9,14 +8,14 @@ import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
-	PlanClosedError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
-import { appendAgentRunEvent } from '../utils/agent-run-events'
-import { requireInteractiveAgentRunTargetOpen } from '../utils/agent-run-targets'
+import type { CommandContext } from './types'
+import { requireInteractiveAgentRunOpen } from '../utils/agent-run-targets'
+import { appendAgentRunEvent } from '../utils/agent-runs'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
 import { getRequired, withAuditStampTransaction } from './utils/storage'
@@ -31,7 +30,6 @@ export type Error =
 	| StorageOperationFailedError
 	| ResourceNotFoundError
 	| InvariantViolationError
-	| PlanClosedError
 	| AgentRunNotInteractiveError
 	| AgentRunNotActiveError
 
@@ -80,7 +78,7 @@ async function validateInterruptibleAgentRunTarget(
 	storage: CoreStorage,
 	agentRun: AgentRun,
 ): Promise<CoreResult<AgentRun, Exclude<Error, InvalidInputError>>> {
-	return isInteractiveAgentRun(agentRun) ? requireInteractiveAgentRunTargetOpen(storage, agentRun.id) : { ok: true, value: agentRun }
+	return isInteractiveAgentRun(agentRun) ? requireInteractiveAgentRunOpen(storage, agentRun.id) : { ok: true, value: agentRun }
 }
 
 function isInteractiveAgentRun(agentRun: { purpose: { type: string } }): boolean {
@@ -94,8 +92,7 @@ function agentRunNotActive(agentRunId: string): CoreResult<never, AgentRunNotAct
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { context, createTestCoreRuntime, localStamp } = await import('../utils/test-helpers')
-	const { autonomousAgentRunFixture, planningAgentRunFixture, revisionPlanningAgentRunFixture } =
-		await import('./utils/agent-run-test-utils')
+	const { autonomousAgentRunFixture, planningAgentRunFixture } = await import('./utils/agent-run-test-utils')
 
 	describe('interruptAgentRun command', () => {
 		it('appends an operator interrupt for an active Planning Agent Run', async () => {
@@ -121,15 +118,6 @@ if (import.meta.vitest) {
 
 		it('rejects completed Autonomous Agent Runs', async () => {
 			const options = autonomousAgentRunFixture(true)
-			const command = createInterruptAgentRunCommand(createTestCoreRuntime(options))
-
-			const result = await command({ agentRunId: '01k00000000000000000000002', reason: null }, context)
-
-			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: '01k00000000000000000000002' } })
-		})
-
-		it('rejects revision-planning Agent Runs whose Revision Gate is closed', async () => {
-			const options = revisionPlanningAgentRunFixture(true)
 			const command = createInterruptAgentRunCommand(createTestCoreRuntime(options))
 
 			const result = await command({ agentRunId: '01k00000000000000000000002', reason: null }, context)

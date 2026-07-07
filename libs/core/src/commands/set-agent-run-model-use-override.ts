@@ -1,6 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { CommandContext } from './types'
 import type { AgentRunEvent } from '../domain/agent-run'
 import { idPipe, type AuditStamp } from '../domain/commons'
 import { modelUseConfigPipe } from '../domain/config'
@@ -14,14 +13,14 @@ import type {
 	InvalidInputError,
 	InvariantViolationError,
 	ModelThinkingLevelUnavailableError,
-	PlanClosedError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
-import { appendAgentRunEvent } from '../utils/agent-run-events'
-import { requireInteractiveAgentRunTargetOpen } from '../utils/agent-run-targets'
+import type { CommandContext } from './types'
+import { requireInteractiveAgentRunOpen } from '../utils/agent-run-targets'
+import { appendAgentRunEvent } from '../utils/agent-runs'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
 import {
@@ -46,7 +45,6 @@ export type Error =
 	| ArchivedModelProviderReferenceError
 	| ArchivedAgentRunProfileReferenceError
 	| ModelThinkingLevelUnavailableError
-	| PlanClosedError
 	| AgentRunNotInteractiveError
 	| AgentRunNotActiveError
 
@@ -64,7 +62,7 @@ async function setAgentRunModelUseOverride(
 	input: Input,
 	stamp: AuditStamp,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const agentRun = await requireInteractiveAgentRunTargetOpen(storage, input.agentRunId)
+	const agentRun = await requireInteractiveAgentRunOpen(storage, input.agentRunId)
 	if (!agentRun.ok) return agentRun
 
 	if (input.modelUse !== null) {
@@ -90,7 +88,7 @@ async function setAgentRunModelUseOverride(
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { context, createTestCoreRuntime, localStamp, seedSelectableModel } = await import('../utils/test-helpers')
-	const { planningAgentRunFixture, revisionPlanningAgentRunFixture } = await import('./utils/agent-run-test-utils')
+	const { planningAgentRunFixture } = await import('./utils/agent-run-test-utils')
 
 	describe('setAgentRunModelUseOverride command', () => {
 		it('sets a model-use override for an active Planning Agent Run', async () => {
@@ -166,19 +164,6 @@ if (import.meta.vitest) {
 			)
 
 			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-interactive', agentRunId: '01k00000000000000000000002' } })
-		})
-
-		it('rejects revision-planning Agent Runs whose Revision Gate is closed', async () => {
-			const options = revisionPlanningAgentRunFixture(true)
-			seedSelectableModel(options.tx, '01k00000000000000000000026')
-			const command = createSetAgentRunModelUseOverrideCommand(createTestCoreRuntime(options))
-
-			const result = await command(
-				{ agentRunId: '01k00000000000000000000002', modelUse: { modelId: '01k00000000000000000000026', thinkingLevel: 'none' } },
-				context,
-			)
-
-			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: '01k00000000000000000000002' } })
 		})
 	})
 }

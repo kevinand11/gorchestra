@@ -115,12 +115,12 @@ function eventTitle(event: AgentRunEvent): string {
 			return 'Runtime requirement override added'
 		case 'agent-run-sandbox-created':
 			return 'Sandbox created'
-		case 'agent-run-sandbox-preparation-started':
-			return 'Sandbox preparation started'
-		case 'agent-run-sandbox-preparation-completed':
-			return 'Sandbox preparation completed'
-		case 'agent-run-sandbox-preparation-failed':
-			return 'Sandbox preparation failed'
+		case 'agent-run-preparation-started':
+			return 'Agent Run preparation started'
+		case 'agent-run-preparation-completed':
+			return 'Agent Run preparation completed'
+		case 'agent-run-preparation-failed':
+			return 'Agent Run preparation failed'
 		case 'agent-run-sandbox-release-completed':
 			return 'Sandbox release completed'
 		case 'agent-run-sandbox-release-failed':
@@ -177,9 +177,9 @@ function eventSummary(event: AgentRunEvent): string {
 		case 'agent-run-model-use-override-changed':
 		case 'agent-run-runtime-requirement-override-added':
 		case 'agent-run-sandbox-created':
-		case 'agent-run-sandbox-preparation-started':
-		case 'agent-run-sandbox-preparation-completed':
-		case 'agent-run-sandbox-preparation-failed':
+		case 'agent-run-preparation-started':
+		case 'agent-run-preparation-completed':
+		case 'agent-run-preparation-failed':
 		case 'agent-run-sandbox-release-completed':
 		case 'agent-run-sandbox-release-failed':
 		case 'interrupt-requested':

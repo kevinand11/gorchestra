@@ -1,6 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { CommandContext } from './types'
 import type { AgentRunEvent } from '../domain/agent-run'
 import { freeFormStringPipe, idPipe, type AuditStamp, type Id } from '../domain/commons'
 import type {
@@ -15,7 +14,8 @@ import type {
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
-import { appendAgentRunEvent } from '../utils/agent-run-events'
+import type { CommandContext } from './types'
+import { appendAgentRunEvent } from '../utils/agent-runs'
 import { getPendingProposalForAgentRunPurpose, proposalRejectedProjectedParts } from '../utils/proposals'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'

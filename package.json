@@ -11,7 +11,7 @@
 		"lint:fix": "NODE_OPTIONS=--max-old-space-size=8192 eslint \"{src,libs,consumers}/**/*.ts\" --fix",
 		"format": "prettier --check .",
 		"format:fix": "prettier --write .",
-		"typecheck": "pnpm typecheck:ts && pnpm typecheck:packages",
+		"typecheck": "NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:ts && NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:packages",
 		"typecheck:ts": "tsc -b --pretty false",
 		"typecheck:packages": "pnpm -r --if-present typecheck",
 		"test": "pnpm -r --if-present test",

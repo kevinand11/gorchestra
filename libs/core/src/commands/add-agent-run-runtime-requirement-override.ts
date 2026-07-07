@@ -1,6 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { CommandContext } from './types'
 import type { AgentRunEvent } from '../domain/agent-run'
 import { agentRunRuntimeRequirementsPipe, firstDuplicateRuntimeRequirement, runtimeRequirementKey } from '../domain/agent-run-runtime'
 import { idPipe } from '../domain/commons'
@@ -15,9 +14,10 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import { appendAgentRunEvent } from '../utils/agent-run-events'
+import type { CommandContext } from './types'
+import { appendAgentRunEvent } from '../utils/agent-runs'
 import type { Result as CoreResult } from '../utils/types'
-import { acceptAgentRunSandboxPreparation } from './utils/dispatch'
+import { acceptAgentRunPreparation } from './utils/dispatch'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { buildCommandHandler } from './utils/handler'
 import {
@@ -90,11 +90,11 @@ export function createAddAgentRunRuntimeRequirementOverrideCommand(runtime: Core
 				const updated = await updateRecordValue('agent-run', storage, input.agentRunId, {
 					runtimeRequirementOverrides,
 					desiredRuntimeRequirements,
-					blocked: { type: 'sandbox-preparation-pending', blocked: blocked.value },
+					blocked: { type: 'preparation-pending', blocked: blocked.value },
 				})
 				if (!updated.ok) return updated
 
-				const dispatchMarker = await acceptAgentRunSandboxPreparation(runtime.services.dispatcher, input.agentRunId, {
+				const dispatchMarker = await acceptAgentRunPreparation(runtime.services.dispatcher, input.agentRunId, {
 					type: 'runtime-requirement-override-added',
 					eventId: event.value.id,
 				})
@@ -121,7 +121,7 @@ if (import.meta.vitest) {
 	const { context, createTestCoreRuntime, createTestCoreServices, seedSecret, testModelAgentRun } = await import('../utils/test-helpers')
 
 	describe('addAgentRunRuntimeRequirementOverride command', () => {
-		it('appends an override batch for active autonomous Agent Runs and dispatches sandbox preparation', async () => {
+		it('appends an override batch for active autonomous Agent Runs and dispatches Agent Run preparation', async () => {
 			const dispatches: unknown[] = []
 			const readyMarkers: string[] = []
 			const options = createTestCoreServices({
@@ -161,13 +161,13 @@ if (import.meta.vitest) {
 				value: { body: { type: 'agent-run-runtime-requirement-override-added' }, id: '01k00000000000000000010001' },
 			})
 			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')).toMatchObject({
-				blocked: { type: 'sandbox-preparation-pending' },
+				blocked: { type: 'preparation-pending' },
 				desiredRuntimeRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
 				runtimeRequirementOverrides: [{ eventId: '01k00000000000000000010001' }],
 			})
 			expect(dispatches).toEqual([
 				{
-					type: 'agent-run-sandbox-preparation',
+					type: 'agent-run-preparation',
 					agentRunId: '01k00000000000000000000002',
 					coordinationClaims: [
 						{

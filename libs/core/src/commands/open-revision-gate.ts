@@ -5,14 +5,14 @@ import type { AgentRun } from '../domain/agent-run'
 import { idPipe, type AuditStamp, type Id, type RuntimeRecord } from '../domain/commons'
 import type { FetchedFeedback, ReviewSurface, ReviewSurfaceScope } from '../domain/review-surface'
 import type { RevisionGate, RevisionScope } from '../domain/revision'
-import type { InvalidInputError, ReviewSurfaceAlreadyMergedError } from '../errors'
+import type { ArchivedSecretReferenceError, InvalidInputError, ReviewSurfaceAlreadyMergedError } from '../errors'
 import type { CoreRuntime } from '../runtime'
+import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { sourceControlRevisionPlanningInstruction } from '../runtime/agent-runs/instructions'
 import type { CoreStorage } from '../services'
-import { createInstructedModelAgentRunAndRequestSandboxPreparation } from '../utils/agent-run-events'
+import { createInstructedModelAgentRunAndRequestPreparation } from '../utils/agent-runs'
 import type { CoreRuntimeValues } from '../utils/runtime-values'
 import type { Result as CoreResult } from '../utils/types'
-import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { buildCommandHandler } from './utils/handler'
 import {
 	agentRunProfileSnapshot,
@@ -36,7 +36,12 @@ export interface Result {
 	feedback: FetchedFeedback[]
 }
 
-export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError | ReviewSurfaceAlreadyMergedError
+export type Error =
+	| InvalidInputError
+	| ConfigCommandReferenceError
+	| ConfigCommandStorageError
+	| ReviewSurfaceAlreadyMergedError
+	| ArchivedSecretReferenceError
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createOpenRevisionGateCommand(runtime: CoreRuntime): Operation {
@@ -160,7 +165,7 @@ async function writeOpenRevisionGateFacts(
 	const revisionGate = await createRecordValue('revision-gate', storage, facts.revisionGate)
 	if (!revisionGate.ok) return revisionGate
 
-	const created = await createInstructedModelAgentRunAndRequestSandboxPreparation(
+	const created = await createInstructedModelAgentRunAndRequestPreparation(
 		{ values: facts.runtimeValues, dispatcher: runtime.services.dispatcher },
 		storage,
 		{
@@ -244,7 +249,7 @@ if (import.meta.vitest) {
 			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010003')?.body).toEqual(revisionPlanningInstructionBody())
 		})
 
-		it('requests sandbox preparation only and readies it after commit', async () => {
+		it('requests Agent Run preparation only and readies it after commit', async () => {
 			const dispatches: unknown[] = []
 			const readyMarkers: string[] = []
 			const options = openDeliveryRevisionGateFixture(
@@ -271,7 +276,7 @@ if (import.meta.vitest) {
 			expect(result).toMatchObject({ ok: true })
 			expect(dispatches).toEqual([
 				{
-					type: 'agent-run-sandbox-preparation',
+					type: 'agent-run-preparation',
 					agentRunId: '01k00000000000000000010002',
 					coordinationClaims: [
 						{
@@ -357,6 +362,7 @@ if (import.meta.vitest) {
 
 	function openDeliveryRevisionGateFixture(options = createTestCoreServices()) {
 		seedDelivery(options.tx, '01k00000000000000000000008')
+		seedDeliveryArtifact(options, '01k00000000000000000000010', '01k00000000000000000000008')
 		seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
 		options.tx.reviewSurfaces.records.set('01k00000000000000000000037', deliveryReviewSurface())
 		return options
@@ -365,9 +371,28 @@ if (import.meta.vitest) {
 	function openSliceRevisionGateFixture(options = createTestCoreServices()) {
 		seedDelivery(options.tx, '01k00000000000000000000008')
 		seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000008')
+		seedSliceArtifact(options, '01k00000000000000000000045', '01k00000000000000000000042')
 		seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
 		options.tx.reviewSurfaces.records.set('01k00000000000000000000037', sliceReviewSurface())
 		return options
+	}
+
+	function seedDeliveryArtifact(options: ReturnType<typeof createTestCoreServices>, id: string, deliveryId: string) {
+		options.tx.deliveryArtifacts.records.set(id, {
+			id,
+			deliveryId,
+			config: { type: 'source-control', deliveryBranch: 'delivery-branch' },
+			created: { at: '2026-06-10T12:00:00.000Z' },
+		})
+	}
+
+	function seedSliceArtifact(options: ReturnType<typeof createTestCoreServices>, id: string, sliceId: string) {
+		options.tx.sliceArtifacts.records.set(id, {
+			id,
+			sliceId,
+			config: { type: 'source-control', sliceBranch: 'slice-branch' },
+			created: { at: '2026-06-10T12:00:00.000Z' },
+		})
 	}
 
 	function deliveryRevisionGate(): RevisionGate {
@@ -400,7 +425,7 @@ if (import.meta.vitest) {
 			sourceRuntimeRequirements: [],
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
-			blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
+			blocked: { type: 'preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
 			sandbox: null,
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,

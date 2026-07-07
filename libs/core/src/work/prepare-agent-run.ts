@@ -19,7 +19,7 @@ import { managedSandboxProviderForConfig, type SandboxProviderResolutionError } 
 import type { ManagedSandbox, ManagedSandboxError, ManagedSandboxProvider } from '../runtime/sandboxes/managed'
 import type { SandboxCommandOutput } from '../services'
 import { getRequired, updateRecord } from '../storage/helpers'
-import { appendAgentRunEvent } from '../utils/agent-run-events'
+import { appendAgentRunEvent } from '../utils/agent-runs'
 import { agentRunSandboxPrepared } from '../utils/agent-runs'
 import { runtimeRecord } from '../utils/runtime-values'
 import { resolveActiveSecretValues } from '../utils/secret-values'
@@ -39,18 +39,25 @@ export type Operation = (input: Input, context: WorkContext) => Promise<CoreResu
 
 const defaultSandboxCommandTimeoutMs = 10 * 60 * 1000
 
-type SandboxPreparationFailureTarget = Extract<NonNullable<AgentRun['blocked']>, { type: 'sandbox-preparation-failed' }>['target']
+type AgentRunPreparationFailureTarget = Extract<NonNullable<AgentRun['blocked']>, { type: 'preparation-failed' }>['target']
 type AgentRunSandbox = NonNullable<AgentRun['sandbox']>
 type AgentRunWithSandbox = AgentRun & { sandbox: AgentRunSandbox }
 
-export function createPrepareAgentRunSandboxOperation(runtime: CoreRuntime): Operation {
-	return buildWorkHandler('prepareAgentRunSandbox', inputPipe, (input: ParsedInput) => prepareAgentRunSandbox(runtime, input.agentRunId))
+export function createPrepareAgentRunOperation(runtime: CoreRuntime): Operation {
+	return buildWorkHandler('prepareAgentRun', inputPipe, (input: ParsedInput) => prepareAgentRun(runtime, input.agentRunId))
 }
 
-async function prepareAgentRunSandbox(runtime: CoreRuntime, agentRunId: Id): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
+async function prepareAgentRun(runtime: CoreRuntime, agentRunId: Id): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
 	const loaded = await getRequired('agent-run', runtime.services.storage, agentRunId)
 	if (!loaded.ok) return loaded
 	if (loaded.value.completed !== null) return { ok: true, value: undefined }
+	if (agentRunSandboxPrepared(loaded.value)) return { ok: true, value: undefined }
+
+	const started = await appendAgentRunEvent(runtime, runtime.services.storage, agentRunId, {
+		type: 'agent-run-preparation-started',
+		requestedThroughEventId: latestRuntimeOverrideEventId(loaded.value),
+	})
+	if (!started.ok) return started
 
 	const preparedSandbox = await ensureManagedSandbox(runtime, loaded.value)
 	if (!preparedSandbox.ok) {
@@ -62,12 +69,6 @@ async function prepareAgentRunSandbox(runtime: CoreRuntime, agentRunId: Id): Pro
 	}
 	if (preparedSandbox.value.agentRun.completed !== null) return { ok: true, value: undefined }
 	if (agentRunSandboxPrepared(preparedSandbox.value.agentRun)) return { ok: true, value: undefined }
-
-	const started = await appendAgentRunEvent(runtime, runtime.services.storage, agentRunId, {
-		type: 'agent-run-sandbox-preparation-started',
-		requestedThroughEventId: latestRuntimeOverrideEventId(preparedSandbox.value.agentRun),
-	})
-	if (!started.ok) return started
 
 	return applyRuntimeRequirements(runtime, preparedSandbox.value.agentRun, preparedSandbox.value.sandbox)
 }
@@ -379,9 +380,9 @@ async function completePreparation(
 	if (!updated.ok) return updated
 
 	const event = await appendAgentRunEvent(runtime, runtime.services.storage, agentRun.id, {
-		type: 'agent-run-sandbox-preparation-completed',
+		type: 'agent-run-preparation-completed',
 		appliedThroughEventId,
-		summary: 'Agent Run sandbox preparation completed.',
+		summary: 'Agent Run preparation completed.',
 	})
 	return event.ok ? { ok: true, value: updated.value } : event
 }
@@ -389,18 +390,18 @@ async function completePreparation(
 async function blockPreparationFailure(
 	runtime: CoreRuntime,
 	agentRun: AgentRun,
-	target: SandboxPreparationFailureTarget,
+	target: AgentRunPreparationFailureTarget,
 	summary: string,
 ): Promise<CoreResult<AgentRun, Exclude<Error, InvalidInputError>>> {
 	const blockedRecord = runtimeRecord(runtime.values)
 	if (!blockedRecord.ok) return blockedRecord
 
-	const blocked: AgentRun['blocked'] = { type: 'sandbox-preparation-failed', blocked: blockedRecord.value, target, summary }
+	const blocked: AgentRun['blocked'] = { type: 'preparation-failed', blocked: blockedRecord.value, target, summary }
 	const updated = await updateRecord('agent-run', runtime.services.storage, agentRun.id, { blocked })
 	if (!updated.ok) return updated
 
 	const event = await appendAgentRunEvent(runtime, runtime.services.storage, agentRun.id, {
-		type: 'agent-run-sandbox-preparation-failed',
+		type: 'agent-run-preparation-failed',
 		target,
 		summary,
 	})
@@ -416,17 +417,17 @@ if (import.meta.vitest) {
 	const { createTestCoreRuntime, createTestCoreServices, defaultAgentRunSandboxConfig, seedSecret, testModelAgentRun } =
 		await import('../utils/test-helpers')
 
-	describe('prepareAgentRunSandbox work operation', () => {
+	describe('prepareAgentRun work operation', () => {
 		it('validates input with the work boundary before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.agentRuns.fail.get = true
-			const operation = createPrepareAgentRunSandboxOperation(createTestCoreRuntime(options))
+			const operation = createPrepareAgentRunOperation(createTestCoreRuntime(options))
 
 			const result = await operation({ agentRunId: '' }, { correlationId: null })
 
 			expect(result).toMatchObject({
 				ok: false,
-				error: { type: 'invalid-input', boundary: 'work', operation: 'prepareAgentRunSandbox' },
+				error: { type: 'invalid-input', boundary: 'work', operation: 'prepareAgentRun' },
 			})
 			expect(options.transactionCalls()).toBe(0)
 		})
@@ -467,7 +468,7 @@ if (import.meta.vitest) {
 			options.tx.agentRuns.records.get('01k00000000000000000000002')!.desiredRuntimeRequirements = [
 				{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' },
 			]
-			const operation = createPrepareAgentRunSandboxOperation(createTestCoreRuntime(options))
+			const operation = createPrepareAgentRunOperation(createTestCoreRuntime(options))
 
 			const result = await operation({ agentRunId: '01k00000000000000000000002' }, { correlationId: null })
 
@@ -495,18 +496,18 @@ if (import.meta.vitest) {
 				},
 			})
 			options.tx.agentRuns.records.set('01k00000000000000000000002', testModelAgentRun())
-			const operation = createPrepareAgentRunSandboxOperation(createTestCoreRuntime(options))
+			const operation = createPrepareAgentRunOperation(createTestCoreRuntime(options))
 
 			const result = await operation({ agentRunId: '01k00000000000000000000002' }, { correlationId: null })
 
 			expect(result).toEqual({ ok: true, value: undefined })
 			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.blocked).toMatchObject({
-				type: 'sandbox-preparation-failed',
+				type: 'preparation-failed',
 				target: { type: 'sandbox' },
 				summary: 'Sandbox creation failed.',
 			})
 			expect(Array.from(options.tx.agentRunEvents.records.values()).at(-1)?.body).toMatchObject({
-				type: 'agent-run-sandbox-preparation-failed',
+				type: 'agent-run-preparation-failed',
 				target: { type: 'sandbox' },
 				summary: 'Sandbox creation failed.',
 			})
@@ -523,7 +524,7 @@ if (import.meta.vitest) {
 			})
 			options.tx.agentRuns.records.set('01k00000000000000000000002', {
 				...testModelAgentRun(),
-				blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
+				blocked: { type: 'preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
 				sandbox: {
 					key: '01k00000000000000000000002',
 					created: { at: '2026-06-10T12:00:00.000Z' },
@@ -535,7 +536,7 @@ if (import.meta.vitest) {
 					{ type: 'environment-secret', envName: 'GITHUB_TOKEN', secretId: '01k00000000000000000000040' },
 				],
 			})
-			const operation = createPrepareAgentRunSandboxOperation(createTestCoreRuntime(options))
+			const operation = createPrepareAgentRunOperation(createTestCoreRuntime(options))
 
 			const result = await operation({ agentRunId: '01k00000000000000000000002' }, { correlationId: null })
 
@@ -588,7 +589,7 @@ if (import.meta.vitest) {
 					},
 				],
 			})
-			const operation = createPrepareAgentRunSandboxOperation(createTestCoreRuntime(options))
+			const operation = createPrepareAgentRunOperation(createTestCoreRuntime(options))
 
 			const result = await operation({ agentRunId: '01k00000000000000000000002' }, { correlationId: null })
 

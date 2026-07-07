@@ -2,7 +2,7 @@ import type { AgentRunLiveEvent } from './live-events'
 import type { AgentRunRuntimeError, ModelAgentRunRuntime, RunModelAgentRunOptions } from './types'
 import type { AgentRunEvent } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
-import { appendAgentRunEvent } from '../../utils/agent-run-events'
+import { appendAgentRunEvent } from '../../utils/agent-runs'
 import type { Result } from '../../utils/types'
 
 export async function appendAndEmit(

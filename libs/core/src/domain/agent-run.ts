@@ -2,7 +2,7 @@ import { v, type PipeOutput } from 'valleyed'
 
 import {
 	agentRunBlockedPipe,
-	agentRunRuntimeRequirementApplicationTargetPipe,
+	agentRunPreparationFailureTargetPipe,
 	agentRunRuntimeRequirementsPipe,
 	agentRunSandboxConfigPipe,
 } from './agent-run-runtime'
@@ -453,18 +453,18 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 		type: v.eq('agent-run-sandbox-created'),
 		key: nonEmptyTrimmedStringPipe,
 	}),
-	'agent-run-sandbox-preparation-started': v.object({
-		type: v.eq('agent-run-sandbox-preparation-started'),
+	'agent-run-preparation-started': v.object({
+		type: v.eq('agent-run-preparation-started'),
 		requestedThroughEventId: v.nullable(idPipe),
 	}),
-	'agent-run-sandbox-preparation-completed': v.object({
-		type: v.eq('agent-run-sandbox-preparation-completed'),
+	'agent-run-preparation-completed': v.object({
+		type: v.eq('agent-run-preparation-completed'),
 		appliedThroughEventId: v.nullable(idPipe),
 		summary: freeFormStringPipe,
 	}),
-	'agent-run-sandbox-preparation-failed': v.object({
-		type: v.eq('agent-run-sandbox-preparation-failed'),
-		target: agentRunRuntimeRequirementApplicationTargetPipe,
+	'agent-run-preparation-failed': v.object({
+		type: v.eq('agent-run-preparation-failed'),
+		target: agentRunPreparationFailureTargetPipe,
 		summary: freeFormStringPipe,
 	}),
 	'agent-run-sandbox-release-completed': v.object({

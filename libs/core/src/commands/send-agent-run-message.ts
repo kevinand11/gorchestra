@@ -1,6 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { CommandContext } from './types'
 import { agentRunInputTranscriptPartsPipe, type AgentRunEvent } from '../domain/agent-run'
 import { idPipe } from '../domain/commons'
 import type {
@@ -9,16 +8,16 @@ import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
-	PlanClosedError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreDispatchRequest } from '../services'
-import { appendAgentRunEvent } from '../utils/agent-run-events'
-import { requireInteractiveAgentRunTargetOpen } from '../utils/agent-run-targets'
-import { acceptAgentRunModelTurn } from './utils/dispatch'
+import type { CommandContext } from './types'
+import { requireInteractiveAgentRunOpen } from '../utils/agent-run-targets'
+import { appendAgentRunEvent } from '../utils/agent-runs'
 import type { Result as CoreResult } from '../utils/types'
+import { acceptAgentRunModelTurn } from './utils/dispatch'
 import { buildCommandHandler } from './utils/handler'
 import { withAuditStampTransaction } from './utils/storage'
 
@@ -35,7 +34,6 @@ export type Error =
 	| StorageOperationFailedError
 	| ResourceNotFoundError
 	| InvariantViolationError
-	| PlanClosedError
 	| AgentRunNotInteractiveError
 	| AgentRunNotActiveError
 
@@ -52,7 +50,7 @@ export function createSendAgentRunMessageCommand(runtime: CoreRuntime): Operatio
 			runtime,
 			context,
 			async (storage, stamp): Promise<CoreResult<DispatchedAgentRunMessage, Exclude<Error, InvalidInputError>>> => {
-				const agentRun = await requireInteractiveAgentRunTargetOpen(storage, input.agentRunId)
+				const agentRun = await requireInteractiveAgentRunOpen(storage, input.agentRunId)
 				if (!agentRun.ok) return agentRun
 
 				const event = await appendAgentRunEvent(runtime, storage, input.agentRunId, {
@@ -78,7 +76,7 @@ export function createSendAgentRunMessageCommand(runtime: CoreRuntime): Operatio
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { context, createTestCoreRuntime, createTestCoreServices, localStamp } = await import('../utils/test-helpers')
-	const { planningAgentRunFixture, revisionPlanningAgentRunFixture } = await import('./utils/agent-run-test-utils')
+	const { planningAgentRunFixture } = await import('./utils/agent-run-test-utils')
 
 	describe('sendAgentRunMessage command', () => {
 		it('validates input before reading storage', async () => {
@@ -223,18 +221,6 @@ if (import.meta.vitest) {
 			)
 
 			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-interactive', agentRunId: '01k00000000000000000000002' } })
-		})
-
-		it('rejects revision-planning Agent Runs whose Revision Gate is closed', async () => {
-			const options = revisionPlanningAgentRunFixture(true)
-			const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
-
-			const result = await command(
-				{ agentRunId: '01k00000000000000000000002', parts: [{ type: 'text', text: 'No.', metadata: null }] },
-				context,
-			)
-
-			expect(result).toEqual({ ok: false, error: { type: 'agent-run-not-active', agentRunId: '01k00000000000000000000002' } })
 		})
 	})
 

@@ -3,7 +3,7 @@ import type { AgentRun, AgentRunProfileSnapshot, ExecutionMode } from '../../../
 import type { Id, RuntimeRecord } from '../../../domain/commons'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
 import { sourceControlSliceExecutionInstruction } from '../../../runtime/agent-runs/instructions'
-import { appendAgentRunEvent, createInstructedModelAgentRunAndRequestSandboxPreparation } from '../../../utils/agent-run-events'
+import { appendAgentRunEvent, createInstructedModelAgentRunAndRequestPreparation } from '../../../utils/agent-runs'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
 import type { Result as CoreResult } from '../../../utils/types'
 import type { DeliveryHandlerContext, DeliveryWorkResolution, DeliveryWorkHandlerResult } from '../../delivery-work/types'
@@ -32,7 +32,7 @@ async function writeSliceExecutionAgentRun(
 	context: DeliveryHandlerContext,
 	agentRun: SliceExecutionAgentRunInput,
 ): Promise<DeliveryWorkHandlerResult> {
-	const created = await createInstructedModelAgentRunAndRequestSandboxPreparation(
+	const created = await createInstructedModelAgentRunAndRequestPreparation(
 		{ values: context.values, dispatcher: context.services.dispatcher },
 		context.storage,
 		{
@@ -143,7 +143,7 @@ if (import.meta.vitest) {
 				sourceRuntimeRequirements: [],
 				runtimeRequirementOverrides: [],
 				desiredRuntimeRequirements: [],
-				blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
+				blocked: { type: 'preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
 				sandbox: null,
 				started: { at: '2026-06-10T12:00:00.000Z' },
 				completed: null,

@@ -81,7 +81,7 @@ export type CoreDispatchRequest =
 			reason: { type: 'input-appended'; inputEventId: Id }
 	  }
 	| {
-			type: 'agent-run-sandbox-preparation'
+			type: 'agent-run-preparation'
 			agentRunId: Id
 			coordinationClaims: DispatchCoordinationClaim[]
 			reason: { type: 'agent-run-created' } | { type: 'runtime-requirement-override-added'; eventId: Id }

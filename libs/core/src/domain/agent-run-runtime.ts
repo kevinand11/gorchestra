@@ -103,7 +103,7 @@ export function sandboxMemoryMiBForVcpus(vcpus: number): number {
 	return vcpus * 2048
 }
 
-export const agentRunRuntimeRequirementApplicationTargetPipe = v.discriminate((value) => value.type, {
+export const agentRunPreparationFailureTargetPipe = v.discriminate((value) => value.type, {
 	sandbox: v.object({ type: v.eq('sandbox') }),
 	'runtime-requirement': v.object({
 		type: v.eq('runtime-requirement'),
@@ -111,15 +111,15 @@ export const agentRunRuntimeRequirementApplicationTargetPipe = v.discriminate((v
 		requirement: agentRunRuntimeRequirementPipe,
 	}),
 })
-export type AgentRunRuntimeRequirementApplicationTarget = PipeOutput<typeof agentRunRuntimeRequirementApplicationTargetPipe>
+export type AgentRunPreparationFailureTarget = PipeOutput<typeof agentRunPreparationFailureTargetPipe>
 
 export const agentRunBlockedPipe = v.nullable(
 	v.discriminate((value) => value.type, {
-		'sandbox-preparation-pending': v.object({ type: v.eq('sandbox-preparation-pending'), blocked: runtimeRecordPipe }),
-		'sandbox-preparation-failed': v.object({
-			type: v.eq('sandbox-preparation-failed'),
+		'preparation-pending': v.object({ type: v.eq('preparation-pending'), blocked: runtimeRecordPipe }),
+		'preparation-failed': v.object({
+			type: v.eq('preparation-failed'),
 			blocked: runtimeRecordPipe,
-			target: agentRunRuntimeRequirementApplicationTargetPipe,
+			target: agentRunPreparationFailureTargetPipe,
 			summary: nonEmptyTrimmedStringPipe,
 		}),
 	}),

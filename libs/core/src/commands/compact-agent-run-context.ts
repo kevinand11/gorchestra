@@ -1,6 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { CommandContext } from './types'
 import { agentRunSystemTranscriptPartsPipe, type AgentRunEvent } from '../domain/agent-run'
 import { idPipe } from '../domain/commons'
 import type {
@@ -9,14 +8,14 @@ import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
-	PlanClosedError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
-import { appendAgentRunEvent } from '../utils/agent-run-events'
-import { requireInteractiveAgentRunTargetOpen } from '../utils/agent-run-targets'
+import type { CommandContext } from './types'
+import { requireInteractiveAgentRunOpen } from '../utils/agent-run-targets'
+import { appendAgentRunEvent } from '../utils/agent-runs'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
 import { getRequired, withAuditStampTransaction } from './utils/storage'
@@ -35,7 +34,6 @@ export type Error =
 	| StorageOperationFailedError
 	| ResourceNotFoundError
 	| InvariantViolationError
-	| PlanClosedError
 	| AgentRunNotInteractiveError
 	| AgentRunNotActiveError
 
@@ -44,7 +42,7 @@ export type Operation = (input: Input, context: CommandContext) => Promise<CoreR
 export function createCompactAgentRunContextCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('compactAgentRunContext', compactAgentRunContextInputPipe, (input, context) =>
 		withAuditStampTransaction(runtime, context, async (storage, stamp) => {
-			const agentRun = await requireInteractiveAgentRunTargetOpen(storage, input.agentRunId)
+			const agentRun = await requireInteractiveAgentRunOpen(storage, input.agentRunId)
 			if (!agentRun.ok) return agentRun
 
 			const compactedThrough = await validateCompactedThroughEvent(storage, input)
