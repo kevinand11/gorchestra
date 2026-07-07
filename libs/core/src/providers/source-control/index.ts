@@ -17,7 +17,7 @@ import type {
 import type { Id } from '../../domain/commons'
 import type { Repository } from '../../domain/repository'
 import type { CoreServices, ResolvableSecretValue } from '../../services'
-import { resolveSecretValueRefs } from '../../utils/secret-values'
+import { resolveSecretValueRefs } from '../../utils/secrets'
 import type { Result } from '../../utils/types'
 
 export interface SourceControlProviderImplementations {

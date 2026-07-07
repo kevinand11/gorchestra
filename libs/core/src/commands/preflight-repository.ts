@@ -8,14 +8,15 @@ import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	ResourceNotFoundError,
-	SecretNotActiveError,
+	ResourceArchivedError,
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreServices, CoreStorage, ResolvableSecretValue } from '../services'
+import { validateActiveSecret } from '../utils/secrets'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
-import { getRequired, validateActiveSecret, withTransaction } from './utils/storage'
+import { getRequired, withTransaction } from './utils/storage'
 
 const preflightRepositoryInputPipe = v.object({ repositoryId: idPipe })
 export type Input = PipeOutput<typeof preflightRepositoryInputPipe>
@@ -74,12 +75,12 @@ async function readRepositoryPreflightReadinessFromStorage(
 
 function mapAccessSecretFailure(
 	repository: Repository,
-	error: ResourceNotFoundError | SecretNotActiveError | StorageOperationFailedError | InvalidCoreServiceOutputError,
+	error: ResourceNotFoundError | ResourceArchivedError | StorageOperationFailedError | InvalidCoreServiceOutputError,
 ): CoreResult<RepositoryPreflightReadiness, RepositoryPreflightLocalError> {
 	if (error.type === 'not-found' && error.resource === 'secret') {
 		return { ok: true, value: { type: 'failed', summary: accessSecretSummary(repository, 'missing') } }
 	}
-	if (error.type === 'secret-not-active') {
+	if (error.type === 'resource-archived') {
 		return { ok: true, value: { type: 'failed', summary: accessSecretSummary(repository, 'inactive') } }
 	}
 

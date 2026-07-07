@@ -69,14 +69,14 @@ export interface ResourceNotFoundError {
 	id: Id
 }
 
-export interface AlreadyArchivedError {
-	type: 'already-archived'
+export interface ResourceArchivedError {
+	type: 'resource-archived'
 	resource: ArchivableCoreResource
 	id: Id
 }
 
-export interface NotArchivedError {
-	type: 'not-archived'
+export interface ResourceNotArchivedError {
+	type: 'resource-not-archived'
 	resource: ArchivableCoreResource
 	id: Id
 }
@@ -98,26 +98,6 @@ export interface DuplicateAgentRunRuntimeRequirementError {
 	requirement: AgentRunRuntimeRequirement
 }
 
-export interface ArchivedSecretReferenceError {
-	type: 'archived-secret-reference'
-	secretId: Id
-}
-
-export interface ArchivedModelReferenceError {
-	type: 'archived-model-reference'
-	modelId: Id
-}
-
-export interface ArchivedModelProviderReferenceError {
-	type: 'archived-model-provider-reference'
-	modelProviderId: Id
-}
-
-export interface ArchivedAgentRunProfileReferenceError {
-	type: 'archived-agent-run-profile-reference'
-	agentRunProfileId: Id
-}
-
 export interface InvariantViolationError {
 	type: 'invariant-violation'
 	message: string
@@ -137,11 +117,6 @@ export interface ModelNotSelectableError {
 	reason: ModelNotSelectableReason
 }
 
-export interface SecretNotActiveError {
-	type: 'secret-not-active'
-	secretId: Id
-}
-
 export interface SecretResolutionFailedError {
 	type: 'secret-resolution-failed'
 	secretId: Id
@@ -152,6 +127,11 @@ export type SandboxOperation = 'create' | 'find' | 'set-env' | 'run-command' | '
 export interface SandboxOperationFailedError {
 	type: 'sandbox-operation-failed'
 	operation: SandboxOperation
+	summary: string
+}
+
+export interface SandboxProviderResolutionFailedError {
+	type: 'sandbox-provider-resolution-failed'
 	summary: string
 }
 
@@ -212,6 +192,13 @@ export type InvalidPlanOutputError =
 	  }
 	| { type: 'invalid-plan-output'; reason: 'noop-memory-revision'; memoryId: Id }
 	| { type: 'invalid-plan-output'; reason: 'memory-supersession-cycle' }
+
+export interface RevisionConflictError {
+	type: 'revision-conflict'
+	memoryId: Id
+	expectedCurrentRevisionId: Id
+	actualCurrentRevisionId: Id
+}
 
 export interface RevisionGateClosedError {
 	type: 'revision-gate-closed'
@@ -303,34 +290,33 @@ export type CoreError =
 	| InvalidCoreServiceOutputError
 	| NotImplementedError
 	| ResourceNotFoundError
-	| AlreadyArchivedError
-	| NotArchivedError
+	| ResourceArchivedError
+	| ResourceNotArchivedError
 	| StorageOperationFailedError
 	| DuplicateAgentRunRuntimeRequirementError
 	| DuplicateLinkError
-	| ArchivedSecretReferenceError
-	| ArchivedModelReferenceError
-	| ArchivedModelProviderReferenceError
-	| ArchivedAgentRunProfileReferenceError
 	| InvariantViolationError
 	| ModelPreflightFailedError
 	| ModelNotSelectableError
-	| SecretNotActiveError
 	| SecretResolutionFailedError
 	| SandboxOperationFailedError
+	| SandboxProviderResolutionFailedError
 	| DeliveryPreflightClaimConflictError
 	| DuplicateRepositoryTargetError
 	| ProjectSourceTypeMismatchError
 	| DeliveryWorkStateMismatchError
 	| InvalidPlanOutputError
+	| RevisionConflictError
 	| RevisionGateClosedError
 	| DeliveryClosedError
+	| PlanClosedError
 	| ReviewSurfaceAlreadyMergedError
 	| AgentRunModelUnresolvedError
 	| AgentRunModelUseUnresolvedError
 	| ModelThinkingLevelUnavailableError
 	| AgentRunNotInteractiveError
 	| AgentRunNotActiveError
+	| AgentRunTurnActiveError
 	| ProposalAlreadyReviewedError
 	| ProposalTypeMismatchError
 	| AgentRunPurposeMismatchError

@@ -200,7 +200,7 @@ if (import.meta.vitest) {
 
 			expect(result).toEqual({
 				ok: false,
-				error: { type: 'archived-agent-run-profile-reference', agentRunProfileId: '01k00000000000000000000007' },
+				error: { type: 'resource-archived', resource: 'agent-run-profile', id: '01k00000000000000000000007' },
 			})
 		})
 

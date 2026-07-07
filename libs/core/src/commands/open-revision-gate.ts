@@ -5,7 +5,7 @@ import type { AgentRun } from '../domain/agent-run'
 import { idPipe, type AuditStamp, type Id, type RuntimeRecord } from '../domain/commons'
 import type { FetchedFeedback, ReviewSurface, ReviewSurfaceScope } from '../domain/review-surface'
 import type { RevisionGate, RevisionScope } from '../domain/revision'
-import type { ArchivedSecretReferenceError, InvalidInputError, ReviewSurfaceAlreadyMergedError } from '../errors'
+import type { InvalidInputError, ReviewSurfaceAlreadyMergedError, ResourceArchivedError } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { sourceControlRevisionPlanningInstruction } from '../runtime/agent-runs/instructions'
@@ -41,7 +41,7 @@ export type Error =
 	| ConfigCommandReferenceError
 	| ConfigCommandStorageError
 	| ReviewSurfaceAlreadyMergedError
-	| ArchivedSecretReferenceError
+	| ResourceArchivedError
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createOpenRevisionGateCommand(runtime: CoreRuntime): Operation {

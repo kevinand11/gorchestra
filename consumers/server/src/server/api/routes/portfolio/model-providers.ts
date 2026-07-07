@@ -149,7 +149,7 @@ function getSelectedModel(
 	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
 		const model = await core.queries.getModel({ modelId })
 		if (!model.ok) return throwCoreOperationError(model.error)
-		if (model.value.provider.id !== modelProviderId) throwCoreOperationError({ type: 'not-found', resource: 'model' })
+		if (model.value.provider.id !== modelProviderId) throwCoreOperationError({ type: 'not-found', resource: 'model', id: modelId })
 		return model.value
 	})
 }
@@ -285,7 +285,7 @@ async function ensureModelBelongsToProvider(
 	const model = await core.queries.getModel({ modelId })
 	if (!model.ok) return throwCoreOperationError(model.error)
 
-	if (model.value.provider.id !== modelProviderId) throwCoreOperationError({ type: 'not-found', resource: 'model' })
+	if (model.value.provider.id !== modelProviderId) throwCoreOperationError({ type: 'not-found', resource: 'model', id: modelId })
 }
 
 function commandContext(workspaceMemberId: string) {

@@ -4,19 +4,20 @@ import { createVercelSandboxProvider, type VercelCredentials } from './vercel'
 import type { AgentRunSandboxConfig, VercelSandboxCredentialsSecretRefs } from '../../domain/agent-run-runtime'
 import type {
 	InvalidCoreServiceOutputError,
+	ResourceArchivedError,
 	ResourceNotFoundError,
-	SecretNotActiveError,
+	SandboxProviderResolutionFailedError,
 	SecretResolutionFailedError,
 	StorageOperationFailedError,
 } from '../../errors'
 import type { CoreStorage } from '../../services'
-import { resolveActiveSecretValues } from '../../utils/secret-values'
+import { resolveActiveSecretValues } from '../../utils/secrets'
 import type { Result } from '../../utils/types'
 
 export type SandboxProviderResolutionError =
 	| InvalidCoreServiceOutputError
 	| StorageOperationFailedError
-	| { type: 'sandbox-provider-resolution-failed'; summary: string }
+	| SandboxProviderResolutionFailedError
 
 export async function managedSandboxProviderForConfig(
 	runtime: Pick<CoreRuntime, 'services'>,
@@ -66,10 +67,10 @@ async function resolveVercelCredentials(
 }
 
 function vercelCredentialValue(
-	values: Record<string, Result<string, ResourceNotFoundError | SecretNotActiveError | SecretResolutionFailedError>>,
+	values: Record<string, Result<string, ResourceNotFoundError | ResourceArchivedError | SecretResolutionFailedError>>,
 	secretId: string,
 	name: 'token' | 'team id' | 'project id',
-): Result<string, { type: 'sandbox-provider-resolution-failed'; summary: string }> {
+): Result<string, SandboxProviderResolutionFailedError> {
 	const value = values[secretId]
 	if (value === undefined) return failedVercelCredentialResolution(name)
 	if (value.ok) return { ok: true, value: value.value }
@@ -80,7 +81,7 @@ function vercelCredentialValue(
 				ok: false,
 				error: { type: 'sandbox-provider-resolution-failed', summary: `Vercel sandbox ${name} Secret is missing.` },
 			}
-		case 'secret-not-active':
+		case 'resource-archived':
 			return {
 				ok: false,
 				error: { type: 'sandbox-provider-resolution-failed', summary: `Vercel sandbox ${name} Secret is not active.` },
@@ -92,9 +93,7 @@ function vercelCredentialValue(
 	}
 }
 
-function failedVercelCredentialResolution(
-	name: 'token' | 'team id' | 'project id',
-): Result<never, { type: 'sandbox-provider-resolution-failed'; summary: string }> {
+function failedVercelCredentialResolution(name: 'token' | 'team id' | 'project id'): Result<never, SandboxProviderResolutionFailedError> {
 	return { ok: false, error: { type: 'sandbox-provider-resolution-failed', summary: `Vercel sandbox ${name} Secret resolution failed.` } }
 }
 

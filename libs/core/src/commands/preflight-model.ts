@@ -14,7 +14,7 @@ import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	ResourceNotFoundError,
-	SecretNotActiveError,
+	ResourceArchivedError,
 	StorageOperationFailedError,
 } from '../errors'
 import { modelProviderProtocolPreflight } from '../providers/model-provider-protocol'
@@ -22,9 +22,10 @@ import { validateModelThinkingCapabilityForProtocol } from '../providers/model-p
 import type { ModelProviderProtocolPreflightFailureReason } from '../providers/model-provider-protocol/types'
 import type { CoreRuntime } from '../runtime'
 import type { CoreServices, CoreStorage, ResolvableSecretValue } from '../services'
+import { validateActiveSecret } from '../utils/secrets'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
-import { getRequired, isArchived, validateActiveSecret, withTransaction } from './utils/storage'
+import { getRequired, isArchived, withTransaction } from './utils/storage'
 
 const preflightModelInputPipe = v.object({ modelId: idPipe })
 export type Input = PipeOutput<typeof preflightModelInputPipe>
@@ -188,7 +189,7 @@ async function validateHeaderSecrets(
 
 function mapAuthSecretFailure(
 	modelProvider: ModelProvider,
-	error: ResourceNotFoundError | SecretNotActiveError | StorageOperationFailedError | InvalidCoreServiceOutputError,
+	error: ResourceNotFoundError | ResourceArchivedError | StorageOperationFailedError | InvalidCoreServiceOutputError,
 ): CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError> {
 	if (error.type === 'not-found' && error.resource === 'secret') {
 		return {
@@ -196,13 +197,13 @@ function mapAuthSecretFailure(
 			value: { type: 'failed', modelProvider, reason: { type: 'model-provider-auth-secret-missing', secretId: error.id } },
 		}
 	}
-	if (error.type === 'secret-not-active') {
+	if (error.type === 'resource-archived') {
 		return {
 			ok: true,
 			value: {
 				type: 'failed',
 				modelProvider,
-				reason: { type: 'model-provider-auth-secret-inactive', secretId: error.secretId },
+				reason: { type: 'model-provider-auth-secret-inactive', secretId: error.id },
 			},
 		}
 	}
@@ -213,7 +214,7 @@ function mapAuthSecretFailure(
 function mapHeaderSecretFailure(
 	modelProvider: ModelProvider,
 	header: ModelProviderHeader,
-	error: ResourceNotFoundError | SecretNotActiveError | StorageOperationFailedError | InvalidCoreServiceOutputError,
+	error: ResourceNotFoundError | ResourceArchivedError | StorageOperationFailedError | InvalidCoreServiceOutputError,
 ): CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError> {
 	if (error.type === 'not-found' && error.resource === 'secret') {
 		return {
@@ -225,13 +226,13 @@ function mapHeaderSecretFailure(
 			},
 		}
 	}
-	if (error.type === 'secret-not-active') {
+	if (error.type === 'resource-archived') {
 		return {
 			ok: true,
 			value: {
 				type: 'failed',
 				modelProvider,
-				reason: { type: 'model-provider-header-secret-inactive', secretId: error.secretId, headerName: header.name },
+				reason: { type: 'model-provider-header-secret-inactive', secretId: error.id, headerName: header.name },
 			},
 		}
 	}

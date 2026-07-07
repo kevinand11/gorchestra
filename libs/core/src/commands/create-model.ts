@@ -4,7 +4,7 @@ import type { CommandContext } from './types'
 import { idPipe, jsonObjectPipe, nonEmptyTrimmedStringPipe } from '../domain/commons'
 import { defaultModelCapabilities, type Model } from '../domain/model'
 import type {
-	ArchivedModelProviderReferenceError,
+	ResourceArchivedError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
@@ -14,15 +14,7 @@ import type {
 import type { CoreRuntime } from '../runtime'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
-import {
-	archivedModelProviderReference,
-	auditStamp,
-	createRecordValue,
-	getRequired,
-	isArchived,
-	nextId,
-	withTransaction,
-} from './utils/storage'
+import { auditStamp, createRecordValue, getRequired, isArchived, nextId, withTransaction } from './utils/storage'
 
 const createModelInputPipe = v.object({
 	providerId: idPipe,
@@ -40,7 +32,7 @@ export type Error =
 	| InvariantViolationError
 	| StorageOperationFailedError
 	| ResourceNotFoundError
-	| ArchivedModelProviderReferenceError
+	| ResourceArchivedError
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
@@ -55,7 +47,9 @@ export function createCreateModelCommand(runtime: CoreRuntime): Operation {
 		return withTransaction(runtime.services, async (storage): Promise<CoreResult<Model, Exclude<Error, InvalidInputError>>> => {
 			const provider = await getRequired('model-provider', storage, input.providerId)
 			if (!provider.ok) return provider
-			if (isArchived(provider.value.archivePeriods)) return archivedModelProviderReference(input.providerId)
+			if (isArchived(provider.value.archivePeriods)) {
+				return { ok: false, error: { type: 'resource-archived', resource: 'model-provider', id: input.providerId } }
+			}
 
 			const model: Model = {
 				id: id.value,

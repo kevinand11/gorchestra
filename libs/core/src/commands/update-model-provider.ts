@@ -4,11 +4,11 @@ import type { CommandContext } from './types'
 import { idPipe, nonEmptyTrimmedStringPipe } from '../domain/commons'
 import { modelProviderAuthPipe, modelProviderHeadersPipe, modelProviderOptionsPipe, type ModelProvider } from '../domain/model-provider'
 import type {
-	ArchivedSecretReferenceError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
 	ResourceNotFoundError,
+	ResourceArchivedError,
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
@@ -33,7 +33,7 @@ export type Error =
 	| InvariantViolationError
 	| StorageOperationFailedError
 	| ResourceNotFoundError
-	| ArchivedSecretReferenceError
+	| ResourceArchivedError
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 

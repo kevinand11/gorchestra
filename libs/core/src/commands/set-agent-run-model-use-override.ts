@@ -6,13 +6,11 @@ import { modelUseConfigPipe } from '../domain/config'
 import type {
 	AgentRunNotActiveError,
 	AgentRunNotInteractiveError,
-	ArchivedAgentRunProfileReferenceError,
-	ArchivedModelProviderReferenceError,
-	ArchivedModelReferenceError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
 	ModelThinkingLevelUnavailableError,
+	ResourceArchivedError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
@@ -41,9 +39,7 @@ export type Error =
 	| StorageOperationFailedError
 	| ResourceNotFoundError
 	| InvariantViolationError
-	| ArchivedModelReferenceError
-	| ArchivedModelProviderReferenceError
-	| ArchivedAgentRunProfileReferenceError
+	| ResourceArchivedError
 	| ModelThinkingLevelUnavailableError
 	| AgentRunNotInteractiveError
 	| AgentRunNotActiveError
@@ -144,7 +140,10 @@ if (import.meta.vitest) {
 				context,
 			)
 
-			expect(result).toEqual({ ok: false, error: { type: 'archived-model-reference', modelId: '01k00000000000000000000026' } })
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'resource-archived', resource: 'model', id: '01k00000000000000000000026' },
+			})
 		})
 
 		it('rejects Autonomous Agent Runs', async () => {

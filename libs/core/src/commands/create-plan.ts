@@ -5,7 +5,7 @@ import type { AgentRunEvent } from '../domain/agent-run'
 import { idPipe, nonEmptyTrimmedStringPipe, type AuditStamp, type Id, type RuntimeRecord } from '../domain/commons'
 import type { Plan, PlanWithPlanningAgentRun } from '../domain/plan'
 import type { Project } from '../domain/project'
-import type { ArchivedSecretReferenceError, InvalidInputError } from '../errors'
+import type { InvalidInputError, ResourceArchivedError } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import { acceptAgentRunModelTurn } from './utils/dispatch'
 import { planningInstructionForProject } from '../runtime/agent-runs/instructions'
@@ -35,7 +35,7 @@ const createPlanInputPipe = v.object({
 export type Input = PipeOutput<typeof createPlanInputPipe>
 
 export type Result = PlanWithPlanningAgentRun
-export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError | ArchivedSecretReferenceError
+export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError | ResourceArchivedError
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreatePlanCommand(runtime: CoreRuntime): Operation {
@@ -342,7 +342,7 @@ if (import.meta.vitest) {
 
 			expect(result).toEqual({
 				ok: false,
-				error: { type: 'archived-agent-run-profile-reference', agentRunProfileId: '01k00000000000000000000006' },
+				error: { type: 'resource-archived', resource: 'agent-run-profile', id: '01k00000000000000000000006' },
 			})
 			expect(options.tx.plans.records.size).toBe(0)
 			expect(options.tx.agentRuns.records.size).toBe(0)

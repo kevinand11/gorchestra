@@ -10,7 +10,7 @@ import type {
 	InvalidInputError,
 	InvariantViolationError,
 	ResourceNotFoundError,
-	SecretNotActiveError,
+	ResourceArchivedError,
 	SecretResolutionFailedError,
 	StorageOperationFailedError,
 } from '../errors'
@@ -22,7 +22,7 @@ import { getRequired, updateRecord } from '../storage/helpers'
 import { appendAgentRunEvent } from '../utils/agent-runs'
 import { agentRunSandboxPrepared } from '../utils/agent-runs'
 import { runtimeRecord } from '../utils/runtime-values'
-import { resolveActiveSecretValues } from '../utils/secret-values'
+import { resolveActiveSecretValues } from '../utils/secrets'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 
 const inputPipe = v.object({ agentRunId: idPipe })
@@ -328,8 +328,8 @@ async function resolveSecretPlaintexts(
 	return { ok: true, value: plaintexts }
 }
 
-function secretResolutionSummary(secretId: Id, error: ResourceNotFoundError | SecretNotActiveError | SecretResolutionFailedError): string {
-	if (error.type === 'secret-not-active') return `Secret ${secretId} is archived.`
+function secretResolutionSummary(secretId: Id, error: ResourceNotFoundError | ResourceArchivedError | SecretResolutionFailedError): string {
+	if (error.type === 'resource-archived') return `Secret ${secretId} is not active.`
 	return `Secret ${secretId} could not be resolved.`
 }
 

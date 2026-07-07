@@ -7,7 +7,7 @@ import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
-	NotArchivedError,
+	ResourceNotArchivedError,
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
@@ -27,7 +27,7 @@ export type Error =
 	| InvariantViolationError
 	| StorageOperationFailedError
 	| ResourceNotFoundError
-	| NotArchivedError
+	| ResourceNotArchivedError
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 

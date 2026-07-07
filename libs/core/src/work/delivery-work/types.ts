@@ -1,11 +1,11 @@
 import type { Id } from '../../domain/commons'
 import type {
-	ArchivedSecretReferenceError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
 	NotImplementedError,
 	ResourceNotFoundError,
+	ResourceArchivedError,
 	StorageOperationFailedError,
 } from '../../errors'
 import type { CoreServices, CoreStorage, ResolvableSecretValue } from '../../services'
@@ -43,7 +43,7 @@ export type Error =
 	| StorageOperationFailedError
 	| InvariantViolationError
 	| NotImplementedError
-	| ArchivedSecretReferenceError
+	| ResourceArchivedError
 
 export interface DeliveryWorkContext {
 	services: CoreServices

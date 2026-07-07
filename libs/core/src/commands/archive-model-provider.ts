@@ -4,7 +4,7 @@ import type { CommandContext } from './types'
 import { idPipe } from '../domain/commons'
 import { type ModelProvider } from '../domain/model-provider'
 import type {
-	AlreadyArchivedError,
+	ResourceArchivedError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
@@ -27,7 +27,7 @@ export type Error =
 	| InvariantViolationError
 	| StorageOperationFailedError
 	| ResourceNotFoundError
-	| AlreadyArchivedError
+	| ResourceArchivedError
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 

@@ -4,7 +4,7 @@ import type { CommandContext } from './types'
 import type { AgentRunProfile } from '../domain/agent-run-profile'
 import { idPipe } from '../domain/commons'
 import type {
-	AlreadyArchivedError,
+	ResourceArchivedError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
@@ -26,7 +26,7 @@ export type Error =
 	| InvariantViolationError
 	| StorageOperationFailedError
 	| ResourceNotFoundError
-	| AlreadyArchivedError
+	| ResourceArchivedError
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 

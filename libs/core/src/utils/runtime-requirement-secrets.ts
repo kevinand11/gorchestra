@@ -1,34 +1,24 @@
-import type { Result } from './types'
 import type { AgentRunRuntimeRequirement } from '../domain/agent-run-runtime'
 import type { Id } from '../domain/commons'
-import type {
-	ArchivedSecretReferenceError,
-	InvalidCoreServiceOutputError,
-	ResourceNotFoundError,
-	StorageOperationFailedError,
-} from '../errors'
+import type { InvalidCoreServiceOutputError, ResourceNotFoundError, ResourceArchivedError, StorageOperationFailedError } from '../errors'
 import type { CoreStorage } from '../services'
-import { getRecord, notFound } from '../storage/helpers'
+import { validateActiveSecretReferences } from './secrets'
+import type { Result } from './types'
 
 export type RuntimeRequirementSecretReferenceError =
 	| InvalidCoreServiceOutputError
 	| StorageOperationFailedError
 	| ResourceNotFoundError
-	| ArchivedSecretReferenceError
+	| ResourceArchivedError
 
-export async function validateRuntimeRequirementSecretReferences(
+export function validateRuntimeRequirementSecretReferences(
 	storage: CoreStorage,
 	requirements: AgentRunRuntimeRequirement[],
 ): Promise<Result<void, RuntimeRequirementSecretReferenceError>> {
-	for (const secretId of secretIdsFromRuntimeRequirements(requirements)) {
-		const validation = await validateActiveSecretReference(storage, secretId)
-		if (!validation.ok) return validation
-	}
-
-	return { ok: true, value: undefined }
+	return validateActiveSecretReferences(storage, secretIdsFromRuntimeRequirements(requirements))
 }
 
-export function secretIdsFromRuntimeRequirements(requirements: AgentRunRuntimeRequirement[]): Id[] {
+function secretIdsFromRuntimeRequirements(requirements: AgentRunRuntimeRequirement[]): Id[] {
 	return uniqueIds(requirements.flatMap(secretIdsFromRuntimeRequirement))
 }
 
@@ -41,19 +31,6 @@ function secretIdsFromRuntimeRequirement(requirement: AgentRunRuntimeRequirement
 		default:
 			throw new Error(`Unexpected Agent Run Runtime Requirement type: ${String(requirement satisfies never)}`)
 	}
-}
-
-async function validateActiveSecretReference(
-	storage: CoreStorage,
-	secretId: Id,
-): Promise<Result<void, RuntimeRequirementSecretReferenceError>> {
-	const secret = await getRecord('secret', storage, secretId)
-	if (!secret.ok) return secret
-	if (secret.value === null) return notFound('secret', secretId)
-
-	return secret.value.archivePeriods.at(-1)?.unarchived === null
-		? { ok: false, error: { type: 'archived-secret-reference', secretId } }
-		: { ok: true, value: undefined }
 }
 
 function uniqueIds(ids: Id[]): Id[] {

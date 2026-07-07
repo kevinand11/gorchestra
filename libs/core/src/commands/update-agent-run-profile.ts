@@ -5,7 +5,7 @@ import type { AgentRunProfile } from '../domain/agent-run-profile'
 import { agentRunRuntimeRequirementsPipe, agentRunSandboxConfigPipe } from '../domain/agent-run-runtime'
 import { idPipe, nonEmptyTrimmedStringPipe } from '../domain/commons'
 import { modelUseConfigPipe } from '../domain/config'
-import type { ArchivedSecretReferenceError, DuplicateAgentRunRuntimeRequirementError, InvalidInputError } from '../errors'
+import type { DuplicateAgentRunRuntimeRequirementError, InvalidInputError, ResourceArchivedError } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { Result as CoreResult } from '../utils/types'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
@@ -26,7 +26,7 @@ export type Error =
 	| InvalidInputError
 	| ConfigCommandReferenceError
 	| ConfigCommandStorageError
-	| ArchivedSecretReferenceError
+	| ResourceArchivedError
 	| DuplicateAgentRunRuntimeRequirementError
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 

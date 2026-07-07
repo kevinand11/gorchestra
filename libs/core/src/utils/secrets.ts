@@ -6,7 +6,7 @@ import type { Secret } from '../domain/secret'
 import type {
 	InvalidCoreServiceOutputError,
 	ResourceNotFoundError,
-	SecretNotActiveError,
+	ResourceArchivedError,
 	SecretResolutionFailedError,
 	StorageOperationFailedError,
 } from '../errors'
@@ -21,9 +21,19 @@ import { secretSchema } from '../storage/schemas'
 import { validateCoreServiceOutput } from '../validation'
 import type { Result } from './types'
 
-type ActiveSecretValueRefs = Record<Id, Result<ResolvableSecretValue, ResourceNotFoundError | SecretNotActiveError>>
+type ActiveSecretValueRefs = Record<Id, Result<ResolvableSecretValue, ResourceNotFoundError | ResourceArchivedError>>
 type ResolvedSecretValueResults = Record<Id, Result<string, SecretResolutionFailedError>>
-type ActiveSecretValueResults = Record<Id, Result<string, ResourceNotFoundError | SecretNotActiveError | SecretResolutionFailedError>>
+type ActiveSecretValueResults = Record<Id, Result<string, ResourceNotFoundError | ResourceArchivedError | SecretResolutionFailedError>>
+
+export type ValidateActiveSecretResult = Result<
+	Secret,
+	ResourceNotFoundError | ResourceArchivedError | StorageOperationFailedError | InvalidCoreServiceOutputError
+>
+
+export type ValidateActiveSecretReferencesResult = Result<
+	void,
+	ResourceNotFoundError | ResourceArchivedError | StorageOperationFailedError | InvalidCoreServiceOutputError
+>
 
 export type ReadActiveSecretValueRefsResult = Result<ActiveSecretValueRefs, StorageOperationFailedError | InvalidCoreServiceOutputError>
 
@@ -31,8 +41,33 @@ export type ResolveSecretValueRefsResult = Result<ResolvedSecretValueResults, In
 
 export type ResolveActiveSecretValuesResult = Result<ActiveSecretValueResults, StorageOperationFailedError | InvalidCoreServiceOutputError>
 
+export async function validateActiveSecret(storage: CoreStorage, secretId: Id): Promise<ValidateActiveSecretResult> {
+	const secrets = await listSecretRecords(storage, [secretId])
+	if (!secrets.ok) return secrets
+
+	const secret = secrets.value.at(0)
+	if (secret === undefined) return { ok: false, error: { type: 'not-found', resource: 'secret', id: secretId } }
+	return isArchived(secret.archivePeriods)
+		? { ok: false, error: { type: 'resource-archived', resource: 'secret', id: secretId } }
+		: { ok: true, value: secret }
+}
+
+export async function validateActiveSecretReferences(storage: CoreStorage, secretIds: Id[]): Promise<ValidateActiveSecretReferencesResult> {
+	const uniqueSecretIds = uniqueIds(secretIds)
+	const refs = await readActiveSecretValueRefs(storage, uniqueSecretIds)
+	if (!refs.ok) return refs
+
+	for (const secretId of uniqueSecretIds) {
+		const ref = refs.value[secretId]
+		if (ref === undefined) return { ok: false, error: { type: 'not-found', resource: 'secret', id: secretId } }
+		if (!ref.ok) return ref
+	}
+
+	return { ok: true, value: undefined }
+}
+
 export async function readActiveSecretValueRefs(storage: CoreStorage, secretIds: Id[]): Promise<ReadActiveSecretValueRefsResult> {
-	const uniqueSecretIds = [...new Set(secretIds)]
+	const uniqueSecretIds = uniqueIds(secretIds)
 	if (uniqueSecretIds.length === 0) return { ok: true, value: {} }
 
 	const secrets = await listSecretRecords(storage, uniqueSecretIds)
@@ -43,7 +78,8 @@ export async function readActiveSecretValueRefs(storage: CoreStorage, secretIds:
 	for (const secretId of uniqueSecretIds) {
 		const secret = secretsById.get(secretId)
 		if (secret === undefined) value[secretId] = { ok: false, error: { type: 'not-found', resource: 'secret', id: secretId } }
-		else if (isArchived(secret.archivePeriods)) value[secretId] = { ok: false, error: { type: 'secret-not-active', secretId } }
+		else if (isArchived(secret.archivePeriods))
+			value[secretId] = { ok: false, error: { type: 'resource-archived', resource: 'secret', id: secretId } }
 		else value[secretId] = { ok: true, value: { secretId: secret.id, valueRef: secret.valueRef } }
 	}
 	return { ok: true, value }
@@ -117,6 +153,10 @@ function isArchived(archivePeriods: Secret['archivePeriods']): boolean {
 	return latestPeriod !== undefined && latestPeriod.unarchived === null
 }
 
+function uniqueIds(ids: Id[]): Id[] {
+	return [...new Set(ids)]
+}
+
 function resolvedSecretValueResults(secrets: ResolvableSecretValue[], values: ResolvedSecretValues): ResolvedSecretValueResults {
 	const results: ResolvedSecretValueResults = {}
 	for (const secret of secrets) {
@@ -141,7 +181,32 @@ function secretResolutionFailure(secretId: Id): Result<never, SecretResolutionFa
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
-	describe('secret value utilities', () => {
+	describe('Secret utilities', () => {
+		it('validates one active Secret and reports inactive Secrets', async () => {
+			const storage = storageWithSecrets([
+				secretRecord('01k00000000000000000000040'),
+				secretRecord('01k00000000000000000000041', true),
+			])
+
+			await expect(validateActiveSecret(storage, '01k00000000000000000000040')).resolves.toMatchObject({ ok: true })
+			await expect(validateActiveSecret(storage, '01k00000000000000000000041')).resolves.toEqual({
+				ok: false,
+				error: { type: 'resource-archived', resource: 'secret', id: '01k00000000000000000000041' },
+			})
+		})
+
+		it('validates active Secret references with a batched lookup and returns the first caller-ordered failure', async () => {
+			const result = await validateActiveSecretReferences(
+				storageWithSecrets([secretRecord('01k00000000000000000000040'), secretRecord('01k00000000000000000000041', true)]),
+				['01k00000000000000000000042', '01k00000000000000000000041', '01k00000000000000000000042'],
+			)
+
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'not-found', resource: 'secret', id: '01k00000000000000000000042' },
+			})
+		})
+
 		it('reads active Secret value refs in one batched storage call and reports missing or inactive Secrets per id', async () => {
 			const result = await readActiveSecretValueRefs(
 				storageWithSecrets([secretRecord('01k00000000000000000000040'), secretRecord('01k00000000000000000000041', true)]),
@@ -157,7 +222,7 @@ if (import.meta.vitest) {
 					},
 					'01k00000000000000000000041': {
 						ok: false,
-						error: { type: 'secret-not-active', secretId: '01k00000000000000000000041' },
+						error: { type: 'resource-archived', resource: 'secret', id: '01k00000000000000000000041' },
 					},
 					'01k00000000000000000000042': {
 						ok: false,
@@ -223,7 +288,7 @@ if (import.meta.vitest) {
 					'01k00000000000000000000040': { ok: true, value: 'plaintext' },
 					'01k00000000000000000000041': {
 						ok: false,
-						error: { type: 'secret-not-active', secretId: '01k00000000000000000000041' },
+						error: { type: 'resource-archived', resource: 'secret', id: '01k00000000000000000000041' },
 					},
 					'01k00000000000000000000042': {
 						ok: false,
@@ -238,6 +303,7 @@ if (import.meta.vitest) {
 		const byId = new Map(secrets.map((secret) => [secret.id, secret]))
 		return {
 			on: () => ({
+				one: () => ({ id: (id: Id) => ({ find: () => Promise.resolve(byId.get(id) ?? null) }) }),
 				all: () => ({
 					where: (configure: (filter: SecretFilter) => unknown) => {
 						const filter = createSecretFilter()

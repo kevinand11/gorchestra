@@ -1,26 +1,18 @@
 import type {
-	ArchivedAgentRunProfileReferenceError,
-	ArchivedModelProviderReferenceError,
-	ArchivedModelReferenceError,
 	DeliveryWorkStateMismatchError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
 	ModelThinkingLevelUnavailableError,
 	ProjectSourceTypeMismatchError,
+	ResourceArchivedError,
 	ResourceNotFoundError,
-	SecretNotActiveError,
 	StorageOperationFailedError,
 } from '../../errors'
 
-export type ConfigCommandReferenceError =
-	| ResourceNotFoundError
-	| ArchivedModelReferenceError
-	| ArchivedModelProviderReferenceError
-	| ArchivedAgentRunProfileReferenceError
-	| ModelThinkingLevelUnavailableError
+export type ConfigCommandReferenceError = ResourceNotFoundError | ResourceArchivedError | ModelThinkingLevelUnavailableError
 export type ConfigCommandStorageError = StorageOperationFailedError | InvalidCoreServiceOutputError | InvariantViolationError
-export type RepositoryCommandReferenceError = ResourceNotFoundError | SecretNotActiveError | ProjectSourceTypeMismatchError
+export type RepositoryCommandReferenceError = ResourceNotFoundError | ResourceArchivedError | ProjectSourceTypeMismatchError
 export type DeliveryActionCommandError =
 	| InvalidInputError
 	| InvalidCoreServiceOutputError

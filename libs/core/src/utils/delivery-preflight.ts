@@ -1,4 +1,8 @@
-import { validateActiveSecret } from '../commands/utils/storage'
+import type { DeliveryContext } from './delivery-context'
+import type { DeliveryPreflightError, DeliveryPreflightSnapshot, PassedDeliveryPreflight } from './delivery-context/work-resolution'
+import { resolveDeliveryWork, type DeliveryWorkResolution } from './delivery-context/work-resolution'
+import { validateActiveSecret } from './secrets'
+import type { Result } from './types'
 import type { Id } from '../domain/commons'
 import type { ValidationEvidence } from '../domain/evidence'
 import type { Model } from '../domain/model'
@@ -9,13 +13,9 @@ import {
 	type ModelProviderHeader,
 } from '../domain/model-provider'
 import type { Repository } from '../domain/repository'
-import type { InvalidCoreServiceOutputError, ResourceNotFoundError, SecretNotActiveError, StorageOperationFailedError } from '../errors'
+import type { InvalidCoreServiceOutputError, ResourceNotFoundError, ResourceArchivedError, StorageOperationFailedError } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage, ResolvableSecretValue } from '../services'
-import type { DeliveryContext } from './delivery-context'
-import type { DeliveryPreflightError, DeliveryPreflightSnapshot, PassedDeliveryPreflight } from './delivery-context/work-resolution'
-import { resolveDeliveryWork, type DeliveryWorkResolution } from './delivery-context/work-resolution'
-import type { Result } from './types'
 
 export type {
 	DeliveryPreflight,
@@ -195,7 +195,7 @@ async function readModelProviderHeaderSecretPlan(
 }
 
 function mapRepositoryAccessSecretFailure(
-	error: ResourceNotFoundError | SecretNotActiveError | StorageOperationFailedError | InvalidCoreServiceOutputError,
+	error: ResourceNotFoundError | ResourceArchivedError | StorageOperationFailedError | InvalidCoreServiceOutputError,
 ): Result<RepositoryDeliveryPreflightPlan, DeliveryPreflightError> {
 	if (error.type === 'not-found' && error.resource === 'secret') {
 		return ok({
@@ -203,7 +203,7 @@ function mapRepositoryAccessSecretFailure(
 			check: validationEvidence('repository-preflight', false, 'GitHub repository access Secret is missing.'),
 		})
 	}
-	if (error.type === 'secret-not-active') {
+	if (error.type === 'resource-archived') {
 		return ok({
 			type: 'check',
 			check: validationEvidence('repository-preflight', false, 'GitHub repository access Secret is not active.'),
@@ -215,7 +215,7 @@ function mapRepositoryAccessSecretFailure(
 
 function mapModelProviderAuthSecretFailure(
 	modelProvider: ModelProvider,
-	error: ResourceNotFoundError | SecretNotActiveError | StorageOperationFailedError | InvalidCoreServiceOutputError,
+	error: ResourceNotFoundError | ResourceArchivedError | StorageOperationFailedError | InvalidCoreServiceOutputError,
 ): Result<{ type: 'check'; check: ValidationEvidence }, DeliveryPreflightError> {
 	if (error.type === 'not-found' && error.resource === 'secret') {
 		return ok({
@@ -223,7 +223,7 @@ function mapModelProviderAuthSecretFailure(
 			check: validationEvidence('model-preflight', false, modelSecretSummary(modelProvider, 'auth', 'missing')),
 		})
 	}
-	if (error.type === 'secret-not-active') {
+	if (error.type === 'resource-archived') {
 		return ok({
 			type: 'check',
 			check: validationEvidence('model-preflight', false, modelSecretSummary(modelProvider, 'auth', 'inactive')),
@@ -236,7 +236,7 @@ function mapModelProviderAuthSecretFailure(
 function mapModelProviderHeaderSecretFailure(
 	modelProvider: ModelProvider,
 	_header: ModelProviderHeader,
-	error: ResourceNotFoundError | SecretNotActiveError | StorageOperationFailedError | InvalidCoreServiceOutputError,
+	error: ResourceNotFoundError | ResourceArchivedError | StorageOperationFailedError | InvalidCoreServiceOutputError,
 ): Result<{ type: 'check'; check: ValidationEvidence }, DeliveryPreflightError> {
 	if (error.type === 'not-found' && error.resource === 'secret') {
 		return ok({
@@ -244,7 +244,7 @@ function mapModelProviderHeaderSecretFailure(
 			check: validationEvidence('model-preflight', false, modelSecretSummary(modelProvider, 'header', 'missing')),
 		})
 	}
-	if (error.type === 'secret-not-active') {
+	if (error.type === 'resource-archived') {
 		return ok({
 			type: 'check',
 			check: validationEvidence('model-preflight', false, modelSecretSummary(modelProvider, 'header', 'inactive')),

@@ -8,144 +8,125 @@ import {
 import type { DeliveryArtifact, SliceArtifact } from '../domain/artifact'
 import type { Id } from '../domain/commons'
 import type { Delivery } from '../domain/delivery'
+import type { Plan } from '../domain/plan'
 import type { Project } from '../domain/project'
-import type { RevisionScope } from '../domain/revision'
+import type { Repository } from '../domain/repository'
+import type { Revision, RevisionGate, RevisionScope } from '../domain/revision'
+import type { Slice } from '../domain/slice'
 import type { InvalidCoreServiceOutputError, InvariantViolationError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreStorage } from '../services'
-import { getRequired } from '../storage/helpers'
+import { getRequired, listRecords } from '../storage/helpers'
 
-export type ResolveAgentRunSourceRuntimeRequirementsError =
-	| InvalidCoreServiceOutputError
-	| StorageOperationFailedError
-	| ResourceNotFoundError
-	| InvariantViolationError
+type AgentRunSourceRuntimeContextError = InvalidCoreServiceOutputError | StorageOperationFailedError | ResourceNotFoundError
+
+export type ResolveAgentRunSourceRuntimeRequirementsError = AgentRunSourceRuntimeContextError | InvariantViolationError
+
+type PlanningSourceRuntimeContext = {
+	purpose: Extract<AgentRunPurpose, { type: 'planning' }>
+	plan: Plan
+	project: Project
+	repositories: Repository[]
+}
+
+type ExecutionSourceRuntimeContext = {
+	purpose: Extract<AgentRunPurpose, { type: 'execution' }>
+	slice: Slice
+	delivery: Delivery
+	project: Project
+	repository: Repository
+}
+
+type RevisionArtifactSourceRuntimeContext =
+	| { type: 'delivery-artifact'; deliveryArtifact: DeliveryArtifact; delivery: Delivery }
+	| { type: 'slice-artifact'; sliceArtifact: SliceArtifact; slice: Slice; delivery: Delivery }
+
+type ResolvedRevisionArtifactSourceRuntimeContext = {
+	scope: RevisionArtifactSourceRuntimeContext
+	project: Project
+	repository: Repository
+}
+
+type RevisionPlanningSourceRuntimeContext = ResolvedRevisionArtifactSourceRuntimeContext & {
+	purpose: Extract<AgentRunPurpose, { type: 'revision-planning' }>
+	revisionGate: RevisionGate
+}
+
+type RevisionExecutionSourceRuntimeContext = ResolvedRevisionArtifactSourceRuntimeContext & {
+	purpose: Extract<AgentRunPurpose, { type: 'revision-execution' }>
+	revision: Revision
+}
+
+type AgentRunSourceRuntimeContext =
+	| PlanningSourceRuntimeContext
+	| ExecutionSourceRuntimeContext
+	| RevisionPlanningSourceRuntimeContext
+	| RevisionExecutionSourceRuntimeContext
 
 export async function resolveAgentRunSourceRuntimeRequirements(
 	storage: CoreStorage,
 	purpose: AgentRunPurpose,
 ): Promise<Result<AgentRunRuntimeRequirements, ResolveAgentRunSourceRuntimeRequirementsError>> {
-	const project = await projectForAgentRunPurpose(storage, purpose)
-	return project.ok ? sourceRuntimeRequirementsForProjectPurpose(project.value, purpose) : project
+	const context = await sourceRuntimeContextForAgentRunPurpose(storage, purpose)
+	if (!context.ok) return context
+
+	const requirements = sourceRuntimeRequirementsForContext(context.value)
+	return requirements.ok ? validateSourceRuntimeRequirements(requirements.value) : requirements
 }
 
-async function projectForAgentRunPurpose(
+async function sourceRuntimeContextForAgentRunPurpose(
 	storage: CoreStorage,
 	purpose: AgentRunPurpose,
-): Promise<Result<Project, ResolveAgentRunSourceRuntimeRequirementsError>> {
+): Promise<Result<AgentRunSourceRuntimeContext, AgentRunSourceRuntimeContextError>> {
 	switch (purpose.type) {
 		case 'planning':
-			return projectForPlanning(storage, purpose.planId)
+			return sourceRuntimeContextForPlanning(storage, purpose)
 		case 'revision-planning':
-			return projectForRevisionGate(storage, purpose.revisionGateId)
+			return sourceRuntimeContextForRevisionGate(storage, purpose)
 		case 'execution':
-			return projectForExecution(storage, purpose.deliveryId, purpose.sliceId)
+			return sourceRuntimeContextForExecution(storage, purpose)
 		case 'revision-execution':
-			return projectForRevision(storage, purpose.revisionId)
+			return sourceRuntimeContextForRevision(storage, purpose)
 		default:
 			throw new Error(`Unexpected Agent Run Purpose: ${String(purpose satisfies never)}`)
 	}
 }
 
-async function projectForPlanning(
+async function sourceRuntimeContextForPlanning(
 	storage: CoreStorage,
-	planId: Id,
-): Promise<Result<Project, ResolveAgentRunSourceRuntimeRequirementsError>> {
-	const plan = await getRequired('plan', storage, planId)
+	purpose: Extract<AgentRunPurpose, { type: 'planning' }>,
+): Promise<Result<PlanningSourceRuntimeContext, AgentRunSourceRuntimeContextError>> {
+	const plan = await getRequired('plan', storage, purpose.planId)
 	if (!plan.ok) return plan
 
-	return getRequired('project', storage, plan.value.projectId)
-}
-
-async function projectForExecution(
-	storage: CoreStorage,
-	deliveryId: Id,
-	sliceId: Id,
-): Promise<Result<Project, ResolveAgentRunSourceRuntimeRequirementsError>> {
-	const delivery = await getRequired('delivery', storage, deliveryId)
-	if (!delivery.ok) return delivery
-
-	const slice = await getRequired('slice', storage, sliceId)
-	if (!slice.ok) return slice
-
-	if (slice.value.deliveryId !== delivery.value.id) {
-		return invariant(`Slice ${slice.value.id} does not belong to Delivery ${delivery.value.id}.`)
-	}
-
-	const project = await getRequired('project', storage, delivery.value.projectId)
+	const project = await getRequired('project', storage, plan.value.projectId)
 	if (!project.ok) return project
 
-	const deliverySource = validateDeliveryTargetMatchesProject(project.value, delivery.value)
-	return deliverySource.ok ? { ok: true, value: project.value } : deliverySource
-}
-
-async function projectForRevisionGate(
-	storage: CoreStorage,
-	revisionGateId: Id,
-): Promise<Result<Project, ResolveAgentRunSourceRuntimeRequirementsError>> {
-	const revisionGate = await getRequired('revision-gate', storage, revisionGateId)
-	return revisionGate.ok ? projectForRevisionScope(storage, revisionGate.value.scope) : revisionGate
-}
-
-async function projectForRevision(
-	storage: CoreStorage,
-	revisionId: Id,
-): Promise<Result<Project, ResolveAgentRunSourceRuntimeRequirementsError>> {
-	const revision = await getRequired('revision', storage, revisionId)
-	return revision.ok ? projectForRevisionScope(storage, revision.value.scope) : revision
-}
-
-async function projectForRevisionScope(
-	storage: CoreStorage,
-	scope: RevisionScope,
-): Promise<Result<Project, ResolveAgentRunSourceRuntimeRequirementsError>> {
-	switch (scope.type) {
-		case 'delivery-artifact':
-			return projectForDeliveryArtifactScope(storage, scope.deliveryId, scope.deliveryArtifactId)
-		case 'slice-artifact':
-			return projectForSliceArtifactScope(storage, scope.sliceId, scope.sliceArtifactId)
+	switch (project.value.source.type) {
+		case 'source-control':
+			return sourceControlPlanningContext(storage, purpose, plan.value, project.value)
 		default:
-			throw new Error(`Unexpected Revision Scope: ${String(scope satisfies never)}`)
+			throw new Error(`Unexpected Project Source Type: ${String(project.value.source.type satisfies never)}`)
 	}
 }
 
-async function projectForDeliveryArtifactScope(
+async function sourceControlPlanningContext(
 	storage: CoreStorage,
-	deliveryId: Id,
-	deliveryArtifactId: Id,
-): Promise<Result<Project, ResolveAgentRunSourceRuntimeRequirementsError>> {
-	const deliveryArtifact = await getRequired('delivery-artifact', storage, deliveryArtifactId)
-	if (!deliveryArtifact.ok) return deliveryArtifact
-
-	if (deliveryArtifact.value.deliveryId !== deliveryId) {
-		return invariant(`Delivery Artifact ${deliveryArtifact.value.id} does not belong to Delivery ${deliveryId}.`)
-	}
-
-	const delivery = await getRequired('delivery', storage, deliveryId)
-	if (!delivery.ok) return delivery
-
-	const project = await getRequired('project', storage, delivery.value.projectId)
-	if (!project.ok) return project
-
-	const deliverySource = validateDeliveryTargetMatchesProject(project.value, delivery.value)
-	if (!deliverySource.ok) return deliverySource
-
-	const artifactSource = validateDeliveryArtifactMatchesProject(project.value, deliveryArtifact.value)
-	return artifactSource.ok ? { ok: true, value: project.value } : artifactSource
+	purpose: Extract<AgentRunPurpose, { type: 'planning' }>,
+	plan: Plan,
+	project: Project,
+): Promise<Result<PlanningSourceRuntimeContext, AgentRunSourceRuntimeContextError>> {
+	const repositories = await listRecords('repository', storage, {
+		where: (filter, fields) => filter.eq(fields.projectId, project.id),
+		orderBy: [{ field: 'id', direction: 'asc' }],
+	})
+	return repositories.ok ? { ok: true, value: { purpose, plan, project, repositories: repositories.value } } : repositories
 }
 
-async function projectForSliceArtifactScope(
+async function sourceRuntimeContextForExecution(
 	storage: CoreStorage,
-	sliceId: Id,
-	sliceArtifactId: Id,
-): Promise<Result<Project, ResolveAgentRunSourceRuntimeRequirementsError>> {
-	const sliceArtifact = await getRequired('slice-artifact', storage, sliceArtifactId)
-	if (!sliceArtifact.ok) return sliceArtifact
-
-	if (sliceArtifact.value.sliceId !== sliceId) {
-		return invariant(`Slice Artifact ${sliceArtifact.value.id} does not belong to Slice ${sliceId}.`)
-	}
-
-	const slice = await getRequired('slice', storage, sliceId)
+	purpose: Extract<AgentRunPurpose, { type: 'execution' }>,
+): Promise<Result<ExecutionSourceRuntimeContext, AgentRunSourceRuntimeContextError>> {
+	const slice = await getRequired('slice', storage, purpose.sliceId)
 	if (!slice.ok) return slice
 
 	const delivery = await getRequired('delivery', storage, slice.value.deliveryId)
@@ -154,69 +135,158 @@ async function projectForSliceArtifactScope(
 	const project = await getRequired('project', storage, delivery.value.projectId)
 	if (!project.ok) return project
 
-	const sliceSource = validateSliceArtifactMatchesProject(project.value, sliceArtifact.value)
-	if (!sliceSource.ok) return sliceSource
-
-	const deliverySource = validateDeliveryTargetMatchesProject(project.value, delivery.value)
-	return deliverySource.ok ? { ok: true, value: project.value } : deliverySource
-}
-
-function sourceRuntimeRequirementsForProjectPurpose(
-	project: Project,
-	purpose: AgentRunPurpose,
-): Result<AgentRunRuntimeRequirements, InvariantViolationError> {
-	switch (project.source.type) {
+	switch (project.value.source.type) {
 		case 'source-control':
-			return sourceControlRuntimeRequirementsForPurpose(purpose)
+			return sourceControlExecutionContext(storage, purpose, slice.value, delivery.value, project.value)
 		default:
-			throw new Error(`Unexpected Project Source Type: ${String(project.source.type satisfies never)}`)
+			throw new Error(`Unexpected Project Source Type: ${String(project.value.source.type satisfies never)}`)
 	}
 }
 
-function sourceControlRuntimeRequirementsForPurpose(
-	purpose: AgentRunPurpose,
-): Result<AgentRunRuntimeRequirements, InvariantViolationError> {
-	switch (purpose.type) {
+async function sourceControlExecutionContext(
+	storage: CoreStorage,
+	purpose: Extract<AgentRunPurpose, { type: 'execution' }>,
+	slice: Slice,
+	delivery: Delivery,
+	project: Project,
+): Promise<Result<ExecutionSourceRuntimeContext, AgentRunSourceRuntimeContextError>> {
+	const repository = await repositoryForSourceControlDelivery(storage, delivery)
+	return repository.ok ? { ok: true, value: { purpose, slice, delivery, project, repository: repository.value } } : repository
+}
+
+async function sourceRuntimeContextForRevisionGate(
+	storage: CoreStorage,
+	purpose: Extract<AgentRunPurpose, { type: 'revision-planning' }>,
+): Promise<Result<RevisionPlanningSourceRuntimeContext, AgentRunSourceRuntimeContextError>> {
+	const revisionGate = await getRequired('revision-gate', storage, purpose.revisionGateId)
+	if (!revisionGate.ok) return revisionGate
+
+	const context = await revisionArtifactSourceRuntimeContext(storage, revisionGate.value.scope)
+	return context.ok ? { ok: true, value: { purpose, revisionGate: revisionGate.value, ...context.value } } : context
+}
+
+async function sourceRuntimeContextForRevision(
+	storage: CoreStorage,
+	purpose: Extract<AgentRunPurpose, { type: 'revision-execution' }>,
+): Promise<Result<RevisionExecutionSourceRuntimeContext, AgentRunSourceRuntimeContextError>> {
+	const revision = await getRequired('revision', storage, purpose.revisionId)
+	if (!revision.ok) return revision
+
+	const context = await revisionArtifactSourceRuntimeContext(storage, revision.value.scope)
+	return context.ok ? { ok: true, value: { purpose, revision: revision.value, ...context.value } } : context
+}
+
+async function revisionArtifactSourceRuntimeContext(
+	storage: CoreStorage,
+	scope: RevisionScope,
+): Promise<Result<ResolvedRevisionArtifactSourceRuntimeContext, AgentRunSourceRuntimeContextError>> {
+	switch (scope.type) {
+		case 'delivery-artifact':
+			return deliveryArtifactSourceRuntimeContext(storage, scope.deliveryArtifactId)
+		case 'slice-artifact':
+			return sliceArtifactSourceRuntimeContext(storage, scope.sliceArtifactId)
+		default:
+			throw new Error(`Unexpected Revision Scope: ${String(scope satisfies never)}`)
+	}
+}
+
+async function deliveryArtifactSourceRuntimeContext(
+	storage: CoreStorage,
+	deliveryArtifactId: Id,
+): Promise<Result<ResolvedRevisionArtifactSourceRuntimeContext, AgentRunSourceRuntimeContextError>> {
+	const deliveryArtifact = await getRequired('delivery-artifact', storage, deliveryArtifactId)
+	if (!deliveryArtifact.ok) return deliveryArtifact
+
+	const delivery = await getRequired('delivery', storage, deliveryArtifact.value.deliveryId)
+	if (!delivery.ok) return delivery
+
+	const project = await getRequired('project', storage, delivery.value.projectId)
+	if (!project.ok) return project
+
+	switch (project.value.source.type) {
+		case 'source-control':
+			return sourceControlRevisionArtifactContext(storage, project.value, {
+				type: 'delivery-artifact',
+				deliveryArtifact: deliveryArtifact.value,
+				delivery: delivery.value,
+			})
+		default:
+			throw new Error(`Unexpected Project Source Type: ${String(project.value.source.type satisfies never)}`)
+	}
+}
+
+async function sliceArtifactSourceRuntimeContext(
+	storage: CoreStorage,
+	sliceArtifactId: Id,
+): Promise<Result<ResolvedRevisionArtifactSourceRuntimeContext, AgentRunSourceRuntimeContextError>> {
+	const sliceArtifact = await getRequired('slice-artifact', storage, sliceArtifactId)
+	if (!sliceArtifact.ok) return sliceArtifact
+
+	const slice = await getRequired('slice', storage, sliceArtifact.value.sliceId)
+	if (!slice.ok) return slice
+
+	const delivery = await getRequired('delivery', storage, slice.value.deliveryId)
+	if (!delivery.ok) return delivery
+
+	const project = await getRequired('project', storage, delivery.value.projectId)
+	if (!project.ok) return project
+
+	switch (project.value.source.type) {
+		case 'source-control':
+			return sourceControlRevisionArtifactContext(storage, project.value, {
+				type: 'slice-artifact',
+				sliceArtifact: sliceArtifact.value,
+				slice: slice.value,
+				delivery: delivery.value,
+			})
+		default:
+			throw new Error(`Unexpected Project Source Type: ${String(project.value.source.type satisfies never)}`)
+	}
+}
+
+async function sourceControlRevisionArtifactContext(
+	storage: CoreStorage,
+	project: Project,
+	scope: RevisionArtifactSourceRuntimeContext,
+): Promise<Result<ResolvedRevisionArtifactSourceRuntimeContext, AgentRunSourceRuntimeContextError>> {
+	const repository = await repositoryForSourceControlDelivery(storage, scope.delivery)
+	return repository.ok ? { ok: true, value: { scope, project, repository: repository.value } } : repository
+}
+
+async function repositoryForSourceControlDelivery(
+	storage: CoreStorage,
+	delivery: Delivery,
+): Promise<Result<Repository, AgentRunSourceRuntimeContextError>> {
+	switch (delivery.target.type) {
+		case 'source-control':
+			return getRequired('repository', storage, delivery.target.repositoryId)
+		default:
+			throw new Error(`Unexpected Delivery Target Type: ${String(delivery.target.type satisfies never)}`)
+	}
+}
+
+function sourceRuntimeRequirementsForContext(
+	context: AgentRunSourceRuntimeContext,
+): Result<AgentRunRuntimeRequirement[], InvariantViolationError> {
+	switch (context.project.source.type) {
+		case 'source-control':
+			return sourceControlRuntimeRequirementsForContext(context)
+		default:
+			throw new Error(`Unexpected Project Source Type: ${String(context.project.source.type satisfies never)}`)
+	}
+}
+
+function sourceControlRuntimeRequirementsForContext(
+	context: AgentRunSourceRuntimeContext,
+): Result<AgentRunRuntimeRequirement[], InvariantViolationError> {
+	switch (context.purpose.type) {
 		case 'planning':
 		case 'revision-planning':
 		case 'execution':
 		case 'revision-execution':
-			return validateSourceRuntimeRequirements([])
+			return { ok: true, value: [] }
 		default:
-			throw new Error(`Unexpected Agent Run Purpose: ${String(purpose satisfies never)}`)
-	}
-}
-
-function validateDeliveryTargetMatchesProject(project: Project, delivery: Delivery): Result<void, InvariantViolationError> {
-	switch (project.source.type) {
-		case 'source-control':
-			return delivery.target.type === 'source-control'
-				? { ok: true, value: undefined }
-				: invariant(`Delivery ${delivery.id} target does not match Project ${project.id} source type.`)
-		default:
-			throw new Error(`Unexpected Project Source Type: ${String(project.source.type satisfies never)}`)
-	}
-}
-
-function validateDeliveryArtifactMatchesProject(project: Project, artifact: DeliveryArtifact): Result<void, InvariantViolationError> {
-	switch (project.source.type) {
-		case 'source-control':
-			return artifact.config.type === 'source-control'
-				? { ok: true, value: undefined }
-				: invariant(`Delivery Artifact ${artifact.id} config does not match Project ${project.id} source type.`)
-		default:
-			throw new Error(`Unexpected Project Source Type: ${String(project.source.type satisfies never)}`)
-	}
-}
-
-function validateSliceArtifactMatchesProject(project: Project, artifact: SliceArtifact): Result<void, InvariantViolationError> {
-	switch (project.source.type) {
-		case 'source-control':
-			return artifact.config.type === 'source-control'
-				? { ok: true, value: undefined }
-				: invariant(`Slice Artifact ${artifact.id} config does not match Project ${project.id} source type.`)
-		default:
-			throw new Error(`Unexpected Project Source Type: ${String(project.source.type satisfies never)}`)
+			throw new Error(`Unexpected Agent Run Purpose: ${String(context.purpose satisfies never)}`)
 	}
 }
 
@@ -257,7 +327,7 @@ if (import.meta.vitest) {
 			).resolves.toEqual({ ok: true, value: [] })
 		})
 
-		it('resolves source-control execution source requirements through Delivery and Slice to Project', async () => {
+		it('resolves source-control execution source requirements through Slice and Delivery to Project', async () => {
 			const options = createTestCoreServices()
 			seedDelivery(options.tx, '01k00000000000000000000008')
 			seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000008')
@@ -270,28 +340,6 @@ if (import.meta.vitest) {
 					mode: { type: 'initial' },
 				}),
 			).resolves.toEqual({ ok: true, value: [] })
-		})
-
-		it('returns an invariant violation when an execution Slice belongs to another Delivery', async () => {
-			const options = createTestCoreServices()
-			seedDelivery(options.tx, '01k00000000000000000000008')
-			seedDelivery(options.tx, '01k00000000000000000000009')
-			seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000009')
-
-			await expect(
-				resolveAgentRunSourceRuntimeRequirements(options.storage, {
-					type: 'execution',
-					deliveryId: '01k00000000000000000000008',
-					sliceId: '01k00000000000000000000042',
-					mode: { type: 'initial' },
-				}),
-			).resolves.toEqual({
-				ok: false,
-				error: {
-					type: 'invariant-violation',
-					message: 'Slice 01k00000000000000000000042 does not belong to Delivery 01k00000000000000000000008.',
-				},
-			})
 		})
 
 		it('resolves source-control revision planning source requirements through a Slice Artifact scope', async () => {

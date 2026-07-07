@@ -8,6 +8,7 @@ import type {
 	InvalidInputError,
 	InvariantViolationError,
 	ResourceNotFoundError,
+	RevisionConflictError,
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
@@ -26,13 +27,6 @@ export type Input = PipeOutput<typeof inputPipe>
 
 export const resultPipe = memoryPipe
 export type Result = PipeOutput<typeof resultPipe>
-
-export type RevisionConflictError = {
-	type: 'revision-conflict'
-	memoryId: Id
-	expectedCurrentRevisionId: Id
-	actualCurrentRevisionId: Id
-}
 
 export type Error =
 	| InvalidInputError

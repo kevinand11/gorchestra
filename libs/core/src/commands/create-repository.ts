@@ -14,13 +14,13 @@ import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
 import type { Result as CoreResult } from '../utils/types'
 import type { RepositoryCommandReferenceError } from './utils/errors'
+import { validateActiveSecret } from '../utils/secrets'
 import { buildCommandHandler } from './utils/handler'
 import {
 	auditStamp,
 	createRecordValue,
 	nextId,
 	normalizeRepositoryConfig,
-	validateActiveSecret,
 	validateSourceControlProject,
 	validateUniqueRepositoryTarget,
 	withTransaction,

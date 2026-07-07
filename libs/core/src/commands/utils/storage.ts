@@ -19,14 +19,8 @@ import {
 } from '../../domain/model-provider'
 import type { Project } from '../../domain/project'
 import type { RepositoryConfig } from '../../domain/repository'
-import type { Secret } from '../../domain/secret'
 import type {
-	AlreadyArchivedError,
 	ArchivableCoreResource,
-	ArchivedAgentRunProfileReferenceError,
-	ArchivedModelProviderReferenceError,
-	ArchivedModelReferenceError,
-	ArchivedSecretReferenceError,
 	CoreIdResource,
 	DeliveryWorkStateMismatchError,
 	DuplicateAgentRunRuntimeRequirementError,
@@ -34,10 +28,10 @@ import type {
 	InvalidCoreServiceOutputError,
 	InvariantViolationError,
 	ModelThinkingLevelUnavailableError,
-	NotArchivedError,
 	ProjectSourceTypeMismatchError,
+	ResourceArchivedError,
+	ResourceNotArchivedError,
 	ResourceNotFoundError,
-	SecretNotActiveError,
 	StorageOperationFailedError,
 } from '../../errors'
 import { validateModelThinkingLevelForUse } from '../../providers/model-provider-protocol/thinking'
@@ -54,13 +48,13 @@ import {
 	type StorageBoundaryError,
 } from '../../storage/helpers'
 import type { CoreIdStorageRecord } from '../../storage/schemas'
-import { secretIdsFromRuntimeRequirements, validateRuntimeRequirementSecretReferences } from '../../utils/runtime-requirement-secrets'
+import { validateRuntimeRequirementSecretReferences } from '../../utils/runtime-requirement-secrets'
 import { auditStamp, nextId, runtimeRecord } from '../../utils/runtime-values'
+import { validateActiveSecretReferences } from '../../utils/secrets'
 import type { Result } from '../../utils/types'
 import type { CommandContext } from '../types'
 
 export { auditStamp, createRecord, getRecord, getRequired, listRecords, nextId, notFound, runtimeRecord, updateRecord, withTransaction }
-export { secretIdsFromRuntimeRequirements, validateRuntimeRequirementSecretReferences }
 
 export type { StorageBoundaryError }
 
@@ -223,7 +217,7 @@ export async function loadSelectableAgentRunProfile(
 ): Promise<Result<AgentRunProfile, ConfigCommandReferenceError | ConfigCommandStorageError>> {
 	const profile = await getRequired('agent-run-profile', storage, agentRunProfileId)
 	if (!profile.ok) return profile
-	if (isArchived(profile.value.archivePeriods)) return archivedAgentRunProfileReference(agentRunProfileId)
+	if (isArchived(profile.value.archivePeriods)) return resourceArchived('agent-run-profile', agentRunProfileId)
 
 	const facts = await loadSelectableModelFacts(storage, [profile.value.modelUse.modelId])
 	if (!facts.ok) return facts
@@ -317,40 +311,11 @@ export async function validateSourceControlProject(
 	return projectResult
 }
 
-export async function validateActiveSecret(
-	storage: CoreStorage,
-	secretId: Id,
-): Promise<Result<Secret, StorageBoundaryError | ResourceNotFoundError | SecretNotActiveError>> {
-	const secretResult = await getRequired('secret', storage, secretId)
-	if (!secretResult.ok) return secretResult
-	if (isArchived(secretResult.value.archivePeriods)) {
-		return { ok: false, error: { type: 'secret-not-active', secretId } }
-	}
-
-	return secretResult
-}
-
-export async function validateActiveSecretReferences(
-	storage: CoreStorage,
-	secretIds: Id[],
-): Promise<
-	Result<void, ResourceNotFoundError | ArchivedSecretReferenceError | StorageOperationFailedError | InvalidCoreServiceOutputError>
-> {
-	for (const secretId of secretIds) {
-		const validation = await validateActiveSecretReference(storage, secretId)
-		if (!validation.ok) return validation
-	}
-
-	return { ok: true, value: undefined }
-}
-
 export function validateActiveModelProviderSecretReferences(
 	storage: CoreStorage,
 	auth: ModelProviderAuth | null,
 	headers: ModelProviderHeader[],
-): Promise<
-	Result<void, ResourceNotFoundError | ArchivedSecretReferenceError | StorageOperationFailedError | InvalidCoreServiceOutputError>
-> {
+): Promise<Result<void, ResourceNotFoundError | ResourceArchivedError | StorageOperationFailedError | InvalidCoreServiceOutputError>> {
 	return validateActiveSecretReferences(storage, secretReferencesFromModelProviderConfig(auth, headers))
 }
 
@@ -361,7 +326,7 @@ export async function createValidModelProvider(
 	Result<
 		ModelProvider,
 		| ResourceNotFoundError
-		| ArchivedSecretReferenceError
+		| ResourceArchivedError
 		| StorageOperationFailedError
 		| InvalidCoreServiceOutputError
 		| InvariantViolationError
@@ -371,19 +336,6 @@ export async function createValidModelProvider(
 	if (!validReferences.ok) return validReferences
 
 	return createRecordValue('model-provider', storage, provider)
-}
-
-async function validateActiveSecretReference(
-	storage: CoreStorage,
-	secretId: Id,
-): Promise<
-	Result<void, ResourceNotFoundError | ArchivedSecretReferenceError | StorageOperationFailedError | InvalidCoreServiceOutputError>
-> {
-	const secret = await getRecord('secret', storage, secretId)
-	if (!secret.ok) return secret
-	if (secret.value === null) return notFound('secret', secretId)
-
-	return isArchived(secret.value.archivePeriods) ? archivedSecretReference(secretId) : { ok: true, value: undefined }
 }
 
 export async function validateUniqueRepositoryTarget(
@@ -430,7 +382,7 @@ export function archiveStoredRecordWithAudit<Resource extends ArchivableCoreReso
 	resource: Resource,
 	id: Id,
 ): Promise<
-	Result<CoreIdStorageRecord<Resource>, StorageBoundaryError | InvariantViolationError | ResourceNotFoundError | AlreadyArchivedError>
+	Result<CoreIdStorageRecord<Resource>, StorageBoundaryError | InvariantViolationError | ResourceNotFoundError | ResourceArchivedError>
 > {
 	return withAuditStampTransaction(
 		runtime,
@@ -441,12 +393,12 @@ export function archiveStoredRecordWithAudit<Resource extends ArchivableCoreReso
 		): Promise<
 			Result<
 				CoreIdStorageRecord<Resource>,
-				StorageBoundaryError | InvariantViolationError | ResourceNotFoundError | AlreadyArchivedError
+				StorageBoundaryError | InvariantViolationError | ResourceNotFoundError | ResourceArchivedError
 			>
 		> => {
 			const existing = await getRequired(resource, storage, id)
 			if (!existing.ok) return existing
-			if (isArchived(existing.value.archivePeriods)) return { ok: false, error: { type: 'already-archived', resource, id } }
+			if (isArchived(existing.value.archivePeriods)) return { ok: false, error: { type: 'resource-archived', resource, id } }
 
 			const archived: CoreIdStorageRecord<Resource> = {
 				...existing.value,
@@ -468,7 +420,7 @@ export function unarchiveStoredRecordWithAudit<Resource extends ArchivableCoreRe
 	resource: Resource,
 	id: Id,
 ): Promise<
-	Result<CoreIdStorageRecord<Resource>, StorageBoundaryError | InvariantViolationError | ResourceNotFoundError | NotArchivedError>
+	Result<CoreIdStorageRecord<Resource>, StorageBoundaryError | InvariantViolationError | ResourceNotFoundError | ResourceNotArchivedError>
 > {
 	return withAuditStampTransaction(
 		runtime,
@@ -477,12 +429,15 @@ export function unarchiveStoredRecordWithAudit<Resource extends ArchivableCoreRe
 			storage,
 			stamp,
 		): Promise<
-			Result<CoreIdStorageRecord<Resource>, StorageBoundaryError | InvariantViolationError | ResourceNotFoundError | NotArchivedError>
+			Result<
+				CoreIdStorageRecord<Resource>,
+				StorageBoundaryError | InvariantViolationError | ResourceNotFoundError | ResourceNotArchivedError
+			>
 		> => {
 			const existing = await getRequired(resource, storage, id)
 			if (!existing.ok) return existing
 
-			if (!isArchived(existing.value.archivePeriods)) return { ok: false, error: { type: 'not-archived', resource, id } }
+			if (!isArchived(existing.value.archivePeriods)) return { ok: false, error: { type: 'resource-not-archived', resource, id } }
 
 			const latestPeriodIndex = existing.value.archivePeriods.length - 1
 			const latestPeriod = existing.value.archivePeriods[latestPeriodIndex] as ArchivePeriod
@@ -526,10 +481,7 @@ export async function validateAgentRunProfileConfig(
 	storage: CoreStorage,
 	input: { modelUse: ModelUseConfig; runtimeRequirements: AgentRunRuntimeRequirement[]; sandboxConfig: AgentRunSandboxConfig },
 ): Promise<
-	Result<
-		void,
-		ConfigCommandReferenceError | ConfigCommandStorageError | ArchivedSecretReferenceError | DuplicateAgentRunRuntimeRequirementError
-	>
+	Result<void, ConfigCommandReferenceError | ConfigCommandStorageError | ResourceArchivedError | DuplicateAgentRunRuntimeRequirementError>
 > {
 	const duplicateRequirement = firstDuplicateRuntimeRequirement(input.runtimeRequirements)
 	if (duplicateRequirement !== null) {
@@ -551,7 +503,7 @@ export async function validateAgentRunProfileConfig(
 export function validateSandboxConfigSecretReferences(
 	storage: CoreStorage,
 	config: AgentRunSandboxConfig,
-): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError | ArchivedSecretReferenceError>> {
+): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError | ResourceArchivedError>> {
 	switch (config.source.type) {
 		case 'consumer-managed':
 			return Promise.resolve({ ok: true, value: undefined })
@@ -576,36 +528,20 @@ function secretReferencesFromModelProviderAccessValue(value: ModelProviderAccess
 	}
 }
 
-export function archivedSecretReference(secretId: Id): Result<never, ArchivedSecretReferenceError> {
-	return { ok: false, error: { type: 'archived-secret-reference', secretId } }
-}
-
-export function archivedModelProviderReference(modelProviderId: Id): Result<never, ArchivedModelProviderReferenceError> {
-	return { ok: false, error: { type: 'archived-model-provider-reference', modelProviderId } }
-}
-
-export function archivedAgentRunProfileReference(agentRunProfileId: Id): Result<never, ArchivedAgentRunProfileReferenceError> {
-	return { ok: false, error: { type: 'archived-agent-run-profile-reference', agentRunProfileId } }
+function resourceArchived(resource: ArchivableCoreResource, id: Id): Result<never, ResourceArchivedError> {
+	return { ok: false, error: { type: 'resource-archived', resource, id } }
 }
 
 function isId(id: Id | null): id is Id {
 	return id !== null
 }
 
-function validateActiveModel(model: Model): Result<void, ArchivedModelProviderReferenceError | ArchivedModelReferenceError> {
-	if (isArchived(model.archivePeriods)) {
-		return { ok: false, error: { type: 'archived-model-reference', modelId: model.id } }
-	}
-
-	return { ok: true, value: undefined }
+function validateActiveModel(model: Model): Result<void, ResourceArchivedError> {
+	return isArchived(model.archivePeriods) ? resourceArchived('model', model.id) : { ok: true, value: undefined }
 }
 
-function validateActiveModelProvider(provider: ModelProvider): Result<void, ArchivedModelProviderReferenceError> {
-	if (isArchived(provider.archivePeriods)) {
-		return { ok: false, error: { type: 'archived-model-provider-reference', modelProviderId: provider.id } }
-	}
-
-	return { ok: true, value: undefined }
+function validateActiveModelProvider(provider: ModelProvider): Result<void, ResourceArchivedError> {
+	return isArchived(provider.archivePeriods) ? resourceArchived('model-provider', provider.id) : { ok: true, value: undefined }
 }
 
 function repositoryTargetKey(config: RepositoryConfig): string {

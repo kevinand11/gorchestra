@@ -41,7 +41,7 @@ import type { CoreStorageOperation, SecretResolutionFailedError } from '../../er
 import type { CoreServices, CoreStorage, ResolvableSecretValue } from '../../services'
 import { secretSchema } from '../../storage/schemas'
 import { withTransaction } from '../../storage/transactions'
-import { resolveSecretValueRefs } from '../../utils/secret-values'
+import { resolveSecretValueRefs } from '../../utils/secrets'
 import type { Result } from '../../utils/types'
 
 export interface ModelProviderProtocolProviderImplementations {
