@@ -104,7 +104,7 @@ export function sandboxMemoryMiBForVcpus(vcpus: number): number {
 }
 
 export const agentRunRuntimeRequirementApplicationTargetPipe = v.discriminate((value) => value.type, {
-	'source-checkout': v.object({ type: v.eq('source-checkout') }),
+	sandbox: v.object({ type: v.eq('sandbox') }),
 	'runtime-requirement': v.object({
 		type: v.eq('runtime-requirement'),
 		index: nonNegativeIntegerPipe,

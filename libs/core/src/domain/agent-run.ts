@@ -66,13 +66,15 @@ export const agentRunRuntimeRequirementOverridePipe = v.object({
 })
 export type AgentRunRuntimeRequirementOverride = PipeOutput<typeof agentRunRuntimeRequirementOverridePipe>
 
-export const agentRunSandboxStatePipe = v.object({
-	key: nonEmptyTrimmedStringPipe,
-	created: v.nullable(runtimeRecordPipe),
-	appliedRequirements: agentRunRuntimeRequirementsPipe,
-	appliedThroughEventId: v.nullable(idPipe),
-	released: v.nullable(runtimeRecordPipe),
-})
+export const agentRunSandboxStatePipe = v.nullable(
+	v.object({
+		key: nonEmptyTrimmedStringPipe,
+		created: runtimeRecordPipe,
+		appliedRequirements: agentRunRuntimeRequirementsPipe,
+		appliedThroughEventId: v.nullable(idPipe),
+		released: v.nullable(runtimeRecordPipe),
+	}),
+)
 export type AgentRunSandboxState = PipeOutput<typeof agentRunSandboxStatePipe>
 
 export const agentRunPipe = v.object({

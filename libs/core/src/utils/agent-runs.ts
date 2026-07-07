@@ -8,6 +8,16 @@ import { listRecords, updateRecord } from '../storage/helpers'
 export type AgentRunLookupError = InvalidCoreServiceOutputError | StorageOperationFailedError | InvariantViolationError
 export type AgentRunCompletionError = AgentRunLookupError | ResourceNotFoundError
 
+export function agentRunSandboxPrepared(agentRun: AgentRun): boolean {
+	return (
+		agentRun.sandbox !== null &&
+		agentRun.sandbox.released === null &&
+		agentRun.blocked === null &&
+		agentRun.sandbox.appliedRequirements.length === agentRun.desiredRuntimeRequirements.length &&
+		agentRun.sandbox.appliedThroughEventId === latestRuntimeRequirementOverrideEventId(agentRun)
+	)
+}
+
 export async function getSingleAgentRunByPurpose(
 	storage: CoreStorage,
 	purpose: AgentRunPurpose,
@@ -27,6 +37,10 @@ export async function completeSingleAgentRunByPurpose(
 	return agentRun.value.completed === null
 		? updateRecord('agent-run', storage, agentRun.value.id, { completed })
 		: { ok: true, value: agentRun.value }
+}
+
+function latestRuntimeRequirementOverrideEventId(agentRun: AgentRun): string | null {
+	return agentRun.runtimeRequirementOverrides.at(-1)?.eventId ?? null
 }
 
 function singleAgentRunByPurpose(agentRuns: AgentRun[], purpose: AgentRunPurpose): Result<AgentRun, InvariantViolationError> {

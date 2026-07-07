@@ -292,13 +292,7 @@ export function testModelAgentRun(
 		runtimeRequirementOverrides: [],
 		desiredRuntimeRequirements: input.profile?.runtimeRequirements ?? [],
 		blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
-		sandbox: {
-			key: input.id ?? '01k00000000000000000000002',
-			created: null,
-			appliedRequirements: [],
-			appliedThroughEventId: null,
-			released: null,
-		},
+		sandbox: null,
 		started: { at: '2026-06-10T12:00:00.000Z' },
 		completed: input.completed ?? null,
 	}

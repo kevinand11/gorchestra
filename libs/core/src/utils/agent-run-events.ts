@@ -81,13 +81,7 @@ function modelAgentRun<TPurpose extends AgentRunPurpose>(input: {
 		runtimeRequirementOverrides: [],
 		desiredRuntimeRequirements,
 		blocked: { type: 'sandbox-preparation-pending', blocked: input.started },
-		sandbox: {
-			key: input.agentRunId,
-			created: null,
-			appliedRequirements: [],
-			appliedThroughEventId: null,
-			released: null,
-		},
+		sandbox: null,
 		started: input.started,
 		completed: null,
 	}
@@ -184,13 +178,7 @@ if (import.meta.vitest) {
 				runtimeRequirementOverrides: [],
 				desiredRuntimeRequirements: [],
 				blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
-				sandbox: {
-					key: '01k00000000000000000000002',
-					created: null,
-					appliedRequirements: [],
-					appliedThroughEventId: null,
-					released: null,
-				},
+				sandbox: null,
 				started: { at: '2026-06-10T12:00:00.000Z' },
 				completed: null,
 			}
@@ -250,13 +238,7 @@ if (import.meta.vitest) {
 				runtimeRequirementOverrides: [],
 				desiredRuntimeRequirements: [],
 				blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
-				sandbox: {
-					key: '01k00000000000000000000002',
-					created: null,
-					appliedRequirements: [],
-					appliedThroughEventId: null,
-					released: null,
-				},
+				sandbox: null,
 				started: { at: '2026-06-10T12:00:00.000Z' },
 				completed: null,
 			})

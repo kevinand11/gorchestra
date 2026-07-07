@@ -6,12 +6,13 @@ import { toolsForAgentRunPurpose } from './tools'
 import { nextTurnClaim, type TurnReasonClaim } from './turn-claims'
 import { loadTurnModelUse } from './turn-model-use'
 import type { AgentRunLoopState, AgentRunRuntimeError, ModelAgentRunRuntime, RunModelAgentRunOptions, TurnResult } from './types'
-import type { AgentRun, AgentRunEvent, TurnErrorReason } from '../../domain/agent-run'
+import type { AgentRunEvent, TurnErrorReason } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
 import type { ModelNotSelectableError, ModelThinkingLevelUnavailableError } from '../../errors'
 import type { CoreProviders } from '../../providers'
 import type { CoreStorage } from '../../services'
 import { getRequired, listRecords } from '../../storage/helpers'
+import { agentRunSandboxPrepared } from '../../utils/agent-runs'
 import type { Result } from '../../utils/types'
 
 export async function runModelAgentRun(
@@ -22,7 +23,7 @@ export async function runModelAgentRun(
 	const state = await loadLoopState(runtime.services.storage, agentRunId)
 	if (!state.ok) return state
 	if (state.value.agentRun.completed !== null) return { ok: true, value: undefined }
-	if (!agentRunReadyForModelTurn(state.value.agentRun)) return { ok: true, value: undefined }
+	if (!agentRunSandboxPrepared(state.value.agentRun)) return { ok: true, value: undefined }
 
 	const claim = nextTurnClaim(state.value.events)
 	if (claim === null) return { ok: true, value: undefined }
@@ -43,15 +44,6 @@ async function loadLoopState(storage: CoreStorage, agentRunId: Id): Promise<Resu
 	if (!events.ok) return events
 
 	return { ok: true, value: { agentRun: agentRun.value, events: events.value, tools: toolsForAgentRunPurpose(agentRun.value.purpose) } }
-}
-
-function agentRunReadyForModelTurn(agentRun: AgentRun): boolean {
-	return (
-		agentRun.blocked === null &&
-		agentRun.sandbox.created !== null &&
-		agentRun.sandbox.appliedRequirements.length === agentRun.desiredRuntimeRequirements.length &&
-		agentRun.sandbox.appliedThroughEventId === (agentRun.runtimeRequirementOverrides.at(-1)?.eventId ?? null)
-	)
 }
 
 async function runTurn(

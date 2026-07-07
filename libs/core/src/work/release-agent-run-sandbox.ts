@@ -20,6 +20,7 @@ import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 
 const inputPipe = v.object({ agentRunId: idPipe })
 type ParsedInput = PipeOutput<typeof inputPipe>
+type AgentRunWithSandbox = AgentRun & { sandbox: NonNullable<AgentRun['sandbox']> }
 export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
 export type Result = void
 export type Error =
@@ -34,24 +35,22 @@ export function createReleaseAgentRunSandboxOperation(runtime: CoreRuntime): Ope
 	return buildWorkHandler('releaseAgentRunSandbox', inputPipe, (input: ParsedInput) => releaseAgentRunSandbox(runtime, input.agentRunId))
 }
 
-export async function releaseAgentRunSandbox(
-	runtime: CoreRuntime,
-	agentRunId: Id,
-): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
+async function releaseAgentRunSandbox(runtime: CoreRuntime, agentRunId: Id): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
 	const agentRun = await getRequired('agent-run', runtime.services.storage, agentRunId)
 	if (!agentRun.ok) return agentRun
-	if (agentRun.value.sandbox.created === null || agentRun.value.sandbox.released !== null) return { ok: true, value: undefined }
+	if (agentRun.value.sandbox === null || agentRun.value.sandbox.released !== null) return { ok: true, value: undefined }
 
-	const provider = await managedSandboxProviderForConfig(runtime, runtime.services.storage, agentRun.value.profile.sandboxConfig)
+	const releasableAgentRun: AgentRunWithSandbox = { ...agentRun.value, sandbox: agentRun.value.sandbox }
+	const provider = await managedSandboxProviderForConfig(runtime, runtime.services.storage, releasableAgentRun.profile.sandboxConfig)
 	if (!provider.ok) return recordReleaseResolutionFailure(runtime, agentRunId, provider.error)
 
-	const sandbox = await provider.value.find({ key: agentRun.value.sandbox.key })
+	const sandbox = await provider.value.find({ key: releasableAgentRun.sandbox.key })
 	if (!sandbox.ok) {
 		return sandbox.error.type === 'sandbox-operation-failed'
 			? recordReleaseFailure(runtime, agentRunId, sandbox.error.summary)
 			: { ok: false, error: sandbox.error }
 	}
-	if (sandbox.value === null) return recordReleased(runtime, agentRun.value, 'Agent Run sandbox was already absent.')
+	if (sandbox.value === null) return recordReleased(runtime, releasableAgentRun, 'Agent Run sandbox was already absent.')
 
 	const release = await sandbox.value.release()
 	if (!release.ok) {
@@ -59,12 +58,12 @@ export async function releaseAgentRunSandbox(
 			? recordReleaseFailure(runtime, agentRunId, release.error.summary)
 			: { ok: false, error: release.error }
 	}
-	return recordReleased(runtime, agentRun.value, release.value.summary)
+	return recordReleased(runtime, releasableAgentRun, release.value.summary)
 }
 
 async function recordReleased(
 	runtime: CoreRuntime,
-	agentRun: AgentRun,
+	agentRun: AgentRunWithSandbox,
 	summary: string,
 ): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
 	const released = runtimeRecord(runtime.values)
@@ -152,7 +151,7 @@ if (import.meta.vitest) {
 
 			expect(files.get('/workspace/.gorchestra/runtime-env.json')).toBe('{}\n')
 			expect(releasedKeys).toEqual(['01k00000000000000000000002'])
-			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.sandbox.released).toEqual({
+			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.sandbox?.released).toEqual({
 				at: '2026-06-10T12:00:00.000Z',
 			})
 		})

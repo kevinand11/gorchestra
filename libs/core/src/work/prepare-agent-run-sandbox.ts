@@ -3,7 +3,7 @@ import { v, type PipeInput, type PipeOutput } from 'valleyed'
 import type { WorkContext } from './types'
 import { buildWorkHandler } from './utils/handler'
 import type { AgentRun } from '../domain/agent-run'
-import type { AgentRunRuntimeRequirement } from '../domain/agent-run-runtime'
+import { runtimeRequirementKey, type AgentRunRuntimeRequirement } from '../domain/agent-run-runtime'
 import { idPipe, type Id } from '../domain/commons'
 import type {
 	InvalidCoreServiceOutputError,
@@ -20,6 +20,7 @@ import type { ManagedSandbox, ManagedSandboxError, ManagedSandboxProvider } from
 import type { SandboxCommandOutput } from '../services'
 import { getRequired, updateRecord } from '../storage/helpers'
 import { appendAgentRunEvent } from '../utils/agent-run-events'
+import { agentRunSandboxPrepared } from '../utils/agent-runs'
 import { runtimeRecord } from '../utils/runtime-values'
 import { resolveActiveSecretValues } from '../utils/secret-values'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
@@ -39,15 +40,14 @@ export type Operation = (input: Input, context: WorkContext) => Promise<CoreResu
 const defaultSandboxCommandTimeoutMs = 10 * 60 * 1000
 
 type SandboxPreparationFailureTarget = Extract<NonNullable<AgentRun['blocked']>, { type: 'sandbox-preparation-failed' }>['target']
+type AgentRunSandbox = NonNullable<AgentRun['sandbox']>
+type AgentRunWithSandbox = AgentRun & { sandbox: AgentRunSandbox }
 
 export function createPrepareAgentRunSandboxOperation(runtime: CoreRuntime): Operation {
 	return buildWorkHandler('prepareAgentRunSandbox', inputPipe, (input: ParsedInput) => prepareAgentRunSandbox(runtime, input.agentRunId))
 }
 
-export async function prepareAgentRunSandbox(
-	runtime: CoreRuntime,
-	agentRunId: Id,
-): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
+async function prepareAgentRunSandbox(runtime: CoreRuntime, agentRunId: Id): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
 	const loaded = await getRequired('agent-run', runtime.services.storage, agentRunId)
 	if (!loaded.ok) return loaded
 	if (loaded.value.completed !== null) return { ok: true, value: undefined }
@@ -55,13 +55,13 @@ export async function prepareAgentRunSandbox(
 	const preparedSandbox = await ensureManagedSandbox(runtime, loaded.value)
 	if (!preparedSandbox.ok) {
 		if (isCommandPreparationFailure(preparedSandbox.error)) {
-			const blocked = await blockPreparationFailure(runtime, loaded.value, { type: 'source-checkout' }, preparedSandbox.error.summary)
+			const blocked = await blockPreparationFailure(runtime, loaded.value, { type: 'sandbox' }, preparedSandbox.error.summary)
 			return blocked.ok ? { ok: true, value: undefined } : blocked
 		}
 		return { ok: false, error: preparedSandbox.error }
 	}
 	if (preparedSandbox.value.agentRun.completed !== null) return { ok: true, value: undefined }
-	if (isPrepared(preparedSandbox.value.agentRun)) return { ok: true, value: undefined }
+	if (agentRunSandboxPrepared(preparedSandbox.value.agentRun)) return { ok: true, value: undefined }
 
 	const started = await appendAgentRunEvent(runtime, runtime.services.storage, agentRunId, {
 		type: 'agent-run-sandbox-preparation-started',
@@ -75,59 +75,73 @@ export async function prepareAgentRunSandbox(
 async function ensureManagedSandbox(
 	runtime: CoreRuntime,
 	agentRun: AgentRun,
-): Promise<CoreResult<{ agentRun: AgentRun; sandbox: ManagedSandbox }, CommandPreparationFailure | Exclude<Error, InvalidInputError>>> {
+): Promise<
+	CoreResult<{ agentRun: AgentRunWithSandbox; sandbox: ManagedSandbox }, CommandPreparationFailure | Exclude<Error, InvalidInputError>>
+> {
+	if (agentRun.sandbox !== null && agentRun.sandbox.released !== null) {
+		return invariant(`Agent Run ${agentRun.id} sandbox has already been released.`)
+	}
+
 	const provider = await resolveManagedSandboxProviderForPreparation(runtime, agentRun)
 	if (!provider.ok) return provider
 
-	if (agentRun.sandbox.created === null) {
-		const createdSandbox = await provider.value.create({ key: agentRun.sandbox.key, config: agentRun.profile.sandboxConfig })
+	if (agentRun.sandbox === null) {
+		const key = agentRun.id
+		const createdSandbox = await provider.value.create({ key, config: agentRun.profile.sandboxConfig })
 		if (!createdSandbox.ok) return mapManagedSandboxError(createdSandbox.error)
 
-		const createdAgentRun = await recordSandboxCreated(runtime, agentRun)
+		const createdAgentRun = await recordSandboxCreated(runtime, agentRun, key)
 		return createdAgentRun.ok
 			? { ok: true, value: { agentRun: createdAgentRun.value, sandbox: createdSandbox.value } }
 			: createdAgentRun
 	}
 
-	const found = await provider.value.find({ key: agentRun.sandbox.key })
+	const existingAgentRun = requireAgentRunSandbox(agentRun)
+	if (!existingAgentRun.ok) return existingAgentRun
+
+	const found = await provider.value.find({ key: existingAgentRun.value.sandbox.key })
 	if (!found.ok) return mapManagedSandboxError(found.error)
 	return found.value === null
 		? { ok: false, error: { summary: 'Agent Run sandbox was not found.' } }
-		: { ok: true, value: { agentRun, sandbox: found.value } }
+		: { ok: true, value: { agentRun: existingAgentRun.value, sandbox: found.value } }
 }
 
 async function recordSandboxCreated(
 	runtime: CoreRuntime,
 	agentRun: AgentRun,
-): Promise<CoreResult<AgentRun, Exclude<Error, InvalidInputError>>> {
+	key: string,
+): Promise<CoreResult<AgentRunWithSandbox, Exclude<Error, InvalidInputError>>> {
 	const created = runtimeRecord(runtime.values)
 	if (!created.ok) return created
 
-	const sandbox = { ...agentRun.sandbox, created: created.value, released: null }
-	const updated = await updateRecord('agent-run', runtime.services.storage, agentRun.id, { sandbox })
+	const agentRunSandbox: AgentRunSandbox = {
+		key,
+		created: created.value,
+		released: null,
+		appliedRequirements: [],
+		appliedThroughEventId: null,
+	}
+	const updated = await updateRecord('agent-run', runtime.services.storage, agentRun.id, { sandbox: agentRunSandbox })
 	if (!updated.ok) return updated
+
+	const updatedAgentRun = requireAgentRunSandbox(updated.value)
+	if (!updatedAgentRun.ok) return updatedAgentRun
 
 	const event = await appendAgentRunEvent(runtime, runtime.services.storage, agentRun.id, {
 		type: 'agent-run-sandbox-created',
-		key: agentRun.sandbox.key,
+		key,
 	})
-	return event.ok ? { ok: true, value: updated.value } : event
-}
-
-function isPrepared(agentRun: AgentRun): boolean {
-	return (
-		agentRun.blocked === null &&
-		agentRun.sandbox.created !== null &&
-		agentRun.sandbox.appliedRequirements.length === agentRun.desiredRuntimeRequirements.length &&
-		agentRun.sandbox.appliedThroughEventId === latestRuntimeOverrideEventId(agentRun)
-	)
+	return event.ok ? { ok: true, value: updatedAgentRun.value } : event
 }
 
 async function applyRuntimeRequirements(
 	runtime: CoreRuntime,
-	agentRun: AgentRun,
+	agentRun: AgentRunWithSandbox,
 	sandbox: ManagedSandbox,
 ): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
+	const prefix = validateAppliedRequirementPrefix(agentRun)
+	if (!prefix.ok) return prefix
+
 	let current = agentRun
 	for (let index = current.sandbox.appliedRequirements.length; index < current.desiredRuntimeRequirements.length; index += 1) {
 		const requirement = current.desiredRuntimeRequirements[index]!
@@ -141,11 +155,11 @@ async function applyRuntimeRequirements(
 	return completed.ok ? { ok: true, value: undefined } : completed
 }
 
-type ApplyRequirementResult = { applied: true; agentRun: AgentRun } | { applied: false }
+type ApplyRequirementResult = { applied: true; agentRun: AgentRunWithSandbox } | { applied: false }
 
 async function applyRuntimeRequirement(
 	runtime: CoreRuntime,
-	agentRun: AgentRun,
+	agentRun: AgentRunWithSandbox,
 	sandbox: ManagedSandbox,
 	index: number,
 	requirement: AgentRunRuntimeRequirement,
@@ -171,7 +185,7 @@ async function applyRuntimeRequirement(
 
 async function blockRuntimeRequirementFailure(
 	runtime: CoreRuntime,
-	agentRun: AgentRun,
+	agentRun: AgentRunWithSandbox,
 	index: number,
 	requirement: AgentRunRuntimeRequirement,
 	summary: string,
@@ -182,12 +196,35 @@ async function blockRuntimeRequirementFailure(
 
 async function recordAppliedRuntimeRequirement(
 	runtime: CoreRuntime,
-	agentRun: AgentRun,
+	agentRun: AgentRunWithSandbox,
 	requirement: AgentRunRuntimeRequirement,
 ): Promise<CoreResult<ApplyRequirementResult, Exclude<Error, InvalidInputError>>> {
 	const nextSandbox = { ...agentRun.sandbox, appliedRequirements: [...agentRun.sandbox.appliedRequirements, requirement], released: null }
 	const updated = await updateRecord('agent-run', runtime.services.storage, agentRun.id, { sandbox: nextSandbox })
-	return updated.ok ? { ok: true, value: { applied: true, agentRun: updated.value } } : updated
+	if (!updated.ok) return updated
+
+	const updatedAgentRun = requireAgentRunSandbox(updated.value)
+	return updatedAgentRun.ok ? { ok: true, value: { applied: true, agentRun: updatedAgentRun.value } } : updatedAgentRun
+}
+
+function requireAgentRunSandbox(agentRun: AgentRun): CoreResult<AgentRunWithSandbox, InvariantViolationError> {
+	return agentRun.sandbox === null
+		? invariant(`Agent Run ${agentRun.id} sandbox was expected to exist.`)
+		: { ok: true, value: agentRun as AgentRunWithSandbox }
+}
+
+function validateAppliedRequirementPrefix(agentRun: AgentRunWithSandbox): CoreResult<void, InvariantViolationError> {
+	for (const [index, requirement] of agentRun.sandbox.appliedRequirements.entries()) {
+		const desired = agentRun.desiredRuntimeRequirements[index]
+		if (desired === undefined || runtimeRequirementKey(requirement) !== runtimeRequirementKey(desired)) {
+			return invariant(`Agent Run ${agentRun.id} sandbox applied requirements do not match desired requirements.`)
+		}
+	}
+	return { ok: true, value: undefined }
+}
+
+function invariant(message: string): CoreResult<never, InvariantViolationError> {
+	return { ok: false, error: { type: 'invariant-violation', message } }
 }
 
 type PreparedSandboxOperation =
@@ -334,7 +371,7 @@ function mapManagedSandboxError(error: ManagedSandboxError): CoreResult<never, C
 
 async function completePreparation(
 	runtime: CoreRuntime,
-	agentRun: AgentRun,
+	agentRun: AgentRunWithSandbox,
 ): Promise<CoreResult<AgentRun, Exclude<Error, InvalidInputError>>> {
 	const appliedThroughEventId = latestRuntimeOverrideEventId(agentRun)
 	const sandbox = { ...agentRun.sandbox, appliedThroughEventId, released: null }
@@ -445,6 +482,68 @@ if (import.meta.vitest) {
 					appliedRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
 					appliedThroughEventId: null,
 					released: null,
+				},
+			})
+		})
+
+		it('blocks with sandbox target when provider sandbox creation fails', async () => {
+			const options = createTestCoreServices({
+				sandbox: {
+					kind: 'consumer-managed',
+					create: () => Promise.reject(new Error('provider unavailable')),
+					find: () => Promise.resolve(null),
+				},
+			})
+			options.tx.agentRuns.records.set('01k00000000000000000000002', testModelAgentRun())
+			const operation = createPrepareAgentRunSandboxOperation(createTestCoreRuntime(options))
+
+			const result = await operation({ agentRunId: '01k00000000000000000000002' }, { correlationId: null })
+
+			expect(result).toEqual({ ok: true, value: undefined })
+			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.blocked).toMatchObject({
+				type: 'sandbox-preparation-failed',
+				target: { type: 'sandbox' },
+				summary: 'Sandbox creation failed.',
+			})
+			expect(Array.from(options.tx.agentRunEvents.records.values()).at(-1)?.body).toMatchObject({
+				type: 'agent-run-sandbox-preparation-failed',
+				target: { type: 'sandbox' },
+				summary: 'Sandbox creation failed.',
+			})
+		})
+
+		it('returns invariant violations when applied requirements are not a desired requirements prefix', async () => {
+			const sandbox = rawSandbox(new Map(), [])
+			const options = createTestCoreServices({
+				sandbox: {
+					kind: 'consumer-managed',
+					create: () => Promise.resolve(sandbox),
+					find: () => Promise.resolve(sandbox),
+				},
+			})
+			options.tx.agentRuns.records.set('01k00000000000000000000002', {
+				...testModelAgentRun(),
+				blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
+				sandbox: {
+					key: '01k00000000000000000000002',
+					created: { at: '2026-06-10T12:00:00.000Z' },
+					appliedRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
+					appliedThroughEventId: null,
+					released: null,
+				},
+				desiredRuntimeRequirements: [
+					{ type: 'environment-secret', envName: 'GITHUB_TOKEN', secretId: '01k00000000000000000000040' },
+				],
+			})
+			const operation = createPrepareAgentRunSandboxOperation(createTestCoreRuntime(options))
+
+			const result = await operation({ agentRunId: '01k00000000000000000000002' }, { correlationId: null })
+
+			expect(result).toEqual({
+				ok: false,
+				error: {
+					type: 'invariant-violation',
+					message: 'Agent Run 01k00000000000000000000002 sandbox applied requirements do not match desired requirements.',
 				},
 			})
 		})

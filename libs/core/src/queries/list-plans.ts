@@ -222,13 +222,7 @@ if (import.meta.vitest) {
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: null,
-			sandbox: {
-				key: '01k00000000000000000000002',
-				created: null,
-				appliedRequirements: [],
-				appliedThroughEventId: null,
-				released: null,
-			},
+			sandbox: null,
 			started: { at: stamp.at },
 			completed: null,
 		}

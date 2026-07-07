@@ -83,7 +83,7 @@ export const coreStorageMigrations = [
 				arrayField('runtimeRequirementOverrides'),
 				arrayField('desiredRuntimeRequirements'),
 				nullableField(objectField('blocked')),
-				objectField('sandbox'),
+				nullableField(objectField('sandbox')),
 				objectField('started'),
 				nullableField(objectField('completed')),
 			]),
