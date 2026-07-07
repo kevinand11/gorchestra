@@ -1,6 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { idPipe, nonEmptyTrimmedStringPipe, nonNegativeIntegerPipe, runtimeRecordPipe } from './commons'
+import { idPipe, nonEmptyTrimmedStringPipe, nonNegativeIntegerPipe, positiveIntegerPipe, runtimeRecordPipe } from './commons'
 import { envNamePipe } from './secret'
 
 export const sandboxPathPipe = nonEmptyTrimmedStringPipe
@@ -40,6 +40,68 @@ export type AgentRunRuntimeRequirement = PipeOutput<typeof agentRunRuntimeRequir
 
 export const agentRunRuntimeRequirementsPipe = v.array(agentRunRuntimeRequirementPipe)
 export type AgentRunRuntimeRequirements = PipeOutput<typeof agentRunRuntimeRequirementsPipe>
+
+export const vercelSandboxRuntimePipe = v.in(['node26', 'node24', 'node22', 'python3.13'])
+export type VercelSandboxRuntime = PipeOutput<typeof vercelSandboxRuntimePipe>
+
+export const vercelSandboxCredentialsSecretRefsPipe = v.object({
+	tokenSecretId: idPipe,
+	teamIdSecretId: idPipe,
+	projectIdSecretId: idPipe,
+})
+export type VercelSandboxCredentialsSecretRefs = PipeOutput<typeof vercelSandboxCredentialsSecretRefsPipe>
+
+export const consumerManagedSandboxSourceConfigPipe = v.object({
+	type: v.eq('consumer-managed'),
+	ociImage: nonEmptyTrimmedStringPipe,
+})
+export type ConsumerManagedSandboxSourceConfig = PipeOutput<typeof consumerManagedSandboxSourceConfigPipe>
+
+export const vercelRuntimeSandboxSourceConfigPipe = v.object({
+	type: v.eq('vercel-runtime'),
+	runtime: vercelSandboxRuntimePipe,
+	credentials: vercelSandboxCredentialsSecretRefsPipe,
+})
+export type VercelRuntimeSandboxSourceConfig = PipeOutput<typeof vercelRuntimeSandboxSourceConfigPipe>
+
+export const vercelVcrImageSandboxSourceConfigPipe = v.object({
+	type: v.eq('vercel-vcr-image'),
+	vcrImage: nonEmptyTrimmedStringPipe,
+	credentials: vercelSandboxCredentialsSecretRefsPipe,
+})
+export type VercelVcrImageSandboxSourceConfig = PipeOutput<typeof vercelVcrImageSandboxSourceConfigPipe>
+
+export const agentRunSandboxSourceConfigPipe = v.discriminate((value) => value.type, {
+	'consumer-managed': consumerManagedSandboxSourceConfigPipe,
+	'vercel-runtime': vercelRuntimeSandboxSourceConfigPipe,
+	'vercel-vcr-image': vercelVcrImageSandboxSourceConfigPipe,
+})
+export type AgentRunSandboxSourceConfig = PipeOutput<typeof agentRunSandboxSourceConfigPipe>
+
+export const agentRunSandboxResourcesPipe = v.object({ vcpus: positiveIntegerPipe })
+export type AgentRunSandboxResources = PipeOutput<typeof agentRunSandboxResourcesPipe>
+
+export const agentRunSandboxNetworkPolicyPipe = v.discriminate((value) => value.type, {
+	'allow-all': v.object({ type: v.eq('allow-all') }),
+	'deny-all': v.object({ type: v.eq('deny-all') }),
+	'allow-list': v.object({
+		type: v.eq('allow-list'),
+		hosts: v.array(nonEmptyTrimmedStringPipe),
+		subnets: v.object({ allow: v.array(nonEmptyTrimmedStringPipe), deny: v.array(nonEmptyTrimmedStringPipe) }),
+	}),
+})
+export type AgentRunSandboxNetworkPolicy = PipeOutput<typeof agentRunSandboxNetworkPolicyPipe>
+
+export const agentRunSandboxConfigPipe = v.object({
+	source: agentRunSandboxSourceConfigPipe,
+	resources: agentRunSandboxResourcesPipe,
+	networkPolicy: agentRunSandboxNetworkPolicyPipe,
+})
+export type AgentRunSandboxConfig = PipeOutput<typeof agentRunSandboxConfigPipe>
+
+export function sandboxMemoryMiBForVcpus(vcpus: number): number {
+	return vcpus * 2048
+}
 
 export const agentRunRuntimeRequirementApplicationTargetPipe = v.discriminate((value) => value.type, {
 	'source-checkout': v.object({ type: v.eq('source-checkout') }),
@@ -156,6 +218,30 @@ if (import.meta.vitest) {
 			const second = { type: 'environment-secret' as const, envName: 'NPM_TOKEN', secretId: '01k00000000000000000000041' }
 			expect(firstDuplicateRuntimeRequirement([first, second])).toBeNull()
 			expect(firstDuplicateRuntimeRequirement([first, second, first])).toBe(first)
+		})
+	})
+
+	describe('Agent Run Sandbox Config domain pipes', () => {
+		it('accepts Vercel runtime sandbox config with nested credential Secret references', () => {
+			expect(
+				v.assert(agentRunSandboxConfigPipe, {
+					source: {
+						type: 'vercel-runtime',
+						runtime: 'node24',
+						credentials: {
+							tokenSecretId: '01k00000000000000000000040',
+							teamIdSecretId: '01k00000000000000000000041',
+							projectIdSecretId: '01k00000000000000000000042',
+						},
+					},
+					resources: { vcpus: 2 },
+					networkPolicy: { type: 'allow-all' },
+				}),
+			).toMatchObject({ resources: { vcpus: 2 } })
+		})
+
+		it('infers sandbox memory from vCPUs', () => {
+			expect(sandboxMemoryMiBForVcpus(3)).toBe(6144)
 		})
 	})
 }

@@ -1,6 +1,6 @@
 import type { CoreServices, CoreStorage } from '@gorchestra/core'
 
-import { createLocalDirectorySandboxService } from './sandbox'
+import { createMicrosandboxSandboxRuntime } from './sandbox'
 import { revealSecretPlaintext, type SecretEncryptionKey } from '../modules/secret-protection'
 
 export type CreateCoreServicesOptions = {
@@ -18,8 +18,7 @@ export function createCoreServices(storage: CoreStorage, options: CreateCoreServ
 			resolveSecrets: () => Promise.resolve([]),
 			resolveSecretValues: ({ secrets }) => Promise.resolve(resolveSecretValues(secrets, options.secretEncryptionKey)),
 		},
-		sandbox: createLocalDirectorySandboxService({
-			rootDir: options.sandboxRootDir,
+		sandbox: createMicrosandboxSandboxRuntime({
 			coreStorageNamespace: options.coreStorageNamespace,
 		}),
 		dispatcher: options.dispatcher,
@@ -42,7 +41,7 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
 	describe('Server Core services', () => {
-		it('preflights and resolves inline protected Secret value refs', async () => {
+		it('resolves inline protected Secret value refs and wires consumer-managed sandbox runtime', async () => {
 			const { mkdtemp, rm } = await import('node:fs/promises')
 			const { tmpdir } = await import('node:os')
 			const { join } = await import('node:path')
@@ -69,7 +68,9 @@ if (import.meta.vitest) {
 					'secret-1': 'token-value',
 				})
 				expect(await services.secrets.resolveSecretValues({ secrets: [{ secretId: 'secret-2', valueRef: 'bad-ref' }] })).toEqual({})
-				expect(await services.sandbox.preflight()).toEqual({ ok: true })
+				expect(services.sandbox.kind).toBe('consumer-managed')
+				expect(typeof services.sandbox.create).toBe('function')
+				expect(typeof services.sandbox.find).toBe('function')
 			} finally {
 				await rm(sandboxRootDir, { recursive: true, force: true })
 			}

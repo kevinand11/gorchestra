@@ -57,7 +57,7 @@ A runtime-invoked Core write operation that advances already-recorded Core work 
 _Avoid_: Command, query, scheduler job
 
 **Core Service**:
-A consumer-provided deployment boundary used by Core for deployment mechanics such as storage, Secret-at-rest protection and plaintext resolution, sandbox isolation, logging, or event publishing. Core Services do not own Portfolio orchestration, Source Control Provider, Model Provider Protocol, Agent Run behavior, portable Snapshot encryption, lifecycle time semantics, or Core identifier generation.
+A consumer-provided deployment boundary used by Core for deployment mechanics such as storage, Secret-at-rest protection and plaintext resolution, consumer-managed sandbox execution, logging, or event publishing. Core Services do not own Portfolio orchestration, Source Control Provider, Model Provider Protocol, Core-owned Sandbox Runtime behavior, Agent Run behavior, portable Snapshot encryption, lifecycle time semantics, or Core identifier generation.
 _Avoid_: Core Port, plugin, consumer policy, integration logic
 
 **Core Service Output**:
@@ -81,7 +81,7 @@ A consumer-specific protected token that lets the owning Consumer resolve Secret
 _Avoid_: Plaintext secret, decrypted secret value
 
 **Secret Reference**:
-A direct Core-owned Portfolio usage of a Secret by a stored data model that may use that Secret for future provider access or Agent Run environment exposure. Secret References report whether the referring data model is active, never expose plaintext, and expose a Secret to Agent Runs only through Agent Run Environment Secret Requirements.
+A direct Core-owned Portfolio usage of a Secret by a stored data model that may use that Secret for future provider access, Agent Run environment exposure, command-scoped Agent Run preparation access, or Core-owned sandbox runtime credentials. Secret References report whether the referring data model is active and never expose plaintext.
 _Avoid_: Secret Link, credential usage, historical secret mention, Secret Binding
 
 **Environment Variable**:
@@ -97,7 +97,7 @@ A personal access token value a user may store as a Secret for GitHub Repository
 _Avoid_: GitHub token, GitHub credential
 
 **Portfolio Snapshot**:
-A Core-encrypted portable artifact containing portable Portfolio facts. Portfolio Snapshots always include Secrets and can be restored by any Gorchestra consumer with the passphrase, but do not make deployment-local Agent Run Sandbox Assignments or sandbox contents portable.
+A Core-encrypted portable artifact containing portable Portfolio facts. Portfolio Snapshots always include Secrets and can be restored by any Gorchestra consumer with the passphrase, but do not make live Agent Run Sandbox contents portable or guarantee that restored in-progress sandbox keys still resolve in a Consumer deployment.
 _Avoid_: Backup, dump, workspace export, sandbox snapshot
 
 **Export**:
@@ -285,11 +285,11 @@ A consumer-authorized batch of one or more Agent Run Runtime Requirements append
 _Avoid_: live profile edit, requirement removal, dependency override, sandbox patch
 
 **Agent Run Profile**:
-A Portfolio-owned archivable reusable configuration surface for new Agent Runs. Selecting an Agent Run Profile supplies Core-owned run behavior such as Model Use Config and the explicit Core-normalized ordered Agent Run Runtime Requirements sequence, where an empty array means the profile contributes no requirements; archived Agent Run Profiles remain historical records but are not selectable for new work.
+A Portfolio-owned archivable reusable configuration surface for new Agent Runs. Selecting an Agent Run Profile supplies Core-owned run behavior such as Model Use Config, the explicit Core-normalized ordered Agent Run Runtime Requirements sequence, and an Agent Run Sandbox Config. An empty runtime requirement array means the profile contributes no requirements; archived Agent Run Profiles remain historical records but are not selectable for new work.
 _Avoid_: agent config, runtime profile, provider profile, model provider profile
 
 **Agent Run Profile Snapshot**:
-The copied profile selection stored on an Agent Run when it is created, containing the selected Agent Run Profile id, profile name, Model Use Config, and Core-normalized ordered Agent Run Runtime Requirements. Agent Run Profile Snapshots make profile edits apply only to future Agent Runs.
+The copied profile selection stored on an Agent Run when it is created, containing the selected Agent Run Profile id, profile name, Model Use Config, Core-normalized ordered Agent Run Runtime Requirements, and Agent Run Sandbox Config. Agent Run Profile Snapshots make profile edits apply only to future Agent Runs.
 _Avoid_: live profile pointer, model selection event, profile reference
 
 **Agent Run Profile Reference**:
@@ -341,15 +341,27 @@ An Agent Run that executes without ongoing human steering and sets its completed
 _Avoid_: Background job, one-shot task
 
 **Agent Run Sandbox**:
-The isolated environment an Agent Run uses for its work, such as a worktree, temporary files, tools, and runtime environment. Core owns Agent Run orchestration semantics, while consumers provide deployment-specific sandbox primitives such as allocation, execution isolation, resource limits, and cleanup. An Agent Run Sandbox is isolated to one Agent Run; cross-run state must be promoted by Gorchestra evaluation.
+The isolated environment an Agent Run uses for its work, such as a worktree, temporary files, tools, and runtime environment. Core owns Agent Run orchestration semantics, while Sandbox Runtimes provide deployment-specific execution isolation, resource limits, command execution, and cleanup. An Agent Run Sandbox is isolated to one Agent Run; cross-run state must be promoted by Gorchestra evaluation.
 _Avoid_: Mission Sandbox, Execution Sandbox, shared sandbox, workspace, project checkout
 
-**Agent Run Sandbox Assignment**:
-A deployment-local opaque reference that lets the same Consumer deployment resume, prepare, and release the Agent Run Sandbox for one Agent Run. The assignment is not portable sandbox state; portable Portfolio Snapshots must not promise to preserve sandbox contents or make old sandbox references reusable after restore.
-_Avoid_: Sandbox Snapshot, portable sandbox ref, shared workspace ref
+**Agent Run Sandbox Config**:
+The saved Agent Run Profile configuration that declares how future Agent Run Sandboxes should be sourced and constrained. It includes one sandbox source variant, explicit vCPU resources, and network policy. V1 sources are Core-owned Vercel runtime, Core-owned Vercel VCR image, and Consumer-managed OCI image. Vercel source configs carry Secret references for token, team id, and project id; Consumer-managed source configs carry an OCI image string without saying whether the Consumer implementation is local or remote. Saved resources store only vCPUs; runtime memory is inferred as 2048 MiB per vCPU.
+_Avoid_: sandbox assignment, live sandbox state, runner config, deployment-specific local sandbox
+
+**Sandbox Runtime**:
+The executable runtime Core resolves from an Agent Run Sandbox Config before creating, finding, commanding, or releasing an Agent Run Sandbox. Core owns Vercel Sandbox Runtime behavior and resolves the configured Vercel credential Secrets before constructing it. Consumer-managed sandbox configs resolve to the Consumer-provided Sandbox Runtime. Sandbox Runtimes return validated command and release outputs, redact Secret values from command output, and own deployment-specific runtime environment storage until release.
+_Avoid_: Sandbox Service, sandbox provider, source config, assignment
+
+**Agent Run Sandbox Key**:
+The Core-owned persisted key used to create, find, and release the concrete Agent Run Sandbox for one Agent Run. In v1, Core initializes the key to the Agent Run id. The key is not portable proof that a restored deployment still has a live sandbox with that key.
+_Avoid_: assignment ref, sandbox id, portable sandbox reference
+
+**Agent Run Profile Preflight**:
+An observational validation operation that checks whether a saved Agent Run Profile's Agent Run Sandbox Config can currently create, command, and release a sandbox. Agent Run Profile Preflight returns transient Validation Evidence and does not mutate Portfolio facts. V1 preflight creates a temporary sandbox, runs the structured smoke command `true` at `/workspace`, and releases the sandbox; expected readiness failures such as missing or inactive Vercel credential Secrets or sandbox command failures are failed Validation Evidence, while missing target profiles, storage failures, and invalid Core Service Outputs remain operation errors.
+_Avoid_: Core preflight sandbox check, profile readiness state, sandbox lifecycle event
 
 **Agent Run Sandbox Preparation**:
-The idempotent runtime work that clears a sandbox-preparation-pending Blocked Agent Run by making an assigned Agent Run Sandbox fully ready for the Agent Run's purpose-specific source checkout and ordered Agent Run Runtime Requirements. Core resolves authoritative checkout specs such as repositories, refs, commits, and logical checkout paths, translates checkout and runtime preparation into explicit sandbox commands, compiles environment Secret requirements into Core-authored run commands, and resolves environment or Repository access Secret plaintext just-in-time before command execution. Environment Secret preparation updates a sandbox-local runtime environment file or store that future sandbox commands and tools load until release/wipe. Core passes plaintext Secrets to sandbox commands only through typed transient secret input fields such as `commandSecretEnv`, never through command arguments or stored command evidence. The Sandbox Service provides assignment, generic command execution, and release/wipe primitives rather than dependency-specific semantics; command execution returns only validated sanitized output such as exit status, summary, and optional redacted snippets. Source-control repository checkouts use `/workspace/repos/<repository-id>` inside the sandbox. Source Control Project source/purpose requirements may inject static Core-authored Run Command Requirements before profile requirements; dynamic source-control checkout commands are generated during preparation after provider ref resolution. Repository access Secrets are resolved only as typed transient inputs for checkout commands and are not persisted into the Agent Run runtime environment by default. Planning Agent Run preparation checks out every Repository in the Plan's Project at provider-discovered default branch heads and records sanitized branch and commit evidence. Revision Planning preparation checks out the artifact Repository at the Slice or Delivery Artifact branch being revised. Slice execution checks out the Slice Branch, and revision execution checks out the Slice or Delivery Artifact branch named by the Revision scope. Preparation records aggregate started/completed/failed attempt events with sanitized checkout evidence, environment Secret readiness, command summaries, and the ordered sequence of successfully applied requirement steps; Core does not store one Agent Run Event per sandbox command. Agent Run readiness uses ordered preparation status rather than simple desired/applied array equality. A model-turn dispatch that finds the Agent Run blocked or not fully prepared no-ops without adding skipped-turn transcript events.
+The idempotent runtime work that clears a sandbox-preparation-pending Blocked Agent Run by making the Agent Run Sandbox fully ready for the Agent Run's purpose-specific source checkout and ordered Agent Run Runtime Requirements. Core resolves the Agent Run Profile Snapshot's Agent Run Sandbox Config into a Sandbox Runtime, creates or finds the sandbox by Agent Run Sandbox Key, resolves authoritative checkout specs such as repositories, refs, commits, and logical checkout paths, translates checkout and runtime preparation into explicit sandbox commands, compiles environment Secret requirements into Core-authored run commands, and resolves environment or Repository access Secret plaintext just-in-time before command execution. Environment Secret preparation updates a sandbox-local runtime environment file or store that future sandbox commands and tools load until release/wipe. Core passes plaintext Secrets to sandbox commands only through typed transient secret input fields such as `commandSecretEnv`, never through command arguments or stored command evidence. Command execution returns only validated sanitized output such as exit status, summary, and optional redacted snippets. Source-control repository checkouts use `/workspace/repos/<repository-id>` inside the sandbox; Vercel Sandbox Runtimes adapt that path contract by making `/workspace` resolve to the Vercel sandbox working directory. Source Control Project source/purpose requirements may inject static Core-authored Run Command Requirements before profile requirements; dynamic source-control checkout commands are generated during preparation after provider ref resolution. Repository access Secrets are resolved only as typed transient inputs for checkout commands and are not persisted into the Agent Run runtime environment by default. Planning Agent Run preparation checks out every Repository in the Plan's Project at provider-discovered default branch heads and records sanitized branch and commit evidence. Revision Planning preparation checks out the artifact Repository at the Slice or Delivery Artifact branch being revised. Slice execution checks out the Slice Branch, and revision execution checks out the Slice or Delivery Artifact branch named by the Revision scope. Preparation records aggregate started/completed/failed attempt events with sanitized checkout evidence, environment Secret readiness, command summaries, and the ordered sequence of successfully applied requirement steps; Core does not store one Agent Run Event per sandbox command. A model-turn dispatch that finds the Agent Run blocked or not fully prepared no-ops without adding skipped-turn transcript events.
 _Avoid_: Sandbox Assignment, project install, dependency requirement, dependency install, workspace setup
 
 **Delivery Artifact**:

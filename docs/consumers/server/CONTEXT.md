@@ -93,8 +93,12 @@ The oldest Portfolio registered for a Workspace when that Workspace has at least
 _Avoid_: Personal Portfolio, Workspace data
 
 **Agent Run Profiles**:
-The selected-Portfolio Server Consumer surface for listing, creating, managing, editing, and inspecting direct config references for Core Agent Run Profiles. Agent Run Profiles is a top-level Portfolio navigation item and replaces the old singleton Portfolio Config surface; profile creation uses a dedicated New Agent Run Profile page, and individual profile detail pages expose metadata, runtime requirement editing, and Project Config and Delivery Config references. Run Command Requirement forms show examples for translating shell chaining, `cd`, and pipes into v1 structured argv commands, multiple ordered requirements, and the working-directory field.
+The selected-Portfolio Server Consumer surface for listing, creating, managing, editing, preflighting, and inspecting direct config references for Core Agent Run Profiles. Agent Run Profiles is a top-level Portfolio navigation item and replaces the old singleton Portfolio Config surface; profile creation uses a dedicated New Agent Run Profile page, and individual profile detail pages expose metadata, sandbox config editing, runtime requirement editing, profile sandbox preflight, and Project Config and Delivery Config references. Run Command Requirement forms show examples for translating shell chaining, `cd`, and pipes into v1 structured argv commands, multiple ordered requirements, and the working-directory field.
 _Avoid_: Portfolio Config, model settings, run settings
+
+**Server Consumer Sandbox Runtime**:
+The Server Consumer's deployment-specific implementation of Core's `consumer-managed` Sandbox Runtime. In v1 it runs saved `consumer-managed` OCI images locally with microsandbox, while Core only sees the Consumer-managed runtime boundary and does not know whether the implementation is local, remote, or microVM-backed.
+_Avoid_: Core sandbox provider, Agent Run Profile, Vercel runtime
 
 **Brain**:
 The selected-Portfolio Server Consumer surface for exploring Portfolio context, including the Portfolio Graph and curated Portfolio Memory. Brain is UI/product language; Core domain language remains Portfolio Graph, Portfolio Memory, Memory, and Link.

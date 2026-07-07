@@ -30,7 +30,7 @@ export const serverPaginatedQueryInputPipe = v.discriminate(
 	},
 )
 
-export type ServerPaginatedQueryInput = { beforeId?: string; limit?: number } | { beforeId?: string; limit: number; page: number }
+export type ServerPaginatedQueryInput = { beforeId?: string | undefined; limit?: number | undefined; page?: number | undefined }
 export type ParsedServerPaginatedQueryInput = PipeOutput<typeof serverPaginatedQueryInputPipe>
 
 export type ServerPaginatedQueryEnvelope<T> = {

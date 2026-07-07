@@ -292,8 +292,15 @@ function correctionRetriesForRoot(context: DeliveryContext, rootActionId: string
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreServices, externalOperationEvidence, seedDelivery, seedSlice, stamp, validationEvidence } =
-		await import('../../test-helpers')
+	const {
+		createTestCoreServices,
+		defaultAgentRunSandboxConfig,
+		externalOperationEvidence,
+		seedDelivery,
+		seedSlice,
+		stamp,
+		validationEvidence,
+	} = await import('../../test-helpers')
 	const passedValidation = validationEvidence('slice-branch-validation', true, 'Valid.')
 	const failedValidation = validationEvidence('slice-branch-validation', false, 'Invalid.')
 	const externalFailure = externalOperationEvidence('push-branch', false, 'Failed.')
@@ -548,13 +555,20 @@ if (import.meta.vitest) {
 				name: 'Agent Run Profile',
 				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				runtimeRequirements: [],
+				sandboxConfig: defaultAgentRunSandboxConfig(),
 			},
 			modelUseOverride: null,
 			sourceRuntimeRequirements: [],
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: null,
-			sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
+			sandbox: {
+				key: '01k00000000000000000000002',
+				created: null,
+				appliedRequirements: [],
+				appliedThroughEventId: null,
+				released: null,
+			},
 			started: { at },
 			completed,
 		})

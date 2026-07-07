@@ -91,7 +91,8 @@ function agentRunNotActive(agentRunId: Id): CoreResult<never, AgentRunNotActiveE
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, stamp } = await import('../utils/test-helpers')
+	const { context, createTestCoreRuntime, createTestCoreServices, defaultAgentRunSandboxConfig, localStamp, stamp } =
+		await import('../utils/test-helpers')
 	const proposalEventId = '01k00000000000000000000003'
 
 	describe('rejectRevisionOutput command', () => {
@@ -144,13 +145,20 @@ if (import.meta.vitest) {
 				name: 'Agent Run Profile',
 				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				runtimeRequirements: [],
+				sandboxConfig: defaultAgentRunSandboxConfig(),
 			},
 			modelUseOverride: null,
 			sourceRuntimeRequirements: [],
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: null,
-			sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
+			sandbox: {
+				key: '01k00000000000000000000002',
+				created: null,
+				appliedRequirements: [],
+				appliedThroughEventId: null,
+				released: null,
+			},
 			started: { at: stamp.at },
 			completed: null,
 		})

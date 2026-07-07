@@ -79,6 +79,7 @@ function sliceExecutionAgentRun(
 				name: resolution.executionProfile.name,
 				modelUse: resolution.executionProfile.modelUse,
 				runtimeRequirements: resolution.executionProfile.runtimeRequirements,
+				sandboxConfig: resolution.executionProfile.sandboxConfig,
 			},
 		},
 	}
@@ -93,7 +94,8 @@ function executionModeForState(state: Extract<SliceWorkState, { type: 'executabl
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { buildDeliveryContext } = await import('../../../utils/delivery-context')
-	const { createTestCoreServices, seedDelivery, seedSlice, seedSelectableModel } = await import('../../../utils/test-helpers')
+	const { createTestCoreServices, defaultAgentRunSandboxConfig, seedDelivery, seedSlice, seedSelectableModel } =
+		await import('../../../utils/test-helpers')
 
 	describe('handleSliceExecutable', () => {
 		it('claims initial executable Slice work with a profile-snapshotted Agent Run and input event', async () => {
@@ -124,13 +126,20 @@ if (import.meta.vitest) {
 					name: 'Execution',
 					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 					runtimeRequirements: [],
+					sandboxConfig: defaultAgentRunSandboxConfig(),
 				},
 				modelUseOverride: null,
 				sourceRuntimeRequirements: [],
 				runtimeRequirementOverrides: [],
 				desiredRuntimeRequirements: [],
 				blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
-				sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
+				sandbox: {
+					key: '01k00000000000000000010001',
+					created: null,
+					appliedRequirements: [],
+					appliedThroughEventId: null,
+					released: null,
+				},
 				started: { at: '2026-06-10T12:00:00.000Z' },
 				completed: null,
 			})
@@ -179,6 +188,7 @@ if (import.meta.vitest) {
 			name: 'Execution',
 			modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 			runtimeRequirements: [],
+			sandboxConfig: defaultAgentRunSandboxConfig(),
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 			updated: null,
 			archivePeriods: [],

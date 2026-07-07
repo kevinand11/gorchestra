@@ -398,16 +398,23 @@ if (import.meta.vitest) {
 				resolveSecretValues,
 			},
 			sandbox: {
-				preflight: () => Promise.resolve({ ok: true }),
-				assign: () => Promise.resolve({ ref: 'sandbox-ref' }),
-				runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command completed.', stdout: null, stderr: null }),
-				release: () => Promise.resolve({ summary: 'Sandbox released.' }),
+				kind: 'consumer-managed',
+				create: ({ key }) => Promise.resolve(noopSandboxInstance(key)),
+				find: ({ key }) => Promise.resolve(noopSandboxInstance(key)),
 			},
 			dispatcher: {
 				preflight: () => Promise.resolve({ ok: true }),
 				request: () => Promise.resolve('dispatch-marker'),
 				ready: () => {},
 			},
+		}
+	}
+
+	function noopSandboxInstance(key: string) {
+		return {
+			key,
+			runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command completed.', stdout: null, stderr: null }),
+			release: () => Promise.resolve({ summary: 'Sandbox released.' }),
 		}
 	}
 

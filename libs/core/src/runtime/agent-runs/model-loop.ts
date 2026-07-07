@@ -48,7 +48,7 @@ async function loadLoopState(storage: CoreStorage, agentRunId: Id): Promise<Resu
 function agentRunReadyForModelTurn(agentRun: AgentRun): boolean {
 	return (
 		agentRun.blocked === null &&
-		agentRun.sandbox.assignment !== null &&
+		agentRun.sandbox.created !== null &&
 		agentRun.sandbox.appliedRequirements.length === agentRun.desiredRuntimeRequirements.length &&
 		agentRun.sandbox.appliedThroughEventId === (agentRun.runtimeRequirementOverrides.at(-1)?.eventId ?? null)
 	)
@@ -135,7 +135,7 @@ async function recordTurnFailure(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreServices, seedSelectableModel } = await import('../../utils/test-helpers')
+	const { createTestCoreServices, defaultAgentRunSandboxConfig, seedSelectableModel } = await import('../../utils/test-helpers')
 
 	describe('runModelAgentRun', () => {
 		it('no-ops completed Agent Runs without processing queued input', async () => {
@@ -190,6 +190,7 @@ if (import.meta.vitest) {
 				name: 'Planning',
 				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				runtimeRequirements: [],
+				sandboxConfig: defaultAgentRunSandboxConfig(),
 			},
 			modelUseOverride: null,
 			sourceRuntimeRequirements: [],
@@ -197,7 +198,8 @@ if (import.meta.vitest) {
 			desiredRuntimeRequirements: [],
 			blocked: null,
 			sandbox: {
-				assignment: { ref: 'sandbox-ref', assigned: { at: '2026-06-10T12:00:00.000Z' } },
+				key: '01k00000000000000000000002',
+				created: { at: '2026-06-10T12:00:00.000Z' },
 				appliedRequirements: [],
 				appliedThroughEventId: null,
 				released: null,

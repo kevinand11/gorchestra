@@ -649,8 +649,15 @@ if (import.meta.vitest) {
 
 	function noopSandbox(): CoreServices['sandbox'] {
 		return {
-			preflight: () => Promise.resolve({ ok: true }),
-			assign: () => Promise.resolve({ ref: 'sandbox-ref' }),
+			kind: 'consumer-managed',
+			create: ({ key }) => Promise.resolve(noopSandboxInstance(key)),
+			find: ({ key }) => Promise.resolve(noopSandboxInstance(key)),
+		}
+	}
+
+	function noopSandboxInstance(key: string) {
+		return {
+			key,
 			runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command completed.', stdout: null, stderr: null }),
 			release: () => Promise.resolve({ summary: 'Sandbox released.' }),
 		}

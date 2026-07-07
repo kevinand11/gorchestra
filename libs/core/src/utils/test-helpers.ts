@@ -6,7 +6,7 @@ import type { CommandContext } from '../commands/types'
 import type { Action } from '../domain/action'
 import type { AgentRun, AgentRunEvent, AgentRunProfileSnapshot } from '../domain/agent-run'
 import type { AgentRunProfile } from '../domain/agent-run-profile'
-import type { AgentRunRuntimeRequirement } from '../domain/agent-run-runtime'
+import type { AgentRunRuntimeRequirement, AgentRunSandboxConfig } from '../domain/agent-run-runtime'
 import type { DeliveryArtifact, SliceArtifact } from '../domain/artifact'
 import type { AuditStamp, Id } from '../domain/commons'
 import type { DeliveryWorkConfig } from '../domain/config'
@@ -172,10 +172,17 @@ export function createTestCoreServices(overrides: Partial<Pick<CoreServices, 'di
 }
 
 const noopSandbox: CoreServices['sandbox'] = {
-	preflight: () => Promise.resolve({ ok: true }),
-	assign: () => Promise.resolve({ ref: 'sandbox-ref' }),
-	runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command succeeded.', stdout: null, stderr: null }),
-	release: () => Promise.resolve({ summary: 'Sandbox released.' }),
+	kind: 'consumer-managed',
+	create: ({ key }) => Promise.resolve(noopSandboxInstance(key)),
+	find: ({ key }) => Promise.resolve(noopSandboxInstance(key)),
+}
+
+function noopSandboxInstance(key: string) {
+	return {
+		key,
+		runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command succeeded.', stdout: null, stderr: null }),
+		release: () => Promise.resolve({ summary: 'Sandbox released.' }),
+	}
 }
 
 const noopDispatcher: CoreServices['dispatcher'] = {
@@ -243,12 +250,27 @@ export function seedAction(
 	tx.actions.records.set(id, { id, deliveryId: '01k00000000000000000000008', performed: { at }, authorized, result })
 }
 
+export function defaultAgentRunSandboxConfig(): AgentRunSandboxConfig {
+	return {
+		source: { type: 'consumer-managed', ociImage: 'alpine:latest' },
+		resources: { vcpus: 2 },
+		networkPolicy: { type: 'allow-all' },
+	}
+}
+
 export function testAgentRunProfileSnapshot(
 	agentRunProfileId = '01k00000000000000000000006',
 	modelId = '01k00000000000000000000024',
 	runtimeRequirements: AgentRunRuntimeRequirement[] = [],
+	sandboxConfig: AgentRunSandboxConfig = defaultAgentRunSandboxConfig(),
 ): AgentRunProfileSnapshot {
-	return { agentRunProfileId, name: 'Agent Run Profile', modelUse: { modelId, thinkingLevel: 'none' }, runtimeRequirements }
+	return {
+		agentRunProfileId,
+		name: 'Agent Run Profile',
+		modelUse: { modelId, thinkingLevel: 'none' },
+		runtimeRequirements,
+		sandboxConfig,
+	}
 }
 
 export function testModelAgentRun(
@@ -269,7 +291,13 @@ export function testModelAgentRun(
 		runtimeRequirementOverrides: [],
 		desiredRuntimeRequirements: input.profile?.runtimeRequirements ?? [],
 		blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
-		sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
+		sandbox: {
+			key: input.id ?? '01k00000000000000000000002',
+			created: null,
+			appliedRequirements: [],
+			appliedThroughEventId: null,
+			released: null,
+		},
 		started: { at: '2026-06-10T12:00:00.000Z' },
 		completed: input.completed ?? null,
 	}
@@ -331,6 +359,7 @@ export function seedAgentRunProfile(
 		name: 'Agent Run Profile',
 		modelUse: { modelId, thinkingLevel: 'none' },
 		runtimeRequirements: options.runtimeRequirements ?? [],
+		sandboxConfig: defaultAgentRunSandboxConfig(),
 		created: stamp,
 		updated: null,
 		archivePeriods: options.archived ? [{ archived: stamp, unarchived: null }] : [],

@@ -37,6 +37,13 @@ export function createAgentRunProfilesApiRouter(context: ServerApiContext) {
 				response: Queries.GetAgentRunProfile.resultPipe,
 			},
 		})(async (req) => getSelectedPortfolioAgentRunProfile(context, req.cookies, req.params.agentRunProfileId))
+		.post('/agent-run-profiles/:agentRunProfileId/preflight', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ agentRunProfileId: coreIdPipe }),
+				response: Domain.Evidence.validationEvidencePipe,
+			},
+		})(async (req) => preflightSelectedPortfolioAgentRunProfile(context, req.cookies, req.params.agentRunProfileId))
 		.get('/agent-run-profiles/:agentRunProfileId/references', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
@@ -87,6 +94,20 @@ function getSelectedPortfolioAgentRunProfile(
 	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
 		const profile = await core.queries.getAgentRunProfile({ agentRunProfileId })
 		return profile.ok ? profile.value : throwCoreOperationError(profile.error)
+	})
+}
+
+function preflightSelectedPortfolioAgentRunProfile(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	agentRunProfileId: string,
+): Promise<Domain.Evidence.ValidationEvidence> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
+		const evidence = await core.commands.preflightAgentRunProfile(
+			{ agentRunProfileId },
+			{ actor: { type: 'system', id: 'server' }, correlationId: null },
+		)
+		return evidence.ok ? evidence.value : throwCoreOperationError(evidence.error)
 	})
 }
 

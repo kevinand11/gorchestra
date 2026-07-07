@@ -16,6 +16,7 @@
 		"axios": "^1.18.0",
 		"equipped": "latest",
 		"h3": "1.15.11",
+		"microsandbox": "^0.6.4",
 		"nuxt": "^4.4.8",
 		"valleyed": "latest",
 		"vue": "3.5.38"

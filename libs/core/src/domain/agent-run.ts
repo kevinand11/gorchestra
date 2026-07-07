@@ -1,6 +1,11 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { agentRunBlockedPipe, agentRunRuntimeRequirementApplicationTargetPipe, agentRunRuntimeRequirementsPipe } from './agent-run-runtime'
+import {
+	agentRunBlockedPipe,
+	agentRunRuntimeRequirementApplicationTargetPipe,
+	agentRunRuntimeRequirementsPipe,
+	agentRunSandboxConfigPipe,
+} from './agent-run-runtime'
 import {
 	auditStampPipe,
 	freeFormStringPipe,
@@ -43,6 +48,7 @@ export const agentRunProfileSnapshotPipe = v.object({
 	name: nonEmptyTrimmedStringPipe,
 	modelUse: modelUseConfigPipe,
 	runtimeRequirements: agentRunRuntimeRequirementsPipe,
+	sandboxConfig: agentRunSandboxConfigPipe,
 })
 export type AgentRunProfileSnapshot = PipeOutput<typeof agentRunProfileSnapshotPipe>
 
@@ -61,7 +67,8 @@ export const agentRunRuntimeRequirementOverridePipe = v.object({
 export type AgentRunRuntimeRequirementOverride = PipeOutput<typeof agentRunRuntimeRequirementOverridePipe>
 
 export const agentRunSandboxStatePipe = v.object({
-	assignment: v.nullable(v.object({ ref: nonEmptyTrimmedStringPipe, assigned: runtimeRecordPipe })),
+	key: nonEmptyTrimmedStringPipe,
+	created: v.nullable(runtimeRecordPipe),
 	appliedRequirements: agentRunRuntimeRequirementsPipe,
 	appliedThroughEventId: v.nullable(idPipe),
 	released: v.nullable(runtimeRecordPipe),
@@ -432,9 +439,9 @@ export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
 		requirements: agentRunRuntimeRequirementsPipe,
 		authorized: auditStampPipe,
 	}),
-	'agent-run-sandbox-assigned': v.object({
-		type: v.eq('agent-run-sandbox-assigned'),
-		assignment: v.object({ ref: nonEmptyTrimmedStringPipe }),
+	'agent-run-sandbox-created': v.object({
+		type: v.eq('agent-run-sandbox-created'),
+		key: nonEmptyTrimmedStringPipe,
 	}),
 	'agent-run-sandbox-preparation-started': v.object({
 		type: v.eq('agent-run-sandbox-preparation-started'),

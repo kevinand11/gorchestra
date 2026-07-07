@@ -1,6 +1,11 @@
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './errors'
 import type { AgentRunProfile } from '../../domain/agent-run-profile'
-import type { AgentRunRuntimeRequirement } from '../../domain/agent-run-runtime'
+import {
+	firstDuplicateRuntimeRequirement,
+	type AgentRunRuntimeRequirement,
+	type AgentRunSandboxConfig,
+	type VercelSandboxCredentialsSecretRefs,
+} from '../../domain/agent-run-runtime'
 import type { ArchivePeriod, AuditStamp, Id } from '../../domain/commons'
 import type { DeliveryConfig, DeliveryConfigRecord, ModelUseConfig, ProjectConfig, ProjectConfigRecord } from '../../domain/config'
 import type { DeliveryWorkState } from '../../domain/delivery'
@@ -24,6 +29,7 @@ import type {
 	ArchivedSecretReferenceError,
 	CoreIdResource,
 	DeliveryWorkStateMismatchError,
+	DuplicateAgentRunRuntimeRequirementError,
 	DuplicateRepositoryTargetError,
 	InvalidCoreServiceOutputError,
 	InvariantViolationError,
@@ -242,6 +248,7 @@ export function agentRunProfileSnapshot(profile: AgentRunProfile) {
 		name: profile.name,
 		modelUse: profile.modelUse,
 		runtimeRequirements: profile.runtimeRequirements,
+		sandboxConfig: profile.sandboxConfig,
 	}
 }
 
@@ -517,11 +524,52 @@ export function secretIdsFromRuntimeRequirements(requirements: AgentRunRuntimeRe
 	return uniqueIds(requirements.flatMap(secretIdsFromRuntimeRequirement))
 }
 
+export async function validateAgentRunProfileConfig(
+	storage: CoreStorage,
+	input: { modelUse: ModelUseConfig; runtimeRequirements: AgentRunRuntimeRequirement[]; sandboxConfig: AgentRunSandboxConfig },
+): Promise<
+	Result<
+		void,
+		ConfigCommandReferenceError | ConfigCommandStorageError | ArchivedSecretReferenceError | DuplicateAgentRunRuntimeRequirementError
+	>
+> {
+	const duplicateRequirement = firstDuplicateRuntimeRequirement(input.runtimeRequirements)
+	if (duplicateRequirement !== null) {
+		return { ok: false, error: { type: 'duplicate-agent-run-runtime-requirement', requirement: duplicateRequirement } }
+	}
+
+	const facts = await loadSelectableModelFacts(storage, modelIdsFromModelUses([input.modelUse]))
+	if (!facts.ok) return facts
+
+	const modelUseValidation = validateModelUseConfigs(facts.value, [input.modelUse])
+	if (!modelUseValidation.ok) return modelUseValidation
+
+	const secretValidation = await validateRuntimeRequirementSecretReferences(storage, input.runtimeRequirements)
+	if (!secretValidation.ok) return secretValidation
+
+	return validateSandboxConfigSecretReferences(storage, input.sandboxConfig)
+}
+
 export function validateRuntimeRequirementSecretReferences(
 	storage: CoreStorage,
 	requirements: AgentRunRuntimeRequirement[],
 ): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError | ArchivedSecretReferenceError>> {
 	return validateActiveSecretReferences(storage, secretIdsFromRuntimeRequirements(requirements))
+}
+
+export function validateSandboxConfigSecretReferences(
+	storage: CoreStorage,
+	config: AgentRunSandboxConfig,
+): Promise<Result<void, ConfigCommandReferenceError | ConfigCommandStorageError | ArchivedSecretReferenceError>> {
+	switch (config.source.type) {
+		case 'consumer-managed':
+			return Promise.resolve({ ok: true, value: undefined })
+		case 'vercel-runtime':
+		case 'vercel-vcr-image':
+			return validateActiveSecretReferences(storage, secretIdsFromVercelCredentials(config.source.credentials))
+		default:
+			throw new Error(`Unexpected Agent Run Sandbox source type: ${String(config.source satisfies never)}`)
+	}
 }
 
 function secretIdsFromRuntimeRequirement(requirement: AgentRunRuntimeRequirement): Id[] {
@@ -533,6 +581,10 @@ function secretIdsFromRuntimeRequirement(requirement: AgentRunRuntimeRequirement
 		default:
 			throw new Error(`Unexpected Agent Run Runtime Requirement type: ${String(requirement satisfies never)}`)
 	}
+}
+
+function secretIdsFromVercelCredentials(credentials: VercelSandboxCredentialsSecretRefs): Id[] {
+	return uniqueIds([credentials.tokenSecretId, credentials.teamIdSecretId, credentials.projectIdSecretId])
 }
 
 function secretReferencesFromModelProviderAccessValue(value: ModelProviderAccessValue): Id[] {

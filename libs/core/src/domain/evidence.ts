@@ -3,6 +3,7 @@ import { v, type PipeOutput } from 'valleyed'
 import { nonEmptyTrimmedStringPipe } from './commons'
 
 export const validationOperationPipe = v.discriminate((value) => value.type, {
+	'agent-run-profile-preflight': v.object({ type: v.eq('agent-run-profile-preflight') }),
 	'delivery-preflight': v.object({ type: v.eq('delivery-preflight') }),
 	'model-preflight': v.object({ type: v.eq('model-preflight') }),
 	'repository-preflight': v.object({ type: v.eq('repository-preflight') }),

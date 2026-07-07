@@ -2,14 +2,15 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { isArchived } from '../commands/utils/storage'
 import type { AgentRunProfile } from '../domain/agent-run-profile'
-import type { AgentRunRuntimeRequirement } from '../domain/agent-run-runtime'
+import type { AgentRunRuntimeRequirement, VercelSandboxCredentialsSecretRefs } from '../domain/agent-run-runtime'
 import { idPipe, type Id } from '../domain/commons'
 import { modelProviderProtocolForSource, type ModelProvider, type ModelProviderAccessValue } from '../domain/model-provider'
 import type { Repository } from '../domain/repository'
-import { secretReferencePipe, type SecretReference } from '../domain/secret'
+import { secretReferencePipe, type AgentRunProfileSandboxCredentialSecretReference, type SecretReference } from '../domain/secret'
 export type {
 	AgentRunProfileEnvironmentSecretReference,
 	AgentRunProfileRunCommandSecretReference,
+	AgentRunProfileSandboxCredentialSecretReference,
 	ModelProviderAuthSecretReference,
 	ModelProviderHeaderSecretReference,
 	RepositoryAccessSecretReference,
@@ -124,9 +125,12 @@ async function listAgentRunProfileSecretReferences(
 
 function agentRunProfileSecretReferences(profile: AgentRunProfile, secretIds: Set<Id>): SecretReferenceMatch[] {
 	const active = !isArchived(profile.archivePeriods)
-	return profile.runtimeRequirements.flatMap((requirement) =>
-		agentRunProfileRequirementSecretReferences(profile, requirement, secretIds, active),
-	)
+	return [
+		...profile.runtimeRequirements.flatMap((requirement) =>
+			agentRunProfileRequirementSecretReferences(profile, requirement, secretIds, active),
+		),
+		...agentRunProfileSandboxCredentialSecretReferences(profile, secretIds, active),
+	]
 }
 
 function agentRunProfileRequirementSecretReferences(
@@ -172,6 +176,56 @@ function agentRunProfileRequirementSecretReferences(
 		default:
 			throw new Error(`Unexpected Agent Run Runtime Requirement type: ${String(requirement satisfies never)}`)
 	}
+}
+
+function agentRunProfileSandboxCredentialSecretReferences(
+	profile: AgentRunProfile,
+	secretIds: Set<Id>,
+	active: boolean,
+): SecretReferenceMatch[] {
+	switch (profile.sandboxConfig.source.type) {
+		case 'consumer-managed':
+			return []
+		case 'vercel-runtime':
+		case 'vercel-vcr-image':
+			return vercelCredentialSecretReferences(profile, profile.sandboxConfig.source.credentials, secretIds, active)
+		default:
+			throw new Error(`Unexpected Agent Run Sandbox source type: ${String(profile.sandboxConfig.source satisfies never)}`)
+	}
+}
+
+function vercelCredentialSecretReferences(
+	profile: AgentRunProfile,
+	credentials: VercelSandboxCredentialsSecretRefs,
+	secretIds: Set<Id>,
+	active: boolean,
+): SecretReferenceMatch[] {
+	return [
+		vercelCredentialSecretReference(profile, credentials.tokenSecretId, 'vercel-token', secretIds, active),
+		vercelCredentialSecretReference(profile, credentials.teamIdSecretId, 'vercel-team-id', secretIds, active),
+		vercelCredentialSecretReference(profile, credentials.projectIdSecretId, 'vercel-project-id', secretIds, active),
+	].flatMap((reference) => (reference === null ? [] : [reference]))
+}
+
+function vercelCredentialSecretReference(
+	profile: AgentRunProfile,
+	secretId: Id,
+	credential: AgentRunProfileSandboxCredentialSecretReference['credential'],
+	secretIds: Set<Id>,
+	active: boolean,
+): SecretReferenceMatch | null {
+	return secretIds.has(secretId)
+		? {
+				secretId,
+				reference: {
+					type: 'agent-run-profile-sandbox-credential',
+					active,
+					agentRunProfileId: profile.id,
+					name: profile.name,
+					credential,
+				},
+			}
+		: null
 }
 
 async function listModelProviderSecretReferences(
@@ -264,8 +318,9 @@ const referenceTypeOrder: Record<SecretReference['type'], number> = {
 	'repository-access': 0,
 	'agent-run-profile-environment-secret': 1,
 	'agent-run-profile-run-command-secret': 2,
-	'model-provider-auth': 3,
-	'model-provider-header': 4,
+	'agent-run-profile-sandbox-credential': 3,
+	'model-provider-auth': 4,
+	'model-provider-header': 5,
 }
 
 function referenceActiveRank(reference: Pick<SecretReference, 'active'>): number {
@@ -280,6 +335,8 @@ function referenceLabel(reference: SecretReference): string {
 			return `${reference.name}/${reference.envName}`
 		case 'agent-run-profile-run-command-secret':
 			return `${reference.name}/${reference.label}/${reference.envName}`
+		case 'agent-run-profile-sandbox-credential':
+			return `${reference.name}/${reference.credential}`
 		case 'model-provider-auth':
 			return reference.name
 		case 'model-provider-header':
@@ -296,6 +353,8 @@ function referenceId(reference: SecretReference): string {
 		case 'agent-run-profile-environment-secret':
 			return reference.agentRunProfileId
 		case 'agent-run-profile-run-command-secret':
+			return reference.agentRunProfileId
+		case 'agent-run-profile-sandbox-credential':
 			return reference.agentRunProfileId
 		case 'model-provider-auth':
 			return reference.modelProviderId
@@ -383,6 +442,43 @@ if (import.meta.vitest) {
 						name: 'Anthropic',
 						protocol: 'anthropic-messages',
 						headerName: 'X-Team',
+					},
+				],
+			})
+		})
+
+		it('returns Agent Run Profile sandbox credential references for Vercel configs', async () => {
+			const options = createTestCoreServices()
+			seedSecret(options.tx, '01k00000000000000000000040')
+			seedSecret(options.tx, '01k00000000000000000000041')
+			seedSecret(options.tx, '01k00000000000000000000042')
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006')
+			options.tx.agentRunProfiles.records.get('01k00000000000000000000006')!.sandboxConfig = {
+				source: {
+					type: 'vercel-runtime',
+					runtime: 'node24',
+					credentials: {
+						tokenSecretId: '01k00000000000000000000040',
+						teamIdSecretId: '01k00000000000000000000041',
+						projectIdSecretId: '01k00000000000000000000042',
+					},
+				},
+				resources: { vcpus: 2 },
+				networkPolicy: { type: 'allow-all' },
+			}
+			const query = createListSecretReferencesQuery(options)
+
+			const result = await query({ secretId: '01k00000000000000000000040' })
+
+			expect(result).toEqual({
+				ok: true,
+				value: [
+					{
+						type: 'agent-run-profile-sandbox-credential',
+						active: true,
+						agentRunProfileId: '01k00000000000000000000006',
+						name: 'Agent Run Profile',
+						credential: 'vercel-token',
 					},
 				],
 			})

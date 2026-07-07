@@ -35,6 +35,7 @@ export const coreStorageMigrations = [
 				stringField('name'),
 				objectField('modelUse'),
 				arrayField('runtimeRequirements'),
+				objectField('sandboxConfig'),
 				objectField('created'),
 				nullableField(objectField('updated')),
 				arrayField('archivePeriods'),

@@ -57,9 +57,8 @@ async function preflightCore(options: CoreServices): Promise<Result<CorePrefligh
 async function collectCorePreflightChecks(options: CoreServices): Promise<Result<CorePreflightChecks, CorePreflightError>> {
 	const storage = await preflightStorage(options.storage)
 	const secrets = await preflightCoreService('secrets', () => options.secrets.preflight())
-	const sandbox = await preflightCoreService('sandbox', () => options.sandbox.preflight())
 	const dispatcher = await preflightCoreService('dispatcher', () => options.dispatcher.preflight())
-	const failure = firstCorePreflightFailure([secrets, sandbox, dispatcher])
+	const failure = firstCorePreflightFailure([secrets, dispatcher])
 	if (failure !== null) return failure
 
 	return {
@@ -67,7 +66,6 @@ async function collectCorePreflightChecks(options: CoreServices): Promise<Result
 		value: {
 			storage,
 			secrets: resultValue(secrets),
-			sandbox: resultValue(sandbox),
 			dispatcher: resultValue(dispatcher),
 		},
 	}
@@ -80,7 +78,7 @@ function firstCorePreflightFailure(results: CorePreflightCheckResult[]): Result<
 }
 
 function corePreflightReport(checks: CorePreflightChecks): CorePreflightReport {
-	const allChecks = [checks.storage, checks.secrets, checks.sandbox, checks.dispatcher]
+	const allChecks = [checks.storage, checks.secrets, checks.dispatcher]
 
 	return { passed: allChecks.every((check) => check.ok), checks }
 }
@@ -92,7 +90,7 @@ function resultValue<T>(result: Result<T, unknown>): T {
 }
 
 async function preflightCoreService(
-	service: 'secrets' | 'sandbox' | 'dispatcher',
+	service: 'secrets' | 'dispatcher',
 	probe: () => Promise<CoreServicePreflightOutput>,
 ): Promise<Result<CorePreflightCheck, CorePreflightError>> {
 	try {
@@ -128,10 +126,19 @@ if (import.meta.vitest) {
 	}
 
 	const sandbox: CoreServices['sandbox'] = {
-		preflight: () => Promise.resolve({ ok: true }),
-		assign: () => Promise.resolve({ ref: 'sandbox-ref' }),
-		runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command succeeded.', stdout: null, stderr: null }),
-		release: () => Promise.resolve({ summary: 'Sandbox released.' }),
+		kind: 'consumer-managed',
+		create: ({ key }) =>
+			Promise.resolve({
+				key,
+				runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command succeeded.', stdout: null, stderr: null }),
+				release: () => Promise.resolve({ summary: 'Sandbox released.' }),
+			}),
+		find: ({ key }) =>
+			Promise.resolve({
+				key,
+				runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command succeeded.', stdout: null, stderr: null }),
+				release: () => Promise.resolve({ summary: 'Sandbox released.' }),
+			}),
 	}
 	const dispatcher: CoreServices['dispatcher'] = {
 		preflight: () => Promise.resolve({ ok: true }),
@@ -189,17 +196,12 @@ if (import.meta.vitest) {
 					},
 				},
 				sandbox: {
-					preflight: () => {
-						throw new Error('sandbox preflight was probed')
+					kind: 'consumer-managed' as const,
+					create: () => {
+						throw new Error('sandbox create was called')
 					},
-					assign: () => {
-						throw new Error('sandbox assignment was called')
-					},
-					runCommand: () => {
-						throw new Error('sandbox command was called')
-					},
-					release: () => {
-						throw new Error('sandbox release was called')
+					find: () => {
+						throw new Error('sandbox find was called')
 					},
 				},
 				dispatcher: {
@@ -228,6 +230,19 @@ if (import.meta.vitest) {
 					boundary: 'core',
 					operation: 'openCore',
 					pipeError: { messages: [expect.objectContaining({ path: 'secrets.resolveSecrets' })] },
+				},
+			})
+
+			const invalidSandbox = { ...options.sandbox } as { create?: unknown }
+			delete invalidSandbox.create
+
+			expect(openCore({ ...options, sandbox: invalidSandbox } as never)).toMatchObject({
+				ok: false,
+				error: {
+					type: 'invalid-input',
+					boundary: 'core',
+					operation: 'openCore',
+					pipeError: { messages: [expect.objectContaining({ path: 'sandbox.create' })] },
 				},
 			})
 
@@ -295,13 +310,7 @@ if (import.meta.vitest) {
 						return Promise.resolve({ ok: true })
 					},
 				},
-				sandbox: {
-					...sandbox,
-					preflight: () => {
-						calls.push('sandbox')
-						return Promise.resolve({ ok: true })
-					},
-				},
+				sandbox,
 				dispatcher: {
 					preflight: () => {
 						calls.push('dispatcher')
@@ -342,12 +351,11 @@ if (import.meta.vitest) {
 					checks: {
 						storage: { ok: true },
 						secrets: { ok: true },
-						sandbox: { ok: true },
 						dispatcher: { ok: true },
 					},
 				},
 			})
-			expect(calls).toEqual(['secrets', 'sandbox', 'dispatcher'])
+			expect(calls).toEqual(['secrets', 'dispatcher'])
 		})
 
 		it('returns failed checks for failed and thrown readiness probes', async () => {
@@ -365,7 +373,6 @@ if (import.meta.vitest) {
 					checks: {
 						storage: { ok: true },
 						secrets: { ok: false, reason: 'probe-failed', message: null },
-						sandbox: { ok: true },
 						dispatcher: { ok: true },
 					},
 				},

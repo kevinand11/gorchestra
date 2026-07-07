@@ -9,8 +9,8 @@ import type { LinkDef } from './domain/graph'
 import type { ModelThinkingLevel } from './domain/model'
 import type { ModelProviderProtocolType } from './domain/model-provider'
 
-export type CorePreflightCheckName = 'storage' | 'secrets' | 'sandbox' | 'dispatcher'
-export type CoreServiceOutputName = CorePreflightCheckName | 'runtime'
+export type CorePreflightCheckName = 'storage' | 'secrets' | 'dispatcher'
+export type CoreServiceOutputName = CorePreflightCheckName | 'sandbox' | 'runtime'
 
 export type CoreInputBoundary = 'core' | 'command' | 'query' | 'snapshot' | 'work'
 

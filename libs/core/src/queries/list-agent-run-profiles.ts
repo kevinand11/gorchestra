@@ -31,6 +31,7 @@ function listedAgentRunProfile(profile: AgentRunProfile): ListedAgentRunProfile 
 		name: profile.name,
 		modelUse: profile.modelUse,
 		runtimeRequirements: profile.runtimeRequirements,
+		sandboxConfig: profile.sandboxConfig,
 		created: profile.created,
 		updated: profile.updated,
 		archived: isArchived(profile.archivePeriods),

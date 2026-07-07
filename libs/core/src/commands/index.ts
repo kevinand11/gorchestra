@@ -21,6 +21,7 @@ import { createCreateRepositoryCommand } from './create-repository'
 import { createCreateSecretCommand } from './create-secret'
 import { createInterruptAgentRunCommand } from './interrupt-agent-run'
 import { createOpenRevisionGateCommand } from './open-revision-gate'
+import { createPreflightAgentRunProfileCommand } from './preflight-agent-run-profile'
 import { createPreflightModelCommand } from './preflight-model'
 import { createPreflightRepositoryCommand } from './preflight-repository'
 import { createQueueDeliveryCommand } from './queue-delivery'
@@ -65,6 +66,7 @@ export type * as CreateRepository from './create-repository'
 export type * as CreateSecret from './create-secret'
 export type * as InterruptAgentRun from './interrupt-agent-run'
 export type * as OpenRevisionGate from './open-revision-gate'
+export type * as PreflightAgentRunProfile from './preflight-agent-run-profile'
 export type * as PreflightModel from './preflight-model'
 export type * as PreflightRepository from './preflight-repository'
 export type * as QueueDelivery from './queue-delivery'
@@ -91,6 +93,7 @@ export function createCoreCommands(runtime: CoreRuntime) {
 		updateAgentRunProfile: createUpdateAgentRunProfileCommand(runtime),
 		archiveAgentRunProfile: createArchiveAgentRunProfileCommand(runtime),
 		unarchiveAgentRunProfile: createUnarchiveAgentRunProfileCommand(runtime),
+		preflightAgentRunProfile: createPreflightAgentRunProfileCommand(runtime),
 		createModelProvider: createCreateModelProviderCommand(runtime),
 		updateModelProvider: createUpdateModelProviderCommand(runtime),
 		archiveModelProvider: createArchiveModelProviderCommand(runtime),
@@ -147,6 +150,7 @@ if (import.meta.vitest) {
 				'updateAgentRunProfile',
 				'archiveAgentRunProfile',
 				'unarchiveAgentRunProfile',
+				'preflightAgentRunProfile',
 				'createModelProvider',
 				'updateModelProvider',
 				'archiveModelProvider',

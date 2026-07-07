@@ -96,6 +96,7 @@ function referenceLocation(reference: SecretReference): string {
 			return `/projects/${reference.projectId}/repositories/${reference.repositoryId}`
 		case 'agent-run-profile-environment-secret':
 		case 'agent-run-profile-run-command-secret':
+		case 'agent-run-profile-sandbox-credential':
 			return `/agent-run-profiles/${reference.agentRunProfileId}`
 		case 'model-provider-auth':
 		case 'model-provider-header':
@@ -113,6 +114,8 @@ function referenceTitle(reference: SecretReference): string {
 			return `${reference.name} · ${reference.envName}`
 		case 'agent-run-profile-run-command-secret':
 			return `${reference.name} · ${reference.label}`
+		case 'agent-run-profile-sandbox-credential':
+			return `${reference.name} · ${sandboxCredentialLabel(reference.credential)}`
 		case 'model-provider-auth':
 			return reference.name
 		case 'model-provider-header':
@@ -130,6 +133,8 @@ function referenceSubtitle(reference: SecretReference): string {
 			return 'Agent Run Profile environment Secret requirement'
 		case 'agent-run-profile-run-command-secret':
 			return `${reference.envName} command-scoped Secret for Run Command requirement`
+		case 'agent-run-profile-sandbox-credential':
+			return `${sandboxCredentialLabel(reference.credential)} Vercel sandbox credential`
 		case 'model-provider-auth':
 			return `${modelProviderProtocolLabel(reference.protocol)} API key`
 		case 'model-provider-header':
@@ -147,6 +152,8 @@ function referenceKey(reference: SecretReference): string {
 			return `${reference.type}:${reference.agentRunProfileId}:${reference.envName}`
 		case 'agent-run-profile-run-command-secret':
 			return `${reference.type}:${reference.agentRunProfileId}:${reference.label}:${reference.envName}`
+		case 'agent-run-profile-sandbox-credential':
+			return `${reference.type}:${reference.agentRunProfileId}:${reference.credential}`
 		case 'model-provider-auth':
 			return `${reference.type}:${reference.modelProviderId}`
 		case 'model-provider-header':
@@ -158,5 +165,15 @@ function referenceKey(reference: SecretReference): string {
 
 function modelProviderProtocolLabel(protocol: string): string {
 	return modelProviderProtocolLabels[protocol] ?? protocol
+}
+
+function sandboxCredentialLabel(credential: string): string {
+	return (
+		{
+			'vercel-token': 'Vercel token',
+			'vercel-team-id': 'Vercel team id',
+			'vercel-project-id': 'Vercel project id',
+		}[credential] ?? credential
+	)
 }
 </script>

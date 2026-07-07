@@ -48,6 +48,15 @@ export const agentRunProfileRunCommandSecretReferencePipe = v.object({
 })
 export type AgentRunProfileRunCommandSecretReference = PipeOutput<typeof agentRunProfileRunCommandSecretReferencePipe>
 
+export const agentRunProfileSandboxCredentialSecretReferencePipe = v.object({
+	type: v.eq('agent-run-profile-sandbox-credential'),
+	active: v.boolean(),
+	agentRunProfileId: idPipe,
+	name: nonEmptyTrimmedStringPipe,
+	credential: v.in(['vercel-token', 'vercel-team-id', 'vercel-project-id']),
+})
+export type AgentRunProfileSandboxCredentialSecretReference = PipeOutput<typeof agentRunProfileSandboxCredentialSecretReferencePipe>
+
 export const modelProviderAuthSecretReferencePipe = v.object({
 	type: v.eq('model-provider-auth'),
 	active: v.boolean(),
@@ -71,6 +80,7 @@ export const secretReferencePipe = v.discriminate((value) => value.type, {
 	'repository-access': repositoryAccessSecretReferencePipe,
 	'agent-run-profile-environment-secret': agentRunProfileEnvironmentSecretReferencePipe,
 	'agent-run-profile-run-command-secret': agentRunProfileRunCommandSecretReferencePipe,
+	'agent-run-profile-sandbox-credential': agentRunProfileSandboxCredentialSecretReferencePipe,
 	'model-provider-auth': modelProviderAuthSecretReferencePipe,
 	'model-provider-header': modelProviderHeaderSecretReferencePipe,
 })

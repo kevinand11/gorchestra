@@ -145,8 +145,16 @@ function referenceId(reference: AgentRunProfileReference): string {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreServices, defaultDeliveryWorkConfig, seedAgentRunProfile, seedDelivery, seedProject, stamp, testModelAgentRun } =
-		await import('../utils/test-helpers')
+	const {
+		createTestCoreServices,
+		defaultAgentRunSandboxConfig,
+		defaultDeliveryWorkConfig,
+		seedAgentRunProfile,
+		seedDelivery,
+		seedProject,
+		stamp,
+		testModelAgentRun,
+	} = await import('../utils/test-helpers')
 
 	describe('listAgentRunProfileReferences query', () => {
 		it('validates input before reading storage', async () => {
@@ -302,6 +310,7 @@ if (import.meta.vitest) {
 						name: 'Snapshot',
 						modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 						runtimeRequirements: [],
+						sandboxConfig: defaultAgentRunSandboxConfig(),
 					},
 				}),
 			)

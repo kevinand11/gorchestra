@@ -65,7 +65,7 @@ async function getPlanReadModelForProjectPlan(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreServices, seedProject, stamp } = await import('../utils/test-helpers')
+	const { createTestCoreServices, defaultAgentRunSandboxConfig, seedProject, stamp } = await import('../utils/test-helpers')
 
 	describe('getPlan query', () => {
 		registerInputBoundaryTests()
@@ -181,13 +181,20 @@ if (import.meta.vitest) {
 				name: 'Agent Run Profile',
 				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' as const },
 				runtimeRequirements: [],
+				sandboxConfig: defaultAgentRunSandboxConfig(),
 			},
 			modelUseOverride: null,
 			sourceRuntimeRequirements: [],
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: null,
-			sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
+			sandbox: {
+				key: '01k00000000000000000000002',
+				created: null,
+				appliedRequirements: [],
+				appliedThroughEventId: null,
+				released: null,
+			},
 			started: { at: stamp.at },
 			completed: null,
 		}

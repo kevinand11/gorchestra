@@ -113,8 +113,8 @@ function eventTitle(event: AgentRunEvent): string {
 			return 'Model use override changed'
 		case 'agent-run-runtime-requirement-override-added':
 			return 'Runtime requirement override added'
-		case 'agent-run-sandbox-assigned':
-			return 'Sandbox assigned'
+		case 'agent-run-sandbox-created':
+			return 'Sandbox created'
 		case 'agent-run-sandbox-preparation-started':
 			return 'Sandbox preparation started'
 		case 'agent-run-sandbox-preparation-completed':
@@ -176,7 +176,7 @@ function eventSummary(event: AgentRunEvent): string {
 			return `Compacted through ${event.body.compactedThroughEventId}\n${textPartsSummary(event.body.replacementParts)}`
 		case 'agent-run-model-use-override-changed':
 		case 'agent-run-runtime-requirement-override-added':
-		case 'agent-run-sandbox-assigned':
+		case 'agent-run-sandbox-created':
 		case 'agent-run-sandbox-preparation-started':
 		case 'agent-run-sandbox-preparation-completed':
 		case 'agent-run-sandbox-preparation-failed':

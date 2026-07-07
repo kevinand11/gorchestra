@@ -56,7 +56,28 @@ export type AgentRunRunCommandRequirement = {
 	commandSecretEnv: Record<string, string>
 }
 export type AgentRunRuntimeRequirement = AgentRunEnvironmentSecretRequirement | AgentRunRunCommandRequirement
-export type AgentRunProfileInput = { name: string; modelUse: ModelUseConfig; runtimeRequirements: AgentRunRuntimeRequirement[] }
+export type VercelSandboxRuntime = 'node26' | 'node24' | 'node22' | 'python3.13'
+export type VercelSandboxCredentialsSecretRefs = { tokenSecretId: string; teamIdSecretId: string; projectIdSecretId: string }
+export type AgentRunSandboxSourceConfig =
+	| { type: 'consumer-managed'; ociImage: string }
+	| { type: 'vercel-runtime'; runtime: VercelSandboxRuntime; credentials: VercelSandboxCredentialsSecretRefs }
+	| { type: 'vercel-vcr-image'; vcrImage: string; credentials: VercelSandboxCredentialsSecretRefs }
+export type AgentRunSandboxResources = { vcpus: number }
+export type AgentRunSandboxNetworkPolicy =
+	| { type: 'allow-all' }
+	| { type: 'deny-all' }
+	| { type: 'allow-list'; hosts: string[]; subnets: { allow: string[]; deny: string[] } }
+export type AgentRunSandboxConfig = {
+	source: AgentRunSandboxSourceConfig
+	resources: AgentRunSandboxResources
+	networkPolicy: AgentRunSandboxNetworkPolicy
+}
+export type AgentRunProfileInput = {
+	name: string
+	modelUse: ModelUseConfig
+	runtimeRequirements: AgentRunRuntimeRequirement[]
+	sandboxConfig: AgentRunSandboxConfig
+}
 
 export type DeliveryWorkConfigInput = {
 	maxProcessableSliceSlots: number
@@ -210,6 +231,11 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		},
 		async getAgentRunProfile(agentRunProfileId: string) {
 			return routes.request('get', '/api/portfolio/agent-run-profiles/:agentRunProfileId', { params: { agentRunProfileId } })
+		},
+		async preflightAgentRunProfile(agentRunProfileId: string) {
+			return routes.request('post', '/api/portfolio/agent-run-profiles/:agentRunProfileId/preflight', {
+				params: { agentRunProfileId },
+			})
 		},
 		async listAgentRunProfileReferences(agentRunProfileId: string) {
 			return routes.request('get', '/api/portfolio/agent-run-profiles/:agentRunProfileId/references', {

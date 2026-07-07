@@ -54,7 +54,13 @@ function modelAgentRun<TPurpose extends AgentRunPurpose>(input: {
 		runtimeRequirementOverrides: [],
 		desiredRuntimeRequirements,
 		blocked: { type: 'sandbox-preparation-pending', blocked: input.started },
-		sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
+		sandbox: {
+			key: input.agentRunId,
+			created: null,
+			appliedRequirements: [],
+			appliedThroughEventId: null,
+			released: null,
+		},
 		started: input.started,
 		completed: null,
 	}
@@ -97,7 +103,7 @@ function agentRunEventRecord(agentRunId: Id, facts: AgentRunEventFacts, body: Ag
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreServices } = await import('./test-helpers')
+	const { createTestCoreServices, defaultAgentRunSandboxConfig } = await import('./test-helpers')
 
 	describe('createModelAgentRunWithProfileSnapshot', () => {
 		it('creates a Model Agent Run with a profile snapshot and no transcript event', async () => {
@@ -112,6 +118,7 @@ if (import.meta.vitest) {
 					name: 'Planning',
 					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 					runtimeRequirements: [],
+					sandboxConfig: defaultAgentRunSandboxConfig(),
 				},
 			})
 
@@ -126,13 +133,20 @@ if (import.meta.vitest) {
 						name: 'Planning',
 						modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 						runtimeRequirements: [],
+						sandboxConfig: defaultAgentRunSandboxConfig(),
 					},
 					modelUseOverride: null,
 					sourceRuntimeRequirements: [],
 					runtimeRequirementOverrides: [],
 					desiredRuntimeRequirements: [],
 					blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
-					sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
+					sandbox: {
+						key: '01k00000000000000000000002',
+						created: null,
+						appliedRequirements: [],
+						appliedThroughEventId: null,
+						released: null,
+					},
 					started: { at: '2026-06-10T12:00:00.000Z' },
 					completed: null,
 				},
@@ -153,13 +167,20 @@ if (import.meta.vitest) {
 					name: 'Planning',
 					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 					runtimeRequirements: [],
+					sandboxConfig: defaultAgentRunSandboxConfig(),
 				},
 				modelUseOverride: null,
 				sourceRuntimeRequirements: [],
 				runtimeRequirementOverrides: [],
 				desiredRuntimeRequirements: [],
 				blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
-				sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
+				sandbox: {
+					key: '01k00000000000000000000002',
+					created: null,
+					appliedRequirements: [],
+					appliedThroughEventId: null,
+					released: null,
+				},
 				started: { at: '2026-06-10T12:00:00.000Z' },
 				completed: null,
 			})

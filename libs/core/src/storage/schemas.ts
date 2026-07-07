@@ -16,7 +16,7 @@ import {
 	type AgentRunEvent,
 } from '../domain/agent-run'
 import { type AgentRunProfile } from '../domain/agent-run-profile'
-import { agentRunBlockedPipe, agentRunRuntimeRequirementsPipe } from '../domain/agent-run-runtime'
+import { agentRunBlockedPipe, agentRunRuntimeRequirementsPipe, agentRunSandboxConfigPipe } from '../domain/agent-run-runtime'
 import { deliveryArtifactConfigPipe, sliceArtifactConfigPipe, type DeliveryArtifact, type SliceArtifact } from '../domain/artifact'
 import {
 	archivePeriodPipe,
@@ -95,6 +95,7 @@ export const agentRunProfileSchema = Schema.from('agent_run_profiles')
 	.field('name', nonEmptyTrimmedStringPipe)
 	.field('modelUse', modelUseConfigPipe)
 	.field('runtimeRequirements', agentRunRuntimeRequirementsPipe)
+	.field('sandboxConfig', agentRunSandboxConfigPipe)
 	.field('created', auditStampPipe)
 	.field('updated', v.nullable(auditStampPipe))
 	.field('archivePeriods', archivePeriodsPipe)

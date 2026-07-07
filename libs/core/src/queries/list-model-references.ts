@@ -78,7 +78,8 @@ function isArchived(archivePeriods: ArchivePeriod[]): boolean {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreServices, seedAgentRunProfile, seedSelectableModel } = await import('../utils/test-helpers')
+	const { createTestCoreServices, defaultAgentRunSandboxConfig, seedAgentRunProfile, seedSelectableModel } =
+		await import('../utils/test-helpers')
 
 	describe('listModelReferences query', () => {
 		it('validates input before reading storage', async () => {
@@ -155,6 +156,7 @@ if (import.meta.vitest) {
 					name: 'Snapshot',
 					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 					runtimeRequirements: [],
+					sandboxConfig: defaultAgentRunSandboxConfig(),
 				},
 				modelUseOverride: {
 					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
@@ -164,7 +166,13 @@ if (import.meta.vitest) {
 				runtimeRequirementOverrides: [],
 				desiredRuntimeRequirements: [],
 				blocked: null,
-				sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
+				sandbox: {
+					key: '01k00000000000000000000002',
+					created: null,
+					appliedRequirements: [],
+					appliedThroughEventId: null,
+					released: null,
+				},
 				started: { at: '2026-06-01T00:00:00.000Z' },
 				completed: null,
 			})

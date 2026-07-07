@@ -2,7 +2,7 @@ import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
 import type { AgentRunProfile } from '../domain/agent-run-profile'
-import { agentRunRuntimeRequirementsPipe, firstDuplicateRuntimeRequirement } from '../domain/agent-run-runtime'
+import { agentRunRuntimeRequirementsPipe, agentRunSandboxConfigPipe } from '../domain/agent-run-runtime'
 import { nonEmptyTrimmedStringPipe } from '../domain/commons'
 import { modelUseConfigPipe } from '../domain/config'
 import type { ArchivedSecretReferenceError, DuplicateAgentRunRuntimeRequirementError, InvalidInputError } from '../errors'
@@ -10,21 +10,13 @@ import type { CoreRuntime } from '../runtime'
 import type { Result as CoreResult } from '../utils/types'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { buildCommandHandler } from './utils/handler'
-import {
-	auditStamp,
-	createRecordValue,
-	loadSelectableModelFacts,
-	modelIdsFromModelUses,
-	nextId,
-	validateModelUseConfigs,
-	validateRuntimeRequirementSecretReferences,
-	withTransaction,
-} from './utils/storage'
+import { auditStamp, createRecordValue, nextId, validateAgentRunProfileConfig, withTransaction } from './utils/storage'
 
 const createAgentRunProfileInputPipe = v.object({
 	name: nonEmptyTrimmedStringPipe,
 	modelUse: modelUseConfigPipe,
 	runtimeRequirements: agentRunRuntimeRequirementsPipe,
+	sandboxConfig: agentRunSandboxConfigPipe,
 })
 export type Input = PipeOutput<typeof createAgentRunProfileInputPipe>
 
@@ -48,25 +40,15 @@ export function createCreateAgentRunProfileCommand(runtime: CoreRuntime): Operat
 		return withTransaction(
 			runtime.services,
 			async (storage): Promise<CoreResult<AgentRunProfile, Exclude<Error, InvalidInputError>>> => {
-				const duplicateRequirement = firstDuplicateRuntimeRequirement(input.runtimeRequirements)
-				if (duplicateRequirement !== null) {
-					return { ok: false, error: { type: 'duplicate-agent-run-runtime-requirement', requirement: duplicateRequirement } }
-				}
-
-				const facts = await loadSelectableModelFacts(storage, modelIdsFromModelUses([input.modelUse]))
-				if (!facts.ok) return facts
-
-				const modelUseValidation = validateModelUseConfigs(facts.value, [input.modelUse])
-				if (!modelUseValidation.ok) return modelUseValidation
-
-				const secretValidation = await validateRuntimeRequirementSecretReferences(storage, input.runtimeRequirements)
-				if (!secretValidation.ok) return secretValidation
+				const configValidation = await validateAgentRunProfileConfig(storage, input)
+				if (!configValidation.ok) return configValidation
 
 				const profile: AgentRunProfile = {
 					id: id.value,
 					name: input.name,
 					modelUse: input.modelUse,
 					runtimeRequirements: input.runtimeRequirements,
+					sandboxConfig: input.sandboxConfig,
 					created: stamp.value,
 					updated: null,
 					archivePeriods: [],
@@ -79,7 +61,7 @@ export function createCreateAgentRunProfileCommand(runtime: CoreRuntime): Operat
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedSelectableModel } =
+	const { context, createTestCoreRuntime, createTestCoreServices, defaultAgentRunSandboxConfig, localStamp, seedSelectableModel } =
 		await import('../utils/test-helpers')
 
 	describe('createAgentRunProfile command', () => {
@@ -93,6 +75,7 @@ if (import.meta.vitest) {
 					name: '  Planning  ',
 					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 					runtimeRequirements: [],
+					sandboxConfig: defaultAgentRunSandboxConfig(),
 				},
 				context,
 			)
@@ -104,11 +87,42 @@ if (import.meta.vitest) {
 					name: 'Planning',
 					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 					runtimeRequirements: [],
+					sandboxConfig: defaultAgentRunSandboxConfig(),
 					created: localStamp(),
 					updated: null,
 					archivePeriods: [],
 				},
 			})
+		})
+
+		it('validates Vercel sandbox credential Secret references', async () => {
+			const options = createTestCoreServices()
+			seedSelectableModel(options.tx, '01k00000000000000000000024')
+			const command = createCreateAgentRunProfileCommand(createTestCoreRuntime(options))
+
+			const result = await command(
+				{
+					name: 'Planning',
+					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
+					runtimeRequirements: [],
+					sandboxConfig: {
+						source: {
+							type: 'vercel-runtime',
+							runtime: 'node24',
+							credentials: {
+								tokenSecretId: '01k00000000000000000000040',
+								teamIdSecretId: '01k00000000000000000000041',
+								projectIdSecretId: '01k00000000000000000000042',
+							},
+						},
+						resources: { vcpus: 2 },
+						networkPolicy: { type: 'allow-all' },
+					},
+				},
+				context,
+			)
+
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'secret', id: '01k00000000000000000000040' } })
 		})
 	})
 }

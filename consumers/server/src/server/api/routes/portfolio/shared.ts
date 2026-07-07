@@ -12,6 +12,7 @@ export const agentRunProfileRequestSchema = v.object({
 	name: Domain.Commons.nonEmptyTrimmedStringPipe,
 	modelUse: Domain.Config.modelUseConfigPipe,
 	runtimeRequirements: Domain.AgentRunRuntime.agentRunRuntimeRequirementsPipe,
+	sandboxConfig: Domain.AgentRunRuntime.agentRunSandboxConfigPipe,
 })
 export const createProjectRequestSchema = v.object({
 	title: Domain.Commons.nonEmptyTrimmedStringPipe,

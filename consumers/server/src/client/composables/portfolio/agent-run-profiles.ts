@@ -151,6 +151,23 @@ export function useAgentRunProfileUpdate(agentRunProfileId: Ref<string>) {
 	return { agentRunProfileForm, isUpdatingAgentRunProfile, updateAgentRunProfileError, updateAgentRunProfile }
 }
 
+export function useAgentRunProfilePreflight(agentRunProfileId: Ref<string>) {
+	const serverApi = useServerApi()
+	const { toast } = useOverlay()
+	const {
+		isLoading: isPreflightingAgentRunProfile,
+		error: preflightAgentRunProfileError,
+		execute: preflightAgentRunProfile,
+	} = useApiAction(async () => {
+		const evidence = await serverApi.preflightAgentRunProfile(agentRunProfileId.value)
+		if (evidence.passed) toast.success({ title: 'Agent Run Profile preflight passed.', body: evidence.summary })
+		else toast.error({ title: 'Agent Run Profile preflight failed.', body: evidence.summary })
+		return evidence
+	})
+
+	return { isPreflightingAgentRunProfile, preflightAgentRunProfileError, preflightAgentRunProfile }
+}
+
 export function useAgentRunProfileArchiveActions() {
 	const serverApi = useServerApi()
 	const queryCache = useQueryCache()
@@ -198,6 +215,7 @@ function listedAgentRunProfile(profile: SavedAgentRunProfile): AgentRunProfileDe
 		name: profile.name,
 		modelUse: profile.modelUse,
 		runtimeRequirements: profile.runtimeRequirements,
+		sandboxConfig: profile.sandboxConfig,
 		created: profile.created,
 		updated: profile.updated,
 		archived: profile.archivePeriods.at(-1)?.unarchived === null,

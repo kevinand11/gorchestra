@@ -23,6 +23,200 @@
 		</div>
 
 		<section class="mt-6 border-t border-card-border pt-4">
+			<div>
+				<UiText class="font-semibold">Sandbox</UiText>
+				<UiText tone="muted" size="helper">
+					Choose the sandbox source and resource policy used before Agent Run model turns.
+				</UiText>
+			</div>
+
+			<div class="mt-4 grid gap-3 md:grid-cols-3">
+				<UiFormGroup label="Source" for-id="agent-run-profile-sandbox-source" :error="form.sandboxConfig.source.errors.type">
+					<UiSelect
+						id="agent-run-profile-sandbox-source"
+						v-model="form.sandboxConfig.source.type"
+						:options="sandboxSourceTypeOptions"
+						placeholder="Select sandbox source"
+						:invalid="!!form.sandboxConfig.source.errors.type" />
+				</UiFormGroup>
+
+				<UiFormGroup
+					v-if="form.sandboxConfig.source.type === 'consumer-managed'"
+					label="OCI image"
+					for-id="agent-run-profile-sandbox-oci-image"
+					:error="form.sandboxConfig.source.errors.ociImage">
+					<UiInput
+						id="agent-run-profile-sandbox-oci-image"
+						v-model="form.sandboxConfig.source.ociImage"
+						placeholder="ghcr.io/gorchestra/sandbox-node:latest"
+						:invalid="!!form.sandboxConfig.source.errors.ociImage" />
+				</UiFormGroup>
+
+				<UiFormGroup
+					v-if="form.sandboxConfig.source.type === 'vercel-runtime'"
+					label="Vercel runtime"
+					for-id="agent-run-profile-sandbox-vercel-runtime"
+					:error="form.sandboxConfig.source.errors.runtime">
+					<UiSelect
+						id="agent-run-profile-sandbox-vercel-runtime"
+						v-model="form.sandboxConfig.source.runtime"
+						:options="vercelRuntimeOptions"
+						placeholder="Select runtime"
+						:invalid="!!form.sandboxConfig.source.errors.runtime" />
+				</UiFormGroup>
+
+				<UiFormGroup
+					v-if="form.sandboxConfig.source.type === 'vercel-vcr-image'"
+					label="Vercel VCR image"
+					for-id="agent-run-profile-sandbox-vcr-image"
+					:error="form.sandboxConfig.source.errors.vcrImage">
+					<UiInput
+						id="agent-run-profile-sandbox-vcr-image"
+						v-model="form.sandboxConfig.source.vcrImage"
+						placeholder="my-repo:latest"
+						:invalid="!!form.sandboxConfig.source.errors.vcrImage" />
+				</UiFormGroup>
+			</div>
+
+			<div v-if="form.sandboxConfig.source.type !== 'consumer-managed'" class="mt-4 grid gap-3 md:grid-cols-3">
+				<UiFormGroup
+					label="Vercel token Secret"
+					for-id="agent-run-profile-sandbox-vercel-token"
+					:error="form.sandboxConfig.source.credentials.tokenSecretId.errors.value">
+					<UiSelect
+						id="agent-run-profile-sandbox-vercel-token"
+						v-model="form.sandboxConfig.source.credentials.tokenSecretId.value"
+						:options="secretOptions"
+						placeholder="Select Secret"
+						:invalid="!!form.sandboxConfig.source.credentials.tokenSecretId.errors.value" />
+				</UiFormGroup>
+				<UiFormGroup
+					label="Vercel team id Secret"
+					for-id="agent-run-profile-sandbox-vercel-team"
+					:error="form.sandboxConfig.source.credentials.teamIdSecretId.errors.value">
+					<UiSelect
+						id="agent-run-profile-sandbox-vercel-team"
+						v-model="form.sandboxConfig.source.credentials.teamIdSecretId.value"
+						:options="secretOptions"
+						placeholder="Select Secret"
+						:invalid="!!form.sandboxConfig.source.credentials.teamIdSecretId.errors.value" />
+				</UiFormGroup>
+				<UiFormGroup
+					label="Vercel project id Secret"
+					for-id="agent-run-profile-sandbox-vercel-project"
+					:error="form.sandboxConfig.source.credentials.projectIdSecretId.errors.value">
+					<UiSelect
+						id="agent-run-profile-sandbox-vercel-project"
+						v-model="form.sandboxConfig.source.credentials.projectIdSecretId.value"
+						:options="secretOptions"
+						placeholder="Select Secret"
+						:invalid="!!form.sandboxConfig.source.credentials.projectIdSecretId.errors.value" />
+				</UiFormGroup>
+			</div>
+
+			<div class="mt-4 grid gap-3 md:grid-cols-3">
+				<UiFormGroup label="vCPUs" for-id="agent-run-profile-sandbox-vcpus" :error="form.sandboxConfig.resources.errors.vcpus">
+					<UiInput
+						id="agent-run-profile-sandbox-vcpus"
+						v-model="form.sandboxConfig.resources.vcpus"
+						type="number"
+						min="1"
+						:invalid="!!form.sandboxConfig.resources.errors.vcpus" />
+				</UiFormGroup>
+				<div class="flex items-end pb-2 text-sz-helper text-dim">Inferred memory: {{ inferredSandboxMemoryMiB }} MiB</div>
+				<UiFormGroup
+					label="Network"
+					for-id="agent-run-profile-sandbox-network"
+					:error="form.sandboxConfig.networkPolicy.errors.type">
+					<UiSelect
+						id="agent-run-profile-sandbox-network"
+						v-model="form.sandboxConfig.networkPolicy.type"
+						:options="networkPolicyOptions"
+						placeholder="Select network policy"
+						:invalid="!!form.sandboxConfig.networkPolicy.errors.type" />
+				</UiFormGroup>
+			</div>
+
+			<div v-if="form.sandboxConfig.networkPolicy.type === 'allow-list'" class="mt-4 grid gap-4 md:grid-cols-3">
+				<div>
+					<div class="mb-2 flex items-center justify-between gap-2">
+						<UiText class="font-medium">Allowed hosts</UiText>
+						<UiButton type="button" variant="secondary" @click="form.sandboxConfig.networkPolicy.hosts.add()">Add</UiButton>
+					</div>
+					<div
+						v-for="(host, index) in [...form.sandboxConfig.networkPolicy.hosts]"
+						:key="index"
+						class="grid gap-2 py-1 md:grid-cols-[1fr_auto]">
+						<UiFormGroup :label="`Host ${index + 1}`" :for-id="`sandbox-host-${index}`" :error="host.errors.value">
+							<UiInput
+								:id="`sandbox-host-${index}`"
+								v-model="host.value"
+								placeholder="registry.npmjs.org"
+								:invalid="!!host.errors.value" />
+						</UiFormGroup>
+						<div class="flex items-end">
+							<UiButton type="button" variant="secondary" @click="form.sandboxConfig.networkPolicy.hosts.delete(index)"
+								>Remove</UiButton
+							>
+						</div>
+					</div>
+				</div>
+
+				<div>
+					<div class="mb-2 flex items-center justify-between gap-2">
+						<UiText class="font-medium">Allowed subnets</UiText>
+						<UiButton type="button" variant="secondary" @click="form.sandboxConfig.networkPolicy.allowSubnets.add()"
+							>Add</UiButton
+						>
+					</div>
+					<div
+						v-for="(subnet, index) in [...form.sandboxConfig.networkPolicy.allowSubnets]"
+						:key="index"
+						class="grid gap-2 py-1 md:grid-cols-[1fr_auto]">
+						<UiFormGroup :label="`Subnet ${index + 1}`" :for-id="`sandbox-allow-subnet-${index}`" :error="subnet.errors.value">
+							<UiInput
+								:id="`sandbox-allow-subnet-${index}`"
+								v-model="subnet.value"
+								placeholder="10.0.0.0/8"
+								:invalid="!!subnet.errors.value" />
+						</UiFormGroup>
+						<div class="flex items-end">
+							<UiButton type="button" variant="secondary" @click="form.sandboxConfig.networkPolicy.allowSubnets.delete(index)"
+								>Remove</UiButton
+							>
+						</div>
+					</div>
+				</div>
+
+				<div>
+					<div class="mb-2 flex items-center justify-between gap-2">
+						<UiText class="font-medium">Denied subnets</UiText>
+						<UiButton type="button" variant="secondary" @click="form.sandboxConfig.networkPolicy.denySubnets.add()"
+							>Add</UiButton
+						>
+					</div>
+					<div
+						v-for="(subnet, index) in [...form.sandboxConfig.networkPolicy.denySubnets]"
+						:key="index"
+						class="grid gap-2 py-1 md:grid-cols-[1fr_auto]">
+						<UiFormGroup :label="`Subnet ${index + 1}`" :for-id="`sandbox-deny-subnet-${index}`" :error="subnet.errors.value">
+							<UiInput
+								:id="`sandbox-deny-subnet-${index}`"
+								v-model="subnet.value"
+								placeholder="10.1.0.0/16"
+								:invalid="!!subnet.errors.value" />
+						</UiFormGroup>
+						<div class="flex items-end">
+							<UiButton type="button" variant="secondary" @click="form.sandboxConfig.networkPolicy.denySubnets.delete(index)"
+								>Remove</UiButton
+							>
+						</div>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="mt-6 border-t border-card-border pt-4">
 			<div class="flex flex-wrap items-start justify-between gap-3">
 				<div>
 					<UiText class="font-semibold">Runtime Requirements</UiText>
@@ -237,7 +431,24 @@ const runtimeRequirementTypeOptions = [
 	{ value: 'environment-secret', label: 'Environment Secret' },
 	{ value: 'run-command', label: 'Run Command' },
 ]
+const sandboxSourceTypeOptions = [
+	{ value: 'consumer-managed', label: 'Consumer-managed OCI image' },
+	{ value: 'vercel-runtime', label: 'Vercel runtime' },
+	{ value: 'vercel-vcr-image', label: 'Vercel VCR image' },
+]
+const vercelRuntimeOptions = [
+	{ value: 'node26', label: 'Node.js 26' },
+	{ value: 'node24', label: 'Node.js 24' },
+	{ value: 'node22', label: 'Node.js 22' },
+	{ value: 'python3.13', label: 'Python 3.13' },
+]
+const networkPolicyOptions = [
+	{ value: 'allow-all', label: 'Allow all network access' },
+	{ value: 'deny-all', label: 'Deny all network access' },
+	{ value: 'allow-list', label: 'Allow listed hosts/subnets' },
+]
 const secretOptionValues = computed(() => selectOptionValues(props.secretOptions))
+const inferredSandboxMemoryMiB = computed(() => props.form.sandboxConfig.resources.vcpus * 2048)
 
 watch(
 	() => [props.secretOptionsLoaded, props.secretOptions] as const,

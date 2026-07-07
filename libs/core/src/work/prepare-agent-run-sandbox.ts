@@ -12,7 +12,8 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
-import { resolvedSecretValuesPipe, sandboxAssignmentOutputPipe, sandboxCommandOutputPipe, type CoreServices } from '../services'
+import { sandboxRuntimeForConfig, type SandboxRuntimeResolutionError } from '../runtime/agent-runs/sandbox-runtime'
+import { resolvedSecretValuesPipe, sandboxCommandOutputPipe, sandboxPipe, type SandboxRuntime } from '../services'
 import { getRequired, updateRecord } from '../storage/helpers'
 import { appendAgentRunEvent } from '../utils/agent-run-events'
 import { runtimeRecord } from '../utils/runtime-values'
@@ -47,47 +48,55 @@ export async function prepareAgentRunSandbox(
 	if (!loaded.ok) return loaded
 	if (loaded.value.completed !== null) return { ok: true, value: undefined }
 
-	const assigned = await ensureSandboxAssignment(runtime, loaded.value)
-	if (!assigned.ok) return assigned
-	if (assigned.value.completed !== null) return { ok: true, value: undefined }
+	const created = await ensureSandboxCreated(runtime, loaded.value)
+	if (!created.ok) return created
+	if (created.value.completed !== null) return { ok: true, value: undefined }
 
-	if (isPrepared(assigned.value)) return { ok: true, value: undefined }
+	if (isPrepared(created.value)) return { ok: true, value: undefined }
 
 	const started = await appendAgentRunEvent(runtime, runtime.services.storage, agentRunId, {
 		type: 'agent-run-sandbox-preparation-started',
-		requestedThroughEventId: latestRuntimeOverrideEventId(assigned.value),
+		requestedThroughEventId: latestRuntimeOverrideEventId(created.value),
 	})
 	if (!started.ok) return started
 
-	return applyRuntimeRequirements(runtime, assigned.value)
+	return applyRuntimeRequirements(runtime, created.value)
 }
 
-async function ensureSandboxAssignment(
+async function ensureSandboxCreated(
 	runtime: CoreRuntime,
 	agentRun: AgentRun,
 ): Promise<CoreResult<AgentRun, Exclude<Error, InvalidInputError>>> {
-	if (agentRun.sandbox.assignment !== null) return { ok: true, value: agentRun }
+	if (agentRun.sandbox.created !== null) return { ok: true, value: agentRun }
+
+	const sandboxRuntime = await resolveSandboxRuntimeForPreparation(runtime, agentRun)
+	if (!sandboxRuntime.ok) {
+		if (isCommandPreparationFailure(sandboxRuntime.error)) {
+			return blockPreparationFailure(runtime, agentRun, { type: 'source-checkout' }, sandboxRuntime.error.summary)
+		}
+		return { ok: false, error: sandboxRuntime.error }
+	}
 
 	let output: unknown
 	try {
-		output = await runtime.services.sandbox.assign({ agentRunId: agentRun.id })
+		output = await sandboxRuntime.value.create({ key: agentRun.sandbox.key, config: agentRun.profile.sandboxConfig })
 	} catch {
-		return blockPreparationFailure(runtime, agentRun, { type: 'source-checkout' }, 'Sandbox assignment failed.')
+		return blockPreparationFailure(runtime, agentRun, { type: 'source-checkout' }, 'Sandbox creation failed.')
 	}
 
-	const assignment = validateCoreServiceOutput(sandboxAssignmentOutputPipe, output, 'sandbox', 'assign')
-	if (!assignment.ok) return assignment
+	const createdSandbox = validateCoreServiceOutput(sandboxPipe, output, 'sandbox', 'create')
+	if (!createdSandbox.ok) return createdSandbox
 
-	const assigned = runtimeRecord(runtime.values)
-	if (!assigned.ok) return assigned
+	const created = runtimeRecord(runtime.values)
+	if (!created.ok) return created
 
-	const sandbox = { ...agentRun.sandbox, assignment: { ref: assignment.value.ref, assigned: assigned.value }, released: null }
+	const sandbox = { ...agentRun.sandbox, created: created.value, released: null }
 	const updated = await updateRecord('agent-run', runtime.services.storage, agentRun.id, { sandbox })
 	if (!updated.ok) return updated
 
 	const event = await appendAgentRunEvent(runtime, runtime.services.storage, agentRun.id, {
-		type: 'agent-run-sandbox-assigned',
-		assignment: { ref: assignment.value.ref },
+		type: 'agent-run-sandbox-created',
+		key: agentRun.sandbox.key,
 	})
 	return event.ok ? { ok: true, value: { ...agentRun, sandbox } } : event
 }
@@ -95,7 +104,7 @@ async function ensureSandboxAssignment(
 function isPrepared(agentRun: AgentRun): boolean {
 	return (
 		agentRun.blocked === null &&
-		agentRun.sandbox.assignment !== null &&
+		agentRun.sandbox.created !== null &&
 		agentRun.sandbox.appliedRequirements.length === agentRun.desiredRuntimeRequirements.length &&
 		agentRun.sandbox.appliedThroughEventId === latestRuntimeOverrideEventId(agentRun)
 	)
@@ -140,7 +149,7 @@ async function applyRuntimeRequirement(
 		return { ok: false, error: command.error }
 	}
 
-	const execution = await runSandboxCommand(runtime.services, agentRun, command.value)
+	const execution = await runSandboxCommand(runtime, agentRun, command.value)
 	if (!execution.ok) return execution
 	if (execution.value.exitCode !== 0) {
 		const blocked = await blockPreparationFailure(
@@ -238,15 +247,34 @@ async function resolveSecretPlaintext(
 }
 
 async function runSandboxCommand(
-	services: CoreServices,
+	runtime: CoreRuntime,
 	agentRun: AgentRun,
 	command: PreparedSandboxCommand,
-): Promise<CoreResult<{ exitCode: number; summary: string }, InvalidCoreServiceOutputError>> {
-	if (agentRun.sandbox.assignment === null) throw new Error('Sandbox assignment should exist before command execution.')
+): Promise<CoreResult<{ exitCode: number; summary: string }, Exclude<Error, InvalidInputError>>> {
+	if (agentRun.sandbox.created === null) throw new Error('Sandbox should be created before command execution.')
+
+	const sandboxRuntime = await resolveSandboxRuntimeForPreparation(runtime, agentRun)
+	if (!sandboxRuntime.ok) {
+		if (isCommandPreparationFailure(sandboxRuntime.error)) {
+			return { ok: true, value: { exitCode: 1, summary: sandboxRuntime.error.summary } }
+		}
+		return { ok: false, error: sandboxRuntime.error }
+	}
+
+	let sandboxOutput: unknown
+	try {
+		sandboxOutput = await sandboxRuntime.value.find({ key: agentRun.sandbox.key })
+	} catch {
+		return { ok: true, value: { exitCode: 1, summary: 'Agent Run sandbox was not found.' } }
+	}
+	if (sandboxOutput === null) return { ok: true, value: { exitCode: 1, summary: 'Agent Run sandbox was not found.' } }
+
+	const sandbox = validateCoreServiceOutput(sandboxPipe, sandboxOutput, 'sandbox', 'find')
+	if (!sandbox.ok) return sandbox
+
 	let output: unknown
 	try {
-		output = await services.sandbox.runCommand({
-			ref: agentRun.sandbox.assignment.ref,
+		output = await sandbox.value.runCommand({
 			label: command.label,
 			command: command.command,
 			commandSecretEnv: command.commandSecretEnv,
@@ -258,6 +286,26 @@ async function runSandboxCommand(
 
 	const commandOutput = validateCoreServiceOutput(sandboxCommandOutputPipe, output, 'sandbox', 'runCommand')
 	return commandOutput.ok ? { ok: true, value: commandOutput.value } : commandOutput
+}
+
+async function resolveSandboxRuntimeForPreparation(
+	runtime: CoreRuntime,
+	agentRun: AgentRun,
+): Promise<CoreResult<SandboxRuntime, CommandPreparationFailure | Exclude<Error, InvalidInputError>>> {
+	const sandboxRuntime = await sandboxRuntimeForConfig(runtime, runtime.services.storage, agentRun.profile.sandboxConfig)
+	return sandboxRuntime.ok ? sandboxRuntime : mapSandboxRuntimeResolutionError(sandboxRuntime.error)
+}
+
+function mapSandboxRuntimeResolutionError(
+	error: SandboxRuntimeResolutionError,
+): CoreResult<never, CommandPreparationFailure | Exclude<Error, InvalidInputError>> {
+	if (error.type === 'not-found' && error.resource === 'secret') {
+		return { ok: false, error: { summary: 'Vercel sandbox credential Secret is missing.' } }
+	}
+	if (error.type === 'secret-not-active') return { ok: false, error: { summary: 'Vercel sandbox credential Secret is not active.' } }
+	if (error.type === 'sandbox-runtime-resolution-failed') return { ok: false, error: { summary: error.summary } }
+
+	return { ok: false, error }
 }
 
 async function completePreparation(
@@ -308,7 +356,8 @@ function latestRuntimeOverrideEventId(agentRun: AgentRun): Id | null {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreRuntime, createTestCoreServices, seedSecret, testModelAgentRun } = await import('../utils/test-helpers')
+	const { createTestCoreRuntime, createTestCoreServices, defaultAgentRunSandboxConfig, seedSecret, testModelAgentRun } =
+		await import('../utils/test-helpers')
 
 	describe('prepareAgentRunSandbox work operation', () => {
 		it('validates input with the work boundary before reading storage', async () => {
@@ -325,11 +374,22 @@ if (import.meta.vitest) {
 			expect(options.transactionCalls()).toBe(0)
 		})
 
-		it('assigns a sandbox and applies environment Secret requirements', async () => {
+		it('creates a sandbox by key and applies environment Secret requirements', async () => {
 			const commands: Array<{
 				command: { executable: string; args: string[]; cwd: string | null }
 				commandSecretEnv: Record<string, string>
 			}> = []
+			const sandboxes = new Map<
+				string,
+				{
+					key: string
+					runCommand: (input: {
+						command: { executable: string; args: string[]; cwd: string | null }
+						commandSecretEnv: Record<string, string>
+					}) => Promise<unknown>
+					release: () => Promise<unknown>
+				}
+			>()
 			const options = createTestCoreServices({
 				secrets: {
 					preflight: () => Promise.resolve({ ok: true }),
@@ -337,13 +397,23 @@ if (import.meta.vitest) {
 					resolveSecretValues: () => Promise.resolve({ '01k00000000000000000000040': 'plaintext-token' }),
 				},
 				sandbox: {
-					preflight: () => Promise.resolve({ ok: true }),
-					assign: () => Promise.resolve({ ref: 'sandbox-ref' }),
-					runCommand: (input) => {
-						commands.push({ command: input.command, commandSecretEnv: input.commandSecretEnv })
-						return Promise.resolve({ exitCode: 0, summary: 'ok', stdout: null, stderr: null })
+					kind: 'consumer-managed',
+					create: ({ key }) => {
+						const sandbox = {
+							key,
+							runCommand: (input: {
+								command: { executable: string; args: string[]; cwd: string | null }
+								commandSecretEnv: Record<string, string>
+							}) => {
+								commands.push({ command: input.command, commandSecretEnv: input.commandSecretEnv })
+								return Promise.resolve({ exitCode: 0, summary: 'ok', stdout: null, stderr: null })
+							},
+							release: () => Promise.resolve({ summary: 'released' }),
+						}
+						sandboxes.set(key, sandbox)
+						return Promise.resolve(sandbox)
 					},
-					release: () => Promise.resolve({ summary: 'released' }),
+					find: ({ key }) => Promise.resolve(sandboxes.get(key) ?? null),
 				},
 			})
 			seedSecret(options.tx, '01k00000000000000000000040')
@@ -355,6 +425,7 @@ if (import.meta.vitest) {
 						name: 'Agent Run Profile',
 						modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 						runtimeRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
+						sandboxConfig: defaultAgentRunSandboxConfig(),
 					},
 				}),
 			)
@@ -376,7 +447,8 @@ if (import.meta.vitest) {
 			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')).toMatchObject({
 				blocked: null,
 				sandbox: {
-					assignment: { ref: 'sandbox-ref' },
+					key: '01k00000000000000000000002',
+					created: { at: '2026-06-10T12:00:00.000Z' },
 					appliedRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
 					appliedThroughEventId: null,
 					released: null,

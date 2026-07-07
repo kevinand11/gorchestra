@@ -13,6 +13,13 @@
 				</div>
 				<div v-if="agentRunProfile" class="flex flex-wrap items-center gap-2">
 					<UiButton
+						type="button"
+						variant="secondary"
+						:loading="isPreflightingAgentRunProfile"
+						@click="preflightAgentRunProfile()">
+						Preflight Sandbox
+					</UiButton>
+					<UiButton
 						v-if="agentRunProfile.archived"
 						type="button"
 						variant="secondary"
@@ -71,10 +78,11 @@
 				:error="updateAgentRunProfileError"
 				@submit="updateAgentRunProfile()" />
 			<div
-				v-if="archiveAgentRunProfileError || unarchiveAgentRunProfileError"
+				v-if="archiveAgentRunProfileError || unarchiveAgentRunProfileError || preflightAgentRunProfileError"
 				class="border-t border-dimmer px-3 py-2 text-sz-helper">
 				<UiText v-if="archiveAgentRunProfileError" tone="error">{{ archiveAgentRunProfileError }}</UiText>
 				<UiText v-if="unarchiveAgentRunProfileError" tone="error">{{ unarchiveAgentRunProfileError }}</UiText>
+				<UiText v-if="preflightAgentRunProfileError" tone="error">{{ preflightAgentRunProfileError }}</UiText>
 			</div>
 			<p v-if="isRefreshingAgentRunProfile" class="m-0 border-t border-dimmer px-3 py-2 text-sz-helper text-dim">
 				Refreshing Agent Run Profile…
@@ -148,6 +156,7 @@ import type { ServerApi } from '../../composables/core/server-api'
 import {
 	useAgentRunProfileArchiveActions,
 	useAgentRunProfileDetail,
+	useAgentRunProfilePreflight,
 	useAgentRunProfileReferences,
 	useAgentRunProfileUpdate,
 } from '../../composables/portfolio/agent-run-profiles'
@@ -172,6 +181,8 @@ const {
 } = useAgentRunProfileReferences(agentRunProfileId)
 const { agentRunProfileForm, isUpdatingAgentRunProfile, updateAgentRunProfileError, updateAgentRunProfile } =
 	useAgentRunProfileUpdate(agentRunProfileId)
+const { isPreflightingAgentRunProfile, preflightAgentRunProfileError, preflightAgentRunProfile } =
+	useAgentRunProfilePreflight(agentRunProfileId)
 const modelSelect = useSelectModel(agentRunProfileForm.modelUse)
 const { activeSecretOptions: secretOptions, hasLoadedSecrets } = useActiveSecretSelectOptions()
 const {

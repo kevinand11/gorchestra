@@ -2,6 +2,7 @@ import { Repo, type AnySchema, type AnyUpdateOp, type FilterGroup, type OrmAdapt
 import { v, type PipeOutput } from 'valleyed'
 
 import type { DeliveryWorkOperation } from './domain/action'
+import type { AgentRunSandboxConfig, AgentRunSandboxSourceConfig, ConsumerManagedSandboxSourceConfig } from './domain/agent-run-runtime'
 import { freeFormStringPipe, idPipe, nonEmptyTrimmedStringPipe, nonNegativeIntegerPipe, type Id } from './domain/commons'
 import type { UndefinedToOptional } from './utils/types'
 
@@ -19,7 +20,6 @@ export interface CorePreflightReport {
 export interface CorePreflightChecks {
 	storage: CorePreflightCheck
 	secrets: CorePreflightCheck
-	sandbox: CorePreflightCheck
 	dispatcher: CorePreflightCheck
 }
 
@@ -107,9 +107,6 @@ export type CoreDispatchRequest =
 			reason: { type: 'delivery-work-operation-queued'; queuedActionId: Id }
 	  }
 
-export const sandboxAssignmentOutputPipe = v.object({ ref: nonEmptyTrimmedStringPipe })
-export type SandboxAssignmentOutput = PipeOutput<typeof sandboxAssignmentOutputPipe>
-
 export const sandboxCommandOutputPipe = v.object({
 	exitCode: nonNegativeIntegerPipe,
 	summary: nonEmptyTrimmedStringPipe,
@@ -122,12 +119,36 @@ export const sandboxReleaseOutputPipe = v.object({ summary: nonEmptyTrimmedStrin
 export type SandboxReleaseOutput = PipeOutput<typeof sandboxReleaseOutputPipe>
 
 export interface SandboxRunCommandInput {
-	ref: string
 	label: string
 	command: { executable: string; args: string[]; cwd: string | null }
 	commandSecretEnv: Record<string, string>
 	timeoutMs: number
 }
+
+export interface Sandbox {
+	key: string
+	runCommand(input: SandboxRunCommandInput): Promise<unknown>
+	release(): Promise<unknown>
+}
+
+export type AgentRunSandboxConfigForSource<SourceConfig extends AgentRunSandboxSourceConfig> = Omit<AgentRunSandboxConfig, 'source'> & {
+	source: SourceConfig
+}
+
+export interface SandboxRuntime<SourceConfig extends AgentRunSandboxSourceConfig = AgentRunSandboxSourceConfig> {
+	kind: SourceConfig['type']
+	create(input: { key: string; config: AgentRunSandboxConfigForSource<SourceConfig> }): Promise<Sandbox>
+	find(input: { key: string }): Promise<Sandbox | null>
+}
+
+export type ConsumerManagedSandboxRuntime = SandboxRuntime<ConsumerManagedSandboxSourceConfig>
+
+export const sandboxPipe = v.object({
+	key: nonEmptyTrimmedStringPipe,
+	runCommand: typedFunctionDependencyPipe<Sandbox['runCommand']>(),
+	release: typedFunctionDependencyPipe<Sandbox['release']>(),
+})
+export type SandboxOutput = PipeOutput<typeof sandboxPipe>
 
 export type CoreEvent = never
 
@@ -145,12 +166,11 @@ export const coreSecretsServicePipe = v.object({
 export type CoreSecretsService = PipeOutput<typeof coreSecretsServicePipe>
 
 export const coreSandboxServicePipe = v.object({
-	preflight: typedFunctionDependencyPipe<PreflightFn>(),
-	assign: typedFunctionDependencyPipe<(input: { agentRunId: Id }) => Promise<unknown>>(),
-	runCommand: typedFunctionDependencyPipe<(input: SandboxRunCommandInput) => Promise<unknown>>(),
-	release: typedFunctionDependencyPipe<(input: { ref: string }) => Promise<unknown>>(),
+	kind: v.eq('consumer-managed'),
+	create: typedFunctionDependencyPipe<ConsumerManagedSandboxRuntime['create']>(),
+	find: typedFunctionDependencyPipe<ConsumerManagedSandboxRuntime['find']>(),
 })
-export type CoreSandboxService = PipeOutput<typeof coreSandboxServicePipe>
+export type CoreSandboxService = ConsumerManagedSandboxRuntime
 
 export const coreDispatcherServicePipe = v.object({
 	preflight: typedFunctionDependencyPipe<PreflightFn>(),

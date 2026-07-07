@@ -172,8 +172,16 @@ function validateReviewSurfaceNotMerged(reviewSurface: ReviewSurface): CoreResul
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestCoreRuntime, createTestCoreServices, localStamp, seedAgentRunProfile, seedDelivery, seedSlice } =
-		await import('../utils/test-helpers')
+	const {
+		context,
+		createTestCoreRuntime,
+		createTestCoreServices,
+		defaultAgentRunSandboxConfig,
+		localStamp,
+		seedAgentRunProfile,
+		seedDelivery,
+		seedSlice,
+	} = await import('../utils/test-helpers')
 
 	describe('openRevisionGate command', () => {
 		it('validates input before reading storage', async () => {
@@ -317,13 +325,20 @@ if (import.meta.vitest) {
 				name: 'Agent Run Profile',
 				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 				runtimeRequirements: [],
+				sandboxConfig: defaultAgentRunSandboxConfig(),
 			},
 			modelUseOverride: null,
 			sourceRuntimeRequirements: [],
 			runtimeRequirementOverrides: [],
 			desiredRuntimeRequirements: [],
 			blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
-			sandbox: { assignment: null, appliedRequirements: [], appliedThroughEventId: null, released: null },
+			sandbox: {
+				key: '01k00000000000000000010002',
+				created: null,
+				appliedRequirements: [],
+				appliedThroughEventId: null,
+				released: null,
+			},
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
 		}
