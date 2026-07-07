@@ -1,28 +1,38 @@
 <template>
 	<UiForm @submit.prevent="emit('submit')">
-		<div class="grid gap-3 md:grid-cols-3">
+		<div class="px-3">
 			<UiFormGroup label="Name" for-id="agent-run-profile-name" :error="form.errors.name">
 				<UiInput id="agent-run-profile-name" v-model="form.name" :invalid="!!form.errors.name" />
 			</UiFormGroup>
-			<UiFormGroup label="Model" for-id="agent-run-profile-model" :error="form.modelUse.errors.modelId">
-				<UiSelect
-					id="agent-run-profile-model"
-					v-model="form.modelUse.modelId.value"
-					:options="modelSelect.modelOptions.value"
-					placeholder="Select Model"
-					:invalid="!!form.modelUse.errors.modelId" />
-			</UiFormGroup>
-			<UiFormGroup label="Thinking" for-id="agent-run-profile-thinking" :error="form.modelUse.errors.thinkingLevel">
-				<UiSelect
-					id="agent-run-profile-thinking"
-					v-model="form.modelUse.thinkingLevel.value"
-					:options="modelSelect.thinkingLevelOptions.value"
-					placeholder="Select thinking"
-					:invalid="!!form.modelUse.errors.thinkingLevel" />
-			</UiFormGroup>
 		</div>
 
-		<section class="mt-6 border-t border-card-border pt-4">
+		<section class="mt-6 border-t border-dimmer px-3 pt-4">
+			<div>
+				<UiText class="font-semibold">Model use</UiText>
+				<UiText tone="muted" size="helper">Choose the Model id and thinking level future Agent Runs snapshot.</UiText>
+			</div>
+
+			<div class="mt-4 grid gap-3 md:grid-cols-2">
+				<UiFormGroup label="Model id" for-id="agent-run-profile-model" :error="form.modelUse.errors.modelId">
+					<UiSelect
+						id="agent-run-profile-model"
+						v-model="form.modelUse.modelId.value"
+						:options="modelSelect.modelOptions.value"
+						placeholder="Select Model"
+						:invalid="!!form.modelUse.errors.modelId" />
+				</UiFormGroup>
+				<UiFormGroup label="Thinking level" for-id="agent-run-profile-thinking" :error="form.modelUse.errors.thinkingLevel">
+					<UiSelect
+						id="agent-run-profile-thinking"
+						v-model="form.modelUse.thinkingLevel.value"
+						:options="modelSelect.thinkingLevelOptions.value"
+						placeholder="Select thinking"
+						:invalid="!!form.modelUse.errors.thinkingLevel" />
+				</UiFormGroup>
+			</div>
+		</section>
+
+		<section class="mt-6 border-t border-dimmer px-3 pt-4">
 			<div>
 				<UiText class="font-semibold">Sandbox</UiText>
 				<UiText tone="muted" size="helper">
@@ -114,16 +124,18 @@
 				</UiFormGroup>
 			</div>
 
-			<div class="mt-4 grid gap-3 md:grid-cols-3">
-				<UiFormGroup label="vCPUs" for-id="agent-run-profile-sandbox-vcpus" :error="form.sandboxConfig.resources.errors.vcpus">
-					<UiInput
-						id="agent-run-profile-sandbox-vcpus"
-						v-model="form.sandboxConfig.resources.vcpus"
-						type="number"
-						min="1"
-						:invalid="!!form.sandboxConfig.resources.errors.vcpus" />
-				</UiFormGroup>
-				<div class="flex items-end pb-2 text-sz-helper text-dim">Inferred memory: {{ inferredSandboxMemoryMiB }} MiB</div>
+			<div class="mt-4 grid items-start gap-3 md:grid-cols-3">
+				<div>
+					<UiFormGroup label="vCPUs" for-id="agent-run-profile-sandbox-vcpus" :error="form.sandboxConfig.resources.errors.vcpus">
+						<UiInput
+							id="agent-run-profile-sandbox-vcpus"
+							v-model="form.sandboxConfig.resources.vcpus"
+							type="number"
+							min="1"
+							:invalid="!!form.sandboxConfig.resources.errors.vcpus" />
+					</UiFormGroup>
+					<p class="m-0 mt-1 text-sz-helper text-dim">Inferred memory: {{ inferredSandboxMemoryMiB }} MiB</p>
+				</div>
 				<UiFormGroup
 					label="Network"
 					for-id="agent-run-profile-sandbox-network"
@@ -216,8 +228,8 @@
 			</div>
 		</section>
 
-		<section class="mt-6 border-t border-card-border pt-4">
-			<div class="flex flex-wrap items-start justify-between gap-3">
+		<section class="mt-6 border-t border-dimmer pt-4">
+			<div class="flex flex-wrap items-start justify-between gap-3 px-3">
 				<div>
 					<UiText class="font-semibold">Runtime Requirements</UiText>
 					<UiText tone="muted" size="helper">
@@ -230,7 +242,7 @@
 				</div>
 			</div>
 
-			<div class="mt-3 space-y-2 text-sm text-body-muted">
+			<div class="mt-3 space-y-2 px-3 text-sm text-body-muted">
 				<p>
 					<strong>Chaining:</strong> use multiple ordered Run Command Requirements instead of <code>cmd1 &amp;&amp; cmd2</code>.
 				</p>
@@ -246,11 +258,11 @@
 				</p>
 			</div>
 
-			<div v-if="form.runtimeRequirements.length === 0" class="mt-4 border-t border-card-border py-4">
+			<div v-if="form.runtimeRequirements.length === 0" class="mt-4 border-t border-dimmer px-3 pt-4">
 				<UiText tone="muted">No runtime requirements. This profile will use only source checkout preparation.</UiText>
 			</div>
 
-			<div v-for="(requirement, index) in form.runtimeRequirements" :key="index" class="mt-4 border-t border-card-border pt-4">
+			<div v-for="(requirement, index) in form.runtimeRequirements" :key="index" class="mt-4 border-t border-dimmer px-3 pt-4">
 				<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
 					<UiText class="font-medium">Requirement {{ index + 1 }}</UiText>
 					<UiButton type="button" variant="secondary" @click="form.runtimeRequirements.delete(index)">Remove</UiButton>
@@ -350,7 +362,7 @@
 					</template>
 				</div>
 
-				<div v-if="requirement.type === 'run-command'" class="mt-4 border-t border-card-border pt-3">
+				<div v-if="requirement.type === 'run-command'" class="mt-4">
 					<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
 						<UiText class="font-medium">Command-scoped Secrets</UiText>
 						<UiButton type="button" variant="secondary" @click="addCommandSecret(requirement)">Add command Secret</UiButton>
@@ -393,7 +405,7 @@
 			</div>
 		</section>
 
-		<div class="mt-4 flex flex-wrap items-center gap-2 border-t border-card-border pt-4">
+		<div class="mt-4 flex flex-wrap items-center gap-2 border-t border-dimmer px-3 pt-4">
 			<UiButton type="submit" :loading="loading" :disabled="disabled">{{ submitLabel }}</UiButton>
 			<UiText v-if="error" tone="error">{{ error }}</UiText>
 		</div>

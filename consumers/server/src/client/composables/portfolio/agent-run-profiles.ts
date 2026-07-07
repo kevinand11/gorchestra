@@ -1,4 +1,4 @@
-import { computed, type Ref } from 'vue'
+import { computed, ref, watch, type Ref } from 'vue'
 
 import { AgentRunProfileFormDraft } from '../../forms/agent-run-profile'
 import { useSelectedPortfolio } from '../auth/session'
@@ -12,6 +12,7 @@ type ListedAgentRunProfile = Awaited<ReturnType<ServerApi['listAgentRunProfiles'
 type AgentRunProfileDetails = Awaited<ReturnType<ServerApi['getAgentRunProfile']>>
 type SavedAgentRunProfile = Awaited<ReturnType<ServerApi['createAgentRunProfile']>>
 type AgentRunProfileReference = Awaited<ReturnType<ServerApi['listAgentRunProfileReferences']>>[number]
+type AgentRunProfilePreflightEvidence = Awaited<ReturnType<ServerApi['preflightAgentRunProfile']>>
 
 export function useAgentRunProfilesList() {
 	const serverApi = useServerApi()
@@ -154,18 +155,28 @@ export function useAgentRunProfileUpdate(agentRunProfileId: Ref<string>) {
 export function useAgentRunProfilePreflight(agentRunProfileId: Ref<string>) {
 	const serverApi = useServerApi()
 	const { toast } = useOverlay()
+	const preflightEvidence = ref<AgentRunProfilePreflightEvidence | null>(null)
+
+	watch(
+		() => agentRunProfileId.value,
+		() => {
+			preflightEvidence.value = null
+		},
+	)
+
 	const {
 		isLoading: isPreflightingAgentRunProfile,
 		error: preflightAgentRunProfileError,
 		execute: preflightAgentRunProfile,
 	} = useApiAction(async () => {
 		const evidence = await serverApi.preflightAgentRunProfile(agentRunProfileId.value)
+		preflightEvidence.value = evidence
 		if (evidence.passed) toast.success({ title: 'Agent Run Profile preflight passed.', body: evidence.summary })
 		else toast.error({ title: 'Agent Run Profile preflight failed.', body: evidence.summary })
 		return evidence
 	})
 
-	return { isPreflightingAgentRunProfile, preflightAgentRunProfileError, preflightAgentRunProfile }
+	return { preflightEvidence, isPreflightingAgentRunProfile, preflightAgentRunProfileError, preflightAgentRunProfile }
 }
 
 export function useAgentRunProfileArchiveActions() {

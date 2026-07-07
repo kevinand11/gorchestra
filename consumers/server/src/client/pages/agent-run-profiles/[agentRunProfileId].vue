@@ -1,41 +1,11 @@
 <template>
 	<NuxtLayout name="portfolio">
 		<header class="border-b border-dimmer px-3 pt-3 pb-4">
-			<div class="flex flex-wrap items-start justify-between gap-3">
-				<div class="min-w-0">
-					<NuxtLink to="/agent-run-profiles" class="text-sz-helper text-dim hover:text-body">← Agent Run Profiles</NuxtLink>
-					<h1 class="m-0 mt-1 truncate text-sz-section font-semibold tracking-[-0.01em]">
-						{{ agentRunProfile?.name ?? 'Agent Run Profile' }}
-					</h1>
-					<p class="m-0 mt-1 text-sz-helper text-dim">
-						Edit the Model Use Config and runtime setup that future Agent Runs snapshot.
-					</p>
-				</div>
-				<div v-if="agentRunProfile" class="flex flex-wrap items-center gap-2">
-					<UiButton
-						type="button"
-						variant="secondary"
-						:loading="isPreflightingAgentRunProfile"
-						@click="preflightAgentRunProfile()">
-						Preflight Sandbox
-					</UiButton>
-					<UiButton
-						v-if="agentRunProfile.archived"
-						type="button"
-						variant="secondary"
-						:loading="isUnarchivingAgentRunProfile"
-						@click="unarchiveAgentRunProfile(agentRunProfile)">
-						Unarchive Profile
-					</UiButton>
-					<UiButton
-						v-else
-						type="button"
-						variant="ghost"
-						:loading="isArchivingAgentRunProfile"
-						@click="archiveAgentRunProfile(agentRunProfile)">
-						Archive Profile
-					</UiButton>
-				</div>
+			<div class="min-w-0">
+				<h1 class="m-0 truncate text-sz-section font-semibold tracking-[-0.01em]">
+					{{ agentRunProfile?.name ?? 'Agent Run Profile' }}
+				</h1>
+				<p class="m-0 mt-1 text-sz-helper text-dim">Edit the Model Use Config and runtime setup that future Agent Runs snapshot.</p>
 			</div>
 		</header>
 
@@ -46,28 +16,8 @@
 			{{ agentRunProfileError }}
 		</section>
 		<section v-else-if="agentRunProfile" class="border-b border-dimmer">
-			<div class="px-3 py-3">
-				<h2 class="m-0 text-sz-subsection font-semibold">Profile details</h2>
-				<p class="m-0 mt-1 text-sz-helper text-dim">
-					Profile edits affect future Agent Runs only. Existing Agent Runs keep their profile snapshot.
-				</p>
-			</div>
-			<div class="grid gap-3 border-t border-dimmer px-3 py-3 md:grid-cols-3">
-				<div>
-					<span class="block text-sz-micro font-semibold uppercase tracking-wide text-dim">Status</span>
-					<strong class="mt-1 block text-sz-helper font-semibold">{{ agentRunProfile.archived ? 'Archived' : 'Active' }}</strong>
-				</div>
-				<div>
-					<span class="block text-sz-micro font-semibold uppercase tracking-wide text-dim">Created</span>
-					<strong class="mt-1 block text-sz-helper font-semibold">{{ formatDate(agentRunProfile.created.at) }}</strong>
-				</div>
-				<div>
-					<span class="block text-sz-micro font-semibold uppercase tracking-wide text-dim">Updated</span>
-					<strong class="mt-1 block text-sz-helper font-semibold">{{ updatedLabel }}</strong>
-				</div>
-			</div>
 			<AgentRunProfileForm
-				class="border-t border-dimmer px-3 py-3"
+				class="py-3"
 				:form="agentRunProfileForm"
 				:model-select="modelSelect"
 				:secret-options="secretOptions"
@@ -77,20 +27,81 @@
 				:disabled="!agentRunProfileForm.valid || !agentRunProfileForm.dirty"
 				:error="updateAgentRunProfileError"
 				@submit="updateAgentRunProfile()" />
-			<div
-				v-if="archiveAgentRunProfileError || unarchiveAgentRunProfileError || preflightAgentRunProfileError"
-				class="border-t border-dimmer px-3 py-2 text-sz-helper">
-				<UiText v-if="archiveAgentRunProfileError" tone="error">{{ archiveAgentRunProfileError }}</UiText>
-				<UiText v-if="unarchiveAgentRunProfileError" tone="error">{{ unarchiveAgentRunProfileError }}</UiText>
-				<UiText v-if="preflightAgentRunProfileError" tone="error">{{ preflightAgentRunProfileError }}</UiText>
-			</div>
-			<p v-if="isRefreshingAgentRunProfile" class="m-0 border-t border-dimmer px-3 py-2 text-sz-helper text-dim">
-				Refreshing Agent Run Profile…
-			</p>
 		</section>
 
 		<template v-if="agentRunProfile" #right>
 			<aside>
+				<section class="border-b border-dimmer">
+					<div class="px-3 py-3">
+						<h2 class="m-0 text-sz-subsection font-semibold">Details</h2>
+					</div>
+					<dl class="m-0 text-sz-helper">
+						<div class="flex justify-between gap-3 border-t border-dimmer px-3 py-2">
+							<dt class="text-dim">Status</dt>
+							<dd class="m-0" :class="agentRunProfile.archived ? 'text-dim' : 'text-success'">
+								{{ agentRunProfile.archived ? 'Archived' : 'Active' }}
+							</dd>
+						</div>
+						<div class="flex justify-between gap-3 border-t border-dimmer px-3 py-2">
+							<dt class="text-dim">Created</dt>
+							<dd class="m-0">{{ formatDate(agentRunProfile.created.at) }}</dd>
+						</div>
+						<div class="flex justify-between gap-3 border-t border-dimmer px-3 py-2">
+							<dt class="text-dim">Updated</dt>
+							<dd class="m-0">{{ updatedLabel }}</dd>
+						</div>
+					</dl>
+					<p v-if="isRefreshingAgentRunProfile" class="m-0 border-t border-dimmer px-3 py-2 text-sz-helper text-dim">
+						Refreshing Agent Run Profile…
+					</p>
+				</section>
+				<section class="border-b border-dimmer px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">Sandbox preflight</h2>
+					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+						Create a temporary sandbox from this profile, run a smoke check, and release it without changing saved profile
+						state.
+					</p>
+					<div class="mt-3 grid gap-2">
+						<UiButton
+							type="button"
+							variant="secondary"
+							:loading="isPreflightingAgentRunProfile"
+							@click="preflightAgentRunProfile()">
+							Preflight Sandbox
+						</UiButton>
+						<UiCallout v-if="preflightEvidence" :tone="preflightEvidence.passed ? 'success' : 'error'">
+							{{ preflightEvidence.summary }}
+						</UiCallout>
+						<UiText v-if="preflightAgentRunProfileError" tone="error">{{ preflightAgentRunProfileError }}</UiText>
+					</div>
+				</section>
+				<section class="border-b border-dimmer px-3 py-3">
+					<h2 class="m-0 text-sz-helper font-semibold">Archive</h2>
+					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
+						Archiving remains allowed with active references. Referencing configs may need a new selectable profile before work
+						can run.
+					</p>
+					<div class="mt-3 grid gap-2">
+						<UiButton
+							v-if="agentRunProfile.archived"
+							type="button"
+							variant="secondary"
+							:loading="isUnarchivingAgentRunProfile"
+							@click="unarchiveAgentRunProfile(agentRunProfile)">
+							Unarchive Profile
+						</UiButton>
+						<UiButton
+							v-else
+							type="button"
+							variant="ghost"
+							:loading="isArchivingAgentRunProfile"
+							@click="requestAgentRunProfileArchive()">
+							Archive Profile
+						</UiButton>
+						<UiText v-if="archiveAgentRunProfileError" tone="error">{{ archiveAgentRunProfileError }}</UiText>
+						<UiText v-if="unarchiveAgentRunProfileError" tone="error">{{ unarchiveAgentRunProfileError }}</UiText>
+					</div>
+				</section>
 				<section class="border-b border-dimmer px-3 py-3">
 					<h2 class="m-0 text-sz-subsection font-semibold">References</h2>
 					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
@@ -134,13 +145,6 @@
 						receive runtime requirement overrides directly.
 					</p>
 				</section>
-				<section class="px-3 py-3">
-					<h2 class="m-0 text-sz-helper font-semibold">Archiving impact</h2>
-					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-						Archiving remains allowed with active references. Referencing configs may need a new selectable profile before work
-						can run.
-					</p>
-				</section>
 			</aside>
 		</template>
 	</NuxtLayout>
@@ -151,7 +155,9 @@ import { computed, watch } from 'vue'
 
 import AgentRunProfileForm from '../../components/portfolio/agent-run-profiles/AgentRunProfileForm.vue'
 import UiButton from '../../components/ui/UiButton.vue'
+import UiCallout from '../../components/ui/UiCallout.vue'
 import UiText from '../../components/ui/UiText.vue'
+import { useOverlay } from '../../composables/core/overlay'
 import type { ServerApi } from '../../composables/core/server-api'
 import {
 	useAgentRunProfileArchiveActions,
@@ -169,6 +175,7 @@ definePageMeta({ middleware: ['has-selection'] })
 type AgentRunProfileReference = Awaited<ReturnType<ServerApi['listAgentRunProfileReferences']>>[number]
 
 const route = useRoute()
+const { confirm } = useOverlay()
 const agentRunProfileId = computed(() => String(route.params.agentRunProfileId ?? ''))
 const { agentRunProfile, isLoadingAgentRunProfile, agentRunProfileError, hasLoadedAgentRunProfile, isRefreshingAgentRunProfile } =
 	useAgentRunProfileDetail(agentRunProfileId)
@@ -181,7 +188,7 @@ const {
 } = useAgentRunProfileReferences(agentRunProfileId)
 const { agentRunProfileForm, isUpdatingAgentRunProfile, updateAgentRunProfileError, updateAgentRunProfile } =
 	useAgentRunProfileUpdate(agentRunProfileId)
-const { isPreflightingAgentRunProfile, preflightAgentRunProfileError, preflightAgentRunProfile } =
+const { preflightEvidence, isPreflightingAgentRunProfile, preflightAgentRunProfileError, preflightAgentRunProfile } =
 	useAgentRunProfilePreflight(agentRunProfileId)
 const modelSelect = useSelectModel(agentRunProfileForm.modelUse)
 const { activeSecretOptions: secretOptions, hasLoadedSecrets } = useActiveSecretSelectOptions()
@@ -205,6 +212,18 @@ watch(
 	},
 	{ immediate: true },
 )
+
+async function requestAgentRunProfileArchive(): Promise<void> {
+	const profile = agentRunProfile.value
+	if (profile === null) return
+	const confirmed = await confirm({
+		title: 'Archive Agent Run Profile?',
+		body: 'Archiving remains allowed with active references. Referencing configs may need a new selectable profile before work can run.',
+		confirm: { label: 'Archive Profile', tone: 'danger' },
+	})
+	if (!confirmed) return
+	await archiveAgentRunProfile(profile)
+}
 
 function referenceLocation(reference: AgentRunProfileReference): string {
 	switch (reference.type) {

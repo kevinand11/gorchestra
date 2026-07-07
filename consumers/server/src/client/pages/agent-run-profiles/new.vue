@@ -9,14 +9,8 @@
 		</header>
 
 		<section class="border-b border-dimmer">
-			<div class="px-3 py-3">
-				<h2 class="m-0 text-sz-subsection font-semibold">Profile details</h2>
-				<p class="m-0 mt-1 text-sz-helper text-dim">
-					Profiles snapshot onto Agent Runs when the run is created. Later profile edits affect future runs only.
-				</p>
-			</div>
 			<AgentRunProfileForm
-				class="border-t border-dimmer px-3 py-3"
+				class="py-3"
 				:form="agentRunProfileForm"
 				:model-select="modelSelect"
 				:secret-options="secretOptions"
