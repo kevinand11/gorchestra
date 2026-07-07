@@ -9,10 +9,10 @@ import type { InvalidInputError } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import { planningInstructionForProject } from '../runtime/agent-runs/instructions'
 import type { CoreDispatchRequest, CoreStorage } from '../services'
-import { appendAgentRunEvent, createModelAgentRunWithProfileSnapshot } from '../utils/agent-run-events'
+import { appendAgentRunEvent, createInstructedModelAgentRunAndRequestSandboxPreparation } from '../utils/agent-run-events'
 import type { CoreRuntimeValues } from '../utils/runtime-values'
 import type { Result as CoreResult } from '../utils/types'
-import { acceptAgentRunModelTurn, acceptAgentRunSandboxPreparation } from './utils/dispatch'
+import { acceptAgentRunModelTurn } from './utils/dispatch'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { buildCommandHandler } from './utils/handler'
 import {
@@ -175,24 +175,20 @@ async function writePlanningAgentRun(
 	plan: Plan,
 	facts: PlanCreationFacts,
 ): Promise<CoreResult<DispatchedPlanCreation, Exclude<Error, InvalidInputError>>> {
-	const storedAgentRun = await createModelAgentRunWithProfileSnapshot(storage, {
-		agentRunId: facts.agentRunId,
-		purpose: { type: 'planning', planId: plan.id },
-		started: facts.started,
-		profile: facts.profile,
-	})
-	return storedAgentRun.ok ? writePlanningInstruction(runtime, storage, plan, storedAgentRun.value, facts) : storedAgentRun
-}
-
-async function writePlanningInstruction(
-	runtime: CoreRuntime,
-	storage: CoreStorage,
-	plan: Plan,
-	agentRun: PlanWithPlanningAgentRun['agentRun'],
-	facts: PlanCreationFacts,
-): Promise<CoreResult<DispatchedPlanCreation, Exclude<Error, InvalidInputError>>> {
-	const instruction = await appendAgentRunEvent({ values: facts.runtimeValues }, storage, agentRun.id, facts.instruction)
-	return instruction.ok ? writeInitialPlanningInput(runtime, storage, plan, agentRun, facts) : instruction
+	const created = await createInstructedModelAgentRunAndRequestSandboxPreparation(
+		{ values: facts.runtimeValues, dispatcher: runtime.services.dispatcher },
+		storage,
+		{
+			agentRunId: facts.agentRunId,
+			purpose: { type: 'planning', planId: plan.id },
+			started: facts.started,
+			profile: facts.profile,
+			instruction: facts.instruction,
+		},
+	)
+	return created.ok
+		? writeInitialPlanningInput(runtime, storage, plan, created.value.agentRun, facts, created.value.preparationDispatchMarker)
+		: created
 }
 
 async function writeInitialPlanningInput(
@@ -201,6 +197,7 @@ async function writeInitialPlanningInput(
 	plan: Plan,
 	agentRun: PlanWithPlanningAgentRun['agentRun'],
 	facts: PlanCreationFacts,
+	preparationDispatchMarker: string,
 ): Promise<CoreResult<DispatchedPlanCreation, Exclude<Error, InvalidInputError>>> {
 	const input = await appendAgentRunEvent({ values: facts.runtimeValues }, storage, agentRun.id, {
 		type: 'input-message',
@@ -209,17 +206,12 @@ async function writeInitialPlanningInput(
 	})
 	if (!input.ok) return input
 
-	const preparationDispatchMarker = await acceptAgentRunSandboxPreparation(runtime.services.dispatcher, agentRun.id, {
-		type: 'agent-run-created',
-	})
-	if (!preparationDispatchMarker.ok) return preparationDispatchMarker
-
 	const modelTurnDispatchMarker = await acceptAgentRunModelTurn(runtime.services.dispatcher, agentRun.id, input.value.id)
 	if (!modelTurnDispatchMarker.ok) return modelTurnDispatchMarker
 
 	return {
 		ok: true,
-		value: { plan: { ...plan, agentRun }, dispatchMarkers: [preparationDispatchMarker.value, modelTurnDispatchMarker.value] },
+		value: { plan: { ...plan, agentRun }, dispatchMarkers: [preparationDispatchMarker, modelTurnDispatchMarker.value] },
 	}
 }
 
@@ -290,7 +282,7 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('requests Agent Run Dispatch after appending the initial input message and readies it after commit', async () => {
+		it('requests sandbox preparation and initial model turn dispatch and readies them after commit', async () => {
 			const dispatches: CoreDispatchRequest[] = []
 			const readyMarkers: string[] = []
 			const options = createTestCoreServices({

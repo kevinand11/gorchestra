@@ -1,8 +1,9 @@
-import { acceptAgentRunModelTurn, acceptAgentRunSandboxPreparation } from '../../../commands/utils/dispatch'
+import { acceptAgentRunModelTurn } from '../../../commands/utils/dispatch'
 import type { AgentRun, AgentRunProfileSnapshot, ExecutionMode } from '../../../domain/agent-run'
 import type { Id, RuntimeRecord } from '../../../domain/commons'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
-import { appendAgentRunEvent, createModelAgentRunWithProfileSnapshot } from '../../../utils/agent-run-events'
+import { sourceControlSliceExecutionInstruction } from '../../../runtime/agent-runs/instructions'
+import { appendAgentRunEvent, createInstructedModelAgentRunAndRequestSandboxPreparation } from '../../../utils/agent-run-events'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
 import type { Result as CoreResult } from '../../../utils/types'
 import type { DeliveryHandlerContext, DeliveryWorkResolution, DeliveryWorkHandlerResult } from '../../delivery-work/types'
@@ -24,31 +25,40 @@ interface SliceExecutionAgentRunInput {
 	purpose: Extract<AgentRun['purpose'], { type: 'execution' }>
 	started: RuntimeRecord
 	profile: AgentRunProfileSnapshot
+	initialInputText: string
 }
 
 async function writeSliceExecutionAgentRun(
 	context: DeliveryHandlerContext,
 	agentRun: SliceExecutionAgentRunInput,
 ): Promise<DeliveryWorkHandlerResult> {
-	const agentRunPut = await createModelAgentRunWithProfileSnapshot(context.storage, agentRun)
-	if (!agentRunPut.ok) return agentRunPut
+	const created = await createInstructedModelAgentRunAndRequestSandboxPreparation(
+		{ values: context.values, dispatcher: context.services.dispatcher },
+		context.storage,
+		{
+			agentRunId: agentRun.agentRunId,
+			purpose: agentRun.purpose,
+			started: agentRun.started,
+			profile: agentRun.profile,
+			instruction: sourceControlSliceExecutionInstruction(),
+		},
+	)
+	if (!created.ok) return created
 
-	const input = await appendAgentRunEvent({ values: context.values }, context.storage, agentRunPut.value.id, {
+	const input = await appendAgentRunEvent({ values: context.values }, context.storage, created.value.agentRun.id, {
 		type: 'input-message',
 		source: { type: 'runtime' },
-		parts: [{ type: 'text', text: `Execute Slice ${agentRun.purpose.sliceId}.`, metadata: null }],
+		parts: [{ type: 'text', text: agentRun.initialInputText, metadata: null }],
 	})
 	if (!input.ok) return input
 
-	const preparationMarker = await acceptAgentRunSandboxPreparation(context.services.dispatcher, agentRunPut.value.id, {
-		type: 'agent-run-created',
-	})
-	if (!preparationMarker.ok) return preparationMarker
-
-	const modelTurnMarker = await acceptAgentRunModelTurn(context.services.dispatcher, agentRunPut.value.id, input.value.id)
+	const modelTurnMarker = await acceptAgentRunModelTurn(context.services.dispatcher, created.value.agentRun.id, input.value.id)
 	if (!modelTurnMarker.ok) return modelTurnMarker
 
-	return { ok: true, value: { processedCount: 1, failures: [], dispatchMarkers: [preparationMarker.value, modelTurnMarker.value] } }
+	return {
+		ok: true,
+		value: { processedCount: 1, failures: [], dispatchMarkers: [created.value.preparationDispatchMarker, modelTurnMarker.value] },
+	}
 }
 
 function sliceExecutionAgentRun(
@@ -81,6 +91,7 @@ function sliceExecutionAgentRun(
 				runtimeRequirements: resolution.executionProfile.runtimeRequirements,
 				sandboxConfig: resolution.executionProfile.sandboxConfig,
 			},
+			initialInputText: slice.instruction.body,
 		},
 	}
 }
@@ -98,7 +109,7 @@ if (import.meta.vitest) {
 		await import('../../../utils/test-helpers')
 
 	describe('handleSliceExecutable', () => {
-		it('claims initial executable Slice work with a profile-snapshotted Agent Run and input event', async () => {
+		it('claims initial executable Slice work with an instructed Agent Run and Slice instruction input event', async () => {
 			const context = await executableHandlerContext()
 			const result = await handleSliceExecutable(
 				context,
@@ -144,9 +155,20 @@ if (import.meta.vitest) {
 				completed: null,
 			})
 			expect(context.tx.agentRunEvents.records.get('01k00000000000000000010002')?.body).toEqual({
+				type: 'instruction-snapshot',
+				instruction: { type: 'source-control-slice-execution', version: 1 },
+				parts: [
+					{
+						type: 'text',
+						text: 'Execute the accepted Slice instruction provided in runtime input.',
+						metadata: null,
+					},
+				],
+			})
+			expect(context.tx.agentRunEvents.records.get('01k00000000000000000010003')?.body).toEqual({
 				type: 'input-message',
 				source: { type: 'runtime' },
-				parts: [{ type: 'text', text: 'Execute Slice 01k00000000000000000000042.', metadata: null }],
+				parts: [{ type: 'text', text: 'Do work.', metadata: null }],
 			})
 		})
 

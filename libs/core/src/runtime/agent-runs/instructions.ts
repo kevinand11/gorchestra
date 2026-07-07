@@ -14,6 +14,22 @@ export function planningInstructionForProject(
 	}
 }
 
+export function sourceControlRevisionPlanningInstruction(): Extract<AgentRunEvent['body'], { type: 'instruction-snapshot' }> {
+	return {
+		type: 'instruction-snapshot',
+		instruction: { type: 'source-control-revision-planning', version: 1 },
+		parts: [{ type: 'text', text: 'Plan revision work for this Source Control Project when prompted.', metadata: null }],
+	}
+}
+
+export function sourceControlSliceExecutionInstruction(): Extract<AgentRunEvent['body'], { type: 'instruction-snapshot' }> {
+	return {
+		type: 'instruction-snapshot',
+		instruction: { type: 'source-control-slice-execution', version: 1 },
+		parts: [{ type: 'text', text: 'Execute the accepted Slice instruction provided in runtime input.', metadata: null }],
+	}
+}
+
 function sourceControlPlanningInstruction(): Extract<AgentRunEvent['body'], { type: 'instruction-snapshot' }> {
 	return {
 		type: 'instruction-snapshot',
@@ -108,6 +124,34 @@ if (import.meta.vitest) {
 			expect(text).toContain('Repository id')
 			expect(text).toContain('Target Branch')
 			expect(text).toContain('Planning is read-only')
+		})
+
+		it('builds minimal source-control Revision Planning instructions', () => {
+			expect(sourceControlRevisionPlanningInstruction()).toEqual({
+				type: 'instruction-snapshot',
+				instruction: { type: 'source-control-revision-planning', version: 1 },
+				parts: [
+					{
+						type: 'text',
+						text: 'Plan revision work for this Source Control Project when prompted.',
+						metadata: null,
+					},
+				],
+			})
+		})
+
+		it('builds minimal source-control Slice Execution instructions', () => {
+			expect(sourceControlSliceExecutionInstruction()).toEqual({
+				type: 'instruction-snapshot',
+				instruction: { type: 'source-control-slice-execution', version: 1 },
+				parts: [
+					{
+						type: 'text',
+						text: 'Execute the accepted Slice instruction provided in runtime input.',
+						metadata: null,
+					},
+				],
+			})
 		})
 	})
 }

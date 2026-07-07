@@ -1,10 +1,11 @@
+import { nextId, runtimeRecord, type CoreRuntimeValues } from './runtime-values'
+import type { Result } from './types'
+import { acceptAgentRunSandboxPreparation } from '../commands/utils/dispatch'
 import type { AgentRun, AgentRunEvent, AgentRunEventBody, AgentRunProfileSnapshot, AgentRunPurpose } from '../domain/agent-run'
 import { appendUniqueRuntimeRequirements, type AgentRunRuntimeRequirement } from '../domain/agent-run-runtime'
 import type { Id, RuntimeRecord } from '../domain/commons'
 import type { InvalidCoreServiceOutputError, InvariantViolationError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreStorage } from '../services'
-import { nextId, runtimeRecord, type CoreRuntimeValues } from './runtime-values'
-import type { Result } from './types'
+import type { CoreServices, CoreStorage } from '../services'
 import { createRecord, getRequired } from '../storage/helpers'
 
 type ModelAgentRunWithPurpose<TPurpose extends AgentRunPurpose> = Omit<AgentRun, 'agent' | 'purpose'> & {
@@ -20,19 +21,45 @@ export type AppendAgentRunEventError =
 
 export type CreateModelAgentRunError = AppendAgentRunEventError
 
-export async function createModelAgentRunWithProfileSnapshot<TPurpose extends AgentRunPurpose>(
+export async function createInstructedModelAgentRunAndRequestSandboxPreparation<TPurpose extends AgentRunPurpose>(
+	context: { values: CoreRuntimeValues; dispatcher: CoreServices['dispatcher'] },
 	storage: CoreStorage,
 	input: {
 		agentRunId: Id
 		purpose: TPurpose
 		started: RuntimeRecord
 		profile: AgentRunProfileSnapshot
+		instruction: Extract<AgentRunEvent['body'], { type: 'instruction-snapshot' }>
 		sourceRuntimeRequirements?: AgentRunRuntimeRequirement[]
 	},
-): Promise<Result<ModelAgentRunWithPurpose<TPurpose>, CreateModelAgentRunError>> {
+): Promise<
+	Result<
+		{
+			agentRun: ModelAgentRunWithPurpose<TPurpose>
+			instructionEvent: AgentRunEvent
+			preparationDispatchMarker: string
+		},
+		CreateModelAgentRunError
+	>
+> {
 	const agentRun = modelAgentRun(input)
 	const stored = await createRecord('agent-run', storage, agentRun)
-	return stored.ok ? { ok: true, value: agentRun } : stored
+	if (!stored.ok) return stored
+
+	const instructionEvent = await appendAgentRunEvent({ values: context.values }, storage, agentRun.id, input.instruction)
+	if (!instructionEvent.ok) return instructionEvent
+
+	const preparationDispatchMarker = await acceptAgentRunSandboxPreparation(context.dispatcher, agentRun.id, { type: 'agent-run-created' })
+	return preparationDispatchMarker.ok
+		? {
+				ok: true,
+				value: {
+					agentRun,
+					instructionEvent: instructionEvent.value,
+					preparationDispatchMarker: preparationDispatchMarker.value,
+				},
+			}
+		: preparationDispatchMarker
 }
 
 function modelAgentRun<TPurpose extends AgentRunPurpose>(input: {
@@ -105,29 +132,27 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { createTestCoreServices, defaultAgentRunSandboxConfig } = await import('./test-helpers')
 
-	describe('createModelAgentRunWithProfileSnapshot', () => {
-		it('creates a Model Agent Run with a profile snapshot and no transcript event', async () => {
-			const options = createTestCoreServices()
-
-			const result = await createModelAgentRunWithProfileSnapshot(options.storage, {
-				agentRunId: '01k00000000000000000000002',
-				purpose: { type: 'planning', planId: '01k00000000000000000000028' },
-				started: { at: '2026-06-10T12:00:00.000Z' },
-				profile: {
-					agentRunProfileId: '01k00000000000000000000006',
-					name: 'Planning',
-					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
-					runtimeRequirements: [],
-					sandboxConfig: defaultAgentRunSandboxConfig(),
+	describe('createInstructedModelAgentRunAndRequestSandboxPreparation', () => {
+		it('creates a Model Agent Run, records its instruction, and requests sandbox preparation', async () => {
+			const dispatches: unknown[] = []
+			const options = createTestCoreServices({
+				dispatcher: {
+					preflight: () => Promise.resolve({ ok: true }),
+					request: (request) => {
+						dispatches.push(request)
+						return Promise.resolve('marker-1')
+					},
+					ready: () => {},
 				},
 			})
 
-			expect(result).toEqual({
-				ok: true,
-				value: {
-					id: '01k00000000000000000000002',
-					agent: { type: 'model' },
+			const result = await createInstructedModelAgentRunAndRequestSandboxPreparation(
+				{ values: options.values, dispatcher: options.dispatcher },
+				options.storage,
+				{
+					agentRunId: '01k00000000000000000000002',
 					purpose: { type: 'planning', planId: '01k00000000000000000000028' },
+					started: { at: '2026-06-10T12:00:00.000Z' },
 					profile: {
 						agentRunProfileId: '01k00000000000000000000006',
 						name: 'Planning',
@@ -135,23 +160,74 @@ if (import.meta.vitest) {
 						runtimeRequirements: [],
 						sandboxConfig: defaultAgentRunSandboxConfig(),
 					},
-					modelUseOverride: null,
-					sourceRuntimeRequirements: [],
-					runtimeRequirementOverrides: [],
-					desiredRuntimeRequirements: [],
-					blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
-					sandbox: {
-						key: '01k00000000000000000000002',
-						created: null,
-						appliedRequirements: [],
-						appliedThroughEventId: null,
-						released: null,
+					instruction: {
+						type: 'instruction-snapshot',
+						instruction: { type: 'source-control-planning', version: 1 },
+						parts: [{ type: 'text', text: 'Instruction.', metadata: null }],
 					},
-					started: { at: '2026-06-10T12:00:00.000Z' },
-					completed: null,
+				},
+			)
+
+			const expectedAgentRun = {
+				id: '01k00000000000000000000002',
+				agent: { type: 'model' },
+				purpose: { type: 'planning', planId: '01k00000000000000000000028' },
+				profile: {
+					agentRunProfileId: '01k00000000000000000000006',
+					name: 'Planning',
+					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
+					runtimeRequirements: [],
+					sandboxConfig: defaultAgentRunSandboxConfig(),
+				},
+				modelUseOverride: null,
+				sourceRuntimeRequirements: [],
+				runtimeRequirementOverrides: [],
+				desiredRuntimeRequirements: [],
+				blocked: { type: 'sandbox-preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
+				sandbox: {
+					key: '01k00000000000000000000002',
+					created: null,
+					appliedRequirements: [],
+					appliedThroughEventId: null,
+					released: null,
+				},
+				started: { at: '2026-06-10T12:00:00.000Z' },
+				completed: null,
+			}
+			expect(result).toEqual({
+				ok: true,
+				value: {
+					agentRun: expectedAgentRun,
+					instructionEvent: {
+						id: '01k00000000000000000010001',
+						agentRunId: '01k00000000000000000000002',
+						occurred: { at: '2026-06-10T12:00:00.000Z' },
+						body: {
+							type: 'instruction-snapshot',
+							instruction: { type: 'source-control-planning', version: 1 },
+							parts: [{ type: 'text', text: 'Instruction.', metadata: null }],
+						},
+					},
+					preparationDispatchMarker: 'marker-1',
 				},
 			})
-			expect(options.tx.agentRunEvents.records.size).toBe(0)
+			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')).toEqual(expectedAgentRun)
+			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010001')).toEqual(
+				result.ok ? result.value.instructionEvent : null,
+			)
+			expect(dispatches).toEqual([
+				{
+					type: 'agent-run-sandbox-preparation',
+					agentRunId: '01k00000000000000000000002',
+					coordinationClaims: [
+						{
+							scope: [{ type: 'agent-run', id: '01k00000000000000000000002' }],
+							mode: { type: 'exclusive' },
+						},
+					],
+					reason: { type: 'agent-run-created' },
+				},
+			])
 		})
 	})
 

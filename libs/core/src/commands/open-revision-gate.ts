@@ -7,8 +7,9 @@ import type { FetchedFeedback, ReviewSurface, ReviewSurfaceScope } from '../doma
 import type { RevisionGate, RevisionScope } from '../domain/revision'
 import type { InvalidInputError, ReviewSurfaceAlreadyMergedError } from '../errors'
 import type { CoreRuntime } from '../runtime'
+import { sourceControlRevisionPlanningInstruction } from '../runtime/agent-runs/instructions'
 import type { CoreStorage } from '../services'
-import { createModelAgentRunWithProfileSnapshot } from '../utils/agent-run-events'
+import { createInstructedModelAgentRunAndRequestSandboxPreparation } from '../utils/agent-run-events'
 import type { CoreRuntimeValues } from '../utils/runtime-values'
 import type { Result as CoreResult } from '../utils/types'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
@@ -57,11 +58,23 @@ type OpenRevisionGateFacts = {
 	agentRunId: Id
 	started: RuntimeRecord
 	profile: ReturnType<typeof agentRunProfileSnapshot>
+	runtimeValues: CoreRuntimeValues
+}
+
+type OpenRevisionGateWrite = {
+	result: Result
+	dispatchMarkers: string[]
 }
 
 async function handleOpenRevisionGate(runtime: CoreRuntime, input: Input, context: CommandContext): Promise<CoreResult<Result, Error>> {
 	const values = openRevisionGateRuntimeValues(runtime, context)
-	return values.ok ? withTransaction(runtime.services, (storage) => openRevisionGate(storage, input, values.value)) : values
+	if (!values.ok) return values
+
+	const written = await withTransaction(runtime.services, (storage) => openRevisionGate(runtime, storage, input, values.value))
+	if (!written.ok) return written
+
+	for (const dispatchMarker of written.value.dispatchMarkers) runtime.services.dispatcher.ready(dispatchMarker)
+	return { ok: true, value: written.value.result }
 }
 
 function openRevisionGateRuntimeValues(
@@ -93,12 +106,13 @@ function openRevisionGateRuntimeValues(
 }
 
 async function openRevisionGate(
+	runtime: CoreRuntime,
 	storage: CoreStorage,
 	input: Input,
 	values: OpenRevisionGateRuntimeValues,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+): Promise<CoreResult<OpenRevisionGateWrite, Exclude<Error, InvalidInputError>>> {
 	const facts = await openRevisionGateFacts(storage, input, values)
-	return facts.ok ? writeOpenRevisionGateFacts(storage, facts.value) : facts
+	return facts.ok ? writeOpenRevisionGateFacts(runtime, storage, facts.value) : facts
 }
 
 async function openRevisionGateFacts(
@@ -134,23 +148,38 @@ function openRevisionGateFactsValue(
 		agentRunId: values.agentRunId,
 		started: values.started,
 		profile,
+		runtimeValues: values.runtimeValues,
 	}
 }
 
 async function writeOpenRevisionGateFacts(
+	runtime: CoreRuntime,
 	storage: CoreStorage,
 	facts: OpenRevisionGateFacts,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
+): Promise<CoreResult<OpenRevisionGateWrite, Exclude<Error, InvalidInputError>>> {
 	const revisionGate = await createRecordValue('revision-gate', storage, facts.revisionGate)
 	if (!revisionGate.ok) return revisionGate
 
-	const agentRun = await createModelAgentRunWithProfileSnapshot(storage, {
-		agentRunId: facts.agentRunId,
-		purpose: { type: 'revision-planning', revisionGateId: revisionGate.value.id },
-		started: facts.started,
-		profile: facts.profile,
-	})
-	return agentRun.ok ? { ok: true, value: { revisionGate: revisionGate.value, agentRun: agentRun.value, feedback: [] } } : agentRun
+	const created = await createInstructedModelAgentRunAndRequestSandboxPreparation(
+		{ values: facts.runtimeValues, dispatcher: runtime.services.dispatcher },
+		storage,
+		{
+			agentRunId: facts.agentRunId,
+			purpose: { type: 'revision-planning', revisionGateId: revisionGate.value.id },
+			started: facts.started,
+			profile: facts.profile,
+			instruction: sourceControlRevisionPlanningInstruction(),
+		},
+	)
+	return created.ok
+		? {
+				ok: true,
+				value: {
+					result: { revisionGate: revisionGate.value, agentRun: created.value.agentRun, feedback: [] },
+					dispatchMarkers: [created.value.preparationDispatchMarker],
+				},
+			}
+		: created
 }
 
 function revisionScopeFromReviewSurfaceScope(scope: ReviewSurfaceScope): RevisionScope {
@@ -212,7 +241,49 @@ if (import.meta.vitest) {
 			expect(result).toEqual({ ok: true, value: { revisionGate: expectedGate, agentRun: expectedAgentRun, feedback: [] } })
 			expect(options.tx.revisionGates.records.get('01k00000000000000000010001')).toEqual(expectedGate)
 			expect(options.tx.agentRuns.records.get('01k00000000000000000010002')).toEqual(expectedAgentRun)
-			expect(options.tx.agentRunEvents.records.size).toBe(0)
+			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010003')?.body).toEqual(revisionPlanningInstructionBody())
+		})
+
+		it('requests sandbox preparation only and readies it after commit', async () => {
+			const dispatches: unknown[] = []
+			const readyMarkers: string[] = []
+			const options = openDeliveryRevisionGateFixture(
+				createTestCoreServices({
+					dispatcher: {
+						preflight: () => Promise.resolve({ ok: true }),
+						request: (request) => {
+							dispatches.push(request)
+							return Promise.resolve('marker-1')
+						},
+						ready: (marker) => {
+							readyMarkers.push(marker)
+						},
+					},
+				}),
+			)
+			const command = createOpenRevisionGateCommand(createTestCoreRuntime(options))
+
+			const result = await command(
+				{ reviewSurfaceId: '01k00000000000000000000037', agentRunProfileId: '01k00000000000000000000006' },
+				context,
+			)
+
+			expect(result).toMatchObject({ ok: true })
+			expect(dispatches).toEqual([
+				{
+					type: 'agent-run-sandbox-preparation',
+					agentRunId: '01k00000000000000000010002',
+					coordinationClaims: [
+						{
+							scope: [{ type: 'agent-run', id: '01k00000000000000000010002' }],
+							mode: { type: 'exclusive' },
+						},
+					],
+					reason: { type: 'agent-run-created' },
+				},
+			])
+			expect(readyMarkers).toEqual(['marker-1'])
+			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010003')?.body).toEqual(revisionPlanningInstructionBody())
 		})
 
 		it('opens a Slice Revision Gate with empty fetched feedback until provider feedback fetching exists', async () => {
@@ -284,16 +355,14 @@ if (import.meta.vitest) {
 		})
 	})
 
-	function openDeliveryRevisionGateFixture() {
-		const options = createTestCoreServices()
+	function openDeliveryRevisionGateFixture(options = createTestCoreServices()) {
 		seedDelivery(options.tx, '01k00000000000000000000008')
 		seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
 		options.tx.reviewSurfaces.records.set('01k00000000000000000000037', deliveryReviewSurface())
 		return options
 	}
 
-	function openSliceRevisionGateFixture() {
-		const options = createTestCoreServices()
+	function openSliceRevisionGateFixture(options = createTestCoreServices()) {
 		seedDelivery(options.tx, '01k00000000000000000000008')
 		seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000008')
 		seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
@@ -341,6 +410,20 @@ if (import.meta.vitest) {
 			},
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
+		}
+	}
+
+	function revisionPlanningInstructionBody() {
+		return {
+			type: 'instruction-snapshot',
+			instruction: { type: 'source-control-revision-planning', version: 1 },
+			parts: [
+				{
+					type: 'text',
+					text: 'Plan revision work for this Source Control Project when prompted.',
+					metadata: null,
+				},
+			],
 		}
 	}
 

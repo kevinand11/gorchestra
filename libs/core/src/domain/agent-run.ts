@@ -125,6 +125,14 @@ export const agentRunInstructionPipe = v.discriminate((value) => value.type, {
 		type: v.eq('source-control-planning'),
 		version: v.eq(1),
 	}),
+	'source-control-revision-planning': v.object({
+		type: v.eq('source-control-revision-planning'),
+		version: v.eq(1),
+	}),
+	'source-control-slice-execution': v.object({
+		type: v.eq('source-control-slice-execution'),
+		version: v.eq(1),
+	}),
 })
 export type AgentRunInstruction = PipeOutput<typeof agentRunInstructionPipe>
 
