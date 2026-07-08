@@ -17,7 +17,17 @@
 					</UiButton>
 				</div>
 			</div>
-			<UiText v-if="agentRunEventsError" class="block border-b border-dimmer px-3 py-3" tone="error" size="helper">
+			<UiText v-if="agentRunError" class="block border-b border-dimmer px-3 py-3" tone="error" size="helper">
+				{{ agentRunError }}
+			</UiText>
+			<UiText
+				v-else-if="isLoadingAgentRun && !hasLoadedAgentRun"
+				class="block border-b border-dimmer px-3 py-3"
+				tone="muted"
+				size="helper">
+				Loading Agent Run…
+			</UiText>
+			<UiText v-else-if="agentRunEventsError" class="block border-b border-dimmer px-3 py-3" tone="error" size="helper">
 				{{ agentRunEventsError }}
 			</UiText>
 			<UiText
@@ -58,7 +68,7 @@
 			</ol>
 		</section>
 
-		<UiForm v-if="!isAgentRunClosed" class="border-b border-dimmer px-3 py-3" @submit.prevent="sendAgentRunMessage()">
+		<UiForm v-if="isComposerVisible" class="border-b border-dimmer px-3 py-3" @submit.prevent="sendAgentRunMessage()">
 			<UiFormGroup for-id="agent-run-message" :error="agentRunMessageForm.errors.text">
 				<UiTextarea
 					id="agent-run-message"
@@ -81,34 +91,35 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 
-import type { AgentRunToolSetEntry } from '../../../composables/core/server-api'
-import { useAgentRunEvents, useAgentRunMessageSend } from '../../../composables/portfolio/agent-runs'
+import { useAgentRun, useAgentRunEvents, useAgentRunMessageSend } from '../../../composables/portfolio/agent-runs'
 import UiButton from '../../ui/UiButton.vue'
 import UiForm from '../../ui/UiForm.vue'
 import UiFormGroup from '../../ui/UiFormGroup.vue'
 import UiText from '../../ui/UiText.vue'
 import UiTextarea from '../../ui/UiTextarea.vue'
 
-type AgentRunForEvents = {
-	id: string
-	toolSet: readonly AgentRunToolSetEntry[]
-	completed: { at: string } | null
-}
-
 const props = withDefaults(
 	defineProps<{
-		agentRun: AgentRunForEvents
+		agentRunId: string
 		disabled?: boolean
 	}>(),
 	{ disabled: false },
 )
 const emit = defineEmits<{ 'message-sending-change': [isSending: boolean] }>()
 
-const agentRunId = computed<string | null>(() => props.agentRun.id)
-const isAgentRunClosed = computed(() => props.agentRun.completed !== null)
-const toolSetLabel = computed(() =>
-	props.agentRun.toolSet.length === 0 ? 'none' : props.agentRun.toolSet.map((tool) => `${tool.name}@${tool.contractVersion}`).join(', '),
+const agentRunId = computed<string | null>(() => props.agentRunId)
+const { agentRun, isLoadingAgentRun, agentRunError, hasLoadedAgentRun } = useAgentRun(agentRunId)
+const isAgentRunClosed = computed(() => agentRun.value !== null && agentRun.value.completed !== null)
+const isInteractiveAgentRun = computed(
+	() => agentRun.value !== null && (agentRun.value.purpose.type === 'planning' || agentRun.value.purpose.type === 'revision-planning'),
 )
+const isComposerVisible = computed(() => agentRun.value !== null && isInteractiveAgentRun.value && !isAgentRunClosed.value)
+const toolSetLabel = computed(() => {
+	if (agentRun.value === null) return 'loading…'
+	return agentRun.value.toolSet.length === 0
+		? 'none'
+		: agentRun.value.toolSet.map((tool) => `${tool.name}@${tool.contractVersion}`).join(', ')
+})
 const {
 	agentRunEvents,
 	isLoadingAgentRunEvents,
@@ -118,7 +129,7 @@ const {
 	hasNextAgentRunEvents,
 } = useAgentRunEvents(agentRunId)
 const { agentRunMessageForm, isSendingAgentRunMessage, sendAgentRunMessageError, sendAgentRunMessage } = useAgentRunMessageSend(agentRunId)
-const isComposerDisabled = computed(() => props.disabled || isSendingAgentRunMessage.value || isAgentRunClosed.value)
+const isComposerDisabled = computed(() => props.disabled || isSendingAgentRunMessage.value || !isComposerVisible.value)
 const canSendAgentRunMessage = computed(() => agentRunMessageForm.valid && !isComposerDisabled.value)
 
 watch(isSendingAgentRunMessage, (isSending) => emit('message-sending-change', isSending), { immediate: true })

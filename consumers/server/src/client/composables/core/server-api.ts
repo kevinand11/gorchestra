@@ -209,6 +209,9 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async closePlan(projectId: string, planId: string) {
 			return routes.request('post', '/api/portfolio/projects/:projectId/plans/:planId/close', { params: { projectId, planId } })
 		},
+		async getAgentRun(agentRunId: string) {
+			return routes.request('get', '/api/portfolio/agent-runs/:agentRunId', { params: { agentRunId } })
+		},
 		async listAgentRunEvents(agentRunId: string, input: PaginatedQueryInput) {
 			return routes.request('get', '/api/portfolio/agent-runs/:agentRunId/events', {
 				params: { agentRunId },
@@ -387,9 +390,9 @@ export function createServerApi(options: ServerApiOptions = {}) {
 }
 
 export type ServerApi = ReturnType<typeof createServerApi>
+export type AgentRun = Awaited<ReturnType<ServerApi['getAgentRun']>>
 export type AgentRunEvent = Awaited<ReturnType<ServerApi['listAgentRunEvents']>>['items'][number]
-export type PlanningAgentRun = Awaited<ReturnType<ServerApi['getPlan']>>['agentRun']
-export type AgentRunToolSetEntry = PlanningAgentRun['toolSet'][number]
+export type AgentRunToolSetEntry = AgentRun['toolSet'][number]
 
 type ParsedPaginationQuery =
 	| { beforeId: string | undefined; limit: number | undefined }

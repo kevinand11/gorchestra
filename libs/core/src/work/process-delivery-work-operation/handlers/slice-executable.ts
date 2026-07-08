@@ -1,9 +1,10 @@
 import { acceptAgentRunModelTurn } from '../../../commands/utils/dispatch'
-import type { AgentRun, AgentRunProfileSnapshot, ExecutionMode } from '../../../domain/agent-run'
+import type { AgentRun, ExecutionMode } from '../../../domain/agent-run'
+import type { AgentRunProfile } from '../../../domain/agent-run-profile'
 import type { Id, RuntimeRecord } from '../../../domain/commons'
+import type { Project } from '../../../domain/project'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
-import { sourceControlSliceExecutionInstruction } from '../../../runtime/agent-runs/instructions'
-import { appendAgentRunEvent, createInstructedModelAgentRunAndRequestPreparation } from '../../../utils/agent-runs'
+import { appendAgentRunEvent, createModelAgentRunAndRequestPreparation } from '../../../utils/agent-runs'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
 import type { Result as CoreResult } from '../../../utils/types'
 import type { DeliveryHandlerContext, DeliveryWorkHandlerResult, DeliveryWorkResolution } from '../../delivery-work/types'
@@ -22,9 +23,10 @@ export async function handleSliceExecutable(
 
 interface SliceExecutionAgentRunInput {
 	agentRunId: Id
+	agentRunProfile: AgentRunProfile
+	project: Project
 	purpose: Extract<AgentRun['purpose'], { type: 'execution' }>
 	started: RuntimeRecord
-	profile: AgentRunProfileSnapshot
 	initialInputText: string
 }
 
@@ -32,15 +34,15 @@ async function writeSliceExecutionAgentRun(
 	context: DeliveryHandlerContext,
 	agentRun: SliceExecutionAgentRunInput,
 ): Promise<DeliveryWorkHandlerResult> {
-	const created = await createInstructedModelAgentRunAndRequestPreparation(
+	const created = await createModelAgentRunAndRequestPreparation(
 		{ values: context.values, dispatcher: context.services.dispatcher },
 		context.storage,
 		{
 			agentRunId: agentRun.agentRunId,
+			agentRunProfile: agentRun.agentRunProfile,
+			project: agentRun.project,
 			purpose: agentRun.purpose,
 			started: agentRun.started,
-			profile: agentRun.profile,
-			instruction: sourceControlSliceExecutionInstruction(),
 		},
 	)
 	if (!created.ok) return created
@@ -77,6 +79,8 @@ function sliceExecutionAgentRun(
 		ok: true,
 		value: {
 			agentRunId: agentRunId.value,
+			agentRunProfile: resolution.executionProfile,
+			project: context.deliveryContext.project,
 			purpose: {
 				type: 'execution',
 				deliveryId: context.deliveryContext.delivery.id,
@@ -84,13 +88,6 @@ function sliceExecutionAgentRun(
 				mode: executionModeForState(state),
 			},
 			started: started.value,
-			profile: {
-				agentRunProfileId: resolution.executionProfile.id,
-				name: resolution.executionProfile.name,
-				modelUse: resolution.executionProfile.modelUse,
-				runtimeRequirements: resolution.executionProfile.runtimeRequirements,
-				sandboxConfig: resolution.executionProfile.sandboxConfig,
-			},
 			initialInputText: slice.instruction.body,
 		},
 	}
@@ -152,7 +149,7 @@ if (import.meta.vitest) {
 			})
 			expect(context.tx.agentRunEvents.records.get('01k00000000000000000010002')?.body).toEqual({
 				type: 'instruction-snapshot',
-				instruction: { type: 'source-control-slice-execution', version: 1 },
+				instruction: { type: 'source-control-execution', version: 1 },
 				parts: [
 					{
 						type: 'text',

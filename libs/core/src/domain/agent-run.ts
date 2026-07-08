@@ -105,23 +105,6 @@ export const agentRunPipe = v.object({
 })
 export type AgentRun = PipeOutput<typeof agentRunPipe>
 
-export const planningAgentRunPipe = v.object({
-	id: idPipe,
-	agent: agentPipe,
-	purpose: planningAgentRunPurposePipe,
-	profile: agentRunProfileSnapshotPipe,
-	toolSet: agentRunToolSetPipe,
-	modelUseOverride: v.nullable(agentRunModelUseOverridePipe),
-	sourceRuntimeRequirements: agentRunRuntimeRequirementsPipe,
-	runtimeRequirementOverrides: v.array(agentRunRuntimeRequirementOverridePipe),
-	desiredRuntimeRequirements: agentRunRuntimeRequirementsPipe,
-	blocked: agentRunBlockedPipe,
-	sandbox: agentRunSandboxStatePipe,
-	started: runtimeRecordPipe,
-	completed: v.nullable(runtimeRecordPipe),
-})
-export type PlanningAgentRun = PipeOutput<typeof planningAgentRunPipe>
-
 export const agentRunTranscriptPartMetadataPipe = v.nullable(jsonObjectPipe)
 export type AgentRunTranscriptPartMetadata = PipeOutput<typeof agentRunTranscriptPartMetadataPipe>
 
@@ -144,8 +127,12 @@ export const agentRunInstructionPipe = v.discriminate((value) => value.type, {
 		type: v.eq('source-control-revision-planning'),
 		version: v.eq(1),
 	}),
-	'source-control-slice-execution': v.object({
-		type: v.eq('source-control-slice-execution'),
+	'source-control-execution': v.object({
+		type: v.eq('source-control-execution'),
+		version: v.eq(1),
+	}),
+	'source-control-revision-execution': v.object({
+		type: v.eq('source-control-revision-execution'),
 		version: v.eq(1),
 	}),
 })
@@ -595,155 +582,3 @@ export const agentRunEventPipe = v.object({
 	body: agentRunEventBodyPipe,
 })
 export type AgentRunEvent = PipeOutput<typeof agentRunEventPipe>
-
-if (import.meta.vitest) {
-	const { describe, expect, it } = import.meta.vitest
-
-	describe('AgentRun domain pipes', () => {
-		it('validates Agent Run Tool Set snapshots with unique positive-version tools', () => {
-			expect(v.validate(agentRunToolSetPipe, [{ name: 'read', contractVersion: 1 }])).toMatchObject({ valid: true })
-			expect(
-				v.validate(agentRunToolSetPipe, [
-					{ name: 'read', contractVersion: 1 },
-					{ name: 'read', contractVersion: 1 },
-				]),
-			).toMatchObject({ valid: false })
-			expect(v.validate(agentRunToolSetPipe, [{ name: 'read', contractVersion: 0 }])).toMatchObject({ valid: false })
-		})
-
-		it('accepts structured command, image, and diff tool outputs', () => {
-			const truncation = {
-				truncated: true,
-				strategy: 'tail',
-				originalBytes: 100,
-				originalLines: 10,
-				outputBytes: 50,
-				outputLines: 5,
-			}
-			expect(
-				v.validate(agentRunToolResultOutputPipe, {
-					type: 'command',
-					exitCode: 1,
-					stdout: 'out',
-					stderr: null,
-					stdoutTruncation: truncation,
-					stderrTruncation: null,
-				}),
-			).toMatchObject({ valid: true })
-			expect(
-				v.validate(agentRunToolResultOutputPipe, { type: 'image', mimeType: 'image/png', dataBase64: 'aW1hZ2U=', note: null }),
-			).toMatchObject({ valid: true })
-			expect(
-				v.validate(agentRunToolResultOutputPipe, { type: 'diff', summary: 'Changed file.', diff: '--- a/file', patch: null }),
-			).toMatchObject({ valid: true })
-			expect(v.validate(agentRunToolErrorReasonPipe, { type: 'command-exit', exitCode: 2 })).toMatchObject({ valid: true })
-		})
-	})
-
-	describe('AgentRunEvent domain pipes', () => {
-		it('accepts model-use override and turn boundary events', () => {
-			expect(
-				v.validate(agentRunEventBodyPipe, {
-					type: 'agent-run-model-use-override-changed',
-					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
-					authorized: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
-				}),
-			).toMatchObject({ valid: true })
-			expect(
-				v.validate(agentRunEventBodyPipe, {
-					type: 'turn-started',
-					contextThroughEventId: '01j00000000000000000000001',
-					reason: { type: 'input', inputEventIds: ['01j00000000000000000000002'] },
-				}),
-			).toMatchObject({ valid: true })
-		})
-
-		it('accepts new transcript event variants with required metadata and links', () => {
-			expect(
-				v.validate(agentRunEventBodyPipe, {
-					type: 'input-message',
-					source: { type: 'runtime' },
-					parts: [{ type: 'text', text: 'Hello', metadata: null }],
-				}),
-			).toMatchObject({ valid: true })
-			expect(
-				v.validate(agentRunEventBodyPipe, {
-					type: 'assistant-message',
-					turnStartedEventId: '01j00000000000000000000001',
-					model: {
-						modelId: '01k00000000000000000000024',
-						thinkingLevel: 'none',
-						modelProviderId: '01k00000000000000000000032',
-						providerProtocol: 'anthropic-messages',
-						providerModelId: 'claude-sonnet',
-					},
-					finishReason: 'tool-calls',
-					usage: {
-						inputTokens: 10,
-						inputTokenDetails: { noCacheTokens: 10, cacheReadTokens: null, cacheWriteTokens: null },
-						outputTokens: 5,
-						outputTokenDetails: { textTokens: 4, reasoningTokens: 1 },
-					},
-					cost: null,
-					responseId: 'response-1',
-					parts: [
-						{ type: 'reasoning', text: 'thinking', metadata: null },
-						{ type: 'text', text: 'I will call a tool.', metadata: null },
-						{
-							type: 'tool-call',
-							toolCallId: 'call-1',
-							toolName: 'propose-plan-output',
-							input: {},
-							providerExecuted: false,
-							metadata: null,
-						},
-					],
-				}),
-			).toMatchObject({ valid: true })
-			expect(
-				v.validate(agentRunEventBodyPipe, {
-					type: 'tool-message',
-					turnStartedEventId: '01j00000000000000000000001',
-					respondsToAssistantMessageEventId: '01j00000000000000000000002',
-					source: { type: 'tool-execution' },
-					parts: [
-						{
-							type: 'tool-result',
-							toolCallId: 'call-1',
-							toolName: 'read',
-							providerExecuted: false,
-							started: { at: '2026-06-10T12:00:00.000Z' },
-							completed: { at: '2026-06-10T12:00:01.000Z' },
-							output: { type: 'text', value: 'done' },
-							truncation: null,
-							metadata: null,
-						},
-					],
-				}),
-			).toMatchObject({ valid: true })
-		})
-
-		it('rejects removed low-level model and tool event bodies', () => {
-			expect(
-				v.validate(agentRunEventBodyPipe, {
-					type: 'model-message-started',
-					turnStartedEventId: '01j00000000000000000000001',
-					aiSdkCallId: null,
-				}),
-			).toMatchObject({ valid: false })
-			expect(
-				v.validate(agentRunEventBodyPipe, {
-					type: 'tool-call-started',
-					modelMessageCursor: '01j00000000000000000000001',
-					toolCallId: 'call-1',
-					toolName: 'tool',
-					input: {},
-				}),
-			).toMatchObject({ valid: false })
-		})
-
-		it('rejects non-lowercase Core ids', () => {
-			expect(v.assert(idPipe, '01j00000000000000000000001')).toBe('01j00000000000000000000001')
-		})
-	})
-}

@@ -133,6 +133,7 @@ if (import.meta.vitest) {
 		options.tx.plans.records.set('01k00000000000000000000028', {
 			id: '01k00000000000000000000028',
 			projectId: '01k00000000000000000000030',
+			agentRunId: '01k00000000000000000000002',
 			title: 'Plan',
 			created: stamp,
 			closed: null,

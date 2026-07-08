@@ -20,6 +20,13 @@ const agentRunEventsQuerySchema = Domain.Commons.paginatedQueryInputPipe
 
 export function createAgentRunsApiRouter(context: ServerApiContext) {
 	return new Router()
+		.get('/agent-runs/:agentRunId', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ agentRunId: coreIdPipe }),
+				response: Queries.GetAgentRun.resultPipe,
+			},
+		})(async (req) => getSelectedPortfolioAgentRun(context, req.cookies, req.params.agentRunId))
 		.get('/agent-runs/:agentRunId/events', {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
@@ -44,6 +51,17 @@ export function createAgentRunsApiRouter(context: ServerApiContext) {
 				response: Domain.AgentRun.agentRunEventPipe,
 			},
 		})(async (req) => addSelectedPortfolioAgentRunRuntimeRequirementOverride(context, req.cookies, req.params.agentRunId, req.body))
+}
+
+function getSelectedPortfolioAgentRun(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	agentRunId: string,
+): Promise<Queries.GetAgentRun.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core }) => {
+		const agentRun = await core.queries.getAgentRun({ agentRunId })
+		return agentRun.ok ? agentRun.value : throwCoreOperationError(agentRun.error)
+	})
 }
 
 function getSelectedPortfolioAgentRunEvents(

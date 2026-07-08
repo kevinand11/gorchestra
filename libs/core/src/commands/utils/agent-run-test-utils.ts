@@ -8,6 +8,7 @@ export function planningAgentRunFixture(overrides: Partial<Pick<CoreServices, 'd
 	options.tx.plans.records.set('01k00000000000000000000028', {
 		id: '01k00000000000000000000028',
 		projectId: '01k00000000000000000000030',
+		agentRunId: '01k00000000000000000000002',
 		title: 'Plan',
 		created: stamp,
 		closed: null,
@@ -65,6 +66,7 @@ export function revisionPlanningAgentRun(): AgentRun {
 function revisionGate(closed: boolean): RevisionGate {
 	return {
 		id: '01k00000000000000000000039',
+		agentRunId: '01k00000000000000000000002',
 		scope: { type: 'delivery-artifact', deliveryId: '01k00000000000000000000008', deliveryArtifactId: '01k00000000000000000000010' },
 		reviewSurfaceId: '01k00000000000000000000037',
 		opened: stamp,

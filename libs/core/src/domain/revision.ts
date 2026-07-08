@@ -19,6 +19,7 @@ export type RevisionGateClosed = PipeOutput<typeof revisionGateClosedPipe>
 
 export const revisionGatePipe = v.object({
 	id: idPipe,
+	agentRunId: idPipe,
 	scope: revisionScopePipe,
 	reviewSurfaceId: idPipe,
 	opened: auditStampPipe,

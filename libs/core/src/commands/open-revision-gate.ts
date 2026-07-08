@@ -1,10 +1,21 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import type { AgentRun } from '../domain/agent-run'
+import type { AgentRunProfile } from '../domain/agent-run-profile'
+import { idPipe, type AuditStamp, type Id, type RuntimeRecord } from '../domain/commons'
+import type { Project } from '../domain/project'
+import type { FetchedFeedback, ReviewSurface, ReviewSurfaceScope } from '../domain/review-surface'
+import type { RevisionGate, RevisionScope } from '../domain/revision'
+import type { InvalidInputError, ResourceArchivedError, ResourceNotFoundError, ReviewSurfaceAlreadyMergedError } from '../errors'
+import type { CoreRuntime } from '../runtime'
+import type { CoreStorage } from '../services'
 import type { CommandContext } from './types'
+import { createModelAgentRunAndRequestPreparation } from '../utils/agent-runs'
+import type { CoreRuntimeValues } from '../utils/runtime-values'
+import type { Result as CoreResult } from '../utils/types'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { buildCommandHandler } from './utils/handler'
 import {
-	agentRunProfileSnapshot,
 	auditStamp,
 	createRecordValue,
 	getRequired,
@@ -12,25 +23,14 @@ import {
 	nextId,
 	runtimeRecord,
 	withTransaction,
+	type StorageBoundaryError,
 } from './utils/storage'
-import type { AgentRun } from '../domain/agent-run'
-import { idPipe, type AuditStamp, type Id, type RuntimeRecord } from '../domain/commons'
-import type { FetchedFeedback, ReviewSurface, ReviewSurfaceScope } from '../domain/review-surface'
-import type { RevisionGate, RevisionScope } from '../domain/revision'
-import type { InvalidInputError, ReviewSurfaceAlreadyMergedError, ResourceArchivedError } from '../errors'
-import type { CoreRuntime } from '../runtime'
-import { sourceControlRevisionPlanningInstruction } from '../runtime/agent-runs/instructions'
-import type { CoreStorage } from '../services'
-import { createInstructedModelAgentRunAndRequestPreparation } from '../utils/agent-runs'
-import type { CoreRuntimeValues } from '../utils/runtime-values'
-import type { Result as CoreResult } from '../utils/types'
 
 const openRevisionGateInputPipe = v.object({ reviewSurfaceId: idPipe, agentRunProfileId: idPipe })
 export type Input = PipeOutput<typeof openRevisionGateInputPipe>
 
 export interface Result {
 	revisionGate: RevisionGate
-	agentRun: AgentRun
 
 	/** Fetched from current Review Surface; not stored as authoritative Portfolio data. */
 	feedback: FetchedFeedback[]
@@ -62,7 +62,8 @@ type OpenRevisionGateFacts = {
 	revisionGate: RevisionGate
 	agentRunId: Id
 	started: RuntimeRecord
-	profile: ReturnType<typeof agentRunProfileSnapshot>
+	agentRunProfile: AgentRunProfile
+	project: Project
 	runtimeValues: CoreRuntimeValues
 }
 
@@ -120,6 +121,28 @@ async function openRevisionGate(
 	return facts.ok ? writeOpenRevisionGateFacts(runtime, storage, facts.value) : facts
 }
 
+async function getReviewSurfaceProject(
+	storage: CoreStorage,
+	reviewSurface: ReviewSurface,
+): Promise<CoreResult<string, ResourceNotFoundError | StorageBoundaryError>> {
+	switch (reviewSurface.scope.type) {
+		case 'delivery': {
+			const delivery = await getRequired('delivery', storage, reviewSurface.scope.deliveryId)
+			if (!delivery.ok) return delivery
+			return { ok: true, value: delivery.value.projectId }
+		}
+		case 'slice': {
+			const slice = await getRequired('slice', storage, reviewSurface.scope.sliceId)
+			if (!slice.ok) return slice
+			const sliceDelivery = await getRequired('delivery', storage, slice.value.deliveryId)
+			if (!sliceDelivery.ok) return sliceDelivery
+			return { ok: true, value: sliceDelivery.value.projectId }
+		}
+		default:
+			throw new Error(`Unrecognized review surface scope type: ${String(reviewSurface.scope satisfies never)}`)
+	}
+}
+
 async function openRevisionGateFacts(
 	storage: CoreStorage,
 	input: Input,
@@ -131,20 +154,25 @@ async function openRevisionGateFacts(
 	const notMerged = validateReviewSurfaceNotMerged(reviewSurface.value)
 	if (!notMerged.ok) return notMerged
 
+	const projectId = await getReviewSurfaceProject(storage, reviewSurface.value)
+	if (!projectId.ok) return projectId
+	const project = await getRequired('project', storage, projectId.value)
+	if (!project.ok) return project
+
 	const profile = await loadSelectableAgentRunProfile(storage, input.agentRunProfileId)
-	return profile.ok
-		? { ok: true, value: openRevisionGateFactsValue(values, reviewSurface.value, agentRunProfileSnapshot(profile.value)) }
-		: profile
+	return profile.ok ? { ok: true, value: openRevisionGateFactsValue(project.value, values, reviewSurface.value, profile.value) } : profile
 }
 
 function openRevisionGateFactsValue(
+	project: Project,
 	values: OpenRevisionGateRuntimeValues,
 	reviewSurface: ReviewSurface,
-	profile: ReturnType<typeof agentRunProfileSnapshot>,
+	agentRunProfile: AgentRunProfile,
 ): OpenRevisionGateFacts {
 	return {
 		revisionGate: {
 			id: values.revisionGateId,
+			agentRunId: values.agentRunId,
 			scope: revisionScopeFromReviewSurfaceScope(reviewSurface.scope),
 			reviewSurfaceId: reviewSurface.id,
 			opened: values.stamp,
@@ -152,7 +180,8 @@ function openRevisionGateFactsValue(
 		},
 		agentRunId: values.agentRunId,
 		started: values.started,
-		profile,
+		project,
+		agentRunProfile,
 		runtimeValues: values.runtimeValues,
 	}
 }
@@ -165,22 +194,22 @@ async function writeOpenRevisionGateFacts(
 	const revisionGate = await createRecordValue('revision-gate', storage, facts.revisionGate)
 	if (!revisionGate.ok) return revisionGate
 
-	const created = await createInstructedModelAgentRunAndRequestPreparation(
+	const created = await createModelAgentRunAndRequestPreparation(
 		{ values: facts.runtimeValues, dispatcher: runtime.services.dispatcher },
 		storage,
 		{
 			agentRunId: facts.agentRunId,
 			purpose: { type: 'revision-planning', revisionGateId: revisionGate.value.id },
 			started: facts.started,
-			profile: facts.profile,
-			instruction: sourceControlRevisionPlanningInstruction(),
+			agentRunProfile: facts.agentRunProfile,
+			project: facts.project,
 		},
 	)
 	return created.ok
 		? {
 				ok: true,
 				value: {
-					result: { revisionGate: revisionGate.value, agentRun: created.value.agentRun, feedback: [] },
+					result: { revisionGate: revisionGate.value, feedback: [] },
 					dispatchMarkers: [created.value.preparationDispatchMarker],
 				},
 			}
@@ -244,7 +273,7 @@ if (import.meta.vitest) {
 
 			const expectedGate = deliveryRevisionGate()
 			const expectedAgentRun = revisionPlanningAgentRun()
-			expect(result).toEqual({ ok: true, value: { revisionGate: expectedGate, agentRun: expectedAgentRun, feedback: [] } })
+			expect(result).toEqual({ ok: true, value: { revisionGate: expectedGate, feedback: [] } })
 			expect(options.tx.revisionGates.records.get('01k00000000000000000010001')).toEqual(expectedGate)
 			expect(options.tx.agentRuns.records.get('01k00000000000000000010002')).toEqual(expectedAgentRun)
 			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010003')?.body).toEqual(revisionPlanningInstructionBody())
@@ -306,15 +335,12 @@ if (import.meta.vitest) {
 				value: {
 					revisionGate: {
 						id: '01k00000000000000000010001',
+						agentRunId: '01k00000000000000000010002',
 						scope: {
 							type: 'slice-artifact',
 							sliceId: '01k00000000000000000000042',
 							sliceArtifactId: '01k00000000000000000000045',
 						},
-					},
-					agentRun: {
-						agent: { type: 'model' },
-						purpose: { type: 'revision-planning', revisionGateId: '01k00000000000000000010001' },
 					},
 					feedback: [],
 				},
@@ -399,6 +425,7 @@ if (import.meta.vitest) {
 	function deliveryRevisionGate(): RevisionGate {
 		return {
 			id: '01k00000000000000000010001',
+			agentRunId: '01k00000000000000000010002',
 			scope: {
 				type: 'delivery-artifact',
 				deliveryId: '01k00000000000000000000008',

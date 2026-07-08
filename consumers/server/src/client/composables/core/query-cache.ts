@@ -70,6 +70,9 @@ const queryKeys = {
 		plan(portfolioId: string, projectId: string, planId: string): QueryKey {
 			return ['portfolio', portfolioId, 'projects', projectId, 'plans', planId]
 		},
+		agentRun(portfolioId: string, agentRunId: string): QueryKey {
+			return ['portfolio', portfolioId, 'agent-runs', agentRunId]
+		},
 		agentRunEvents(portfolioId: string, agentRunId: string): QueryKey {
 			return ['portfolio', portfolioId, 'agent-runs', agentRunId, 'events']
 		},
@@ -474,6 +477,12 @@ if (import.meta.vitest) {
 				'project-1',
 				'repositories',
 				'repository-1',
+			])
+			expect(queryKeys.portfolio.agentRun('portfolio-1', 'agent-run-1')).toEqual([
+				'portfolio',
+				'portfolio-1',
+				'agent-runs',
+				'agent-run-1',
 			])
 			expect(queryKeys.portfolio.secret('portfolio-1', 'secret-1')).toEqual(['portfolio', 'portfolio-1', 'secrets', 'secret-1'])
 		})

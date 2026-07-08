@@ -1,31 +1,19 @@
 import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
-import { idPipe, paginatedQueryEnvelopePipe, paginatedQueryInputPipe, type PaginatedQueryEnvelope } from '../domain/commons'
-import { planWithPlanningAgentRunPipe, type Plan } from '../domain/plan'
-import type {
-	InvalidCoreServiceOutputError,
-	InvalidInputError,
-	InvariantViolationError,
-	ResourceNotFoundError,
-	StorageOperationFailedError,
-} from '../errors'
+import { idPipe, paginatedQueryEnvelopePipe, paginatedQueryInputPipe } from '../domain/commons'
+import { planPipe, type Plan } from '../domain/plan'
+import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices, CoreStorage } from '../services'
-import { planReadModels } from './plan-read-model'
-import { getRequired, listRecords, listRecordsPaginated, withTransaction } from '../storage/helpers'
+import { getRequired, listRecordsPaginated, withTransaction } from '../storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = v.merge(v.object({ projectId: idPipe }), paginatedQueryInputPipe)
 export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
 
-export const resultPipe = paginatedQueryEnvelopePipe(planWithPlanningAgentRunPipe)
+export const resultPipe = paginatedQueryEnvelopePipe(planPipe)
 export type Result = PipeOutput<typeof resultPipe>
-export type Error =
-	| InvalidInputError
-	| InvalidCoreServiceOutputError
-	| ResourceNotFoundError
-	| StorageOperationFailedError
-	| InvariantViolationError
+export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createListPlansQuery(options: CoreServices): Operation {
@@ -48,22 +36,12 @@ async function listPlansForProject(
 	projectId: string,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	const plans = await listRecordsPaginated('plan', storage, input, { where: (filter, fields) => filter.eq(fields.projectId, projectId) })
-	return plans.ok ? listPlanReadModelsForPlans(storage, plans.value) : plans
-}
-
-async function listPlanReadModelsForPlans(
-	storage: CoreStorage,
-	plans: PaginatedQueryEnvelope<Plan>,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const agentRuns = plans.items.length === 0 ? { ok: true as const, value: [] } : await listRecords('agent-run', storage)
-	if (!agentRuns.ok) return agentRuns
-	const readModels = planReadModels(plans.items, agentRuns.value)
-	return readModels.ok ? { ok: true, value: { ...plans, items: readModels.value } } : readModels
+	return plans
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreServices, defaultAgentRunSandboxConfig, seedProject, stamp } = await import('../utils/test-helpers')
+	const { createTestCoreServices, seedProject, stamp } = await import('../utils/test-helpers')
 
 	describe('listPlans query', () => {
 		registerInputBoundaryTests()
@@ -95,55 +73,28 @@ if (import.meta.vitest) {
 	}
 
 	function registerPlanReadModelTests() {
-		it('lists Plans with Planning Agent Runs for one Project in id-desc order', async () => {
+		it('lists stored Plans for one Project in id-desc order without reading Agent Runs', async () => {
 			const records = seedPlanListRecords()
+			records.options.tx.agentRuns.fail.list = true
 
 			const result = await createListPlansQuery(records.options)({ projectId: '01k00000000000000000000030' })
 
 			expect(result).toEqual({
 				ok: true,
 				value: {
-					items: [
-						{ ...records.planB, agentRun: records.runB },
-						{ ...records.planA, agentRun: records.runA },
-					],
+					items: [records.planB, records.planA],
 					pages: { current: 1, start: 1, last: 1, previous: null, next: null },
 					docs: { limit: 2, total: 2, count: 2 },
-				},
-			})
-		})
-
-		it('returns invariant violations when a listed Plan is missing its Planning Agent Run', async () => {
-			const options = createTestCoreServices()
-			seedProject(options.tx, '01k00000000000000000000030')
-			options.tx.plans.records.set(
-				'01k00000000000000000000028',
-				plan({ id: '01k00000000000000000000028', projectId: '01k00000000000000000000030', title: 'Plan' }),
-			)
-
-			const result = await createListPlansQuery(options)({ projectId: '01k00000000000000000000030' })
-
-			expect(result).toEqual({
-				ok: false,
-				error: {
-					type: 'invariant-violation',
-					message: 'Plan 01k00000000000000000000028 expected exactly one Planning Agent Run but found 0.',
 				},
 			})
 		})
 	}
 
 	function registerStorageFailureTests() {
-		it('returns storage errors when Plan or Agent Run reads fail', async () => {
-			await expect(createListPlansQuery(planListReadFailure('plan'))({ projectId: '01k00000000000000000000030' })).resolves.toEqual({
+		it('returns storage errors when Plan reads fail', async () => {
+			await expect(createListPlansQuery(planListReadFailure())({ projectId: '01k00000000000000000000030' })).resolves.toEqual({
 				ok: false,
 				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'plan' } },
-			})
-			await expect(
-				createListPlansQuery(planListReadFailure('agent-run'))({ projectId: '01k00000000000000000000030' }),
-			).resolves.toEqual({
-				ok: false,
-				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'agent-run' } },
 			})
 		})
 	}
@@ -170,28 +121,13 @@ if (import.meta.vitest) {
 			'01k00000000000000000100015',
 			plan({ id: '01k00000000000000000100015', projectId: '01k00000000000000000000031', title: 'Other' }),
 		)
-		const runA = planningRun('01k00000000000000000100017', '01k00000000000000000100013')
-		const runB = planningRun('01k00000000000000000100018', '01k00000000000000000100014')
-		options.tx.agentRuns.records.set(runA.id, runA)
-		options.tx.agentRuns.records.set(runB.id, runB)
-		options.tx.agentRuns.records.set(
-			'01k00000000000000000100021',
-			planningRun('01k00000000000000000100021', '01k00000000000000000100015'),
-		)
-		return { options, planA, planB, runA, runB }
+		return { options, planA, planB }
 	}
 
-	function planListReadFailure(resource: 'plan' | 'agent-run') {
+	function planListReadFailure() {
 		const options = createTestCoreServices()
 		seedProject(options.tx, '01k00000000000000000000030')
-		if (resource === 'plan') options.tx.plans.fail.list = true
-		if (resource === 'agent-run') {
-			options.tx.plans.records.set(
-				'01k00000000000000000000028',
-				plan({ id: '01k00000000000000000000028', projectId: '01k00000000000000000000030', title: 'Plan' }),
-			)
-			options.tx.agentRuns.fail.list = true
-		}
+		options.tx.plans.fail.list = true
 		return options
 	}
 
@@ -199,33 +135,10 @@ if (import.meta.vitest) {
 		return {
 			id: input.id,
 			projectId: input.projectId,
+			agentRunId: `${input.id.slice(0, -1)}9`,
 			title: input.title,
 			created: { origin: 'imported', at: input.createdAt ?? stamp.at },
 			closed: null,
-		}
-	}
-
-	function planningRun(id: string, planId: string) {
-		return {
-			id,
-			agent: { type: 'model' as const },
-			purpose: { type: 'planning' as const, planId },
-			profile: {
-				agentRunProfileId: '01k00000000000000000000006',
-				name: 'Agent Run Profile',
-				modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' as const },
-				runtimeRequirements: [],
-				sandboxConfig: defaultAgentRunSandboxConfig(),
-			},
-			toolSet: [],
-			modelUseOverride: null,
-			sourceRuntimeRequirements: [],
-			runtimeRequirementOverrides: [],
-			desiredRuntimeRequirements: [],
-			blocked: null,
-			sandbox: null,
-			started: { at: stamp.at },
-			completed: null,
 		}
 	}
 }

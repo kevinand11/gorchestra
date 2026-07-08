@@ -4,6 +4,7 @@ import type { AgentRun } from '../domain/agent-run'
 import { idPipe, type AuditStamp } from '../domain/commons'
 import type { RevisionGate } from '../domain/revision'
 import type {
+	AgentRunTurnActiveError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
@@ -14,7 +15,7 @@ import type {
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
 import type { CommandContext } from './types'
-import { completeAgentRunByPurposeAndAcceptSandboxRelease } from '../utils/agent-runs'
+import { completeAgentRunByIdAndAcceptSandboxRelease, requireAgentRunIdle } from '../utils/agent-runs'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
 import { getRequired, updateRecordValue, withAuditStampTransaction } from './utils/storage'
@@ -22,10 +23,7 @@ import { getRequired, updateRecordValue, withAuditStampTransaction } from './uti
 const closeRevisionGateInputPipe = v.object({ revisionGateId: idPipe })
 export type Input = PipeOutput<typeof closeRevisionGateInputPipe>
 
-export interface Result {
-	revisionGate: RevisionGate
-	agentRun: AgentRun
-}
+export type Result = RevisionGate
 
 export type Error =
 	| InvalidInputError
@@ -34,6 +32,7 @@ export type Error =
 	| ResourceNotFoundError
 	| InvariantViolationError
 	| RevisionGateClosedError
+	| AgentRunTurnActiveError
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
@@ -57,7 +56,10 @@ async function closeRevisionGate(
 	stamp: AuditStamp,
 ): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
 	const gate = await getOpenRevisionGate(storage, input.revisionGateId)
-	return gate.ok ? writeClosedRevisionGate(runtime, storage, gate.value, stamp) : gate
+	if (!gate.ok) return gate
+
+	const idle = await requireAgentRunIdle(storage, gate.value.agentRunId)
+	return idle.ok ? writeClosedRevisionGate(runtime, storage, gate.value, stamp) : idle
 }
 
 async function getOpenRevisionGate(
@@ -90,21 +92,10 @@ async function completeRevisionPlanningAgentRun(
 	revisionGate: RevisionGate,
 	stamp: AuditStamp,
 ): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
-	const agentRun = await completeAgentRunByPurposeAndAcceptSandboxRelease(
-		storage,
-		runtime.services.dispatcher,
-		{ type: 'revision-planning', revisionGateId: revisionGate.id },
-		{ at: stamp.at },
-	)
-	return agentRun.ok
-		? {
-				ok: true,
-				value: {
-					result: { revisionGate, agentRun: agentRun.value.agentRun },
-					dispatchMarker: agentRun.value.dispatchMarker,
-				},
-			}
-		: agentRun
+	const agentRun = await completeAgentRunByIdAndAcceptSandboxRelease(storage, runtime.services.dispatcher, revisionGate.agentRunId, {
+		at: stamp.at,
+	})
+	return agentRun.ok ? { ok: true, value: { result: revisionGate, dispatchMarker: agentRun.value.dispatchMarker } } : agentRun
 }
 
 function revisionGateClosed(revisionGateId: string): CoreResult<never, RevisionGateClosedError> {
@@ -139,7 +130,7 @@ if (import.meta.vitest) {
 
 			const expectedGate = { ...revisionGate(), closed: { type: 'closed-without-revision' as const, closed: localStamp() } }
 			const expectedAgentRun = { ...revisionPlanningAgentRun(), completed: { at: localStamp().at } }
-			expect(result).toEqual({ ok: true, value: { revisionGate: expectedGate, agentRun: expectedAgentRun } })
+			expect(result).toEqual({ ok: true, value: expectedGate })
 			expect(options.tx.revisionGates.records.get('01k00000000000000000000039')).toEqual(expectedGate)
 			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')).toEqual(expectedAgentRun)
 		})
@@ -152,7 +143,10 @@ if (import.meta.vitest) {
 
 			const result = await command({ revisionGateId: '01k00000000000000000000039' }, context)
 
-			expect(result).toMatchObject({ ok: true, value: { agentRun: { completed: previousCompletion } } })
+			expect(result).toEqual({
+				ok: true,
+				value: { ...revisionGate(), closed: { type: 'closed-without-revision', closed: localStamp() } },
+			})
 			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.completed).toEqual(previousCompletion)
 		})
 
@@ -168,6 +162,29 @@ if (import.meta.vitest) {
 
 			expect(result).toEqual({ ok: false, error: { type: 'revision-gate-closed', revisionGateId: '01k00000000000000000000039' } })
 		})
+
+		it('rejects Revision Gates whose Revision Planning Agent Run has an unmatched active turn', async () => {
+			const options = closeRevisionGateFixture()
+			options.tx.agentRunEvents.records.set('turn-started', {
+				id: 'turn-started',
+				agentRunId: '01k00000000000000000000002',
+				occurred: { at: '2026-06-10T12:00:00.000Z' },
+				body: {
+					type: 'turn-started',
+					contextThroughEventId: '01j00000000000000000000000',
+					reason: { type: 'input', inputEventIds: ['01j00000000000000000000000'] },
+				},
+			})
+			const command = createCloseRevisionGateCommand(createTestCoreRuntime(options))
+
+			const result = await command({ revisionGateId: '01k00000000000000000000039' }, context)
+
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'agent-run-turn-active', agentRunId: '01k00000000000000000000002', turnStartedEventId: 'turn-started' },
+			})
+			expect(options.tx.revisionGates.records.get('01k00000000000000000000039')?.closed).toBeNull()
+		})
 	})
 
 	function closeRevisionGateFixture() {
@@ -180,6 +197,7 @@ if (import.meta.vitest) {
 	function revisionGate(): RevisionGate {
 		return {
 			id: '01k00000000000000000000039',
+			agentRunId: '01k00000000000000000000002',
 			scope: {
 				type: 'delivery-artifact',
 				deliveryId: '01k00000000000000000000008',

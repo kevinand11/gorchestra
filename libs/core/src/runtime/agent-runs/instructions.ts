@@ -1,16 +1,46 @@
-import type { AgentRunEvent } from '../../domain/agent-run'
+import type { AgentRunEvent, AgentRunPurpose } from '../../domain/agent-run'
 import type { Project } from '../../domain/project'
-import type { InvariantViolationError } from '../../errors'
-import type { Result } from '../../utils/types'
 
-export function planningInstructionForProject(
+export function instructionForProjectAndAgentRunPurpose(
+	purpose: AgentRunPurpose,
 	project: Project,
-): Result<Extract<AgentRunEvent['body'], { type: 'instruction-snapshot' }>, InvariantViolationError> {
+): Extract<AgentRunEvent['body'], { type: 'instruction-snapshot' }> {
 	switch (project.source.type) {
 		case 'source-control':
-			return { ok: true, value: sourceControlPlanningInstruction() }
+			return sourceControlInstruction(purpose)
 		default:
-			return invariant(`No Planning instruction is defined for Project Source Type ${String(project.source.type)}.`)
+			throw new Error(`No instruction is defined for project source type ${String(project.source.type satisfies never)}.`)
+	}
+}
+
+function sourceControlInstruction(purpose: AgentRunPurpose): Extract<AgentRunEvent['body'], { type: 'instruction-snapshot' }> {
+	switch (purpose.type) {
+		case 'planning':
+			return {
+				type: 'instruction-snapshot',
+				instruction: { type: 'source-control-planning', version: 1 },
+				parts: [{ type: 'text', text: sourceControlPlanningInstructionText(), metadata: null }],
+			}
+		case 'revision-planning':
+			return {
+				type: 'instruction-snapshot',
+				instruction: { type: 'source-control-revision-planning', version: 1 },
+				parts: [{ type: 'text', text: 'Plan revision work for this Source Control Project when prompted.', metadata: null }],
+			}
+		case 'execution':
+			return {
+				type: 'instruction-snapshot',
+				instruction: { type: 'source-control-execution', version: 1 },
+				parts: [{ type: 'text', text: 'Execute the accepted Slice instruction provided in runtime input.', metadata: null }],
+			}
+		case 'revision-execution':
+			return {
+				type: 'instruction-snapshot',
+				instruction: { type: 'source-control-revision-execution', version: 1 },
+				parts: [{ type: 'text', text: 'Execute the accepted instruction provided in runtime input.', metadata: null }],
+			}
+		default:
+			throw new Error(`No source control instruction is defined for agent run purpose type ${String(purpose satisfies never)}.`)
 	}
 }
 
@@ -25,16 +55,8 @@ export function sourceControlRevisionPlanningInstruction(): Extract<AgentRunEven
 export function sourceControlSliceExecutionInstruction(): Extract<AgentRunEvent['body'], { type: 'instruction-snapshot' }> {
 	return {
 		type: 'instruction-snapshot',
-		instruction: { type: 'source-control-slice-execution', version: 1 },
+		instruction: { type: 'source-control-execution', version: 1 },
 		parts: [{ type: 'text', text: 'Execute the accepted Slice instruction provided in runtime input.', metadata: null }],
-	}
-}
-
-function sourceControlPlanningInstruction(): Extract<AgentRunEvent['body'], { type: 'instruction-snapshot' }> {
-	return {
-		type: 'instruction-snapshot',
-		instruction: { type: 'source-control-planning', version: 1 },
-		parts: [{ type: 'text', text: sourceControlPlanningInstructionText(), metadata: null }],
 	}
 }
 
@@ -95,63 +117,4 @@ Tiny keyed-shape example fragment:
   },
   "proposedMemoryRevisions": {}
 }`
-}
-
-function invariant(message: string): Result<never, InvariantViolationError> {
-	return { ok: false, error: { type: 'invariant-violation', message } }
-}
-
-if (import.meta.vitest) {
-	const { describe, expect, it } = import.meta.vitest
-	const { defaultDeliveryWorkConfig, stamp } = await import('../../utils/test-helpers')
-
-	describe('planningInstructionForProject', () => {
-		it('builds source-control Planning instructions', () => {
-			const result = planningInstructionForProject({
-				id: '01k00000000000000000000030',
-				title: 'Project',
-				source: { type: 'source-control' },
-				config: { configured: stamp, value: { work: defaultDeliveryWorkConfig() } },
-				created: stamp,
-			})
-
-			expect(result).toMatchObject({
-				ok: true,
-				value: { type: 'instruction-snapshot', instruction: { type: 'source-control-planning', version: 1 } },
-			})
-			const text = result.ok ? result.value.parts[0]?.text : ''
-			expect(text).toContain('propose-plan-output')
-			expect(text).toContain('Repository id')
-			expect(text).toContain('Target Branch')
-			expect(text).toContain('Planning is read-only')
-		})
-
-		it('builds minimal source-control Revision Planning instructions', () => {
-			expect(sourceControlRevisionPlanningInstruction()).toEqual({
-				type: 'instruction-snapshot',
-				instruction: { type: 'source-control-revision-planning', version: 1 },
-				parts: [
-					{
-						type: 'text',
-						text: 'Plan revision work for this Source Control Project when prompted.',
-						metadata: null,
-					},
-				],
-			})
-		})
-
-		it('builds minimal source-control Slice Execution instructions', () => {
-			expect(sourceControlSliceExecutionInstruction()).toEqual({
-				type: 'instruction-snapshot',
-				instruction: { type: 'source-control-slice-execution', version: 1 },
-				parts: [
-					{
-						type: 'text',
-						text: 'Execute the accepted Slice instruction provided in runtime input.',
-						metadata: null,
-					},
-				],
-			})
-		})
-	})
 }

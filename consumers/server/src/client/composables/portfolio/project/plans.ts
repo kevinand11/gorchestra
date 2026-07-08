@@ -75,6 +75,7 @@ export function usePlanClose(projectId: Ref<string>, planId: Ref<string>, option
 		const plan = await serverApi.closePlan(projectId.value, planId.value)
 		queryCache.set(queryKeys.portfolio.plan(portfolio.value.id, projectId.value, planId.value), plan)
 		queryCache.invalidate(queryKeys.portfolio.plans(portfolio.value.id, projectId.value), { exact: true })
+		queryCache.invalidate(queryKeys.portfolio.agentRun(portfolio.value.id, plan.agentRunId), { exact: true })
 		await options.onSuccess?.(plan)
 		return plan
 	})

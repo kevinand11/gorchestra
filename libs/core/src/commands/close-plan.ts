@@ -1,8 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { AgentRun, AgentRunEvent } from '../domain/agent-run'
+import type { AgentRun } from '../domain/agent-run'
 import { idPipe, type AuditStamp, type Id } from '../domain/commons'
-import type { Plan, PlanWithPlanningAgentRun } from '../domain/plan'
+import type { Plan } from '../domain/plan'
 import type {
 	AgentRunTurnActiveError,
 	InvalidCoreServiceOutputError,
@@ -15,8 +15,8 @@ import type {
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
 import type { CommandContext } from './types'
-import { listRecords, notFound } from '../storage/helpers'
-import { completeAgentRunByPurposeAndAcceptSandboxRelease, getSingleAgentRunByPurpose } from '../utils/agent-runs'
+import { notFound } from '../storage/helpers'
+import { completeAgentRunByIdAndAcceptSandboxRelease, requireAgentRunIdle } from '../utils/agent-runs'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
 import { getRequired, updateRecordValue, withAuditStampTransaction } from './utils/storage'
@@ -24,7 +24,7 @@ import { getRequired, updateRecordValue, withAuditStampTransaction } from './uti
 const closePlanInputPipe = v.object({ projectId: idPipe, planId: idPipe })
 export type Input = PipeOutput<typeof closePlanInputPipe>
 
-export type Result = PlanWithPlanningAgentRun
+export type Result = Plan
 export type Error =
 	| InvalidInputError
 	| InvalidCoreServiceOutputError
@@ -56,10 +56,7 @@ async function closePlan(
 	const plan = await getOpenProjectPlan(storage, input)
 	if (!plan.ok) return plan
 
-	const agentRun = await getSingleAgentRunByPurpose(storage, { type: 'planning', planId: plan.value.id })
-	if (!agentRun.ok) return agentRun
-
-	const idle = await requireAgentRunIdle(storage, agentRun.value.id)
+	const idle = await requireAgentRunIdle(storage, plan.value.agentRunId)
 	return idle.ok ? writeClosedPlan(runtime, storage, plan.value, stamp) : idle
 }
 
@@ -89,46 +86,10 @@ async function completePlanningAgentRun(
 	plan: Plan,
 	stamp: AuditStamp,
 ): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
-	const completed = await completeAgentRunByPurposeAndAcceptSandboxRelease(
-		storage,
-		runtime.services.dispatcher,
-		{ type: 'planning', planId: plan.id },
-		{ at: stamp.at },
-	)
-	return completed.ok
-		? {
-				ok: true,
-				value: {
-					result: { ...plan, agentRun: completed.value.agentRun as PlanWithPlanningAgentRun['agentRun'] },
-					dispatchMarker: completed.value.dispatchMarker,
-				},
-			}
-		: completed
-}
-
-async function requireAgentRunIdle(
-	storage: CoreStorage,
-	agentRunId: Id,
-): Promise<CoreResult<void, InvalidCoreServiceOutputError | StorageOperationFailedError | AgentRunTurnActiveError>> {
-	const events = await listRecords('agent-run-event', storage, {
-		where: (filter, fields) => filter.eq(fields.agentRunId, agentRunId),
-		orderBy: [{ field: 'id', direction: 'asc' }],
+	const completed = await completeAgentRunByIdAndAcceptSandboxRelease(storage, runtime.services.dispatcher, plan.agentRunId, {
+		at: stamp.at,
 	})
-	return events.ok ? activeTurn(events.value) : events
-}
-
-function activeTurn(events: AgentRunEvent[]): CoreResult<void, AgentRunTurnActiveError> {
-	const started = [...events].reverse().find((event) => event.body.type === 'turn-started')
-	if (started === undefined || started.body.type !== 'turn-started') return { ok: true, value: undefined }
-
-	const ended = events.some(
-		(event) => event.id > started.id && event.body.type === 'turn-ended' && event.body.turnStartedEventId === started.id,
-	)
-	return ended ? { ok: true, value: undefined } : agentRunTurnActive(started.agentRunId, started.id)
-}
-
-function agentRunTurnActive(agentRunId: Id, turnStartedEventId: Id): CoreResult<never, AgentRunTurnActiveError> {
-	return { ok: false, error: { type: 'agent-run-turn-active', agentRunId, turnStartedEventId } }
+	return completed.ok ? { ok: true, value: { result: plan, dispatchMarker: completed.value.dispatchMarker } } : completed
 }
 
 function planClosed(planId: Id): CoreResult<never, PlanClosedError> {
@@ -163,7 +124,7 @@ if (import.meta.vitest) {
 
 			const expectedPlan = { ...plan(), closed: localStamp() }
 			const expectedAgentRun = { ...planningAgentRun(), completed: { at: localStamp().at } }
-			expect(result).toEqual({ ok: true, value: { ...expectedPlan, agentRun: expectedAgentRun } })
+			expect(result).toEqual({ ok: true, value: expectedPlan })
 			expect(options.tx.plans.records.get('01k00000000000000000000028')).toEqual(expectedPlan)
 			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')).toEqual(expectedAgentRun)
 		})
@@ -176,7 +137,7 @@ if (import.meta.vitest) {
 
 			const result = await command({ projectId: '01k00000000000000000000030', planId: '01k00000000000000000000028' }, context)
 
-			expect(result).toMatchObject({ ok: true, value: { agentRun: { completed: previousCompletion } } })
+			expect(result).toEqual({ ok: true, value: { ...plan(), closed: localStamp() } })
 			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.completed).toEqual(previousCompletion)
 		})
 
@@ -236,6 +197,7 @@ if (import.meta.vitest) {
 		return {
 			id: '01k00000000000000000000028',
 			projectId: '01k00000000000000000000030',
+			agentRunId: '01k00000000000000000000002',
 			title: 'Plan',
 			created: stamp,
 			closed: null,

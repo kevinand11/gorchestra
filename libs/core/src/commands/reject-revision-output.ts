@@ -159,6 +159,7 @@ if (import.meta.vitest) {
 		})
 		options.tx.revisionGates.records.set('01k00000000000000000000039', {
 			id: '01k00000000000000000000039',
+			agentRunId: '01k00000000000000000000002',
 			scope: {
 				type: 'delivery-artifact',
 				deliveryId: '01k00000000000000000000008',

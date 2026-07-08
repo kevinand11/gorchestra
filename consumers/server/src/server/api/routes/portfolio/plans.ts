@@ -29,7 +29,7 @@ export function createPlansApiRouter(context: ServerApiContext) {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: coreIdPipe }),
 				body: createPlanRequestSchema,
-				response: Queries.GetPlan.resultPipe,
+				response: Domain.Plan.planPipe,
 			},
 		})(async (req) => createSelectedProjectPlan(context, req.cookies, req.params.projectId, req.body))
 		.get('/projects/:projectId/plans/:planId', {
@@ -43,7 +43,7 @@ export function createPlansApiRouter(context: ServerApiContext) {
 			schema: {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ projectId: coreIdPipe, planId: coreIdPipe }),
-				response: Queries.GetPlan.resultPipe,
+				response: Domain.Plan.planPipe,
 			},
 		})(async (req) => closeSelectedProjectPlan(context, req.cookies, req.params.projectId, req.params.planId))
 }
@@ -65,7 +65,7 @@ function createSelectedProjectPlan(
 	cookies: PortfolioRequestCookies,
 	projectId: string,
 	input: CreatePlanRequest,
-): Promise<Domain.Plan.PlanWithPlanningAgentRun> {
+): Promise<Domain.Plan.Plan> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
 		const plan = await core.commands.createPlan(
 			{ projectId, title: input.title, initialMessage: input.initialMessage, agentRunProfileId: input.agentRunProfileId },
@@ -92,7 +92,7 @@ function closeSelectedProjectPlan(
 	cookies: PortfolioRequestCookies,
 	projectId: string,
 	planId: string,
-): Promise<Domain.Plan.PlanWithPlanningAgentRun> {
+): Promise<Domain.Plan.Plan> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
 		const plan = await core.commands.closePlan(
 			{ projectId, planId },

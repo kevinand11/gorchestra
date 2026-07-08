@@ -1,8 +1,9 @@
-import { resolveAgentRunSourceSetup, type ResolveAgentRunSourceSetupError } from './agent-run-source-resolvers'
+import { resolveAgentRunSourceSetup } from './agent-run-source-resolvers'
 import { validateRuntimeRequirementSecretReferences, type RuntimeRequirementSecretReferenceError } from './runtime-requirement-secrets'
 import { nextId, runtimeRecord, type CoreRuntimeValues } from './runtime-values'
 import type { Result } from './types'
 import { acceptAgentRunPreparation, acceptAgentRunSandboxRelease } from '../commands/utils/dispatch'
+import { agentRunProfileSnapshot } from '../commands/utils/storage'
 import type {
 	AgentRun,
 	AgentRunEvent,
@@ -11,14 +12,29 @@ import type {
 	AgentRunPurpose,
 	AgentRunToolSet,
 } from '../domain/agent-run'
+import type { AgentRunProfile } from '../domain/agent-run-profile'
 import { appendUniqueRuntimeRequirements, type AgentRunRuntimeRequirement } from '../domain/agent-run-runtime'
 import type { Id, RuntimeRecord } from '../domain/commons'
-import type { InvalidCoreServiceOutputError, InvariantViolationError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
+import type { Project } from '../domain/project'
+import type {
+	AgentRunTurnActiveError,
+	InvalidCoreServiceOutputError,
+	InvariantViolationError,
+	ResourceNotFoundError,
+	StorageOperationFailedError,
+} from '../errors'
+import { instructionForProjectAndAgentRunPurpose } from '../runtime/agent-runs/instructions'
 import type { CoreServices, CoreStorage } from '../services'
 import { createRecord, getRequired, listRecords, updateRecord } from '../storage/helpers'
 
 export type AgentRunLookupError = InvalidCoreServiceOutputError | StorageOperationFailedError | InvariantViolationError
 export type AgentRunCompletionError = AgentRunLookupError | ResourceNotFoundError
+export type AgentRunByIdCompletionError =
+	| InvalidCoreServiceOutputError
+	| StorageOperationFailedError
+	| ResourceNotFoundError
+	| InvariantViolationError
+export type AgentRunIdleError = InvalidCoreServiceOutputError | StorageOperationFailedError | AgentRunTurnActiveError
 
 export function agentRunSandboxPrepared(agentRun: AgentRun): boolean {
 	return (
@@ -30,51 +46,30 @@ export function agentRunSandboxPrepared(agentRun: AgentRun): boolean {
 	)
 }
 
-export async function getSingleAgentRunByPurpose(
-	storage: CoreStorage,
-	purpose: AgentRunPurpose,
-): Promise<Result<AgentRun, AgentRunLookupError>> {
-	const agentRuns = await listRecords('agent-run', storage, { where: (filter, fields) => filter.eq(fields.purpose, purpose) })
-	return agentRuns.ok ? singleAgentRunByPurpose(agentRuns.value, purpose) : agentRuns
+export async function requireAgentRunIdle(storage: CoreStorage, agentRunId: Id): Promise<Result<void, AgentRunIdleError>> {
+	const events = await listRecords('agent-run-event', storage, {
+		where: (filter, fields) => filter.eq(fields.agentRunId, agentRunId),
+		orderBy: [{ field: 'id', direction: 'asc' }],
+	})
+	return events.ok ? activeTurn(events.value) : events
 }
 
-export async function completeSingleAgentRunByPurpose(
-	storage: CoreStorage,
-	purpose: AgentRunPurpose,
-	completed: RuntimeRecord,
-): Promise<Result<AgentRun, AgentRunCompletionError>> {
-	const agentRun = await getSingleAgentRunByPurpose(storage, purpose)
-	if (!agentRun.ok) return agentRun
+function activeTurn(events: AgentRunEvent[]): Result<void, AgentRunTurnActiveError> {
+	const started = [...events].reverse().find((event) => event.body.type === 'turn-started')
+	if (started === undefined || started.body.type !== 'turn-started') return { ok: true, value: undefined }
 
-	return agentRun.value.completed === null
-		? updateRecord('agent-run', storage, agentRun.value.id, { completed })
-		: { ok: true, value: agentRun.value }
+	const ended = events.some(
+		(event) => event.id > started.id && event.body.type === 'turn-ended' && event.body.turnStartedEventId === started.id,
+	)
+	return ended ? { ok: true, value: undefined } : agentRunTurnActive(started.agentRunId, started.id)
+}
+
+function agentRunTurnActive(agentRunId: Id, turnStartedEventId: Id): Result<never, AgentRunTurnActiveError> {
+	return { ok: false, error: { type: 'agent-run-turn-active', agentRunId, turnStartedEventId } }
 }
 
 function latestRuntimeRequirementOverrideEventId(agentRun: AgentRun): string | null {
 	return agentRun.runtimeRequirementOverrides.at(-1)?.eventId ?? null
-}
-
-function singleAgentRunByPurpose(agentRuns: AgentRun[], purpose: AgentRunPurpose): Result<AgentRun, InvariantViolationError> {
-	const purposeKey = agentRunPurposeKey(purpose)
-	const matching = agentRuns.filter((agentRun) => agentRunPurposeKey(agentRun.purpose) === purposeKey)
-	return matching.length === 1 ? { ok: true, value: matching[0]! } : agentRunCountInvariant(purpose, matching.length)
-}
-
-function agentRunPurposeKey(purpose: AgentRunPurpose): string {
-	return `${purpose.type}:${JSON.stringify(purpose)}`
-}
-
-function agentRunCountInvariant(purpose: AgentRunPurpose, count: number): Result<never, InvariantViolationError> {
-	return invariant(`Expected exactly one Agent Run for ${agentRunPurposeDescription(purpose)} but found ${count}.`)
-}
-
-function agentRunPurposeDescription(purpose: AgentRunPurpose): string {
-	return `${purpose.type} ${agentRunPurposeKey(purpose)}`
-}
-
-function invariant(message: string): Result<never, InvariantViolationError> {
-	return { ok: false, error: { type: 'invariant-violation', message } }
 }
 
 type ModelAgentRunWithPurpose<TPurpose extends AgentRunPurpose> = Omit<AgentRun, 'agent' | 'purpose'> & {
@@ -88,17 +83,17 @@ export type AppendAgentRunEventError =
 	| ResourceNotFoundError
 	| InvariantViolationError
 
-export type CreateModelAgentRunError = AppendAgentRunEventError | ResolveAgentRunSourceSetupError | RuntimeRequirementSecretReferenceError
+export type CreateModelAgentRunError = AppendAgentRunEventError | RuntimeRequirementSecretReferenceError
 
-export async function createInstructedModelAgentRunAndRequestPreparation<TPurpose extends AgentRunPurpose>(
+export async function createModelAgentRunAndRequestPreparation<TPurpose extends AgentRunPurpose>(
 	context: { values: CoreRuntimeValues; dispatcher: CoreServices['dispatcher'] },
 	storage: CoreStorage,
 	input: {
 		agentRunId: Id
+		agentRunProfile: AgentRunProfile
+		project: Project
 		purpose: TPurpose
 		started: RuntimeRecord
-		profile: AgentRunProfileSnapshot
-		instruction: Extract<AgentRunEvent['body'], { type: 'instruction-snapshot' }>
 	},
 ): Promise<
 	Result<
@@ -118,26 +113,28 @@ export async function createInstructedModelAgentRunAndRequestPreparation<TPurpos
 
 	const agentRun = modelAgentRun({
 		...input,
+		profile: agentRunProfileSnapshot(input.agentRunProfile),
 		sourceRuntimeRequirements: sourceSetup.value.runtimeRequirements,
 		toolSet: sourceSetup.value.toolSet,
 	})
 	const stored = await createRecord('agent-run', storage, agentRun)
 	if (!stored.ok) return stored
 
-	const instructionEvent = await appendAgentRunEvent({ values: context.values }, storage, agentRun.id, input.instruction)
+	const instruction = instructionForProjectAndAgentRunPurpose(agentRun.purpose, input.project)
+	const instructionEvent = await appendAgentRunEvent({ values: context.values }, storage, agentRun.id, instruction)
 	if (!instructionEvent.ok) return instructionEvent
 
 	const preparationDispatchMarker = await acceptAgentRunPreparation(context.dispatcher, agentRun.id, { type: 'agent-run-created' })
-	return preparationDispatchMarker.ok
-		? {
-				ok: true,
-				value: {
-					agentRun,
-					instructionEvent: instructionEvent.value,
-					preparationDispatchMarker: preparationDispatchMarker.value,
-				},
-			}
-		: preparationDispatchMarker
+	if (!preparationDispatchMarker.ok) return preparationDispatchMarker
+
+	return {
+		ok: true,
+		value: {
+			agentRun,
+			instructionEvent: instructionEvent.value,
+			preparationDispatchMarker: preparationDispatchMarker.value,
+		},
+	}
 }
 
 function modelAgentRun<TPurpose extends AgentRunPurpose>(input: {
@@ -201,21 +198,25 @@ function agentRunEventRecord(agentRunId: Id, facts: AgentRunEventFacts, body: Ag
 	}
 }
 
-export async function completeAgentRunByPurposeAndAcceptSandboxRelease(
+export async function completeAgentRunByIdAndAcceptSandboxRelease(
 	storage: CoreStorage,
 	dispatcher: CoreServices['dispatcher'],
-	purpose: AgentRunPurpose,
+	agentRunId: Id,
 	completed: RuntimeRecord,
-): Promise<Result<{ agentRun: AgentRun; dispatchMarker: string | null }, AgentRunCompletionError | InvalidCoreServiceOutputError>> {
-	const current = await getSingleAgentRunByPurpose(storage, purpose)
+): Promise<Result<{ agentRun: AgentRun; dispatchMarker: string | null }, AgentRunByIdCompletionError | InvalidCoreServiceOutputError>> {
+	const current = await getRequired('agent-run', storage, agentRunId)
 	if (!current.ok) return current
-	if (current.value.completed !== null) return { ok: true, value: { agentRun: current.value, dispatchMarker: null } }
 
-	const agentRun = await completeSingleAgentRunByPurpose(storage, purpose, completed)
-	if (!agentRun.ok) return agentRun
+	const agentRun = current.value
+	if (agentRun.completed !== null) return { ok: true, value: { agentRun, dispatchMarker: null } }
 
-	const dispatchMarker = await acceptAgentRunSandboxRelease(dispatcher, agentRun.value.id)
-	return dispatchMarker.ok ? { ok: true, value: { agentRun: agentRun.value, dispatchMarker: dispatchMarker.value } } : dispatchMarker
+	const completedAgentRun = await updateRecord('agent-run', storage, agentRun.id, { completed })
+	if (!completedAgentRun.ok) return completedAgentRun
+
+	const dispatchMarker = await acceptAgentRunSandboxRelease(dispatcher, completedAgentRun.value.id)
+	return dispatchMarker.ok
+		? { ok: true, value: { agentRun: completedAgentRun.value, dispatchMarker: dispatchMarker.value } }
+		: dispatchMarker
 }
 
 if (import.meta.vitest) {
@@ -236,34 +237,34 @@ if (import.meta.vitest) {
 					ready: () => {},
 				},
 			})
-			seedProject(options.tx, '01k00000000000000000000030')
+			const project = seedProject(options.tx, '01k00000000000000000000030')
 			options.tx.plans.records.set('01k00000000000000000000028', {
 				id: '01k00000000000000000000028',
 				projectId: '01k00000000000000000000030',
+				agentRunId: '01k00000000000000000000002',
 				title: 'Plan',
 				created: localStamp(),
 				closed: null,
 			})
 
-			const result = await createInstructedModelAgentRunAndRequestPreparation(
+			const result = await createModelAgentRunAndRequestPreparation(
 				{ values: options.values, dispatcher: options.dispatcher },
 				options.storage,
 				{
 					agentRunId: '01k00000000000000000000002',
-					purpose: { type: 'planning', planId: '01k00000000000000000000028' },
-					started: { at: '2026-06-10T12:00:00.000Z' },
-					profile: {
-						agentRunProfileId: '01k00000000000000000000006',
+					agentRunProfile: {
+						id: '01k00000000000000000000006',
 						name: 'Planning',
 						modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 						runtimeRequirements: [],
 						sandboxConfig: defaultAgentRunSandboxConfig(),
+						created: localStamp(),
+						updated: null,
+						archivePeriods: [],
 					},
-					instruction: {
-						type: 'instruction-snapshot',
-						instruction: { type: 'source-control-planning', version: 1 },
-						parts: [{ type: 'text', text: 'Instruction.', metadata: null }],
-					},
+					project,
+					purpose: { type: 'planning', planId: '01k00000000000000000000028' },
+					started: { at: '2026-06-10T12:00:00.000Z' },
 				},
 			)
 
@@ -296,11 +297,7 @@ if (import.meta.vitest) {
 						id: '01k00000000000000000010001',
 						agentRunId: '01k00000000000000000000002',
 						occurred: { at: '2026-06-10T12:00:00.000Z' },
-						body: {
-							type: 'instruction-snapshot',
-							instruction: { type: 'source-control-planning', version: 1 },
-							parts: [{ type: 'text', text: 'Instruction.', metadata: null }],
-						},
+						body: instructionForProjectAndAgentRunPurpose({ type: 'planning', planId: '01k00000000000000000000028' }, project),
 					},
 					preparationDispatchMarker: 'marker-1',
 				},
@@ -322,47 +319,6 @@ if (import.meta.vitest) {
 					reason: { type: 'agent-run-created' },
 				},
 			])
-		})
-
-		it('returns source resolution errors without storing partial Agent Run facts', async () => {
-			const dispatches: unknown[] = []
-			const options = createTestCoreServices({
-				dispatcher: {
-					preflight: () => Promise.resolve({ ok: true }),
-					request: (request) => {
-						dispatches.push(request)
-						return Promise.resolve('marker-1')
-					},
-					ready: () => {},
-				},
-			})
-
-			const result = await createInstructedModelAgentRunAndRequestPreparation(
-				{ values: options.values, dispatcher: options.dispatcher },
-				options.storage,
-				{
-					agentRunId: '01k00000000000000000000002',
-					purpose: { type: 'planning', planId: '01k00000000000000000000028' },
-					started: { at: '2026-06-10T12:00:00.000Z' },
-					profile: {
-						agentRunProfileId: '01k00000000000000000000006',
-						name: 'Planning',
-						modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
-						runtimeRequirements: [],
-						sandboxConfig: defaultAgentRunSandboxConfig(),
-					},
-					instruction: {
-						type: 'instruction-snapshot',
-						instruction: { type: 'source-control-planning', version: 1 },
-						parts: [{ type: 'text', text: 'Instruction.', metadata: null }],
-					},
-				},
-			)
-
-			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'plan', id: '01k00000000000000000000028' } })
-			expect(options.tx.agentRuns.records.size).toBe(0)
-			expect(options.tx.agentRunEvents.records.size).toBe(0)
-			expect(dispatches).toEqual([])
 		})
 	})
 

@@ -7,6 +7,7 @@ import type { ReviewSurface, ReviewSurfaceScope } from '../domain/review-surface
 import type { Revision, RevisionGate, RevisionOutputProposal, RevisionScope } from '../domain/revision'
 import type {
 	AgentRunPurposeMismatchError,
+	AgentRunTurnActiveError,
 	DeliveryClosedError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
@@ -21,7 +22,7 @@ import type {
 import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
 import type { CommandContext } from './types'
-import { appendAgentRunEvent, completeAgentRunByPurposeAndAcceptSandboxRelease } from '../utils/agent-runs'
+import { appendAgentRunEvent, completeAgentRunByIdAndAcceptSandboxRelease, requireAgentRunIdle } from '../utils/agent-runs'
 import { getPendingProposalForAgentRunPurpose, proposalAcceptedProjectedParts } from '../utils/proposals'
 import type { Result as CoreResult } from '../utils/types'
 import { buildCommandHandler } from './utils/handler'
@@ -48,6 +49,7 @@ export type Error =
 	| ProposalAlreadyReviewedError
 	| ProposalTypeMismatchError
 	| AgentRunPurposeMismatchError
+	| AgentRunTurnActiveError
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
@@ -116,6 +118,9 @@ async function acceptForGate(
 	revisionId: Id,
 ): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
 	if (context.gate.closed !== null) return revisionGateClosed(context.gate.id)
+
+	const idle = await requireAgentRunIdle(storage, context.gate.agentRunId)
+	if (!idle.ok) return idle
 
 	const existingRevision = await validateNoRevisionForGate(storage, context.gate.id)
 	if (!existingRevision.ok) return existingRevision
@@ -287,12 +292,9 @@ async function completeRevisionPlanningForAcceptedRevision(
 	revision: Revision,
 	revisionGate: RevisionGate,
 ): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
-	const agentRun = await completeAgentRunByPurposeAndAcceptSandboxRelease(
-		storage,
-		runtime.services.dispatcher,
-		{ type: 'revision-planning', revisionGateId: context.gate.id },
-		{ at: stamp.at },
-	)
+	const agentRun = await completeAgentRunByIdAndAcceptSandboxRelease(storage, runtime.services.dispatcher, revisionGate.agentRunId, {
+		at: stamp.at,
+	})
 	return agentRun.ok
 		? appendRevisionProposalAcceptance(runtime, storage, context, stamp, revision, revisionGate, agentRun.value.dispatchMarker)
 		: agentRun
@@ -438,6 +440,30 @@ if (import.meta.vitest) {
 			})
 		})
 
+		it('rejects acceptance when the Revision Planning Agent Run has an unmatched active turn', async () => {
+			const options = deliveryRevisionFixture()
+			options.tx.agentRunEvents.records.set('turn-started', {
+				id: 'turn-started',
+				agentRunId: '01k00000000000000000000002',
+				occurred: { at: '2026-06-10T12:00:00.000Z' },
+				body: {
+					type: 'turn-started',
+					contextThroughEventId: '01j00000000000000000000000',
+					reason: { type: 'input', inputEventIds: ['01j00000000000000000000000'] },
+				},
+			})
+			const command = createAcceptRevisionOutputCommand(createTestCoreRuntime(options))
+
+			const result = await command({ proposalEventId }, context)
+
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'agent-run-turn-active', agentRunId: '01k00000000000000000000002', turnStartedEventId: 'turn-started' },
+			})
+			expect(options.tx.revisions.records.size).toBe(0)
+			expect(options.tx.revisionGates.records.get('01k00000000000000000000039')?.closed).toBeNull()
+		})
+
 		it('rejects reviewed, wrong-type, and closed-gate proposals', async () => {
 			const reviewed = deliveryRevisionFixture()
 			reviewed.tx.agentRunEvents.records.set(reviewEventId, {
@@ -493,6 +519,7 @@ if (import.meta.vitest) {
 		options.tx.reviewSurfaces.records.set('01k00000000000000000000037', deliveryReviewSurface())
 		options.tx.revisionGates.records.set('01k00000000000000000000039', {
 			id: '01k00000000000000000000039',
+			agentRunId: '01k00000000000000000000002',
 			scope: {
 				type: 'delivery-artifact',
 				deliveryId: '01k00000000000000000000008',
@@ -520,6 +547,7 @@ if (import.meta.vitest) {
 		options.tx.reviewSurfaces.records.set('01k00000000000000000000037', sliceReviewSurface())
 		options.tx.revisionGates.records.set('01k00000000000000000000039', {
 			id: '01k00000000000000000000039',
+			agentRunId: '01k00000000000000000000002',
 			scope: { type: 'slice-artifact', sliceId: '01k00000000000000000000042', sliceArtifactId: '01k00000000000000000000045' },
 			reviewSurfaceId: '01k00000000000000000000037',
 			opened: stamp,

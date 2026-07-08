@@ -5,9 +5,9 @@
 			<p v-if="isRefreshingPlan" class="m-0 border-b border-dimmer px-3 py-2 text-sz-helper text-dim">Refreshing Plan…</p>
 			<div v-else-if="planError" class="border-b border-dimmer px-3 py-4 text-error">{{ planError }}</div>
 			<div v-else-if="plan" class="grid gap-0">
-				<AgentRunEvents
-					:key="plan.agentRun.id"
-					:agent-run="plan.agentRun"
+				<AgentRunSurface
+					:key="plan.agentRunId"
+					:agent-run-id="plan.agentRunId"
 					:disabled="isClosingPlan || isPlanningClosed"
 					@message-sending-change="setAgentRunMessageSending" />
 			</div>
@@ -25,7 +25,7 @@
 							<span class="text-dim">Created</span><span>{{ formatDate(plan.created.at) }}</span>
 						</div>
 						<div class="flex justify-between gap-3 border-t border-dimmer px-3 py-2">
-							<span class="text-dim">Planning run</span><span>{{ planningRunLabel }}</span>
+							<span class="text-dim">State</span><span>{{ plan.closed === null ? 'Planning' : 'Closed' }}</span>
 						</div>
 					</div>
 				</section>
@@ -34,8 +34,8 @@
 					<h2 class="m-0 text-sz-helper font-semibold">Planning status</h2>
 					<strong class="mt-2 block font-semibold">{{ planningRunTitle }}</strong>
 					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-						Started {{ formatDate(plan.agentRun.started.at) }}. The raw Planning Agent Run transcript loads automatically; use
-						Refresh events to inspect the latest events while the richer Planning UI is deferred.
+						The Planning Agent Run transcript loads automatically through the Agent Run surface. Closing Planning stops further
+						Planning input and model turns without deleting this Plan.
 					</p>
 					<div class="mt-3 grid gap-2">
 						<UiButton
@@ -60,7 +60,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-import AgentRunEvents from '../../../../components/portfolio/agent-runs/AgentRunEvents.vue'
+import AgentRunSurface from '../../../../components/portfolio/agent-runs/AgentRunSurface.vue'
 import UiButton from '../../../../components/ui/UiButton.vue'
 import UiText from '../../../../components/ui/UiText.vue'
 import { useOverlay } from '../../../../composables/core/overlay'
@@ -78,10 +78,6 @@ const { plan, isLoadingPlan, planError, hasLoadedPlan, isRefreshingPlan } = useP
 const { isClosingPlan, closePlanError, closePlan } = usePlanClose(projectId, planId)
 const isSendingAgentRunMessage = ref(false)
 
-const planningRunLabel = computed(() => {
-	if (plan.value === null) return 'Unknown'
-	return plan.value.agentRun.completed === null ? 'In progress' : `Completed ${formatDate(plan.value.agentRun.completed.at)}`
-})
 const planningRunTitle = computed(() => (plan.value?.closed === null ? 'Planning in progress' : 'Planning closed'))
 const isPlanningClosed = computed(() => plan.value !== null && plan.value.closed !== null)
 const canClosePlan = computed(

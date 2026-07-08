@@ -197,13 +197,15 @@ export function createTestCoreStorage(): CoreStorage {
 }
 
 export function seedProject(tx: TestStorageTransaction, id: string, work: DeliveryWorkConfig = defaultDeliveryWorkConfig()) {
-	tx.projects.records.set(id, {
+	const project: Project = {
 		id,
 		title: 'Project',
 		source: { type: 'source-control' },
 		config: { configured: stamp, value: { work } },
 		created: stamp,
-	})
+	}
+	tx.projects.records.set(id, project)
+	return project
 }
 
 export function seedDelivery(tx: TestStorageTransaction, id: string) {

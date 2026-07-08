@@ -2,10 +2,30 @@ import { computed, type Ref } from 'vue'
 
 import { AgentRunMessageFormDraft } from '../../forms/agent-run'
 import { useSelectedPortfolio } from '../auth/session'
-import { useApiAction } from '../core/action-state'
+import { useApiAction, useFetchAction } from '../core/action-state'
 import { usePaginatedFetchAction } from '../core/paginated-fetch-action'
 import { useQueryCache } from '../core/query-cache'
-import { useServerApi } from '../core/server-api'
+import { useServerApi, type AgentRun } from '../core/server-api'
+
+export function useAgentRun(agentRunId: Ref<string | null>) {
+	const serverApi = useServerApi()
+	const { portfolio } = useSelectedPortfolio()
+	const { queryKeys } = useQueryCache()
+	const {
+		data: agentRun,
+		isLoading: isLoadingAgentRun,
+		error: agentRunError,
+		hasExecuted: hasLoadedAgentRun,
+		execute: refreshAgentRun,
+		reset: resetAgentRun,
+	} = useFetchAction(() => serverApi.getAgentRun(requireAgentRunId(agentRunId.value)), {
+		queryKey: () => queryKeys.portfolio.agentRun(portfolio.value.id, requireAgentRunId(agentRunId.value)),
+		initialData: null as AgentRun | null,
+	})
+	const isRefreshingAgentRun = computed(() => isLoadingAgentRun.value && hasLoadedAgentRun.value)
+
+	return { agentRun, isLoadingAgentRun, agentRunError, hasLoadedAgentRun, isRefreshingAgentRun, refreshAgentRun, resetAgentRun }
+}
 
 export function useAgentRunEvents(agentRunId: Ref<string | null>) {
 	const serverApi = useServerApi()

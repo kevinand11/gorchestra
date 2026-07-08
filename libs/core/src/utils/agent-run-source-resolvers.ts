@@ -442,6 +442,7 @@ if (import.meta.vitest) {
 			options.tx.plans.records.set('01k00000000000000000000028', {
 				id: '01k00000000000000000000028',
 				projectId: '01k00000000000000000000030',
+				agentRunId: '01k00000000000000000000002',
 				title: 'Plan',
 				created: localStamp(),
 				closed: null,
@@ -467,6 +468,7 @@ if (import.meta.vitest) {
 			options.tx.plans.records.set('01k00000000000000000000028', {
 				id: '01k00000000000000000000028',
 				projectId: '01k00000000000000000000030',
+				agentRunId: '01k00000000000000000000002',
 				title: 'Plan',
 				created: localStamp(),
 				closed: null,
@@ -544,6 +546,7 @@ if (import.meta.vitest) {
 			seedSliceArtifact(options.tx, '01k00000000000000000000045', '01k00000000000000000000042')
 			options.tx.revisionGates.records.set('01k00000000000000000000046', {
 				id: '01k00000000000000000000046',
+				agentRunId: '01k00000000000000000000002',
 				scope: {
 					type: 'slice-artifact',
 					sliceId: '01k00000000000000000000042',

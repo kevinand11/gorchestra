@@ -153,7 +153,7 @@ An observational validation operation that checks whether Core can currently res
 _Avoid_: Repository status, Repository health state, Repository readiness, access lifecycle event
 
 **Plan**:
-A Project-level reusable planning and discovery artifact. A Plan belongs to exactly one Project, captures research, analysis, requirements, and architectural discussion, starts exactly one Planning Agent Run with a selected Agent Run Profile when created, and may produce zero, one, or many Plan Outputs for its Project. Closing a Plan records consumer-authorized intent to stop further Planning input and model turns without deleting the Plan or invalidating pending Plan Output review.
+A Project-level reusable planning and discovery artifact. A Plan belongs to exactly one Project, captures research, analysis, requirements, and architectural discussion, records the identity of the one Planning Agent Run it starts with a selected Agent Run Profile when created, and may produce zero, one, or many Plan Outputs for its Project. Closing a Plan records consumer-authorized intent to stop further Planning input and model turns without deleting the Plan or invalidating pending Plan Output review.
 _Avoid_: Grill
 
 **Planning**:
@@ -473,7 +473,7 @@ A Review Surface for a Delivery Artifact. For Source Control Projects, this is a
 _Avoid_: Delivery PR, review target
 
 **Revision Gate**:
-Human-controlled artifact-scoped authorization that allows Gorchestra to plan revision work in response to fetched Feedback for a Slice Artifact or Delivery Artifact. Opening a Revision Gate starts revision planning with a selected Agent Run Profile while the gate is open, and accepting a Revision Output consumes the gate. A Revision Gate remains open until it is explicitly closed without a Revision or consumed by an accepted Revision; gate closure or consumption completes the associated Revision Planning Agent Run when it is still open. Revision Gate does not create or reopen Slices.
+Human-controlled artifact-scoped authorization that allows Gorchestra to plan revision work in response to fetched Feedback for a Slice Artifact or Delivery Artifact. Opening a Revision Gate records the identity of the Revision Planning Agent Run it starts with a selected Agent Run Profile while the gate is open, and accepting a Revision Output consumes the gate. A Revision Gate remains open until it is explicitly closed without a Revision or consumed by an accepted Revision; gate closure or consumption completes the associated Revision Planning Agent Run when it is still open. Revision Gate does not create or reopen Slices.
 _Avoid_: revisionAllowed, needs-revision, changes-requested, per-comment approval
 
 **Revision Output**:
