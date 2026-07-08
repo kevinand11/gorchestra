@@ -328,6 +328,13 @@
 								:invalid="!!requirement.errors.cwdText" />
 						</UiFormGroup>
 						<div class="md:col-span-3">
+							<UiCheckbox
+								v-model="requirement.root"
+								description="Run this preparation command with root privileges inside the sandbox. Leave off for normal project commands.">
+								Run as root inside sandbox
+							</UiCheckbox>
+						</div>
+						<div class="md:col-span-3">
 							<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
 								<div>
 									<UiText class="font-medium">Args</UiText>
@@ -416,6 +423,7 @@
 import { computed, watch } from 'vue'
 
 import UiButton from '../../ui/UiButton.vue'
+import UiCheckbox from '../../ui/UiCheckbox.vue'
 import UiForm from '../../ui/UiForm.vue'
 import UiFormGroup from '../../ui/UiFormGroup.vue'
 import UiInput from '../../ui/UiInput.vue'
@@ -479,6 +487,7 @@ function addRunCommandRequirement(): void {
 		type: 'run-command',
 		label: '',
 		command: { executable: '', args: [], cwd: null },
+		root: false,
 		commandSecretEnv: {},
 	})
 	syncRequirementSecretOptions(requirement)

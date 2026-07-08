@@ -29,6 +29,7 @@ export interface ManagedSandboxRunCommandInput {
 	label: string
 	command: { executable: string; args: string[]; cwd: string | null }
 	commandSecretEnv: Record<string, string>
+	root: boolean
 	timeoutMs: number
 }
 
@@ -99,6 +100,7 @@ function manageSandbox(raw: RawSandbox, key: string, options: { logger?: CoreLog
 				output = await raw.runCommand({
 					command: { ...input.command, cwd: input.command.cwd ?? '/workspace' },
 					env,
+					root: input.root,
 					timeoutMs: input.timeoutMs,
 				} satisfies RawSandboxRunCommandInput)
 			} catch {
@@ -210,6 +212,7 @@ if (import.meta.vitest) {
 				label: 'Echo',
 				command: { executable: 'printenv', args: ['NPM_TOKEN'], cwd: null },
 				commandSecretEnv: { NPM_TOKEN: 'command-secret' },
+				root: false,
 				timeoutMs: 30_000,
 			})
 
@@ -217,6 +220,7 @@ if (import.meta.vitest) {
 				{
 					command: { executable: 'printenv', args: ['NPM_TOKEN'], cwd: '/workspace' },
 					env: { NPM_TOKEN: 'command-secret' },
+					root: false,
 					timeoutMs: 30_000,
 				},
 			])
@@ -238,6 +242,7 @@ if (import.meta.vitest) {
 					label: 'Echo',
 					command: { executable: 'true', args: [], cwd: null },
 					commandSecretEnv: {},
+					root: false,
 					timeoutMs: 30_000,
 				}),
 			).resolves.toEqual({

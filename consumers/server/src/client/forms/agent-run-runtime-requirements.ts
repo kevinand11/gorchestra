@@ -27,6 +27,7 @@ type RuntimeRequirementFormFields = {
 	executable: string
 	args: FormDraftArray<CommandArgFormDraft>
 	cwdText: string
+	root: boolean
 	commandSecretEnv: FormDraftArray<CommandSecretEnvFormDraft>
 }
 
@@ -86,7 +87,7 @@ export class RuntimeRequirementFormDraft extends FormDraft<
 	RuntimeRequirementFormFields
 > {
 	protected override readonly onSet = {
-		type: () => this.revalidate('envName', 'secretId', 'label', 'executable', 'args', 'cwdText', 'commandSecretEnv'),
+		type: () => this.revalidate('envName', 'secretId', 'label', 'executable', 'args', 'cwdText', 'root', 'commandSecretEnv'),
 	}
 
 	protected readonly rules = {
@@ -97,6 +98,7 @@ export class RuntimeRequirementFormDraft extends FormDraft<
 		executable: v.conditional(executablePipe, () => this.type === 'run-command'),
 		args: v.conditional(v.array(nestedFormDraftPipe<CommandArgFormDraft>()), () => this.type === 'run-command'),
 		cwdText: v.conditional(cwdTextPipe, () => this.type === 'run-command'),
+		root: v.conditional(v.boolean(), () => this.type === 'run-command'),
 		commandSecretEnv: v.conditional(v.array(nestedFormDraftPipe<CommandSecretEnvFormDraft>()), () => this.type === 'run-command'),
 	}
 
@@ -109,6 +111,7 @@ export class RuntimeRequirementFormDraft extends FormDraft<
 			executable: '',
 			args: FormDraft.array(() => new CommandArgFormDraft()),
 			cwdText: '',
+			root: false,
 			commandSecretEnv: FormDraft.array(() => new CommandSecretEnvFormDraft()),
 		})
 		this.type = type
@@ -133,6 +136,7 @@ export class RuntimeRequirementFormDraft extends FormDraft<
 					type: 'run-command',
 					label: this.label.trim(),
 					command: { executable: this.executable.trim(), args: this.args.toModel(), cwd: cwdFromText(this.cwdText) },
+					root: this.root,
 					commandSecretEnv: commandSecretEnvFromRows(this.commandSecretEnv.toModel()),
 				}
 			default:
@@ -150,6 +154,7 @@ export class RuntimeRequirementFormDraft extends FormDraft<
 				this.executable = ''
 				this.args.loadEntity([])
 				this.cwdText = ''
+				this.root = false
 				this.commandSecretEnv.loadEntity([])
 				return
 			case 'run-command':
@@ -159,6 +164,7 @@ export class RuntimeRequirementFormDraft extends FormDraft<
 				this.executable = entity.command.executable
 				this.args.loadEntity(entity.command.args)
 				this.cwdText = entity.command.cwd ?? ''
+				this.root = entity.root
 				this.commandSecretEnv.loadEntity(commandSecretEnvRows(entity))
 				return
 			default:
@@ -221,8 +227,24 @@ if (import.meta.vitest) {
 				type: 'run-command',
 				label: 'Install packages',
 				command: { executable: 'pnpm', args: ['install', '', '--frozen-lockfile'], cwd: '/workspace/repos/repository-1' },
+				root: false,
 				commandSecretEnv: { NPM_TOKEN: 'secret-1' },
 			})
+		})
+
+		it('loads root-enabled Run Command requirements', () => {
+			const requirement = new RuntimeRequirementFormDraft('run-command')
+
+			requirement.loadEntity({
+				type: 'run-command',
+				label: 'Install packages',
+				command: { executable: 'apk', args: ['add', 'git'], cwd: '/workspace' },
+				root: true,
+				commandSecretEnv: {},
+			})
+
+			expect(requirement.root).toBe(true)
+			expect(requirement.toModel()).toMatchObject({ type: 'run-command', root: true })
 		})
 
 		it('validates only the fields visible for the selected requirement type', () => {

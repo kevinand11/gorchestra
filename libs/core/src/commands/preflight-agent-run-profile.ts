@@ -1,6 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
+import { buildCommandHandler } from './utils/handler'
+import { getRequired, isArchived, nextId, withTransaction } from './utils/storage'
 import type { AgentRunProfile } from '../domain/agent-run-profile'
 import { idPipe } from '../domain/commons'
 import type { ValidationEvidence } from '../domain/evidence'
@@ -15,9 +17,8 @@ import type { CoreRuntime } from '../runtime'
 import { managedSandboxProviderForConfig, type SandboxProviderResolutionError } from '../runtime/sandboxes'
 import type { ManagedSandbox, ManagedSandboxProvider } from '../runtime/sandboxes/managed'
 import type { CoreStorage } from '../services'
+import { verifyPosixShellRequirement, type AgentRunRunCommandRuntimeRequirement } from '../utils/agent-run-runtime-requirements'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { getRequired, isArchived, nextId, withTransaction } from './utils/storage'
 
 const preflightAgentRunProfileInputPipe = v.object({ agentRunProfileId: idPipe })
 export type Input = PipeOutput<typeof preflightAgentRunProfileInputPipe>
@@ -29,11 +30,13 @@ export type Operation = (input: Input, context: CommandContext) => Promise<CoreR
 type ProfilePreflightReadiness = { type: 'passed'; profile: AgentRunProfile } | { type: 'failed'; summary: string }
 
 const preflightEnv = { name: 'GORCHESTRA_PREFLIGHT', value: 'ok' } as const
-const preflightCommand = {
-	executable: 'sh',
-	args: ['-lc', 'test "$GORCHESTRA_PREFLIGHT" = "ok"'],
-	cwd: '/workspace',
-} as const
+const preflightRuntimeEnvCommand: AgentRunRunCommandRuntimeRequirement = {
+	type: 'run-command',
+	label: 'Agent Run Profile sandbox runtime environment check',
+	command: { executable: 'sh', args: ['-c', 'test "$GORCHESTRA_PREFLIGHT" = "ok"'], cwd: '/workspace' },
+	root: true,
+	commandSecretEnv: {},
+}
 
 export function createPreflightAgentRunProfileCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('preflightAgentRunProfile', preflightAgentRunProfileInputPipe, async (input) => {
@@ -92,14 +95,19 @@ async function runSandboxSmokePreflight(
 }
 
 async function verifySandboxRuntimeEnv(sandbox: ManagedSandbox): Promise<CoreResult<ValidationEvidence, InvalidCoreServiceOutputError>> {
+	const shell = await sandbox.runCommand({
+		...verifyPosixShellRequirement,
+		timeoutMs: 30_000,
+	})
+	if (!shell.ok) return sandboxOperationPreflightResult(shell.error)
+	if (shell.value.exitCode !== 0) return { ok: true, value: profilePreflightEvidence(false, shell.value.summary) }
+
 	const env = await sandbox.setEnv(preflightEnv)
 	if (!env.ok) return sandboxOperationPreflightResult(env.error)
 	if (env.value.exitCode !== 0) return { ok: true, value: profilePreflightEvidence(false, env.value.summary) }
 
 	const output = await sandbox.runCommand({
-		label: 'Agent Run Profile sandbox runtime environment check',
-		command: { executable: preflightCommand.executable, args: [...preflightCommand.args], cwd: preflightCommand.cwd },
-		commandSecretEnv: {},
+		...preflightRuntimeEnvCommand,
 		timeoutMs: 30_000,
 	})
 	if (!output.ok) return sandboxOperationPreflightResult(output.error)
@@ -190,8 +198,15 @@ if (import.meta.vitest) {
 			expect(result).toEqual({ ok: true, value: profilePreflightEvidence(true, 'Agent Run Profile sandbox preflight passed.') })
 			expect(runCommands).toEqual([
 				{
-					command: { executable: 'sh', args: ['-lc', 'test "$GORCHESTRA_PREFLIGHT" = "ok"'], cwd: '/workspace' },
+					command: { executable: 'sh', args: ['-c', 'command -v sh >/dev/null'], cwd: '/workspace' },
+					env: {},
+					root: true,
+					timeoutMs: 30_000,
+				},
+				{
+					command: { executable: 'sh', args: ['-c', 'test "$GORCHESTRA_PREFLIGHT" = "ok"'], cwd: '/workspace' },
 					env: { GORCHESTRA_PREFLIGHT: 'ok' },
+					root: true,
 					timeoutMs: 30_000,
 				},
 			])

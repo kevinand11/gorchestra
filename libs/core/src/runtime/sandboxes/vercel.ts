@@ -104,6 +104,7 @@ async function runVercelCommand(handle: VercelSandbox, input: RawSandboxRunComma
 		args: input.command.args,
 		cwd: vercelFsPath(input.command.cwd),
 		env: input.env,
+		sudo: input.root,
 		timeoutMs: input.timeoutMs,
 	})
 	return {

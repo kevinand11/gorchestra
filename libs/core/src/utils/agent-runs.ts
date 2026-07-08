@@ -211,6 +211,7 @@ export async function completeAgentRunByPurposeAndAcceptSandboxRelease(
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { createTestCoreServices, defaultAgentRunSandboxConfig, localStamp, seedProject } = await import('./test-helpers')
+	const { ensureGitRequirement, verifyPosixShellRequirement } = await import('./agent-run-runtime-requirements')
 
 	describe('createInstructedModelAgentRunAndRequestPreparation', () => {
 		it('creates a Model Agent Run, records its instruction, and requests Agent Run preparation', async () => {
@@ -268,9 +269,9 @@ if (import.meta.vitest) {
 					sandboxConfig: defaultAgentRunSandboxConfig(),
 				},
 				modelUseOverride: null,
-				sourceRuntimeRequirements: [],
+				sourceRuntimeRequirements: [verifyPosixShellRequirement, ensureGitRequirement],
 				runtimeRequirementOverrides: [],
-				desiredRuntimeRequirements: [],
+				desiredRuntimeRequirements: [verifyPosixShellRequirement, ensureGitRequirement],
 				blocked: { type: 'preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
 				sandbox: null,
 				started: { at: '2026-06-10T12:00:00.000Z' },

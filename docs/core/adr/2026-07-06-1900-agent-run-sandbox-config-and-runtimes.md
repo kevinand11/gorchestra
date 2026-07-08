@@ -1,5 +1,7 @@
 # Agent Run Sandbox Config and Runtimes
 
+Supersession note: source/purpose runtime requirements now treat root-runnable POSIX-compatible `sh` as a required sandbox capability, and Agent Run Profile Preflight verifies root `sh` availability before its runtime environment smoke check rather than using a shell-free `true` command.
+
 Agent Run Profiles store explicit Agent Run Sandbox Config. The config names the sandbox source, vCPU resources, and network policy that future Agent Runs snapshot. V1 source variants are `consumer-managed`, `vercel-runtime`, and `vercel-vcr-image`.
 
 Core resolves saved config into a Sandbox Runtime at the boundary where sandbox work runs. `consumer-managed` resolves to the Consumer-provided runtime. Vercel runtime and VCR image sources resolve to Core-owned Vercel Sandbox Runtime behavior. Vercel source configs store nested credential Secret references for token, team id, and project id; the config-to-runtime resolver loads active Secrets, resolves plaintext through the Secret Core Service, validates non-empty credential values, and passes resolved credentials into the Vercel constructor. Vercel runtime code does not load Secrets itself.

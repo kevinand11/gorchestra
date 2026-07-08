@@ -1,3 +1,9 @@
+import {
+	ensureGitRequirement,
+	sandboxPathFromSegments,
+	verifyPosixShellRequirement,
+	type AgentRunRunCommandRuntimeRequirement,
+} from './agent-run-runtime-requirements'
 import type { Result } from './types'
 import type { AgentRunPurpose } from '../domain/agent-run'
 import {
@@ -10,7 +16,7 @@ import type { Id } from '../domain/commons'
 import type { Delivery } from '../domain/delivery'
 import type { Plan } from '../domain/plan'
 import type { Project } from '../domain/project'
-import type { Repository } from '../domain/repository'
+import type { GitHubRepositoryConfig, Repository } from '../domain/repository'
 import type { Revision, RevisionGate, RevisionScope } from '../domain/revision'
 import type { Slice } from '../domain/slice'
 import type { InvalidCoreServiceOutputError, InvariantViolationError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
@@ -69,8 +75,8 @@ export async function resolveAgentRunSourceRuntimeRequirements(
 	const context = await sourceRuntimeContextForAgentRunPurpose(storage, purpose)
 	if (!context.ok) return context
 
-	const requirements = sourceRuntimeRequirementsForContext(context.value)
-	return requirements.ok ? validateSourceRuntimeRequirements(requirements.value) : requirements
+	const requirements = sourceSpecificRuntimeRequirementsForContext(context.value)
+	return requirements.ok ? validateSourceRuntimeRequirements([verifyPosixShellRequirement, ...requirements.value]) : requirements
 }
 
 async function sourceRuntimeContextForAgentRunPurpose(
@@ -265,22 +271,31 @@ async function repositoryForSourceControlDelivery(
 	}
 }
 
-function sourceRuntimeRequirementsForContext(
+function sourceSpecificRuntimeRequirementsForContext(
 	context: AgentRunSourceRuntimeContext,
 ): Result<AgentRunRuntimeRequirement[], InvariantViolationError> {
 	switch (context.project.source.type) {
 		case 'source-control':
-			return sourceControlRuntimeRequirementsForContext(context)
+			return sourceControlSpecificRuntimeRequirementsForContext(context)
 		default:
 			throw new Error(`Unexpected Project Source Type: ${String(context.project.source.type satisfies never)}`)
 	}
 }
 
-function sourceControlRuntimeRequirementsForContext(
+function sourceControlSpecificRuntimeRequirementsForContext(
+	context: AgentRunSourceRuntimeContext,
+): Result<AgentRunRuntimeRequirement[], InvariantViolationError> {
+	const purposeSpecific = sourceControlPurposeSpecificRuntimeRequirements(context)
+	return purposeSpecific.ok ? { ok: true, value: [ensureGitRequirement, ...purposeSpecific.value] } : purposeSpecific
+}
+
+function sourceControlPurposeSpecificRuntimeRequirements(
 	context: AgentRunSourceRuntimeContext,
 ): Result<AgentRunRuntimeRequirement[], InvariantViolationError> {
 	switch (context.purpose.type) {
 		case 'planning':
+			if (!isPlanningSourceRuntimeContext(context)) throw new Error('Expected Planning Source Runtime Context.')
+			return sourceControlPlanningRuntimeRequirements(context)
 		case 'revision-planning':
 		case 'execution':
 		case 'revision-execution':
@@ -288,6 +303,79 @@ function sourceControlRuntimeRequirementsForContext(
 		default:
 			throw new Error(`Unexpected Agent Run Purpose: ${String(context.purpose satisfies never)}`)
 	}
+}
+
+function sourceControlPlanningRuntimeRequirements(
+	context: PlanningSourceRuntimeContext,
+): Result<AgentRunRuntimeRequirement[], InvariantViolationError> {
+	const requirements: AgentRunRuntimeRequirement[] = []
+	for (const repository of context.repositories) {
+		const requirement = planningCheckoutRequirementForRepository(repository)
+		if (!requirement.ok) return requirement
+		requirements.push(requirement.value)
+	}
+	return { ok: true, value: requirements }
+}
+
+function isPlanningSourceRuntimeContext(context: AgentRunSourceRuntimeContext): context is PlanningSourceRuntimeContext {
+	return context.purpose.type === 'planning'
+}
+
+function planningCheckoutRequirementForRepository(
+	repository: Repository,
+): Result<AgentRunRunCommandRuntimeRequirement, InvariantViolationError> {
+	const config = repository.config
+	switch (config.provider) {
+		case 'github':
+			return githubPlanningCheckoutRequirement({ ...repository, config })
+		default:
+			throw new Error(`Unexpected Repository Provider: ${String(config.provider)}`)
+	}
+}
+
+const sourceControlTokenEnvName = 'GORCHESTRA_SOURCE_CONTROL_TOKEN'
+
+function githubPlanningCheckoutRequirement(
+	repository: Repository & { config: GitHubRepositoryConfig },
+): Result<AgentRunRunCommandRuntimeRequirement, InvariantViolationError> {
+	const checkoutPath = sandboxPathFromSegments([repository.config.owner, repository.config.name, repository.id], '-')
+	if (!checkoutPath.ok) return checkoutPath
+
+	return {
+		ok: true,
+		value: {
+			type: 'run-command',
+			label: `Checkout GitHub repository ${repository.config.owner}/${repository.config.name}`,
+			command: {
+				executable: 'sh',
+				args: ['-c', githubPlanningCheckoutScript(repository.config, checkoutPath.value)],
+				cwd: '/workspace',
+			},
+			root: false,
+			commandSecretEnv: { [sourceControlTokenEnvName]: repository.config.secretId },
+		},
+	}
+}
+
+function githubPlanningCheckoutScript(config: GitHubRepositoryConfig, checkoutPath: string): string {
+	const owner = shellSingleQuote(config.owner)
+	const name = shellSingleQuote(config.name)
+	const path = shellSingleQuote(checkoutPath)
+	return `set -eu
+repo_owner=${owner}
+repo_name=${name}
+checkout_path=${path}
+repo_url="https://x-access-token:\${${sourceControlTokenEnvName}}@github.com/\${repo_owner}/\${repo_name}.git"
+
+rm -rf "$checkout_path"
+GIT_TERMINAL_PROMPT=0 git -c credential.helper= clone --depth 1 "$repo_url" "$checkout_path"
+git -C "$checkout_path" remote set-url origin "https://github.com/\${repo_owner}/\${repo_name}.git"
+test -d "$checkout_path/.git"
+`
+}
+
+function shellSingleQuote(value: string): string {
+	return `'${value.replaceAll("'", "'\\''")}'`
 }
 
 function validateSourceRuntimeRequirements(
@@ -324,7 +412,60 @@ if (import.meta.vitest) {
 					type: 'planning',
 					planId: '01k00000000000000000000028',
 				}),
-			).resolves.toEqual({ ok: true, value: [] })
+			).resolves.toEqual({ ok: true, value: [verifyPosixShellRequirement, ensureGitRequirement] })
+		})
+
+		it('adds Source Control Planning checkout requirements for Project repositories in id order', async () => {
+			const options = createTestCoreServices()
+			seedProject(options.tx, '01k00000000000000000000030')
+			options.tx.plans.records.set('01k00000000000000000000028', {
+				id: '01k00000000000000000000028',
+				projectId: '01k00000000000000000000030',
+				title: 'Plan',
+				created: localStamp(),
+				closed: null,
+			})
+			options.tx.repositories.records.set('01k00000000000000000000035', {
+				id: '01k00000000000000000000035',
+				projectId: '01k00000000000000000000030',
+				config: { provider: 'github', owner: 'Beta Owner', name: 'Second Repo', secretId: '01k00000000000000000000041' },
+				created: stamp,
+			})
+			options.tx.repositories.records.set('01k00000000000000000000034', {
+				id: '01k00000000000000000000034',
+				projectId: '01k00000000000000000000030',
+				config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: '01k00000000000000000000040' },
+				created: stamp,
+			})
+
+			const result = await resolveAgentRunSourceRuntimeRequirements(options.storage, {
+				type: 'planning',
+				planId: '01k00000000000000000000028',
+			})
+
+			if (!result.ok) throw new Error('Expected source runtime requirement resolution to pass.')
+			expect(result.value.map(runtimeRequirementLabel)).toEqual([
+				'Verify POSIX shell is available',
+				'Ensure Git is available',
+				'Checkout GitHub repository Octo/Repo',
+				'Checkout GitHub repository Beta Owner/Second Repo',
+			])
+			const checkout = result.value[2]
+			if (checkout === undefined || checkout.type !== 'run-command')
+				throw new Error('Expected checkout requirement to be a run command.')
+			expect(checkout).toMatchObject({
+				type: 'run-command',
+				label: 'Checkout GitHub repository Octo/Repo',
+				command: { executable: 'sh', cwd: '/workspace' },
+				root: false,
+				commandSecretEnv: { GORCHESTRA_SOURCE_CONTROL_TOKEN: '01k00000000000000000000040' },
+			})
+			expect(checkout.command.args[1]).toContain("repo_owner='Octo'")
+			expect(checkout.command.args[1]).toContain("repo_name='Repo'")
+			expect(checkout.command.args[1]).toContain("checkout_path='/workspace/Octo-Repo-01k00000000000000000000034'")
+			expect(checkout.command.args[1]).toContain('git -c credential.helper= clone --depth 1 "$repo_url" "$checkout_path"')
+			expect(checkout.command.args[1]).toContain('remote set-url origin "https://github.com/${repo_owner}/${repo_name}.git"')
+			expect(checkout.command.args[1]).toContain('test -d "$checkout_path/.git"')
 		})
 
 		it('resolves source-control execution source requirements through Slice and Delivery to Project', async () => {
@@ -339,7 +480,7 @@ if (import.meta.vitest) {
 					sliceId: '01k00000000000000000000042',
 					mode: { type: 'initial' },
 				}),
-			).resolves.toEqual({ ok: true, value: [] })
+			).resolves.toEqual({ ok: true, value: [verifyPosixShellRequirement, ensureGitRequirement] })
 		})
 
 		it('resolves source-control revision planning source requirements through a Slice Artifact scope', async () => {
@@ -364,7 +505,7 @@ if (import.meta.vitest) {
 					type: 'revision-planning',
 					revisionGateId: '01k00000000000000000000046',
 				}),
-			).resolves.toEqual({ ok: true, value: [] })
+			).resolves.toEqual({ ok: true, value: [verifyPosixShellRequirement, ensureGitRequirement] })
 		})
 
 		it('resolves source-control revision execution source requirements through a Revision scope and ignores action id', async () => {
@@ -390,7 +531,7 @@ if (import.meta.vitest) {
 					revisionId: '01k00000000000000000000047',
 					actionId: '01k00000000000000000000099',
 				}),
-			).resolves.toEqual({ ok: true, value: [] })
+			).resolves.toEqual({ ok: true, value: [verifyPosixShellRequirement, ensureGitRequirement] })
 		})
 	})
 
@@ -411,6 +552,17 @@ if (import.meta.vitest) {
 			})
 		})
 	})
+
+	function runtimeRequirementLabel(requirement: AgentRunRuntimeRequirement): string {
+		switch (requirement.type) {
+			case 'environment-secret':
+				return `Set environment variable ${requirement.envName}`
+			case 'run-command':
+				return requirement.label
+			default:
+				throw new Error(`Unexpected runtime requirement type: ${String(requirement satisfies never)}`)
+		}
+	}
 
 	function seedDeliveryArtifact(tx: ReturnType<typeof createTestCoreServices>['tx'], id: Id, deliveryId: Id) {
 		tx.deliveryArtifacts.records.set(id, {

@@ -234,6 +234,7 @@ type PreparedSandboxOperation =
 			type: 'run-command'
 			label: string
 			command: { executable: string; args: string[]; cwd: string | null }
+			root: boolean
 			commandSecretEnv: Record<string, string>
 	  }
 
@@ -273,6 +274,7 @@ async function operationForRuntimeRequirement(
 							type: 'run-command',
 							label: requirement.label,
 							command: requirement.command,
+							root: requirement.root,
 							commandSecretEnv: commandSecretEnv.value,
 						},
 					}
@@ -344,6 +346,7 @@ function runPreparedSandboxOperation(
 			return sandbox.runCommand({
 				label: operation.label,
 				command: operation.command,
+				root: operation.root,
 				commandSecretEnv: operation.commandSecretEnv,
 				timeoutMs: defaultSandboxCommandTimeoutMs,
 			})
@@ -585,6 +588,7 @@ if (import.meta.vitest) {
 						type: 'run-command',
 						label: 'Install',
 						command: { executable: 'npm', args: ['install'], cwd: '/workspace' },
+						root: false,
 						commandSecretEnv: {},
 					},
 				],
@@ -599,6 +603,7 @@ if (import.meta.vitest) {
 				{
 					command: { executable: 'npm', args: ['install'], cwd: '/workspace' },
 					env: { NPM_TOKEN: 'prepared-token' },
+					root: false,
 					timeoutMs: 600_000,
 				},
 			])

@@ -78,9 +78,11 @@ async function findMicrosandboxSandbox(name: string): Promise<Sandbox | null> {
 }
 
 async function runExternalCommand(sandbox: Sandbox, input: RawSandboxRunCommandInput) {
-	const output = await sandbox.execWith(input.command.executable, (exec) =>
-		exec.args(input.command.args).cwd(input.command.cwd).envs(input.env).timeout(input.timeoutMs),
-	)
+	const output = await sandbox.execWith(input.command.executable, (exec) => {
+		let configured = exec.args(input.command.args).cwd(input.command.cwd).envs(input.env).timeout(input.timeoutMs)
+		if (input.root) configured = configured.user('root')
+		return configured
+	})
 	return {
 		exitCode: output.code,
 		summary: output.code === 0 ? 'Command completed.' : `Command exited with status ${output.code}.`,

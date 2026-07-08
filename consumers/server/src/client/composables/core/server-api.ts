@@ -53,6 +53,7 @@ export type AgentRunRunCommandRequirement = {
 	type: 'run-command'
 	label: string
 	command: { executable: string; args: string[]; cwd: string | null }
+	root: boolean
 	commandSecretEnv: Record<string, string>
 }
 export type AgentRunRuntimeRequirement = AgentRunEnvironmentSecretRequirement | AgentRunRunCommandRequirement

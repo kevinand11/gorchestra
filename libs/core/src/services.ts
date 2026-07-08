@@ -121,6 +121,7 @@ export type SandboxReleaseOutput = PipeOutput<typeof sandboxReleaseOutputPipe>
 export interface RawSandboxRunCommandInput {
 	command: { executable: string; args: string[]; cwd: string }
 	env: Record<string, string>
+	root: boolean
 	timeoutMs: number
 }
 

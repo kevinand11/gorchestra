@@ -28,6 +28,7 @@ export const agentRunRunCommandRequirementPipe = v.object({
 		args: v.array(v.string()),
 		cwd: v.nullable(sandboxPathPipe),
 	}),
+	root: v.boolean(),
 	commandSecretEnv: commandSecretEnvPipe,
 })
 export type AgentRunRunCommandRequirement = PipeOutput<typeof agentRunRunCommandRequirementPipe>
@@ -131,7 +132,7 @@ export function runtimeRequirementKey(requirement: AgentRunRuntimeRequirement): 
 		case 'environment-secret':
 			return `environment-secret:${requirement.envName}:${requirement.secretId}`
 		case 'run-command':
-			return `run-command:${requirement.label}:${requirement.command.executable}:${JSON.stringify(requirement.command.args)}:${requirement.command.cwd ?? '/workspace'}:${JSON.stringify(sortedCommandSecretEnv(requirement.commandSecretEnv))}`
+			return `run-command:${requirement.label}:${requirement.command.executable}:${JSON.stringify(requirement.command.args)}:${requirement.command.cwd ?? '/workspace'}:${requirement.root}:${JSON.stringify(sortedCommandSecretEnv(requirement.commandSecretEnv))}`
 		default:
 			throw new Error(`Unexpected Agent Run Runtime Requirement type: ${String(requirement satisfies never)}`)
 	}
@@ -197,9 +198,10 @@ if (import.meta.vitest) {
 					type: 'run-command',
 					label: 'Install dependencies',
 					command: { executable: 'pnpm', args: ['install', '--frozen-lockfile'], cwd: '/workspace/repos/repository-1' },
+					root: false,
 					commandSecretEnv: { NPM_TOKEN: '01k00000000000000000000040' },
 				}),
-			).toMatchObject({ type: 'run-command', label: 'Install dependencies' })
+			).toMatchObject({ type: 'run-command', label: 'Install dependencies', root: false })
 		})
 
 		it('rejects host absolute paths as Run Command cwd values', () => {
@@ -208,6 +210,7 @@ if (import.meta.vitest) {
 					type: 'run-command',
 					label: 'Bad cwd',
 					command: { executable: 'pnpm', args: [], cwd: '/etc' },
+					root: false,
 					commandSecretEnv: {},
 				}),
 			).toMatchObject({ valid: false })
@@ -218,6 +221,21 @@ if (import.meta.vitest) {
 			const second = { type: 'environment-secret' as const, envName: 'NPM_TOKEN', secretId: '01k00000000000000000000041' }
 			expect(firstDuplicateRuntimeRequirement([first, second])).toBeNull()
 			expect(firstDuplicateRuntimeRequirement([first, second, first])).toBe(first)
+		})
+
+		it('treats root and default-user run commands as distinct requirements', () => {
+			const command = {
+				type: 'run-command' as const,
+				label: 'Install dependencies',
+				command: { executable: 'pnpm', args: ['install'], cwd: '/workspace' },
+				commandSecretEnv: {},
+			}
+			expect(
+				firstDuplicateRuntimeRequirement([
+					{ ...command, root: false },
+					{ ...command, root: true },
+				]),
+			).toBeNull()
 		})
 	})
 

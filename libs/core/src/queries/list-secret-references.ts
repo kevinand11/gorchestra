@@ -555,6 +555,7 @@ if (import.meta.vitest) {
 					type: 'run-command',
 					label: 'Install packages',
 					command: { executable: 'pnpm', args: ['install'], cwd: '/workspace/repos/repository-1' },
+					root: false,
 					commandSecretEnv: { NPM_TOKEN: '01k00000000000000000000040', OTHER_TOKEN: '01k00000000000000000000041' },
 				},
 			],

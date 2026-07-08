@@ -1,18 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
-import type { AgentRunEvent } from '../domain/agent-run'
-import { idPipe, nonEmptyTrimmedStringPipe, type AuditStamp, type Id, type RuntimeRecord } from '../domain/commons'
-import type { Plan, PlanWithPlanningAgentRun } from '../domain/plan'
-import type { Project } from '../domain/project'
-import type { InvalidInputError, ResourceArchivedError } from '../errors'
-import type { CoreRuntime } from '../runtime'
 import { acceptAgentRunModelTurn } from './utils/dispatch'
-import { planningInstructionForProject } from '../runtime/agent-runs/instructions'
-import type { CoreDispatchRequest, CoreStorage } from '../services'
-import { appendAgentRunEvent, createInstructedModelAgentRunAndRequestPreparation } from '../utils/agent-runs'
-import type { CoreRuntimeValues } from '../utils/runtime-values'
-import type { Result as CoreResult } from '../utils/types'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
 import { buildCommandHandler } from './utils/handler'
 import {
@@ -25,6 +14,17 @@ import {
 	runtimeRecord,
 	withTransaction,
 } from './utils/storage'
+import type { AgentRunEvent } from '../domain/agent-run'
+import { idPipe, nonEmptyTrimmedStringPipe, type AuditStamp, type Id, type RuntimeRecord } from '../domain/commons'
+import type { Plan, PlanWithPlanningAgentRun } from '../domain/plan'
+import type { Project } from '../domain/project'
+import type { InvalidInputError, ResourceArchivedError } from '../errors'
+import type { CoreRuntime } from '../runtime'
+import { planningInstructionForProject } from '../runtime/agent-runs/instructions'
+import type { CoreDispatchRequest, CoreStorage } from '../services'
+import { appendAgentRunEvent, createInstructedModelAgentRunAndRequestPreparation } from '../utils/agent-runs'
+import type { CoreRuntimeValues } from '../utils/runtime-values'
+import type { Result as CoreResult } from '../utils/types'
 
 const createPlanInputPipe = v.object({
 	projectId: idPipe,
@@ -226,6 +226,7 @@ if (import.meta.vitest) {
 		seedAgentRunProfile,
 		seedProject,
 	} = await import('../utils/test-helpers')
+	const { ensureGitRequirement, verifyPosixShellRequirement } = await import('../utils/agent-run-runtime-requirements')
 
 	describe('createPlan command', () => {
 		it('validates input before reading storage', async () => {
@@ -381,9 +382,9 @@ if (import.meta.vitest) {
 				sandboxConfig: defaultAgentRunSandboxConfig(),
 			},
 			modelUseOverride: null,
-			sourceRuntimeRequirements: [],
+			sourceRuntimeRequirements: [verifyPosixShellRequirement, ensureGitRequirement],
 			runtimeRequirementOverrides: [],
-			desiredRuntimeRequirements: [],
+			desiredRuntimeRequirements: [verifyPosixShellRequirement, ensureGitRequirement],
 			blocked: { type: 'preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
 			sandbox: null,
 			started: { at: '2026-06-10T12:00:00.000Z' },

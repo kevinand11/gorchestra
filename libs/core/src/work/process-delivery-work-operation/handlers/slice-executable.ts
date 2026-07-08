@@ -6,7 +6,7 @@ import { sourceControlSliceExecutionInstruction } from '../../../runtime/agent-r
 import { appendAgentRunEvent, createInstructedModelAgentRunAndRequestPreparation } from '../../../utils/agent-runs'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
 import type { Result as CoreResult } from '../../../utils/types'
-import type { DeliveryHandlerContext, DeliveryWorkResolution, DeliveryWorkHandlerResult } from '../../delivery-work/types'
+import type { DeliveryHandlerContext, DeliveryWorkHandlerResult, DeliveryWorkResolution } from '../../delivery-work/types'
 
 export async function handleSliceExecutable(
 	context: DeliveryHandlerContext,
@@ -107,6 +107,7 @@ if (import.meta.vitest) {
 	const { buildDeliveryContext } = await import('../../../utils/delivery-context')
 	const { createTestCoreServices, defaultAgentRunSandboxConfig, seedDelivery, seedSlice, seedSelectableModel } =
 		await import('../../../utils/test-helpers')
+	const { ensureGitRequirement, verifyPosixShellRequirement } = await import('../../../utils/agent-run-runtime-requirements')
 
 	describe('handleSliceExecutable', () => {
 		it('claims initial executable Slice work with an instructed Agent Run and Slice instruction input event', async () => {
@@ -140,9 +141,9 @@ if (import.meta.vitest) {
 					sandboxConfig: defaultAgentRunSandboxConfig(),
 				},
 				modelUseOverride: null,
-				sourceRuntimeRequirements: [],
+				sourceRuntimeRequirements: [verifyPosixShellRequirement, ensureGitRequirement],
 				runtimeRequirementOverrides: [],
-				desiredRuntimeRequirements: [],
+				desiredRuntimeRequirements: [verifyPosixShellRequirement, ensureGitRequirement],
 				blocked: { type: 'preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
 				sandbox: null,
 				started: { at: '2026-06-10T12:00:00.000Z' },

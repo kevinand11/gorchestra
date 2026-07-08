@@ -58,8 +58,8 @@
 				<section class="border-b border-dimmer px-3 py-3">
 					<h2 class="m-0 text-sz-helper font-semibold">Sandbox preflight</h2>
 					<p class="m-0 mt-1 text-sz-helper leading-5 text-dim">
-						Create a temporary sandbox from this profile, run a smoke check, and release it without changing saved profile
-						state.
+						Create a temporary sandbox from this profile, verify root shell command execution and runtime environment
+						propagation, then release it without changing saved profile state.
 					</p>
 					<div class="mt-3 grid gap-2">
 						<UiButton
