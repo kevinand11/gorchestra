@@ -4,7 +4,7 @@ import { setFormDraftArrayFactory } from './form-draft'
 setFormDraftArrayFactory((factory) => new FormDraftArray(factory))
 
 export { FormDraftArray } from './array'
-export { FormDraft } from './form-draft'
+export { FormDraft, syncFormDraftFromEntity } from './form-draft'
 export { nestedFormDraftPipe } from './nested'
 export { FormDraftMultiSelect, FormDraftSelect } from './select'
 export type { FormDraftMultiSelectOptions, FormDraftSelectOptions } from './select'

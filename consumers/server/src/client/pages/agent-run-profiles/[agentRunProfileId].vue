@@ -151,7 +151,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { syncFormDraftFromEntity } from '@gorchestra/form-draft'
+import { computed } from 'vue'
 
 import AgentRunProfileForm from '../../components/portfolio/agent-run-profiles/AgentRunProfileForm.vue'
 import UiButton from '../../components/ui/UiButton.vue'
@@ -205,13 +206,7 @@ const updatedLabel = computed(() => {
 	return profile === null || profile.updated === null ? 'Never' : formatDate(profile.updated.at)
 })
 
-watch(
-	() => agentRunProfile.value,
-	(profile) => {
-		if (profile !== null) agentRunProfileForm.loadEntity(profile)
-	},
-	{ immediate: true },
-)
+syncFormDraftFromEntity(() => agentRunProfile.value, agentRunProfileForm)
 
 async function requestAgentRunProfileArchive(): Promise<void> {
 	const profile = agentRunProfile.value

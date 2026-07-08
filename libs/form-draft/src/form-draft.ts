@@ -1,5 +1,5 @@
 import { differ, v } from 'valleyed'
-import { nextTick } from 'vue'
+import { nextTick, watch, type WatchSource, type WatchStopHandle } from 'vue'
 
 import type { FormDraftArray } from './array'
 import { LocalDataClass } from './data-class'
@@ -22,6 +22,19 @@ class FormDraftValidationError extends Error {
 
 export function setFormDraftArrayFactory(factory: FormDraftArrayFactory): void {
 	formDraftArrayFactory = factory
+}
+
+export function syncFormDraftFromEntity<TEntity>(
+	source: WatchSource<TEntity | null | undefined>,
+	draft: { loadEntity(entity: TEntity): unknown },
+): WatchStopHandle {
+	return watch(
+		source,
+		(entity) => {
+			if (entity !== null && entity !== undefined) draft.loadEntity(entity)
+		},
+		{ immediate: true, flush: 'sync' },
+	)
 }
 
 export abstract class FormDraft<Entity, Model, Fields extends object> extends LocalDataClass<Fields> {

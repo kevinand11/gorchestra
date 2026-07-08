@@ -259,6 +259,21 @@ class PricingFormDraft extends FormDraft<PricingModel | null, PricingModel | nul
 
 Use submit-model conversion for shape or unit changes. Do not use field pipes for live cleanup of text while the user types.
 
+## Syncing fetched entities into drafts
+
+When a Nuxt/Vue page copies asynchronously fetched entity data into a mutable draft, use `syncFormDraftFromEntity()` rather than a hand-written watcher:
+
+```ts
+import { syncFormDraftFromEntity } from '@gorchestra/form-draft'
+
+const profileForm = new AgentRunProfileFormDraft()
+const { data: profile } = useFetchAction(...)
+
+syncFormDraftFromEntity(() => profile.value, profileForm)
+```
+
+The helper ignores `null`/`undefined` values and calls `loadEntity()` with `{ immediate: true, flush: 'sync' }`. The synchronous flush is important for SSR hydration: server-prefetched query data can arrive after setup begins but before render, and the draft must be loaded before the server renders form controls.
+
 ## Optional select values
 
 Use explicit `null` for optional single-select fields. Do not encode “none” as an empty string sentinel.

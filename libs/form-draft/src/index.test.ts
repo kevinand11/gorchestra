@@ -1,8 +1,8 @@
 import { v } from 'valleyed'
 import { describe, expect, it } from 'vitest'
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
 
-import { FormDraft, FormDraftMultiSelect, FormDraftSelect, nestedFormDraftPipe } from './index'
+import { FormDraft, FormDraftMultiSelect, FormDraftSelect, nestedFormDraftPipe, syncFormDraftFromEntity } from './index'
 
 type NameFields = { name: string }
 type NameModel = { name: string }
@@ -98,6 +98,21 @@ describe('FormDraft', () => {
 		expect(factory.valid).toBe(true)
 		expect(factory.dirty).toBe(false)
 		expect(factory.toModel()).toEqual({ name: '  Loaded  ' })
+	})
+
+	it('syncs nullable entity sources into drafts immediately and synchronously', () => {
+		const entity = ref<NameModel | null>(null)
+		const factory = new NameFormDraft()
+		const stop = syncFormDraftFromEntity(() => entity.value, factory)
+
+		expect(factory.name).toBe('')
+
+		entity.value = { name: 'Loaded during prefetch' }
+
+		expect(factory.name).toBe('Loaded during prefetch')
+		expect(factory.dirty).toBe(false)
+
+		stop()
 	})
 
 	it('throws a draft validation error from toModel when invalid', async () => {
