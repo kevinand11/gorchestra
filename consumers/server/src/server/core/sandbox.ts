@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto'
+import { mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
 
 import type { CoreServices, RawSandboxRunCommandInput } from '@gorchestra/core'
 import {
 	Destination,
+	type MountBuilder,
 	type NetworkBuilder,
 	NetworkPolicy,
 	type PatchBuilder,
@@ -15,6 +18,7 @@ import {
 
 export interface MicrosandboxSandboxProviderInput {
 	coreStorageNamespace: string
+	sandboxRootDir: string
 }
 
 const workspacePath = '/workspace'
@@ -33,7 +37,8 @@ export function createMicrosandboxSandboxProvider(input: MicrosandboxSandboxProv
 		kind: 'consumer-managed',
 		create: async ({ key, config }) => {
 			const name = microsandboxName(input.coreStorageNamespace, key)
-			return microsandboxCoreSandbox(name, await createMicrosandboxSandbox(name, config))
+			const hostWorkspaceDir = hostSandboxWorkspaceDir(input.sandboxRootDir, name)
+			return microsandboxCoreSandbox(name, await createMicrosandboxSandbox(name, config, hostWorkspaceDir))
 		},
 		find: async ({ key }) => {
 			const name = microsandboxName(input.coreStorageNamespace, key)
@@ -52,12 +57,15 @@ function microsandboxCoreSandbox(name: string, sandbox: Sandbox) {
 	}
 }
 
-async function createMicrosandboxSandbox(name: string, config: ConsumerManagedSandboxConfig): Promise<Sandbox> {
+async function createMicrosandboxSandbox(name: string, config: ConsumerManagedSandboxConfig, hostWorkspaceDir: string): Promise<Sandbox> {
+	await mkdir(hostWorkspaceDir, { recursive: true })
+
 	let builder = Sandbox.builder(name)
 		.image(config.source.ociImage)
 		.cpus(config.resources.vcpus)
 		.memory(sandboxMemoryMiBForVcpus(config.resources.vcpus))
 		.patch((patch) => patchBuilder(patch).mkdir(workspacePath))
+		.volume(workspacePath, (mount) => mountBuilder(mount).bind(hostWorkspaceDir))
 		.detached(true)
 		.replace()
 
@@ -123,6 +131,10 @@ function sandboxMemoryMiBForVcpus(vcpus: number): number {
 	return vcpus * 2048
 }
 
+function hostSandboxWorkspaceDir(sandboxRootDir: string, name: string): string {
+	return join(sandboxRootDir, 'sandboxes', name)
+}
+
 function microsandboxName(coreStorageNamespace: string, key: string): string {
 	const digest = createHash('sha256').update(coreStorageNamespace).update('\0').update(key).digest('base64url')
 	return `gorchestra-${digest}`
@@ -159,6 +171,10 @@ function patchBuilder(patch: unknown) {
 	return patch as InstanceType<typeof PatchBuilder>
 }
 
+function mountBuilder(mount: unknown) {
+	return mount as InstanceType<typeof MountBuilder>
+}
+
 function microsandboxHostRule(host: string) {
 	return Rule.allowEgress(Destination.domain(host))
 }
@@ -186,6 +202,12 @@ if (import.meta.vitest) {
 			expect(parentDir('/workspace/.gorchestra/runtime-env.json')).toBe('/workspace/.gorchestra')
 			expect(parentDir('/workspace')).toBe('/')
 			expect(parentDir('/')).toBe('/')
+		})
+
+		it('derives host workspace directories for bound sandboxes', () => {
+			expect(hostSandboxWorkspaceDir('/data/gorchestra', 'gorchestra-abc')).toBe(
+				join('/data/gorchestra', 'sandboxes', 'gorchestra-abc'),
+			)
 		})
 
 		it('recognizes Microsandbox not-found errors', () => {

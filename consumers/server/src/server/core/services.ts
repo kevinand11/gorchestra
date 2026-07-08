@@ -20,6 +20,7 @@ export function createCoreServices(storage: CoreStorage, options: CreateCoreServ
 		},
 		sandbox: createMicrosandboxSandboxProvider({
 			coreStorageNamespace: options.coreStorageNamespace,
+			sandboxRootDir: options.sandboxRootDir,
 		}),
 		dispatcher: options.dispatcher,
 	}
