@@ -117,7 +117,7 @@ function failedProbeCheck(): CorePreflightCheck {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreServices, createTestCoreStorage } = await import('./utils/test-helpers')
+	const { createTestCoreServices, createTestCoreStorage, noopRawSandboxInstance } = await import('./utils/test-helpers')
 
 	const secrets: CoreServices['secrets'] = {
 		preflight: () => Promise.resolve({ ok: true }),
@@ -127,20 +127,8 @@ if (import.meta.vitest) {
 
 	const sandbox: CoreServices['sandbox'] = {
 		kind: 'consumer-managed',
-		create: () =>
-			Promise.resolve({
-				runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command succeeded.', stdout: null, stderr: null }),
-				readFile: () => Promise.resolve(null),
-				writeFile: () => Promise.resolve(),
-				release: () => Promise.resolve({ summary: 'Sandbox released.' }),
-			}),
-		find: () =>
-			Promise.resolve({
-				runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command succeeded.', stdout: null, stderr: null }),
-				readFile: () => Promise.resolve(null),
-				writeFile: () => Promise.resolve(),
-				release: () => Promise.resolve({ summary: 'Sandbox released.' }),
-			}),
+		create: () => Promise.resolve(noopRawSandboxInstance()),
+		find: () => Promise.resolve(noopRawSandboxInstance()),
 	}
 	const dispatcher: CoreServices['dispatcher'] = {
 		preflight: () => Promise.resolve({ ok: true }),

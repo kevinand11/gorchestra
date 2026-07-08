@@ -6,6 +6,41 @@ import type { Result } from './types'
 
 export type AgentRunRunCommandRuntimeRequirement = Extract<AgentRunRuntimeRequirements[number], { type: 'run-command' }>
 
+const ensureSearchToolsScript = `set -eu
+
+ensure_fd_alias() {
+  if ! command -v fd >/dev/null && command -v fdfind >/dev/null; then
+    ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+  fi
+}
+
+ensure_fd_alias
+
+if command -v rg >/dev/null && command -v fd >/dev/null; then
+  exit 0
+fi
+
+if command -v apk >/dev/null; then
+  apk add --no-cache ripgrep fd
+elif command -v apt-get >/dev/null; then
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y ripgrep fd-find
+elif command -v dnf >/dev/null; then
+  dnf install -y ripgrep fd-find
+elif command -v yum >/dev/null; then
+  yum install -y ripgrep fd-find
+elif command -v microdnf >/dev/null; then
+  microdnf install -y ripgrep fd-find
+else
+  echo "rg and fd are not installed and no supported package manager was found. Install ripgrep and fd in the Agent Run sandbox image." >&2
+  exit 1
+fi
+
+ensure_fd_alias
+command -v rg >/dev/null
+command -v fd >/dev/null
+`
+
 const ensureGitScript = `set -eu
 
 if ! command -v git >/dev/null; then
@@ -29,13 +64,26 @@ fi
 command -v git >/dev/null
 `
 
-export const verifyPosixShellRequirement: AgentRunRunCommandRuntimeRequirement = {
+const verifyPosixShellRequirement: AgentRunRunCommandRuntimeRequirement = {
 	type: 'run-command',
 	label: 'Verify POSIX shell is available',
 	command: { executable: 'sh', args: ['-c', 'command -v sh >/dev/null'], cwd: '/workspace' },
 	root: true,
 	commandSecretEnv: {},
 }
+
+const ensureSearchToolsRequirement: AgentRunRunCommandRuntimeRequirement = {
+	type: 'run-command',
+	label: 'Ensure rg and fd are available',
+	command: { executable: 'sh', args: ['-c', ensureSearchToolsScript], cwd: '/workspace' },
+	root: true,
+	commandSecretEnv: {},
+}
+
+export const globalRuntimeRequirements = Object.freeze([
+	verifyPosixShellRequirement,
+	ensureSearchToolsRequirement,
+] satisfies AgentRunRuntimeRequirements)
 
 export const ensureGitRequirement: AgentRunRunCommandRuntimeRequirement = {
 	type: 'run-command',
@@ -69,12 +117,21 @@ if (import.meta.vitest) {
 
 	describe('agent-run-runtime-requirements helpers', () => {
 		it('builds explicit Core-authored root command requirements', () => {
-			expect(verifyPosixShellRequirement).toMatchObject({
+			expect(globalRuntimeRequirements.map((requirement) => requirement.label)).toEqual([
+				'Verify POSIX shell is available',
+				'Ensure rg and fd are available',
+			])
+			expect(globalRuntimeRequirements.every((requirement) => requirement.type === 'run-command' && requirement.root)).toBe(true)
+			expect(globalRuntimeRequirements[0]).toMatchObject({
 				type: 'run-command',
 				label: 'Verify POSIX shell is available',
 				root: true,
 				command: { executable: 'sh', args: ['-c', 'command -v sh >/dev/null'], cwd: '/workspace' },
 			})
+			expect(globalRuntimeRequirements[1]?.command.args[1]).toContain('apk add --no-cache ripgrep fd')
+			expect(globalRuntimeRequirements[1]?.command.args[1]).toContain('apt-get install -y ripgrep fd-find')
+			expect(globalRuntimeRequirements[1]?.command.args[1]).toContain('command -v rg >/dev/null')
+			expect(globalRuntimeRequirements[1]?.command.args[1]).toContain('command -v fd >/dev/null')
 			expect(ensureGitRequirement).toMatchObject({ type: 'run-command', label: 'Ensure Git is available', root: true })
 			expect(ensureGitRequirement.command.args[1]).toContain('apk add --no-cache git')
 			expect(ensureGitRequirement.command.args[1]).toContain('apt-get install -y git')

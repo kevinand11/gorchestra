@@ -79,17 +79,40 @@ function vercelRawSandbox(handle: VercelSandbox): RawSandbox {
 	return {
 		runCommand: (input) => runVercelCommand(handle, input),
 		readFile: async (path) => {
+			const fsPath = vercelFsPath(path)
 			try {
-				return await handle.fs.readFile(vercelFsPath(path), 'utf8')
+				const stat = await handle.fs.stat(fsPath)
+				if (stat.isDirectory()) return { type: 'directory' }
+				if (!stat.isFile()) return { type: 'other' }
+				return { type: 'file', contentsBase64: (await handle.fs.readFile(fsPath, null)).toString('base64') }
 			} catch (error) {
 				if (isFileNotFoundError(error)) return null
 				throw error
 			}
 		},
-		writeFile: async (path, contents) => {
+		writeFile: async (path, contentsBase64) => {
 			const fsPath = vercelFsPath(path)
 			await handle.fs.mkdir(dirname(fsPath), { recursive: true })
-			await handle.fs.writeFile(fsPath, contents, 'utf8')
+			await handle.fs.writeFile(fsPath, Buffer.from(contentsBase64, 'base64'))
+		},
+		listDirectory: async (path) => {
+			const fsPath = vercelFsPath(path)
+			try {
+				const stat = await handle.fs.stat(fsPath)
+				if (stat.isFile()) return { type: 'file' }
+				if (!stat.isDirectory()) return { type: 'other' }
+				const entries = await handle.fs.readdir(fsPath, { withFileTypes: true })
+				return {
+					type: 'directory',
+					entries: entries.map((entry) => ({ name: entry.name, type: vercelDirentType(entry) })),
+				}
+			} catch (error) {
+				if (isFileNotFoundError(error)) return null
+				throw error
+			}
+		},
+		deletePath: async (path) => {
+			await handle.fs.rm(vercelFsPath(path), { recursive: true, force: true })
 		},
 		release: async () => {
 			await handle.delete()
@@ -126,6 +149,12 @@ function vercelFsPath(path: string): string {
 		: path.startsWith('/workspace/')
 			? `/vercel/sandbox/${path.slice('/workspace/'.length)}`
 			: path
+}
+
+function vercelDirentType(entry: { isFile(): boolean; isDirectory(): boolean }): 'file' | 'directory' | 'other' {
+	if (entry.isFile()) return 'file'
+	if (entry.isDirectory()) return 'directory'
+	return 'other'
 }
 
 function isFileNotFoundError(error: unknown): boolean {

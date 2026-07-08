@@ -15,9 +15,15 @@ import type {
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import { managedSandboxProviderForConfig, type SandboxProviderResolutionError } from '../runtime/sandboxes'
-import type { ManagedSandbox, ManagedSandboxProvider } from '../runtime/sandboxes/managed'
-import type { CoreStorage } from '../services'
-import { verifyPosixShellRequirement, type AgentRunRunCommandRuntimeRequirement } from '../utils/agent-run-runtime-requirements'
+import {
+	managedSandboxFileApiReadinessDirectory,
+	verifyManagedSandboxFileApiReadiness,
+	type ManagedSandbox,
+	type ManagedSandboxFileApiReadinessError,
+	type ManagedSandboxProvider,
+} from '../runtime/sandboxes/managed'
+import type { CoreStorage, RawSandboxRunCommandInput, SandboxCommandOutput } from '../services'
+import { globalRuntimeRequirements, type AgentRunRunCommandRuntimeRequirement } from '../utils/agent-run-runtime-requirements'
 import type { Result as CoreResult } from '../utils/types'
 
 const preflightAgentRunProfileInputPipe = v.object({ agentRunProfileId: idPipe })
@@ -89,18 +95,29 @@ async function runSandboxSmokePreflight(
 	const created = await sandboxProvider.create({ key, config: profile.sandboxConfig })
 	if (!created.ok) return sandboxOperationPreflightResult(created.error)
 
-	const result = await verifySandboxRuntimeEnv(created.value)
+	const result = await verifySandboxRuntimeEnv(created.value, key)
 	const release = await created.value.release()
 	return release.ok ? result : sandboxOperationPreflightResult(release.error)
 }
 
-async function verifySandboxRuntimeEnv(sandbox: ManagedSandbox): Promise<CoreResult<ValidationEvidence, InvalidCoreServiceOutputError>> {
-	const shell = await sandbox.runCommand({
-		...verifyPosixShellRequirement,
-		timeoutMs: 30_000,
+async function verifySandboxRuntimeEnv(
+	sandbox: ManagedSandbox,
+	key: string,
+): Promise<CoreResult<ValidationEvidence, InvalidCoreServiceOutputError>> {
+	for (const requirement of globalRuntimeRequirements) {
+		const output = await sandbox.runCommand({
+			...requirement,
+			timeoutMs: 600_000,
+		})
+		if (!output.ok) return sandboxOperationPreflightResult(output.error)
+		if (output.value.exitCode !== 0) return { ok: true, value: profilePreflightEvidence(false, output.value.summary) }
+	}
+
+	const fileApi = await verifyManagedSandboxFileApiReadiness({
+		sandbox,
+		directoryPath: managedSandboxFileApiReadinessDirectory(key),
 	})
-	if (!shell.ok) return sandboxOperationPreflightResult(shell.error)
-	if (shell.value.exitCode !== 0) return { ok: true, value: profilePreflightEvidence(false, shell.value.summary) }
+	if (!fileApi.ok) return sandboxFileApiReadinessPreflightResult(fileApi.error)
 
 	const env = await sandbox.setEnv(preflightEnv)
 	if (!env.ok) return sandboxOperationPreflightResult(env.error)
@@ -114,6 +131,14 @@ async function verifySandboxRuntimeEnv(sandbox: ManagedSandbox): Promise<CoreRes
 	return output.value.exitCode === 0
 		? { ok: true, value: profilePreflightEvidence(true, 'Agent Run Profile sandbox preflight passed.') }
 		: { ok: true, value: profilePreflightEvidence(false, output.value.summary) }
+}
+
+function sandboxFileApiReadinessPreflightResult(
+	error: ManagedSandboxFileApiReadinessError,
+): CoreResult<ValidationEvidence, InvalidCoreServiceOutputError> {
+	return error.type === 'sandbox-file-api-readiness-failed'
+		? { ok: true, value: profilePreflightEvidence(false, error.summary) }
+		: sandboxOperationPreflightResult(error)
 }
 
 function sandboxOperationPreflightResult(
@@ -136,8 +161,18 @@ function profilePreflightEvidence(passed: boolean, summary: string): ValidationE
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { context, createTestCoreRuntime, createTestCoreServices, defaultAgentRunSandboxConfig, seedAgentRunProfile, seedSecret } =
-		await import('../utils/test-helpers')
+	const {
+		context,
+		createTestCoreRuntime,
+		createTestCoreServices,
+		defaultAgentRunSandboxConfig,
+		deleteTestSandboxPath,
+		listTestSandboxDirectory,
+		readTestSandboxFile,
+		seedAgentRunProfile,
+		seedSecret,
+		writeTestSandboxFile,
+	} = await import('../utils/test-helpers')
 
 	describe('preflightAgentRunProfile command', () => {
 		it('validates input before reading storage', async () => {
@@ -164,29 +199,18 @@ if (import.meta.vitest) {
 			expect(result).toEqual({ ok: true, value: profilePreflightEvidence(false, 'Agent Run Profile is archived.') })
 		})
 
-		it('creates a temporary sandbox, verifies managed runtime env, and releases it', async () => {
+		it('creates a temporary sandbox, verifies managed file APIs and runtime env, and releases it', async () => {
 			const runCommands: unknown[] = []
+			const fileOperations: string[] = []
 			const releases: string[] = []
 			const files = new Map<string, string>()
 			const options = createTestCoreServices({
 				sandbox: {
 					kind: 'consumer-managed',
 					create: ({ key }) =>
-						Promise.resolve({
-							runCommand: (input) => {
-								runCommands.push(input)
-								return Promise.resolve({ exitCode: 0, summary: 'Raw command succeeded.', stdout: null, stderr: null })
-							},
-							readFile: (path) => Promise.resolve(files.get(path) ?? null),
-							writeFile: (path, contents) => {
-								files.set(path, contents)
-								return Promise.resolve()
-							},
-							release: () => {
-								releases.push(key)
-								return Promise.resolve({ summary: 'Sandbox released.' })
-							},
-						}),
+						Promise.resolve(
+							preflightRawSandbox({ key, files, runCommands, fileOperations, release: () => releases.push(key) }),
+						),
 					find: () => Promise.resolve(null),
 				},
 			})
@@ -196,22 +220,86 @@ if (import.meta.vitest) {
 			const result = await command({ agentRunProfileId: '01k00000000000000000000006' }, context)
 
 			expect(result).toEqual({ ok: true, value: profilePreflightEvidence(true, 'Agent Run Profile sandbox preflight passed.') })
-			expect(runCommands).toEqual([
-				{
-					command: { executable: 'sh', args: ['-c', 'command -v sh >/dev/null'], cwd: '/workspace' },
-					env: {},
-					root: true,
-					timeoutMs: 30_000,
+			expect(runCommands).toHaveLength(4)
+			expect(runCommands[0]).toEqual({
+				command: {
+					executable: 'sh',
+					args: ['-c', 'mkdir -p /workspace/.gorchestra && chmod 700 /workspace/.gorchestra'],
+					cwd: '/workspace',
 				},
-				{
-					command: { executable: 'sh', args: ['-c', 'test "$GORCHESTRA_PREFLIGHT" = "ok"'], cwd: '/workspace' },
-					env: { GORCHESTRA_PREFLIGHT: 'ok' },
-					root: true,
-					timeoutMs: 30_000,
-				},
+				env: {},
+				root: true,
+				timeoutMs: 30_000,
+			})
+			expect(runCommands[1]).toEqual({
+				command: { executable: 'sh', args: ['-c', 'command -v sh >/dev/null'], cwd: '/workspace' },
+				env: {},
+				root: true,
+				timeoutMs: 600_000,
+			})
+			expect(runCommands[2]).toMatchObject({
+				command: { executable: 'sh', cwd: '/workspace' },
+				env: {},
+				root: true,
+				timeoutMs: 600_000,
+			})
+			expect((runCommands[2] as { command: { args: string[] } }).command.args[1]).toContain('command -v rg >/dev/null')
+			expect((runCommands[2] as { command: { args: string[] } }).command.args[1]).toContain('command -v fd >/dev/null')
+			expect(runCommands[3]).toEqual({
+				command: { executable: 'sh', args: ['-c', 'test "$GORCHESTRA_PREFLIGHT" = "ok"'], cwd: '/workspace' },
+				env: { GORCHESTRA_PREFLIGHT: 'ok' },
+				root: true,
+				timeoutMs: 30_000,
+			})
+			const checkDirectory = managedSandboxFileApiReadinessDirectory(
+				'preflight-01k00000000000000000000006-01k00000000000000000010001',
+			)
+			expect(fileOperations.filter((operation) => operation.includes(checkDirectory))).toEqual([
+				`write:${checkDirectory}/check.txt`,
+				`read:${checkDirectory}/check.txt`,
+				`list:${checkDirectory}`,
+				`delete:${checkDirectory}`,
+				`read:${checkDirectory}/check.txt`,
 			])
+			expect(fileOperations.indexOf(`delete:${checkDirectory}`)).toBeLessThan(
+				fileOperations.findIndex((operation) => operation === 'write:/workspace/.gorchestra/runtime-env.json'),
+			)
 			expect(files.get('/workspace/.gorchestra/runtime-env.json')).toBe('{}\n')
 			expect(releases).toEqual(['preflight-01k00000000000000000000006-01k00000000000000000010001'])
+		})
+
+		it('returns failed evidence when managed file API readiness fails and still releases the sandbox', async () => {
+			const runCommands: unknown[] = []
+			const files = new Map<string, string>()
+			let released = false
+			const options = createTestCoreServices({
+				sandbox: {
+					kind: 'consumer-managed',
+					create: ({ key }) =>
+						Promise.resolve(
+							preflightRawSandbox({
+								key,
+								files,
+								runCommands,
+								failWritePath: (path) => path.startsWith(managedSandboxFileApiReadinessDirectory(key)),
+								release: () => {
+									released = true
+								},
+							}),
+						),
+					find: () => Promise.resolve(null),
+				},
+			})
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006')
+			const command = createPreflightAgentRunProfileCommand(createTestCoreRuntime(options))
+
+			const result = await command({ agentRunProfileId: '01k00000000000000000000006' }, context)
+
+			expect(result).toEqual({ ok: true, value: profilePreflightEvidence(false, 'Sandbox file write failed.') })
+			expect(runCommands).toHaveLength(3)
+			expect(runCommands[1]).toMatchObject({ timeoutMs: 600_000 })
+			expect(runCommands[2]).toMatchObject({ timeoutMs: 600_000 })
+			expect(released).toBe(true)
 		})
 
 		it('returns failed evidence when Vercel credential Secrets are missing', async () => {
@@ -243,20 +331,20 @@ if (import.meta.vitest) {
 			const options = createTestCoreServices({
 				sandbox: {
 					kind: 'consumer-managed',
-					create: () =>
-						Promise.resolve({
-							runCommand: () =>
-								Promise.resolve({ exitCode: 1, summary: 'Smoke command failed.', stdout: null, stderr: 'bad' }),
-							readFile: (path) => Promise.resolve(files.get(path) ?? null),
-							writeFile: (path, contents) => {
-								files.set(path, contents)
-								return Promise.resolve()
-							},
-							release: () => {
-								released = true
-								return Promise.resolve({ summary: 'Sandbox released.' })
-							},
-						}),
+					create: ({ key }) =>
+						Promise.resolve(
+							preflightRawSandbox({
+								key,
+								files,
+								commandOutput: (_input, count) =>
+									count < 4
+										? { exitCode: 0, summary: 'Raw command succeeded.', stdout: null, stderr: null }
+										: { exitCode: 1, summary: 'Smoke command failed.', stdout: null, stderr: 'bad' },
+								release: () => {
+									released = true
+								},
+							}),
+						),
 					find: () => Promise.resolve(null),
 				},
 			})
@@ -296,4 +384,50 @@ if (import.meta.vitest) {
 			expect(result).toEqual({ ok: true, value: profilePreflightEvidence(false, 'Vercel sandbox token Secret is not active.') })
 		})
 	})
+
+	function preflightRawSandbox(input: {
+		key: string
+		files: Map<string, string>
+		runCommands?: unknown[]
+		fileOperations?: string[]
+		failWritePath?: (path: string) => boolean
+		commandOutput?: (command: RawSandboxRunCommandInput, count: number) => SandboxCommandOutput
+		release?: () => void
+	}) {
+		let commandCount = 0
+		return {
+			runCommand: (command: RawSandboxRunCommandInput) => {
+				commandCount += 1
+				input.runCommands?.push(command)
+				return Promise.resolve(input.commandOutput?.(command, commandCount) ?? successfulCommandOutput())
+			},
+			readFile: (path: string) => {
+				input.fileOperations?.push(`read:${path}`)
+				return Promise.resolve(readTestSandboxFile(input.files, path))
+			},
+			writeFile: (path: string, contentsBase64: string) => {
+				input.fileOperations?.push(`write:${path}`)
+				if (input.failWritePath?.(path)) return Promise.reject(new Error('write failed'))
+				writeTestSandboxFile(input.files, path, contentsBase64)
+				return Promise.resolve()
+			},
+			listDirectory: (path: string) => {
+				input.fileOperations?.push(`list:${path}`)
+				return Promise.resolve(listTestSandboxDirectory(input.files, path))
+			},
+			deletePath: (path: string) => {
+				input.fileOperations?.push(`delete:${path}`)
+				deleteTestSandboxPath(input.files, path)
+				return Promise.resolve()
+			},
+			release: () => {
+				input.release?.()
+				return Promise.resolve({ summary: 'Sandbox released.' })
+			},
+		}
+	}
+
+	function successfulCommandOutput(): SandboxCommandOutput {
+		return { exitCode: 0, summary: 'Raw command succeeded.', stdout: null, stderr: null }
+	}
 }

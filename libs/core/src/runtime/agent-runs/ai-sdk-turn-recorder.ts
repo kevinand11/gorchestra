@@ -1,6 +1,7 @@
 import {
 	tool as aiTool,
 	jsonSchema,
+	type ContentPart,
 	type LanguageModelCallEndEvent,
 	type TextStreamPart,
 	type ToolExecutionOptions,
@@ -10,12 +11,14 @@ import {
 import { appendAndEmit, emit } from './event-emission'
 import type { AgentRunModelDelta } from './live-events'
 import { recordToolProposal } from './tool-proposals'
-import { providerTool, toolOutput, validateToolInput, type CoreAgentRunTool } from './tools'
+import { providerTool, toolOutput, validateToolInput, type CoreAgentRunToolDefinition } from './tools'
+import { AgentRunToolExecutionCoordinator } from './tools/coordinator'
+import { AgentRunToolExecutionFailed } from './tools/results'
 import { assistantMessageModel, assistantPartsFromAIContent, toAISDKToolOutput } from './transcript-parts'
 import type { TurnModelUse } from './turn-model-use'
 import type { AgentRunLoopState, AgentRunRuntimeError, ModelAgentRunRuntime, RunModelAgentRunOptions } from './types'
 import { costFromUsage, usageFromAIUsage } from './usage-cost'
-import type { AgentRunEvent, AgentRunToolOutput, AgentRunToolTranscriptPart } from '../../domain/agent-run'
+import type { AgentRunAssistantTranscriptPart, AgentRunEvent, AgentRunToolOutput, AgentRunToolTranscriptPart } from '../../domain/agent-run'
 import type { Id, RuntimeRecord } from '../../domain/commons'
 import { runtimeRecord, type CoreRuntimeValues } from '../../utils/runtime-values'
 import type { Result } from '../../utils/types'
@@ -36,6 +39,7 @@ export class AISDKTurnRecorder {
 	readonly #contentIndexByPartId = new Map<string, number>()
 	readonly #textByPartId = new Map<string, string>()
 	readonly #pendingToolGroupByToolCallId = new Map<string, PendingToolGroup>()
+	readonly #coordinator = new AgentRunToolExecutionCoordinator()
 	#currentDraftId: string | null = null
 	#error: AgentRunRuntimeError | null = null
 	#nextContentIndex = 0
@@ -72,6 +76,7 @@ export class AISDKTurnRecorder {
 
 	async onLanguageModelCallEnd(event: LanguageModelCallEndEvent<ToolSet>): Promise<void> {
 		const usage = usageFromAIUsage(event.usage)
+		const parts = await this.redactedAssistantPartsFromAIContent(event.content)
 		const assistant = await appendAndEmit(
 			this.runtime,
 			this.state.agentRun.id,
@@ -83,7 +88,7 @@ export class AISDKTurnRecorder {
 				usage,
 				cost: costFromUsage(usage, this.turnModelUse.model.pricing),
 				responseId: event.responseId.length === 0 ? null : event.responseId,
-				parts: assistantPartsFromAIContent(event.content),
+				parts,
 			},
 			this.options,
 		)
@@ -181,6 +186,23 @@ export class AISDKTurnRecorder {
 		})
 	}
 
+	private async redactedAssistantPartsFromAIContent(
+		content: ReadonlyArray<ContentPart<ToolSet>>,
+	): Promise<AgentRunAssistantTranscriptPart[]> {
+		const parts = assistantPartsFromAIContent(content)
+		const redactedParts: AgentRunAssistantTranscriptPart[] = []
+		for (const part of parts) {
+			if (part.type !== 'tool-call') {
+				redactedParts.push(part)
+				continue
+			}
+			const redacted = await this.state.sandbox.redactJson({ value: part.input })
+			if (!redacted.ok) this.fail(redacted.error)
+			redactedParts.push({ ...part, input: redacted.value })
+		}
+		return redactedParts
+	}
+
 	private registerPendingToolCalls(assistant: AgentRunEventWithBody<'assistant-message'>): void {
 		const toolCallIds = assistant.body.parts.flatMap((part) =>
 			part.type === 'tool-call' && part.providerExecuted === false ? [part.toolCallId] : [],
@@ -196,7 +218,7 @@ export class AISDKTurnRecorder {
 		for (const toolCallId of toolCallIds) this.#pendingToolGroupByToolCallId.set(toolCallId, group)
 	}
 
-	private aiTool(coreTool: CoreAgentRunTool) {
+	private aiTool(coreTool: CoreAgentRunToolDefinition) {
 		const exposed = providerTool(coreTool)
 		return aiTool<unknown, AgentRunToolOutput, Record<string, unknown>>({
 			description: exposed.description,
@@ -207,7 +229,7 @@ export class AISDKTurnRecorder {
 	}
 
 	private async executeTool(
-		coreTool: CoreAgentRunTool,
+		coreTool: CoreAgentRunToolDefinition,
 		input: unknown,
 		execution: ToolExecutionOptions<Record<string, unknown>>,
 	): Promise<AgentRunToolOutput> {
@@ -232,23 +254,40 @@ export class AISDKTurnRecorder {
 			)
 		}
 
+		const mutationKey = this.mutationKeyForTool(coreTool, validated.value)
+		if (!mutationKey.ok) {
+			return this.recordToolPart(
+				group,
+				invalidToolInputPart(
+					coreTool.name,
+					execution.toolCallId,
+					started.value,
+					runtimeRecordOrSame(this.runtime.values, started.value),
+					mutationKey.error,
+				),
+			)
+		}
+
 		try {
-			const output = await coreTool.execute(validated.value, {
-				agentRunId: this.state.agentRun.id,
-				assistantMessageEventId: group.assistantMessageEventId,
-				toolCallId: execution.toolCallId,
-				signal: execution.abortSignal ?? this.options.signal ?? new AbortController().signal,
-				onUpdate: (update) => {
-					void emit(this.options, {
-						type: 'tool-call-updated',
-						turnStartedEventId: this.turnStarted.id,
-						toolCallId: execution.toolCallId,
-						update,
-					})
-				},
-				recordProposal: (body) =>
-					recordToolProposal(this.runtime, this.state.agentRun.id, group.assistantMessageEventId, execution.toolCallId, body),
-			})
+			const execute = () =>
+				coreTool.execute(validated.value, {
+					agentRunId: this.state.agentRun.id,
+					assistantMessageEventId: group.assistantMessageEventId,
+					toolCallId: execution.toolCallId,
+					signal: execution.abortSignal ?? this.options.signal ?? new AbortController().signal,
+					onUpdate: (update) => {
+						void emit(this.options, {
+							type: 'tool-call-updated',
+							turnStartedEventId: this.turnStarted.id,
+							toolCallId: execution.toolCallId,
+							update,
+						})
+					},
+					recordProposal: (body) =>
+						recordToolProposal(this.runtime, this.state.agentRun.id, group.assistantMessageEventId, execution.toolCallId, body),
+					sandbox: this.state.sandbox,
+				})
+			const output = await this.coordinatedToolExecution(coreTool, mutationKey.value, execute)
 			const completed = runtimeRecordOrSame(this.runtime.values, started.value)
 			return this.recordToolPart(group, {
 				type: 'tool-result',
@@ -261,8 +300,8 @@ export class AISDKTurnRecorder {
 				truncation: output.truncation,
 				metadata: null,
 			})
-		} catch {
-			const output = toolOutput('Tool execution failed.')
+		} catch (error) {
+			const output = error instanceof AgentRunToolExecutionFailed ? error.output : toolOutput('Tool execution failed.')
 			return this.recordToolPart(group, {
 				type: 'tool-error',
 				toolCallId: execution.toolCallId,
@@ -270,11 +309,46 @@ export class AISDKTurnRecorder {
 				providerExecuted: false,
 				started: started.value,
 				completed: runtimeRecordOrSame(this.runtime.values, started.value),
-				reason: { type: 'tool-runtime-error' },
+				reason: error instanceof AgentRunToolExecutionFailed ? error.reason : { type: 'tool-runtime-error' },
 				error: output.output,
 				truncation: output.truncation,
 				metadata: null,
 			})
+		}
+	}
+
+	private mutationKeyForTool(tool: CoreAgentRunToolDefinition, input: unknown): Result<string | null, AgentRunToolOutput> {
+		switch (tool.workspaceMutationKind) {
+			case 'read-only':
+			case 'global-mutator':
+				return { ok: true, value: null }
+			case 'file-mutator': {
+				if (tool.workspaceMutationKey === undefined)
+					return { ok: false, error: toolOutput('Tool mutation target failed validation.') }
+				const key = tool.workspaceMutationKey(input)
+				if (!key.ok) return key
+				return key.value.length === 0 ? { ok: false, error: toolOutput('Tool mutation target failed validation.') } : key
+			}
+			default:
+				throw new Error(`Unexpected workspace mutation kind: ${String(tool.workspaceMutationKind satisfies never)}`)
+		}
+	}
+
+	private coordinatedToolExecution(
+		tool: CoreAgentRunToolDefinition,
+		mutationKey: string | null,
+		execute: () => Promise<AgentRunToolOutput>,
+	): Promise<AgentRunToolOutput> {
+		switch (tool.workspaceMutationKind) {
+			case 'read-only':
+				return this.#coordinator.run({ workspaceMutationKind: 'read-only', execute })
+			case 'file-mutator':
+				if (mutationKey === null) throw new Error('Expected file-mutator mutation key.')
+				return this.#coordinator.run({ workspaceMutationKind: 'file-mutator', mutationKey, execute })
+			case 'global-mutator':
+				return this.#coordinator.run({ workspaceMutationKind: 'global-mutator', execute })
+			default:
+				throw new Error(`Unexpected workspace mutation kind: ${String(tool.workspaceMutationKind satisfies never)}`)
 		}
 	}
 
@@ -364,4 +438,152 @@ function invalidToolInputPart(
 function runtimeRecordOrSame(values: CoreRuntimeValues, fallback: RuntimeRecord): RuntimeRecord {
 	const record = runtimeRecord(values)
 	return record.ok ? record.value : fallback
+}
+
+if (import.meta.vitest) {
+	const { describe, expect, it } = import.meta.vitest
+	const { defaultModelCapabilities } = await import('../../domain/model')
+	const { createTestCoreRuntime, createTestCoreServices, testModelAgentRun } = await import('../../utils/test-helpers')
+
+	describe('AISDKTurnRecorder', () => {
+		it('redacts persisted assistant tool-call inputs while keeping execution context pending', async () => {
+			const fixture = recorderFixture({ redactedValue: { token: '[REDACTED]' } })
+
+			await fixture.recorder.onLanguageModelCallEnd(languageModelCallEndEvent({ token: 'secret-token' }))
+
+			const assistant = [...fixture.services.tx.agentRunEvents.records.values()].find(
+				(event) => event.body.type === 'assistant-message',
+			)
+			expect(assistant?.body).toMatchObject({
+				type: 'assistant-message',
+				parts: [{ type: 'tool-call', toolCallId: 'tool-call-1', toolName: 'sample-tool', input: { token: '[REDACTED]' } }],
+			})
+			expect(fixture.recorder.operationError()).toBeNull()
+		})
+
+		it('fails closed before persisting an assistant message when tool-call input redaction fails', async () => {
+			const fixture = recorderFixture({ redactionFails: true })
+
+			await expect(fixture.recorder.onLanguageModelCallEnd(languageModelCallEndEvent({ token: 'secret-token' }))).rejects.toThrow(
+				'Agent Run transcript persistence failed: sandbox-operation-failed',
+			)
+
+			expect(fixture.recorder.operationError()).toEqual({
+				type: 'sandbox-operation-failed',
+				operation: 'read-file',
+				summary: 'Redaction failed.',
+			})
+			expect([...fixture.services.tx.agentRunEvents.records.values()].some((event) => event.body.type === 'assistant-message')).toBe(
+				false,
+			)
+		})
+	})
+
+	function recorderFixture(input: { redactedValue?: unknown; redactionFails?: boolean }) {
+		const agentRunId = '01k00000000000000000000002'
+		const services = createTestCoreServices()
+		const agentRun = {
+			...testModelAgentRun({ id: agentRunId }),
+			blocked: null,
+			sandbox: {
+				key: agentRunId,
+				created: { at: '2026-06-10T12:00:00.000Z' },
+				appliedRequirements: [],
+				appliedThroughEventId: null,
+				released: null,
+			},
+		}
+		services.tx.agentRuns.records.set(agentRunId, agentRun)
+		const runtime = createTestCoreRuntime(services)
+		const turnStarted: AgentRunEvent = {
+			id: '01k00000000000000000000010',
+			agentRunId,
+			occurred: { at: '2026-06-10T12:00:00.000Z' },
+			body: {
+				type: 'turn-started',
+				contextThroughEventId: '01k00000000000000000000009',
+				reason: { type: 'input', inputEventIds: ['01k00000000000000000000009'] },
+			},
+		}
+		const recorder = new AISDKTurnRecorder(
+			runtime,
+			{ agentRun, events: [turnStarted], tools: [], sandbox: testManagedSandbox(input) },
+			turnStarted,
+			{
+				model: {
+					id: '01k00000000000000000000024',
+					providerId: '01k00000000000000000000032',
+					name: 'Model',
+					providerModelId: 'model',
+					providerOptions: null,
+					capabilities: defaultModelCapabilities,
+					pricing: null,
+					created: { origin: 'imported', at: '2026-06-10T12:00:00.000Z' },
+					updated: null,
+					archivePeriods: [],
+				},
+				modelProvider: {
+					id: '01k00000000000000000000032',
+					name: 'Provider',
+					source: { type: 'anthropic' },
+					auth: null,
+					headers: [],
+					providerOptions: null,
+					created: { origin: 'imported', at: '2026-06-10T12:00:00.000Z' },
+					updated: null,
+					archivePeriods: [],
+				},
+				thinking: null,
+			},
+			{},
+		)
+		return { recorder, services }
+	}
+
+	function testManagedSandbox(input: { redactedValue?: unknown; redactionFails?: boolean }) {
+		return {
+			setEnv: () => Promise.resolve({ ok: true as const, value: { exitCode: 0, summary: 'ok', stdout: null, stderr: null } }),
+			runCommand: () => Promise.resolve({ ok: true as const, value: { exitCode: 0, summary: 'ok', stdout: null, stderr: null } }),
+			readFile: () => Promise.resolve({ ok: true as const, value: null }),
+			writeFile: () => Promise.resolve({ ok: true as const, value: undefined }),
+			listDirectory: () => Promise.resolve({ ok: true as const, value: null }),
+			deletePath: () => Promise.resolve({ ok: true as const, value: undefined }),
+			redactText: ({ text }: { text: string }) => Promise.resolve({ ok: true as const, value: text }),
+			redactJson: () =>
+				input.redactionFails === true
+					? Promise.resolve({
+							ok: false as const,
+							error: {
+								type: 'sandbox-operation-failed' as const,
+								operation: 'read-file' as const,
+								summary: 'Redaction failed.',
+							},
+						})
+					: Promise.resolve({ ok: true as const, value: input.redactedValue }),
+			release: () => Promise.resolve({ ok: true as const, value: { summary: 'released' } }),
+		}
+	}
+
+	function languageModelCallEndEvent(input: unknown): LanguageModelCallEndEvent<ToolSet> {
+		return {
+			callId: 'call-1',
+			responseId: 'response-1',
+			finishReason: 'tool-calls',
+			usage: {
+				inputTokens: 1,
+				inputTokenDetails: { noCacheTokens: 1, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+				outputTokens: 1,
+				outputTokenDetails: { textTokens: 1, reasoningTokens: undefined },
+			},
+			content: [
+				{
+					type: 'tool-call',
+					toolCallId: 'tool-call-1',
+					toolName: 'sample-tool',
+					input,
+					providerExecuted: false,
+				},
+			],
+		} as unknown as LanguageModelCallEndEvent<ToolSet>
+	}
 }

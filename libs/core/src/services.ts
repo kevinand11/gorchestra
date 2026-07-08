@@ -118,6 +118,30 @@ export type SandboxCommandOutput = PipeOutput<typeof sandboxCommandOutputPipe>
 export const sandboxReleaseOutputPipe = v.object({ summary: nonEmptyTrimmedStringPipe })
 export type SandboxReleaseOutput = PipeOutput<typeof sandboxReleaseOutputPipe>
 
+export const sandboxFileEntryPipe = v.object({
+	name: nonEmptyTrimmedStringPipe,
+	type: v.in(['file', 'directory', 'other']),
+})
+export type SandboxFileEntry = PipeOutput<typeof sandboxFileEntryPipe>
+
+export const sandboxReadFileOutputPipe = v.nullable(
+	v.discriminate((value) => value.type, {
+		file: v.object({ type: v.eq('file'), contentsBase64: freeFormStringPipe }),
+		directory: v.object({ type: v.eq('directory') }),
+		other: v.object({ type: v.eq('other') }),
+	}),
+)
+export type SandboxReadFileOutput = PipeOutput<typeof sandboxReadFileOutputPipe>
+
+export const sandboxListDirectoryOutputPipe = v.nullable(
+	v.discriminate((value) => value.type, {
+		directory: v.object({ type: v.eq('directory'), entries: v.array(sandboxFileEntryPipe) }),
+		file: v.object({ type: v.eq('file') }),
+		other: v.object({ type: v.eq('other') }),
+	}),
+)
+export type SandboxListDirectoryOutput = PipeOutput<typeof sandboxListDirectoryOutputPipe>
+
 export interface RawSandboxRunCommandInput {
 	command: { executable: string; args: string[]; cwd: string }
 	env: Record<string, string>
@@ -126,10 +150,12 @@ export interface RawSandboxRunCommandInput {
 }
 
 export interface RawSandbox {
-	runCommand(input: RawSandboxRunCommandInput): Promise<unknown>
-	readFile(path: string): Promise<unknown>
-	writeFile(path: string, contents: string): Promise<unknown>
-	release(): Promise<unknown>
+	runCommand(input: RawSandboxRunCommandInput): Promise<SandboxCommandOutput>
+	readFile(path: string): Promise<SandboxReadFileOutput>
+	writeFile(path: string, contentsBase64: string): Promise<void>
+	listDirectory(path: string): Promise<SandboxListDirectoryOutput>
+	deletePath(path: string): Promise<void>
+	release(): Promise<SandboxReleaseOutput>
 }
 
 export type AgentRunSandboxConfigForSource<SourceConfig extends AgentRunSandboxSourceConfig> = Omit<AgentRunSandboxConfig, 'source'> & {
@@ -148,6 +174,8 @@ export const rawSandboxPipe = v.object({
 	runCommand: typedFunctionDependencyPipe<RawSandbox['runCommand']>(),
 	readFile: typedFunctionDependencyPipe<RawSandbox['readFile']>(),
 	writeFile: typedFunctionDependencyPipe<RawSandbox['writeFile']>(),
+	listDirectory: typedFunctionDependencyPipe<RawSandbox['listDirectory']>(),
+	deletePath: typedFunctionDependencyPipe<RawSandbox['deletePath']>(),
 	release: typedFunctionDependencyPipe<RawSandbox['release']>(),
 })
 export type RawSandboxOutput = PipeOutput<typeof rawSandboxPipe>

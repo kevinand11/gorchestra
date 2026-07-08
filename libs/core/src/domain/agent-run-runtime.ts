@@ -106,6 +106,7 @@ export function sandboxMemoryMiBForVcpus(vcpus: number): number {
 
 export const agentRunPreparationFailureTargetPipe = v.discriminate((value) => value.type, {
 	sandbox: v.object({ type: v.eq('sandbox') }),
+	'sandbox-file-api': v.object({ type: v.eq('sandbox-file-api') }),
 	'runtime-requirement': v.object({
 		type: v.eq('runtime-requirement'),
 		index: nonNegativeIntegerPipe,
@@ -221,6 +222,10 @@ if (import.meta.vitest) {
 			const second = { type: 'environment-secret' as const, envName: 'NPM_TOKEN', secretId: '01k00000000000000000000041' }
 			expect(firstDuplicateRuntimeRequirement([first, second])).toBeNull()
 			expect(firstDuplicateRuntimeRequirement([first, second, first])).toBe(first)
+		})
+
+		it('accepts sandbox file API preparation failure targets', () => {
+			expect(v.assert(agentRunPreparationFailureTargetPipe, { type: 'sandbox-file-api' })).toEqual({ type: 'sandbox-file-api' })
 		})
 
 		it('treats root and default-user run commands as distinct requirements', () => {

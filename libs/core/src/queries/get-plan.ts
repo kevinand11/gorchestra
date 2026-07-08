@@ -183,6 +183,7 @@ if (import.meta.vitest) {
 				runtimeRequirements: [],
 				sandboxConfig: defaultAgentRunSandboxConfig(),
 			},
+			toolSet: [],
 			modelUseOverride: null,
 			sourceRuntimeRequirements: [],
 			runtimeRequirementOverrides: [],

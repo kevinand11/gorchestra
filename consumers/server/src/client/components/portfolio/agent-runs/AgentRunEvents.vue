@@ -3,7 +3,10 @@
 		<section class="border-b border-dimmer">
 			<div class="border-b border-dimmer px-3 py-3">
 				<div class="flex flex-wrap items-center justify-between gap-2">
-					<strong class="block font-semibold">Agent Run events</strong>
+					<div>
+						<strong class="block font-semibold">Agent Run events</strong>
+						<UiText class="mt-1 block" tone="muted" size="helper"> Tools: {{ toolSetLabel }} </UiText>
+					</div>
 					<UiButton
 						type="button"
 						variant="secondary"
@@ -39,6 +42,18 @@
 					<pre class="m-0 mt-1 max-h-36 overflow-auto whitespace-pre-wrap font-mono text-sz-micro text-card-contrast">{{
 						eventSummary(event)
 					}}</pre>
+					<div v-if="eventImages(event).length > 0" class="mt-2 grid gap-2">
+						<figure
+							v-for="image in eventImages(event)"
+							:key="image.key"
+							class="m-0 rounded-md border border-dimmer bg-card-contrast/5 p-2">
+							<figcaption v-if="image.note" class="mb-2 text-sz-micro text-dim">{{ image.note }}</figcaption>
+							<img
+								:src="image.src"
+								:alt="image.alt"
+								class="max-h-80 max-w-full rounded border border-dimmer object-contain" />
+						</figure>
+					</div>
 				</li>
 			</ol>
 		</section>
@@ -66,6 +81,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 
+import type { AgentRunToolSetEntry } from '../../../composables/core/server-api'
 import { useAgentRunEvents, useAgentRunMessageSend } from '../../../composables/portfolio/agent-runs'
 import UiButton from '../../ui/UiButton.vue'
 import UiForm from '../../ui/UiForm.vue'
@@ -75,6 +91,7 @@ import UiTextarea from '../../ui/UiTextarea.vue'
 
 type AgentRunForEvents = {
 	id: string
+	toolSet: readonly AgentRunToolSetEntry[]
 	completed: { at: string } | null
 }
 
@@ -89,6 +106,9 @@ const emit = defineEmits<{ 'message-sending-change': [isSending: boolean] }>()
 
 const agentRunId = computed<string | null>(() => props.agentRun.id)
 const isAgentRunClosed = computed(() => props.agentRun.completed !== null)
+const toolSetLabel = computed(() =>
+	props.agentRun.toolSet.length === 0 ? 'none' : props.agentRun.toolSet.map((tool) => `${tool.name}@${tool.contractVersion}`).join(', '),
+)
 const {
 	agentRunEvents,
 	isLoadingAgentRunEvents,
@@ -105,7 +125,17 @@ watch(isSendingAgentRunMessage, (isSending) => emit('message-sending-change', is
 
 type AgentRunEvent = (typeof agentRunEvents.value)[number]
 type AgentRunEventBody<TType extends AgentRunEvent['body']['type']> = Extract<AgentRunEvent['body'], { type: TType }>
+type AssistantMessagePart = AgentRunEventBody<'assistant-message'>['parts'][number]
+type ToolMessagePart = AgentRunEventBody<'tool-message'>['parts'][number]
+type ToolOutput =
+	| Extract<AssistantMessagePart, { type: 'tool-result' }>['output']
+	| Extract<ToolMessagePart, { type: 'tool-result' }>['output']
+	| Extract<ToolMessagePart, { type: 'tool-error' }>['error']
+type CommandToolOutput = Extract<ToolOutput, { type: 'command' }>
+type ImageToolOutput = Extract<ToolOutput, { type: 'image' }>
+type ToolTruncation = NonNullable<CommandToolOutput['stdoutTruncation']>
 type TextTranscriptPart = { text: string }
+type EventImage = { key: string; src: string; alt: string; note: string | null }
 
 function eventTitle(event: AgentRunEvent): string {
 	switch (event.body.type) {
@@ -240,15 +270,7 @@ function toolPartSummary(part: AgentRunEventBody<'tool-message'>['parts'][number
 	}
 }
 
-function toolOutputSummary(
-	output: AgentRunEventBody<'tool-message'>['parts'][number] extends infer TPart
-		? TPart extends { output: infer TOutput }
-			? TOutput
-			: TPart extends { error: infer TError }
-				? TError
-				: never
-		: never,
-): string {
+function toolOutputSummary(output: ToolOutput): string {
 	switch (output.type) {
 		case 'text':
 		case 'error-text':
@@ -257,9 +279,81 @@ function toolOutputSummary(
 			return formatUnknown(output.value)
 		case 'execution-denied':
 			return output.reason === null ? 'execution denied' : `execution denied: ${output.reason}`
+		case 'command':
+			return commandOutputSummary(output)
+		case 'image':
+			return imageOutputSummary(output)
+		case 'diff':
+			return diffOutputSummary(output)
 		default:
 			return unexpectedPart(output)
 	}
+}
+
+function commandOutputSummary(output: CommandToolOutput): string {
+	return [
+		`command exited ${output.exitCode}`,
+		commandStreamSummary('stdout', output.stdout, output.stdoutTruncation),
+		commandStreamSummary('stderr', output.stderr, output.stderrTruncation),
+	].join('\n')
+}
+
+function commandStreamSummary(label: 'stdout' | 'stderr', value: string | null, truncation: CommandToolOutput['stdoutTruncation']): string {
+	const body = value === null || value.length === 0 ? '(empty)' : value
+	return truncation === null || !truncation.truncated ? `${label}:\n${body}` : `${label}:\n${toolTruncationSummary(truncation)}\n${body}`
+}
+
+function toolTruncationSummary(truncation: ToolTruncation): string {
+	const original = truncation.originalLines === null ? 'unknown original line count' : `${truncation.originalLines} original lines`
+	const shown = truncation.outputLines === null ? 'stored output' : `${truncation.outputLines} stored lines`
+	return `[truncated using ${truncation.strategy}: ${shown} from ${original}]`
+}
+
+function imageOutputSummary(output: ImageToolOutput): string {
+	return [`[image: ${output.mimeType}]`, ...(output.note === null ? [] : [output.note]), '[preview rendered below]'].join('\n')
+}
+
+function diffOutputSummary(output: Extract<ToolOutput, { type: 'diff' }>): string {
+	return [output.summary, `Diff:\n${output.diff}`, ...(output.patch === null ? [] : [`Patch:\n${output.patch}`])].join('\n\n')
+}
+
+function eventImages(event: AgentRunEvent): EventImage[] {
+	return toolOutputsForEvent(event).flatMap((output, index) => imagePreviewForOutput(event.id, output, index))
+}
+
+function toolOutputsForEvent(event: AgentRunEvent): ToolOutput[] {
+	switch (event.body.type) {
+		case 'assistant-message':
+			return event.body.parts.flatMap((part) => (part.type === 'tool-result' ? [part.output] : []))
+		case 'tool-message':
+			return event.body.parts.flatMap((part) => {
+				switch (part.type) {
+					case 'tool-result':
+						return [part.output]
+					case 'tool-error':
+						return [part.error]
+					case 'tool-approval-response':
+						return []
+					default:
+						return unexpectedPart(part)
+				}
+			})
+		default:
+			return []
+	}
+}
+
+function imagePreviewForOutput(eventId: string, output: ToolOutput, index: number): EventImage[] {
+	return output.type === 'image' && output.mimeType.startsWith('image/') && output.dataBase64.length > 0
+		? [
+				{
+					key: `${eventId}:${index}`,
+					src: `data:${output.mimeType};base64,${output.dataBase64}`,
+					alt: `Agent Run tool image ${index + 1}`,
+					note: output.note,
+				},
+			]
+		: []
 }
 
 function textPartsSummary(parts: readonly TextTranscriptPart[]): string {

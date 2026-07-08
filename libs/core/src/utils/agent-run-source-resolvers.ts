@@ -1,11 +1,11 @@
 import {
 	ensureGitRequirement,
+	globalRuntimeRequirements,
 	sandboxPathFromSegments,
-	verifyPosixShellRequirement,
 	type AgentRunRunCommandRuntimeRequirement,
 } from './agent-run-runtime-requirements'
 import type { Result } from './types'
-import type { AgentRunPurpose } from '../domain/agent-run'
+import type { AgentRunPurpose, AgentRunToolSet } from '../domain/agent-run'
 import {
 	firstDuplicateRuntimeRequirement,
 	type AgentRunRuntimeRequirement,
@@ -20,12 +20,23 @@ import type { GitHubRepositoryConfig, Repository } from '../domain/repository'
 import type { Revision, RevisionGate, RevisionScope } from '../domain/revision'
 import type { Slice } from '../domain/slice'
 import type { InvalidCoreServiceOutputError, InvariantViolationError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
+import { agentRunToolSetFromNames, readOnlyWorkspaceToolNames, writeCapableWorkspaceToolNames } from '../runtime/agent-runs/tools'
 import type { CoreStorage } from '../services'
 import { getRequired, listRecords } from '../storage/helpers'
 
 type AgentRunSourceRuntimeContextError = InvalidCoreServiceOutputError | StorageOperationFailedError | ResourceNotFoundError
 
-export type ResolveAgentRunSourceRuntimeRequirementsError = AgentRunSourceRuntimeContextError | InvariantViolationError
+export type ResolveAgentRunSourceSetupError = AgentRunSourceRuntimeContextError | InvariantViolationError
+
+export type ResolvedAgentRunSourceSetup = {
+	runtimeRequirements: AgentRunRuntimeRequirements
+	toolSet: AgentRunToolSet
+}
+
+type SourceSpecificAgentRunSetup = {
+	runtimeRequirements: AgentRunRuntimeRequirement[]
+	domainToolNames: string[]
+}
 
 type PlanningSourceRuntimeContext = {
 	purpose: Extract<AgentRunPurpose, { type: 'planning' }>
@@ -68,15 +79,24 @@ type AgentRunSourceRuntimeContext =
 	| RevisionPlanningSourceRuntimeContext
 	| RevisionExecutionSourceRuntimeContext
 
-export async function resolveAgentRunSourceRuntimeRequirements(
+export async function resolveAgentRunSourceSetup(
 	storage: CoreStorage,
 	purpose: AgentRunPurpose,
-): Promise<Result<AgentRunRuntimeRequirements, ResolveAgentRunSourceRuntimeRequirementsError>> {
+): Promise<Result<ResolvedAgentRunSourceSetup, ResolveAgentRunSourceSetupError>> {
 	const context = await sourceRuntimeContextForAgentRunPurpose(storage, purpose)
 	if (!context.ok) return context
 
-	const requirements = sourceSpecificRuntimeRequirementsForContext(context.value)
-	return requirements.ok ? validateSourceRuntimeRequirements([verifyPosixShellRequirement, ...requirements.value]) : requirements
+	const sourceSpecific = sourceSpecificSetupForContext(context.value)
+	if (!sourceSpecific.ok) return sourceSpecific
+
+	const runtimeRequirements = validateSourceRuntimeRequirements([
+		...globalRuntimeRequirements,
+		...sourceSpecific.value.runtimeRequirements,
+	])
+	if (!runtimeRequirements.ok) return runtimeRequirements
+
+	const toolSet = agentRunToolSetFromNames([...baseToolNamesForPurpose(context.value.purpose), ...sourceSpecific.value.domainToolNames])
+	return toolSet.ok ? { ok: true, value: { runtimeRequirements: runtimeRequirements.value, toolSet: toolSet.value } } : toolSet
 }
 
 async function sourceRuntimeContextForAgentRunPurpose(
@@ -271,50 +291,70 @@ async function repositoryForSourceControlDelivery(
 	}
 }
 
-function sourceSpecificRuntimeRequirementsForContext(
+function sourceSpecificSetupForContext(
 	context: AgentRunSourceRuntimeContext,
-): Result<AgentRunRuntimeRequirement[], InvariantViolationError> {
+): Result<SourceSpecificAgentRunSetup, InvariantViolationError> {
 	switch (context.project.source.type) {
 		case 'source-control':
-			return sourceControlSpecificRuntimeRequirementsForContext(context)
+			return sourceControlSpecificSetupForContext(context)
 		default:
 			throw new Error(`Unexpected Project Source Type: ${String(context.project.source.type satisfies never)}`)
 	}
 }
 
-function sourceControlSpecificRuntimeRequirementsForContext(
+function sourceControlSpecificSetupForContext(
 	context: AgentRunSourceRuntimeContext,
-): Result<AgentRunRuntimeRequirement[], InvariantViolationError> {
-	const purposeSpecific = sourceControlPurposeSpecificRuntimeRequirements(context)
-	return purposeSpecific.ok ? { ok: true, value: [ensureGitRequirement, ...purposeSpecific.value] } : purposeSpecific
+): Result<SourceSpecificAgentRunSetup, InvariantViolationError> {
+	const purposeSpecific = sourceControlPurposeSpecificSetup(context)
+	return purposeSpecific.ok
+		? {
+				ok: true,
+				value: {
+					runtimeRequirements: [ensureGitRequirement, ...purposeSpecific.value.runtimeRequirements],
+					domainToolNames: purposeSpecific.value.domainToolNames,
+				},
+			}
+		: purposeSpecific
 }
 
-function sourceControlPurposeSpecificRuntimeRequirements(
+function sourceControlPurposeSpecificSetup(
 	context: AgentRunSourceRuntimeContext,
-): Result<AgentRunRuntimeRequirement[], InvariantViolationError> {
+): Result<SourceSpecificAgentRunSetup, InvariantViolationError> {
 	switch (context.purpose.type) {
 		case 'planning':
 			if (!isPlanningSourceRuntimeContext(context)) throw new Error('Expected Planning Source Runtime Context.')
-			return sourceControlPlanningRuntimeRequirements(context)
+			return sourceControlPlanningSetup(context)
 		case 'revision-planning':
+			return { ok: true, value: { runtimeRequirements: [], domainToolNames: ['propose-revision-output'] } }
 		case 'execution':
 		case 'revision-execution':
-			return { ok: true, value: [] }
+			return { ok: true, value: { runtimeRequirements: [], domainToolNames: [] } }
 		default:
 			throw new Error(`Unexpected Agent Run Purpose: ${String(context.purpose satisfies never)}`)
 	}
 }
 
-function sourceControlPlanningRuntimeRequirements(
-	context: PlanningSourceRuntimeContext,
-): Result<AgentRunRuntimeRequirement[], InvariantViolationError> {
+function sourceControlPlanningSetup(context: PlanningSourceRuntimeContext): Result<SourceSpecificAgentRunSetup, InvariantViolationError> {
 	const requirements: AgentRunRuntimeRequirement[] = []
 	for (const repository of context.repositories) {
 		const requirement = planningCheckoutRequirementForRepository(repository)
 		if (!requirement.ok) return requirement
 		requirements.push(requirement.value)
 	}
-	return { ok: true, value: requirements }
+	return { ok: true, value: { runtimeRequirements: requirements, domainToolNames: ['propose-plan-output'] } }
+}
+
+function baseToolNamesForPurpose(purpose: AgentRunPurpose): readonly string[] {
+	switch (purpose.type) {
+		case 'planning':
+		case 'revision-planning':
+			return readOnlyWorkspaceToolNames
+		case 'execution':
+		case 'revision-execution':
+			return writeCapableWorkspaceToolNames
+		default:
+			throw new Error(`Unexpected Agent Run Purpose: ${String(purpose satisfies never)}`)
+	}
 }
 
 function isPlanningSourceRuntimeContext(context: AgentRunSourceRuntimeContext): context is PlanningSourceRuntimeContext {
@@ -395,7 +435,7 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { createTestCoreServices, localStamp, seedDelivery, seedProject, seedSlice, stamp } = await import('./test-helpers')
 
-	describe('resolveAgentRunSourceRuntimeRequirements', () => {
+	describe('resolveAgentRunSourceSetup', () => {
 		it('resolves source-control planning source requirements through Plan to Project', async () => {
 			const options = createTestCoreServices()
 			seedProject(options.tx, '01k00000000000000000000030')
@@ -408,11 +448,17 @@ if (import.meta.vitest) {
 			})
 
 			await expect(
-				resolveAgentRunSourceRuntimeRequirements(options.storage, {
+				resolveAgentRunSourceSetup(options.storage, {
 					type: 'planning',
 					planId: '01k00000000000000000000028',
 				}),
-			).resolves.toEqual({ ok: true, value: [verifyPosixShellRequirement, ensureGitRequirement] })
+			).resolves.toEqual({
+				ok: true,
+				value: {
+					runtimeRequirements: [...globalRuntimeRequirements, ensureGitRequirement],
+					toolSet: toolSet(['read', 'grep', 'find', 'ls', 'propose-plan-output']),
+				},
+			})
 		})
 
 		it('adds Source Control Planning checkout requirements for Project repositories in id order', async () => {
@@ -438,19 +484,21 @@ if (import.meta.vitest) {
 				created: stamp,
 			})
 
-			const result = await resolveAgentRunSourceRuntimeRequirements(options.storage, {
+			const result = await resolveAgentRunSourceSetup(options.storage, {
 				type: 'planning',
 				planId: '01k00000000000000000000028',
 			})
 
-			if (!result.ok) throw new Error('Expected source runtime requirement resolution to pass.')
-			expect(result.value.map(runtimeRequirementLabel)).toEqual([
+			if (!result.ok) throw new Error('Expected source setup resolution to pass.')
+			expect(result.value.runtimeRequirements.map(runtimeRequirementLabel)).toEqual([
 				'Verify POSIX shell is available',
+				'Ensure rg and fd are available',
 				'Ensure Git is available',
 				'Checkout GitHub repository Octo/Repo',
 				'Checkout GitHub repository Beta Owner/Second Repo',
 			])
-			const checkout = result.value[2]
+			expect(result.value.toolSet).toEqual(toolSet(['read', 'grep', 'find', 'ls', 'propose-plan-output']))
+			const checkout = result.value.runtimeRequirements[3]
 			if (checkout === undefined || checkout.type !== 'run-command')
 				throw new Error('Expected checkout requirement to be a run command.')
 			expect(checkout).toMatchObject({
@@ -474,13 +522,19 @@ if (import.meta.vitest) {
 			seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000008')
 
 			await expect(
-				resolveAgentRunSourceRuntimeRequirements(options.storage, {
+				resolveAgentRunSourceSetup(options.storage, {
 					type: 'execution',
 					deliveryId: '01k00000000000000000000008',
 					sliceId: '01k00000000000000000000042',
 					mode: { type: 'initial' },
 				}),
-			).resolves.toEqual({ ok: true, value: [verifyPosixShellRequirement, ensureGitRequirement] })
+			).resolves.toEqual({
+				ok: true,
+				value: {
+					runtimeRequirements: [...globalRuntimeRequirements, ensureGitRequirement],
+					toolSet: toolSet(['read', 'grep', 'find', 'ls', 'sh', 'edit', 'write']),
+				},
+			})
 		})
 
 		it('resolves source-control revision planning source requirements through a Slice Artifact scope', async () => {
@@ -501,11 +555,17 @@ if (import.meta.vitest) {
 			})
 
 			await expect(
-				resolveAgentRunSourceRuntimeRequirements(options.storage, {
+				resolveAgentRunSourceSetup(options.storage, {
 					type: 'revision-planning',
 					revisionGateId: '01k00000000000000000000046',
 				}),
-			).resolves.toEqual({ ok: true, value: [verifyPosixShellRequirement, ensureGitRequirement] })
+			).resolves.toEqual({
+				ok: true,
+				value: {
+					runtimeRequirements: [...globalRuntimeRequirements, ensureGitRequirement],
+					toolSet: toolSet(['read', 'grep', 'find', 'ls', 'propose-revision-output']),
+				},
+			})
 		})
 
 		it('resolves source-control revision execution source requirements through a Revision scope and ignores action id', async () => {
@@ -526,12 +586,18 @@ if (import.meta.vitest) {
 			})
 
 			await expect(
-				resolveAgentRunSourceRuntimeRequirements(options.storage, {
+				resolveAgentRunSourceSetup(options.storage, {
 					type: 'revision-execution',
 					revisionId: '01k00000000000000000000047',
 					actionId: '01k00000000000000000000099',
 				}),
-			).resolves.toEqual({ ok: true, value: [verifyPosixShellRequirement, ensureGitRequirement] })
+			).resolves.toEqual({
+				ok: true,
+				value: {
+					runtimeRequirements: [...globalRuntimeRequirements, ensureGitRequirement],
+					toolSet: toolSet(['read', 'grep', 'find', 'ls', 'sh', 'edit', 'write']),
+				},
+			})
 		})
 	})
 
@@ -552,6 +618,10 @@ if (import.meta.vitest) {
 			})
 		})
 	})
+
+	function toolSet(names: string[]): AgentRunToolSet {
+		return names.map((name) => ({ name, contractVersion: 1 }))
+	}
 
 	function runtimeRequirementLabel(requirement: AgentRunRuntimeRequirement): string {
 		switch (requirement.type) {

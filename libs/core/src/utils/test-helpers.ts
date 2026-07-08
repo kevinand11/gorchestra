@@ -2,6 +2,15 @@ import { Repo } from 'equipped/orm'
 import { InMemoryAdapter } from 'equipped/orm/adapters/in-memory'
 
 import type { CoreRuntimeValues } from './runtime-values'
+import { noopRawSandboxInstance } from './sandbox-test-helpers'
+export {
+	deleteTestSandboxPath,
+	listTestSandboxDirectory,
+	noopRawSandboxInstance,
+	readTestSandboxFile,
+	testRawSandbox,
+	writeTestSandboxFile,
+} from './sandbox-test-helpers'
 import type { CommandContext } from '../commands/types'
 import type { Action } from '../domain/action'
 import type { AgentRun, AgentRunEvent, AgentRunProfileSnapshot } from '../domain/agent-run'
@@ -173,17 +182,8 @@ export function createTestCoreServices(overrides: Partial<Pick<CoreServices, 'di
 
 const noopSandbox: CoreServices['sandbox'] = {
 	kind: 'consumer-managed',
-	create: () => Promise.resolve(noopSandboxInstance()),
-	find: () => Promise.resolve(noopSandboxInstance()),
-}
-
-function noopSandboxInstance() {
-	return {
-		runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command succeeded.', stdout: null, stderr: null }),
-		readFile: () => Promise.resolve(null),
-		writeFile: () => Promise.resolve(),
-		release: () => Promise.resolve({ summary: 'Sandbox released.' }),
-	}
+	create: () => Promise.resolve(noopRawSandboxInstance()),
+	find: () => Promise.resolve(noopRawSandboxInstance()),
 }
 
 const noopDispatcher: CoreServices['dispatcher'] = {
@@ -287,6 +287,7 @@ export function testModelAgentRun(
 		agent: { type: 'model' },
 		purpose: input.purpose ?? { type: 'planning', planId: '01k00000000000000000000028' },
 		profile: input.profile ?? testAgentRunProfileSnapshot(),
+		toolSet: [],
 		modelUseOverride: null,
 		sourceRuntimeRequirements: [],
 		runtimeRequirementOverrides: [],

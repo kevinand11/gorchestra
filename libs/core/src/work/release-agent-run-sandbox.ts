@@ -104,7 +104,7 @@ function recordReleaseResolutionFailure(
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreRuntime, createTestCoreServices, testModelAgentRun } = await import('../utils/test-helpers')
+	const { createTestCoreRuntime, createTestCoreServices, testModelAgentRun, testRawSandbox } = await import('../utils/test-helpers')
 
 	describe('releaseAgentRunSandbox work operation', () => {
 		it('validates input with the work boundary before reading storage', async () => {
@@ -162,12 +162,12 @@ if (import.meta.vitest) {
 					kind: 'consumer-managed',
 					create: () => Promise.resolve(rawSandbox(new Map(), () => Promise.resolve({ summary: 'released' }))),
 					find: () =>
-						Promise.resolve({
-							runCommand: () => Promise.resolve({ exitCode: 0, summary: 'ok', stdout: null, stderr: null }),
-							readFile: () => Promise.resolve(null),
-							writeFile: () => Promise.reject(new Error('no write')),
-							release: () => Promise.resolve({ summary: 'released' }),
-						}),
+						Promise.resolve(
+							testRawSandbox({
+								writeFile: () => Promise.reject(new Error('no write')),
+								release: () => Promise.resolve({ summary: 'released' }),
+							}),
+						),
 				},
 			})
 			seedCreatedAgentRun(options)
@@ -198,14 +198,6 @@ if (import.meta.vitest) {
 	}
 
 	function rawSandbox(files: Map<string, string>, release: () => Promise<{ summary: string }>) {
-		return {
-			runCommand: () => Promise.resolve({ exitCode: 0, summary: 'ok', stdout: null, stderr: null }),
-			readFile: (path: string) => Promise.resolve(files.get(path) ?? null),
-			writeFile: (path: string, contents: string) => {
-				files.set(path, contents)
-				return Promise.resolve()
-			},
-			release,
-		}
+		return testRawSandbox({ files, release })
 	}
 }

@@ -226,7 +226,7 @@ if (import.meta.vitest) {
 		seedAgentRunProfile,
 		seedProject,
 	} = await import('../utils/test-helpers')
-	const { ensureGitRequirement, verifyPosixShellRequirement } = await import('../utils/agent-run-runtime-requirements')
+	const { ensureGitRequirement, globalRuntimeRequirements } = await import('../utils/agent-run-runtime-requirements')
 
 	describe('createPlan command', () => {
 		it('validates input before reading storage', async () => {
@@ -381,14 +381,19 @@ if (import.meta.vitest) {
 				runtimeRequirements: [],
 				sandboxConfig: defaultAgentRunSandboxConfig(),
 			},
+			toolSet: toolSet(['read', 'grep', 'find', 'ls', 'propose-plan-output']),
 			modelUseOverride: null,
-			sourceRuntimeRequirements: [verifyPosixShellRequirement, ensureGitRequirement],
+			sourceRuntimeRequirements: [...globalRuntimeRequirements, ensureGitRequirement],
 			runtimeRequirementOverrides: [],
-			desiredRuntimeRequirements: [verifyPosixShellRequirement, ensureGitRequirement],
+			desiredRuntimeRequirements: [...globalRuntimeRequirements, ensureGitRequirement],
 			blocked: { type: 'preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
 			sandbox: null,
 			started: { at: '2026-06-10T12:00:00.000Z' },
 			completed: null,
 		}
+	}
+
+	function toolSet(names: string[]) {
+		return names.map((name) => ({ name, contractVersion: 1 }))
 	}
 }

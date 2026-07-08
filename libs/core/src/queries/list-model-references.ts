@@ -158,6 +158,7 @@ if (import.meta.vitest) {
 					runtimeRequirements: [],
 					sandboxConfig: defaultAgentRunSandboxConfig(),
 				},
+				toolSet: [],
 				modelUseOverride: {
 					modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
 					selected: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },

@@ -13,6 +13,7 @@ import {
 	jsonObjectPipe,
 	nonEmptyTrimmedStringPipe,
 	nonNegativeIntegerPipe,
+	positiveIntegerPipe,
 	runtimeRecordPipe,
 } from './commons'
 import { modelUseConfigPipe } from './config'
@@ -52,6 +53,16 @@ export const agentRunProfileSnapshotPipe = v.object({
 })
 export type AgentRunProfileSnapshot = PipeOutput<typeof agentRunProfileSnapshotPipe>
 
+export const agentRunToolSetEntryPipe = v.object({ name: nonEmptyTrimmedStringPipe, contractVersion: positiveIntegerPipe })
+export type AgentRunToolSetEntry = PipeOutput<typeof agentRunToolSetEntryPipe>
+
+export const agentRunToolSetPipe = v
+	.array(agentRunToolSetEntryPipe)
+	.pipe(
+		v.custom((entries) => entries.length === new Set(entries.map((entry) => entry.name)).size, 'Expected unique Agent Run Tool names.'),
+	)
+export type AgentRunToolSet = PipeOutput<typeof agentRunToolSetPipe>
+
 export const agentRunModelUseOverridePipe = v.object({ modelUse: modelUseConfigPipe, selected: auditStampPipe })
 export type AgentRunModelUseOverride = PipeOutput<typeof agentRunModelUseOverridePipe>
 
@@ -82,6 +93,7 @@ export const agentRunPipe = v.object({
 	agent: agentPipe,
 	purpose: agentRunPurposePipe,
 	profile: agentRunProfileSnapshotPipe,
+	toolSet: agentRunToolSetPipe,
 	modelUseOverride: v.nullable(agentRunModelUseOverridePipe),
 	sourceRuntimeRequirements: agentRunRuntimeRequirementsPipe,
 	runtimeRequirementOverrides: v.array(agentRunRuntimeRequirementOverridePipe),
@@ -98,6 +110,7 @@ export const planningAgentRunPipe = v.object({
 	agent: agentPipe,
 	purpose: planningAgentRunPurposePipe,
 	profile: agentRunProfileSnapshotPipe,
+	toolSet: agentRunToolSetPipe,
 	modelUseOverride: v.nullable(agentRunModelUseOverridePipe),
 	sourceRuntimeRequirements: agentRunRuntimeRequirementsPipe,
 	runtimeRequirementOverrides: v.array(agentRunRuntimeRequirementOverridePipe),
@@ -192,14 +205,6 @@ export const agentRunCustomTranscriptPartPipe = v.object({
 })
 export type AgentRunCustomTranscriptPart = PipeOutput<typeof agentRunCustomTranscriptPartPipe>
 
-export const agentRunToolResultOutputPipe = v.discriminate((value) => value.type, {
-	text: v.object({ type: v.eq('text'), value: freeFormStringPipe }),
-	json: v.object({ type: v.eq('json'), value: unknownPipe }),
-	'error-text': v.object({ type: v.eq('error-text'), value: freeFormStringPipe }),
-	'execution-denied': v.object({ type: v.eq('execution-denied'), reason: v.nullable(freeFormStringPipe) }),
-})
-export type AgentRunToolResultOutput = PipeOutput<typeof agentRunToolResultOutputPipe>
-
 export const agentRunToolTruncationPipe = v.object({
 	truncated: v.boolean(),
 	strategy: v.in(['head', 'tail', 'result-limit', 'line-limit']),
@@ -209,6 +214,34 @@ export const agentRunToolTruncationPipe = v.object({
 	outputLines: v.nullable(nonNegativeIntegerPipe),
 })
 export type AgentRunToolTruncation = PipeOutput<typeof agentRunToolTruncationPipe>
+
+export const agentRunToolResultOutputPipe = v.discriminate((value) => value.type, {
+	text: v.object({ type: v.eq('text'), value: freeFormStringPipe }),
+	json: v.object({ type: v.eq('json'), value: unknownPipe }),
+	'error-text': v.object({ type: v.eq('error-text'), value: freeFormStringPipe }),
+	'execution-denied': v.object({ type: v.eq('execution-denied'), reason: v.nullable(freeFormStringPipe) }),
+	command: v.object({
+		type: v.eq('command'),
+		exitCode: nonNegativeIntegerPipe,
+		stdout: v.nullable(freeFormStringPipe),
+		stderr: v.nullable(freeFormStringPipe),
+		stdoutTruncation: v.nullable(agentRunToolTruncationPipe),
+		stderrTruncation: v.nullable(agentRunToolTruncationPipe),
+	}),
+	image: v.object({
+		type: v.eq('image'),
+		mimeType: nonEmptyTrimmedStringPipe,
+		dataBase64: freeFormStringPipe,
+		note: v.nullable(freeFormStringPipe),
+	}),
+	diff: v.object({
+		type: v.eq('diff'),
+		summary: freeFormStringPipe,
+		diff: freeFormStringPipe,
+		patch: v.nullable(freeFormStringPipe),
+	}),
+})
+export type AgentRunToolResultOutput = PipeOutput<typeof agentRunToolResultOutputPipe>
 
 export const agentRunToolOutputPipe = v.object({
 	output: agentRunToolResultOutputPipe,
@@ -252,6 +285,7 @@ export const agentRunToolErrorReasonPipe = v.discriminate((value) => value.type,
 	'runtime-policy': v.object({ type: v.eq('runtime-policy') }),
 	'tool-runtime-error': v.object({ type: v.eq('tool-runtime-error') }),
 	'tool-timeout': v.object({ type: v.eq('tool-timeout') }),
+	'command-exit': v.object({ type: v.eq('command-exit'), exitCode: nonNegativeIntegerPipe }),
 	'sandbox-error': v.object({ type: v.eq('sandbox-error') }),
 	'external-dependency-error': v.object({ type: v.eq('external-dependency-error') }),
 	'operator-interrupt': v.object({ type: v.eq('operator-interrupt'), interruptEventId: idPipe }),
@@ -564,6 +598,47 @@ export type AgentRunEvent = PipeOutput<typeof agentRunEventPipe>
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
+
+	describe('AgentRun domain pipes', () => {
+		it('validates Agent Run Tool Set snapshots with unique positive-version tools', () => {
+			expect(v.validate(agentRunToolSetPipe, [{ name: 'read', contractVersion: 1 }])).toMatchObject({ valid: true })
+			expect(
+				v.validate(agentRunToolSetPipe, [
+					{ name: 'read', contractVersion: 1 },
+					{ name: 'read', contractVersion: 1 },
+				]),
+			).toMatchObject({ valid: false })
+			expect(v.validate(agentRunToolSetPipe, [{ name: 'read', contractVersion: 0 }])).toMatchObject({ valid: false })
+		})
+
+		it('accepts structured command, image, and diff tool outputs', () => {
+			const truncation = {
+				truncated: true,
+				strategy: 'tail',
+				originalBytes: 100,
+				originalLines: 10,
+				outputBytes: 50,
+				outputLines: 5,
+			}
+			expect(
+				v.validate(agentRunToolResultOutputPipe, {
+					type: 'command',
+					exitCode: 1,
+					stdout: 'out',
+					stderr: null,
+					stdoutTruncation: truncation,
+					stderrTruncation: null,
+				}),
+			).toMatchObject({ valid: true })
+			expect(
+				v.validate(agentRunToolResultOutputPipe, { type: 'image', mimeType: 'image/png', dataBase64: 'aW1hZ2U=', note: null }),
+			).toMatchObject({ valid: true })
+			expect(
+				v.validate(agentRunToolResultOutputPipe, { type: 'diff', summary: 'Changed file.', diff: '--- a/file', patch: null }),
+			).toMatchObject({ valid: true })
+			expect(v.validate(agentRunToolErrorReasonPipe, { type: 'command-exit', exitCode: 2 })).toMatchObject({ valid: true })
+		})
+	})
 
 	describe('AgentRunEvent domain pipes', () => {
 		it('accepts model-use override and turn boundary events', () => {

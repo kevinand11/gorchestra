@@ -387,6 +387,9 @@ export function createServerApi(options: ServerApiOptions = {}) {
 }
 
 export type ServerApi = ReturnType<typeof createServerApi>
+export type AgentRunEvent = Awaited<ReturnType<ServerApi['listAgentRunEvents']>>['items'][number]
+export type PlanningAgentRun = Awaited<ReturnType<ServerApi['getPlan']>>['agentRun']
+export type AgentRunToolSetEntry = PlanningAgentRun['toolSet'][number]
 
 type ParsedPaginationQuery =
 	| { beforeId: string | undefined; limit: number | undefined }

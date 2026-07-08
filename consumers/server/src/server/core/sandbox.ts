@@ -1,8 +1,15 @@
 import { createHash } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import { basename } from 'node:path/posix'
 
-import type { CoreServices, RawSandboxRunCommandInput } from '@gorchestra/core'
+import type {
+	CoreServices,
+	RawSandboxRunCommandInput,
+	SandboxFileEntry,
+	SandboxListDirectoryOutput,
+	SandboxReadFileOutput,
+} from '@gorchestra/core'
 import {
 	Destination,
 	type MountBuilder,
@@ -52,7 +59,9 @@ function microsandboxCoreSandbox(name: string, sandbox: Sandbox) {
 	return {
 		runCommand: (input: RawSandboxRunCommandInput) => runExternalCommand(sandbox, input),
 		readFile: (path: string) => readFile(sandbox, path),
-		writeFile: (path: string, contents: string) => writeFile(sandbox, path, contents),
+		writeFile: (path: string, contentsBase64: string) => writeFile(sandbox, path, contentsBase64),
+		listDirectory: (path: string) => listDirectory(sandbox, path),
+		deletePath: (path: string) => deletePath(sandbox, path),
 		release: () => releaseSandbox(sandbox, name),
 	}
 }
@@ -99,15 +108,48 @@ async function runExternalCommand(sandbox: Sandbox, input: RawSandboxRunCommandI
 	}
 }
 
-async function readFile(sandbox: Sandbox, path: string): Promise<string | null> {
+async function readFile(sandbox: Sandbox, path: string): Promise<SandboxReadFileOutput> {
 	const fs = sandbox.fs()
-	return (await fs.exists(path)) ? fs.readToString(path) : null
+	if (!(await fs.exists(path))) return null
+	const metadata = await fs.stat(path)
+	if (metadata.kind === 'directory') return { type: 'directory' }
+	if (metadata.kind !== 'file') return { type: 'other' }
+	return { type: 'file', contentsBase64: Buffer.from(await fs.read(path)).toString('base64') }
 }
 
-async function writeFile(sandbox: Sandbox, path: string, contents: string): Promise<void> {
+async function writeFile(sandbox: Sandbox, path: string, contentsBase64: string): Promise<void> {
 	const fs = sandbox.fs()
 	await ensureDir(fs, parentDir(path))
-	await fs.write(path, contents)
+	await fs.write(path, Buffer.from(contentsBase64, 'base64'))
+}
+
+async function listDirectory(sandbox: Sandbox, path: string): Promise<SandboxListDirectoryOutput> {
+	const fs = sandbox.fs()
+	if (!(await fs.exists(path))) return null
+	const metadata = await fs.stat(path)
+	if (metadata.kind === 'file') return { type: 'file' }
+	if (metadata.kind !== 'directory') return { type: 'other' }
+	return { type: 'directory', entries: (await fs.list(path)).map(sandboxFileEntry) }
+}
+
+async function deletePath(sandbox: Sandbox, path: string): Promise<void> {
+	const fs = sandbox.fs()
+	if (!(await fs.exists(path))) return
+	await deleteExistingPath(fs, path)
+}
+
+async function deleteExistingPath(fs: SandboxFsOps, path: string): Promise<void> {
+	const metadata = await fs.stat(path)
+	if (metadata.kind !== 'directory') {
+		await fs.remove(path)
+		return
+	}
+	for (const entry of await fs.list(path)) await deleteExistingPath(fs, entry.path)
+	await fs.removeDir(path)
+}
+
+function sandboxFileEntry(entry: { path: string; kind: string }): SandboxFileEntry {
+	return { name: basename(entry.path), type: entry.kind === 'file' || entry.kind === 'directory' ? entry.kind : 'other' }
 }
 
 async function ensureDir(fs: SandboxFsOps, path: string): Promise<void> {

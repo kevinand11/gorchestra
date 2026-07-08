@@ -6,6 +6,8 @@ import type {
 	InvalidInputError,
 	InvariantViolationError,
 	ResourceNotFoundError,
+	SandboxOperationFailedError,
+	SandboxProviderResolutionFailedError,
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
@@ -24,6 +26,8 @@ export type Error =
 	| StorageOperationFailedError
 	| ResourceNotFoundError
 	| InvariantViolationError
+	| SandboxOperationFailedError
+	| SandboxProviderResolutionFailedError
 export type Operation = (input: Input, context: WorkContext) => Promise<CoreResult<Result, Error>>
 
 export function createRunModelAgentRunOperation(runtime: CoreRuntime): Operation {

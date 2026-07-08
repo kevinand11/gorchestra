@@ -198,6 +198,7 @@ export type {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
+	const { noopRawSandboxInstance } = await import('../../utils/sandbox-test-helpers')
 
 	describe('Source Control Provider family', () => {
 		it('resolves GitHub repository access Secrets and dispatches to GitHub', async () => {
@@ -373,14 +374,7 @@ if (import.meta.vitest) {
 		}
 	}
 
-	function noopSandboxInstance() {
-		return {
-			runCommand: () => Promise.resolve({ exitCode: 0, summary: 'Command completed.', stdout: null, stderr: null }),
-			readFile: () => Promise.resolve(null),
-			writeFile: () => Promise.resolve(),
-			release: () => Promise.resolve({ summary: 'Sandbox released.' }),
-		}
-	}
+	const noopSandboxInstance = noopRawSandboxInstance
 
 	function unusedStorageService(): CoreServices['storage'] {
 		return {

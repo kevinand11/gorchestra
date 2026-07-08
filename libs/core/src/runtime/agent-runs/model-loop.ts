@@ -2,11 +2,11 @@ import { runAISDKTurn } from './ai-sdk-turn'
 import { buildAgentRunModelContext } from './context'
 import { appendAndEmit } from './event-emission'
 import { completeAutonomousRunIfNeeded } from './run-completion'
-import { toolsForAgentRunPurpose } from './tools'
+import { resolveToolSet } from './tools'
 import { nextTurnClaim, type TurnReasonClaim } from './turn-claims'
 import { loadTurnModelUse } from './turn-model-use'
 import type { AgentRunLoopState, AgentRunRuntimeError, ModelAgentRunRuntime, RunModelAgentRunOptions, TurnResult } from './types'
-import type { AgentRunEvent, TurnErrorReason } from '../../domain/agent-run'
+import type { AgentRun, AgentRunEvent, TurnErrorReason } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
 import type { ModelNotSelectableError, ModelThinkingLevelUnavailableError } from '../../errors'
 import type { CoreProviders } from '../../providers'
@@ -14,6 +14,8 @@ import type { CoreStorage } from '../../services'
 import { getRequired, listRecords } from '../../storage/helpers'
 import { agentRunSandboxPrepared } from '../../utils/agent-runs'
 import type { Result } from '../../utils/types'
+import { managedSandboxProviderForConfig } from '../sandboxes'
+import type { ManagedSandbox } from '../sandboxes/managed'
 
 export async function runModelAgentRun(
 	runtime: ModelAgentRunRuntime,
@@ -28,14 +30,22 @@ export async function runModelAgentRun(
 	const claim = nextTurnClaim(state.value.events)
 	if (claim === null) return { ok: true, value: undefined }
 
-	const turn = await runTurn(runtime, state.value, claim, options)
+	const preparedState = await attachPreparedSandbox(runtime, state.value)
+	if (!preparedState.ok) return preparedState
+
+	const turn = await runTurn(runtime, preparedState.value, claim, options)
 	if (!turn.ok) return turn
 	return turn.value.type === 'completed' ? completeAutonomousRunIfNeeded(runtime, state.value.agentRun) : { ok: true, value: undefined }
 }
 
-async function loadLoopState(storage: CoreStorage, agentRunId: Id): Promise<Result<AgentRunLoopState, AgentRunRuntimeError>> {
+type BaseAgentRunLoopState = Omit<AgentRunLoopState, 'sandbox'>
+
+async function loadLoopState(storage: CoreStorage, agentRunId: Id): Promise<Result<BaseAgentRunLoopState, AgentRunRuntimeError>> {
 	const agentRun = await getRequired('agent-run', storage, agentRunId)
 	if (!agentRun.ok) return agentRun
+
+	const tools = resolveToolSet(agentRun.value.toolSet)
+	if (!tools.ok) return tools
 
 	const events = await listRecords('agent-run-event', storage, {
 		where: (filter, fields) => filter.eq(fields.agentRunId, agentRunId),
@@ -43,7 +53,35 @@ async function loadLoopState(storage: CoreStorage, agentRunId: Id): Promise<Resu
 	})
 	if (!events.ok) return events
 
-	return { ok: true, value: { agentRun: agentRun.value, events: events.value, tools: toolsForAgentRunPurpose(agentRun.value.purpose) } }
+	return { ok: true, value: { agentRun: agentRun.value, events: events.value, tools: tools.value } }
+}
+
+async function attachPreparedSandbox(
+	runtime: ModelAgentRunRuntime,
+	state: BaseAgentRunLoopState,
+): Promise<Result<AgentRunLoopState, AgentRunRuntimeError>> {
+	const sandbox = await findPreparedSandbox(runtime, state.agentRun)
+	return sandbox.ok ? { ok: true, value: { ...state, sandbox: sandbox.value } } : sandbox
+}
+
+async function findPreparedSandbox(
+	runtime: ModelAgentRunRuntime,
+	agentRun: AgentRun,
+): Promise<Result<ManagedSandbox, AgentRunRuntimeError>> {
+	if (agentRun.sandbox === null || agentRun.sandbox.released !== null) {
+		return invariant(`Agent Run ${agentRun.id} sandbox was expected to be prepared.`)
+	}
+
+	const provider = await managedSandboxProviderForConfig(runtime, runtime.services.storage, agentRun.profile.sandboxConfig)
+	if (!provider.ok) return provider
+
+	const sandbox = await provider.value.find({ key: agentRun.sandbox.key })
+	if (!sandbox.ok) return sandbox
+	return sandbox.value === null ? invariant(`Agent Run ${agentRun.id} sandbox was not found.`) : { ok: true, value: sandbox.value }
+}
+
+function invariant(message: string): Result<never, AgentRunRuntimeError> {
+	return { ok: false, error: { type: 'invariant-violation', message } }
 }
 
 async function runTurn(
@@ -130,6 +168,20 @@ if (import.meta.vitest) {
 	const { createTestCoreServices, defaultAgentRunSandboxConfig, seedSelectableModel } = await import('../../utils/test-helpers')
 
 	describe('runModelAgentRun', () => {
+		it('fails unsupported stored Tool Set entries before starting a turn', async () => {
+			const services = planningFixture()
+			services.tx.agentRuns.records.get('01k00000000000000000000002')!.toolSet = [{ name: 'unknown-tool', contractVersion: 1 }]
+			const runtime = modelLoopRuntime(services)
+
+			const result = await runModelAgentRun(runtime, '01k00000000000000000000002')
+
+			expect(result).toEqual({
+				ok: false,
+				error: { type: 'invariant-violation', message: 'Unsupported Agent Run Tool unknown-tool@1.' },
+			})
+			expect([...services.tx.agentRunEvents.records.values()].some((event) => event.body.type === 'turn-started')).toBe(false)
+		})
+
 		it('no-ops completed Agent Runs without processing queued input', async () => {
 			const services = planningFixture()
 			services.tx.agentRuns.records.get('01k00000000000000000000002')!.completed = { at: '2026-06-10T12:05:00.000Z' }
@@ -184,6 +236,7 @@ if (import.meta.vitest) {
 				runtimeRequirements: [],
 				sandboxConfig: defaultAgentRunSandboxConfig(),
 			},
+			toolSet: [],
 			modelUseOverride: null,
 			sourceRuntimeRequirements: [],
 			runtimeRequirementOverrides: [],

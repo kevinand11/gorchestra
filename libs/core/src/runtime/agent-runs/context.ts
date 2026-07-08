@@ -1,5 +1,6 @@
 import type { ModelMessage } from 'ai'
 
+import { toAISDKToolOutput } from './transcript-parts'
 import type { AgentRunModelContext } from './types'
 import type {
 	AgentRunAssistantTranscriptPart,
@@ -132,7 +133,12 @@ function projectAssistantPart(part: AgentRunAssistantTranscriptPart): object[] {
 		case 'tool-result':
 			return [
 				withProviderOptions(
-					{ type: 'tool-result' as const, toolCallId: part.toolCallId, toolName: part.toolName, output: part.output },
+					{
+						type: 'tool-result' as const,
+						toolCallId: part.toolCallId,
+						toolName: part.toolName,
+						output: toAISDKToolOutput(part.output),
+					},
 					part.metadata,
 				),
 			]
@@ -172,7 +178,7 @@ function projectToolMessage(body: Extract<AgentRunEvent['body'], { type: 'tool-m
 							type: 'tool-result' as const,
 							toolCallId: part.toolCallId,
 							toolName: part.toolName,
-							output: withTruncationNotice(part.output, part.truncation),
+							output: projectToolOutput(part.output, part.truncation),
 						},
 						part.metadata,
 					)
@@ -182,7 +188,7 @@ function projectToolMessage(body: Extract<AgentRunEvent['body'], { type: 'tool-m
 							type: 'tool-result' as const,
 							toolCallId: part.toolCallId,
 							toolName: part.toolName,
-							output: withTruncationNotice(part.error, part.truncation),
+							output: projectToolOutput(part.error, part.truncation),
 						},
 						part.metadata,
 					)
@@ -198,6 +204,10 @@ function projectToolMessage(body: Extract<AgentRunEvent['body'], { type: 'tool-m
 			}
 		}),
 	} as ModelMessage
+}
+
+function projectToolOutput(output: AgentRunToolResultOutput, truncation: AgentRunToolTruncation | null): unknown {
+	return toAISDKToolOutput(withTruncationNotice(output, truncation))
 }
 
 function withTruncationNotice(output: AgentRunToolResultOutput, truncation: AgentRunToolTruncation | null): AgentRunToolResultOutput {
@@ -272,6 +282,116 @@ if (import.meta.vitest) {
 				{
 					role: 'tool',
 					content: [{ type: 'tool-result', toolCallId: 'call-1', toolName: 'tool', output: { type: 'text', value: 'Done.' } }],
+				},
+			])
+		})
+
+		it('projects structured tool outputs into future model context', () => {
+			const context = buildAgentRunModelContext(
+				[
+					event(1, {
+						type: 'tool-message',
+						turnStartedEventId: eventId(1),
+						respondsToAssistantMessageEventId: eventId(1),
+						source: { type: 'tool-execution' },
+						parts: [
+							{
+								type: 'tool-result',
+								toolCallId: 'command-call',
+								toolName: 'sh',
+								providerExecuted: false,
+								started: { at: '2026-06-10T12:00:00.000Z' },
+								completed: { at: '2026-06-10T12:00:01.000Z' },
+								output: {
+									type: 'command',
+									exitCode: 0,
+									stdout: 'done',
+									stderr: null,
+									stdoutTruncation: null,
+									stderrTruncation: null,
+								},
+								truncation: null,
+								metadata: null,
+							},
+							{
+								type: 'tool-result',
+								toolCallId: 'image-call',
+								toolName: 'read',
+								providerExecuted: false,
+								started: { at: '2026-06-10T12:00:00.000Z' },
+								completed: { at: '2026-06-10T12:00:01.000Z' },
+								output: { type: 'image', mimeType: 'image/png', dataBase64: 'aW1hZ2U=', note: null },
+								truncation: null,
+								metadata: null,
+							},
+							{
+								type: 'tool-result',
+								toolCallId: 'diff-call',
+								toolName: 'edit',
+								providerExecuted: false,
+								started: { at: '2026-06-10T12:00:00.000Z' },
+								completed: { at: '2026-06-10T12:00:01.000Z' },
+								output: { type: 'diff', summary: 'Updated file.', diff: '- old\n+ new', patch: null },
+								truncation: null,
+								metadata: null,
+							},
+							{
+								type: 'tool-error',
+								toolCallId: 'failed-command-call',
+								toolName: 'sh',
+								providerExecuted: false,
+								started: { at: '2026-06-10T12:00:00.000Z' },
+								completed: { at: '2026-06-10T12:00:01.000Z' },
+								reason: { type: 'command-exit', exitCode: 1 },
+								error: {
+									type: 'command',
+									exitCode: 1,
+									stdout: null,
+									stderr: 'failed',
+									stdoutTruncation: null,
+									stderrTruncation: null,
+								},
+								truncation: null,
+								metadata: null,
+							},
+						],
+					}),
+				],
+				eventId(1),
+			)
+
+			expect(context.messages).toEqual([
+				{
+					role: 'tool',
+					content: [
+						{
+							type: 'tool-result',
+							toolCallId: 'command-call',
+							toolName: 'sh',
+							output: { type: 'text', value: 'Exit code: 0\n\nstdout:\ndone\n\nstderr:\n(empty)' },
+						},
+						{
+							type: 'tool-result',
+							toolCallId: 'image-call',
+							toolName: 'read',
+							output: {
+								type: 'content',
+								value: [{ type: 'file', data: { type: 'data', data: 'aW1hZ2U=' }, mediaType: 'image/png' }],
+							},
+						},
+						{
+							type: 'tool-result',
+							toolCallId: 'diff-call',
+							toolName: 'edit',
+							output: { type: 'text', value: 'Updated file.\n\nDiff:\n- old\n+ new' },
+						},
+						{
+							type: 'tool-result',
+							toolCallId: 'failed-command-call',
+							toolName: 'sh',
+							output: { type: 'text', value: 'Exit code: 1\n\nstdout:\n(empty)\n\nstderr:\nfailed' },
+						},
+					],
 				},
 			])
 		})

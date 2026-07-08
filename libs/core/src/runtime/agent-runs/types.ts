@@ -1,7 +1,7 @@
 import type { ModelMessage } from 'ai'
 
 import type { AgentRunLiveEvent } from './live-events'
-import type { CoreAgentRunTool } from './tools'
+import type { CoreAgentRunToolDefinition } from './tools'
 import type { AgentRun, AgentRunEvent, AgentRunToolOutput } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
 import type { ModelThinkingLevel } from '../../domain/model'
@@ -9,11 +9,14 @@ import type {
 	InvalidCoreServiceOutputError,
 	InvariantViolationError,
 	ResourceNotFoundError,
+	SandboxOperationFailedError,
+	SandboxProviderResolutionFailedError,
 	StorageOperationFailedError,
 } from '../../errors'
 import type { CoreProviders } from '../../providers'
 import type { CoreServices } from '../../services'
 import type { CoreRuntimeValues } from '../../utils/runtime-values'
+import type { ManagedSandbox } from '../sandboxes/managed'
 
 export interface AgentRunModelContext {
 	messages: ModelMessage[]
@@ -46,6 +49,7 @@ export interface CoreAgentRunToolContext {
 	): void
 	signal: AbortSignal
 	recordProposal(body: { type: 'proposed-plan-output' | 'proposed-revision-output'; output: unknown }): Promise<AgentRunToolOutput>
+	sandbox: ManagedSandbox
 }
 
 export type AgentRunRuntimeError =
@@ -53,6 +57,8 @@ export type AgentRunRuntimeError =
 	| StorageOperationFailedError
 	| ResourceNotFoundError
 	| InvariantViolationError
+	| SandboxOperationFailedError
+	| SandboxProviderResolutionFailedError
 
 export interface RunModelAgentRunOptions {
 	signal?: AbortSignal
@@ -68,7 +74,8 @@ export interface ModelAgentRunRuntime {
 export interface AgentRunLoopState {
 	agentRun: AgentRun
 	events: AgentRunEvent[]
-	tools: CoreAgentRunTool[]
+	tools: CoreAgentRunToolDefinition[]
+	sandbox: ManagedSandbox
 }
 
 export type TurnResult = { type: 'completed' } | { type: 'failed' }

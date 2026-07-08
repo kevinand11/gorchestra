@@ -1,9 +1,16 @@
-import { resolveAgentRunSourceRuntimeRequirements, type ResolveAgentRunSourceRuntimeRequirementsError } from './agent-run-source-resolvers'
+import { resolveAgentRunSourceSetup, type ResolveAgentRunSourceSetupError } from './agent-run-source-resolvers'
 import { validateRuntimeRequirementSecretReferences, type RuntimeRequirementSecretReferenceError } from './runtime-requirement-secrets'
 import { nextId, runtimeRecord, type CoreRuntimeValues } from './runtime-values'
 import type { Result } from './types'
 import { acceptAgentRunPreparation, acceptAgentRunSandboxRelease } from '../commands/utils/dispatch'
-import type { AgentRun, AgentRunEvent, AgentRunEventBody, AgentRunProfileSnapshot, AgentRunPurpose } from '../domain/agent-run'
+import type {
+	AgentRun,
+	AgentRunEvent,
+	AgentRunEventBody,
+	AgentRunProfileSnapshot,
+	AgentRunPurpose,
+	AgentRunToolSet,
+} from '../domain/agent-run'
 import { appendUniqueRuntimeRequirements, type AgentRunRuntimeRequirement } from '../domain/agent-run-runtime'
 import type { Id, RuntimeRecord } from '../domain/commons'
 import type { InvalidCoreServiceOutputError, InvariantViolationError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
@@ -81,10 +88,7 @@ export type AppendAgentRunEventError =
 	| ResourceNotFoundError
 	| InvariantViolationError
 
-export type CreateModelAgentRunError =
-	| AppendAgentRunEventError
-	| ResolveAgentRunSourceRuntimeRequirementsError
-	| RuntimeRequirementSecretReferenceError
+export type CreateModelAgentRunError = AppendAgentRunEventError | ResolveAgentRunSourceSetupError | RuntimeRequirementSecretReferenceError
 
 export async function createInstructedModelAgentRunAndRequestPreparation<TPurpose extends AgentRunPurpose>(
 	context: { values: CoreRuntimeValues; dispatcher: CoreServices['dispatcher'] },
@@ -106,13 +110,17 @@ export async function createInstructedModelAgentRunAndRequestPreparation<TPurpos
 		CreateModelAgentRunError
 	>
 > {
-	const sourceRuntimeRequirements = await resolveAgentRunSourceRuntimeRequirements(storage, input.purpose)
-	if (!sourceRuntimeRequirements.ok) return sourceRuntimeRequirements
+	const sourceSetup = await resolveAgentRunSourceSetup(storage, input.purpose)
+	if (!sourceSetup.ok) return sourceSetup
 
-	const sourceSecretValidation = await validateRuntimeRequirementSecretReferences(storage, sourceRuntimeRequirements.value)
+	const sourceSecretValidation = await validateRuntimeRequirementSecretReferences(storage, sourceSetup.value.runtimeRequirements)
 	if (!sourceSecretValidation.ok) return sourceSecretValidation
 
-	const agentRun = modelAgentRun({ ...input, sourceRuntimeRequirements: sourceRuntimeRequirements.value })
+	const agentRun = modelAgentRun({
+		...input,
+		sourceRuntimeRequirements: sourceSetup.value.runtimeRequirements,
+		toolSet: sourceSetup.value.toolSet,
+	})
 	const stored = await createRecord('agent-run', storage, agentRun)
 	if (!stored.ok) return stored
 
@@ -138,6 +146,7 @@ function modelAgentRun<TPurpose extends AgentRunPurpose>(input: {
 	started: RuntimeRecord
 	profile: AgentRunProfileSnapshot
 	sourceRuntimeRequirements: AgentRunRuntimeRequirement[]
+	toolSet: AgentRunToolSet
 }): ModelAgentRunWithPurpose<TPurpose> {
 	const desiredRuntimeRequirements = appendUniqueRuntimeRequirements(input.sourceRuntimeRequirements, input.profile.runtimeRequirements)
 	return {
@@ -145,6 +154,7 @@ function modelAgentRun<TPurpose extends AgentRunPurpose>(input: {
 		agent: { type: 'model' },
 		purpose: input.purpose,
 		profile: input.profile,
+		toolSet: input.toolSet,
 		modelUseOverride: null,
 		sourceRuntimeRequirements: input.sourceRuntimeRequirements,
 		runtimeRequirementOverrides: [],
@@ -211,7 +221,7 @@ export async function completeAgentRunByPurposeAndAcceptSandboxRelease(
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { createTestCoreServices, defaultAgentRunSandboxConfig, localStamp, seedProject } = await import('./test-helpers')
-	const { ensureGitRequirement, verifyPosixShellRequirement } = await import('./agent-run-runtime-requirements')
+	const { ensureGitRequirement, globalRuntimeRequirements } = await import('./agent-run-runtime-requirements')
 
 	describe('createInstructedModelAgentRunAndRequestPreparation', () => {
 		it('creates a Model Agent Run, records its instruction, and requests Agent Run preparation', async () => {
@@ -268,10 +278,11 @@ if (import.meta.vitest) {
 					runtimeRequirements: [],
 					sandboxConfig: defaultAgentRunSandboxConfig(),
 				},
+				toolSet: toolSet(['read', 'grep', 'find', 'ls', 'propose-plan-output']),
 				modelUseOverride: null,
-				sourceRuntimeRequirements: [verifyPosixShellRequirement, ensureGitRequirement],
+				sourceRuntimeRequirements: [...globalRuntimeRequirements, ensureGitRequirement],
 				runtimeRequirementOverrides: [],
-				desiredRuntimeRequirements: [verifyPosixShellRequirement, ensureGitRequirement],
+				desiredRuntimeRequirements: [...globalRuntimeRequirements, ensureGitRequirement],
 				blocked: { type: 'preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
 				sandbox: null,
 				started: { at: '2026-06-10T12:00:00.000Z' },
@@ -369,6 +380,7 @@ if (import.meta.vitest) {
 					runtimeRequirements: [],
 					sandboxConfig: defaultAgentRunSandboxConfig(),
 				},
+				toolSet: [],
 				modelUseOverride: null,
 				sourceRuntimeRequirements: [],
 				runtimeRequirementOverrides: [],
@@ -396,4 +408,8 @@ if (import.meta.vitest) {
 			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010002')).toMatchObject({ id: '01k00000000000000000010002' })
 		})
 	})
+
+	function toolSet(names: string[]): AgentRunToolSet {
+		return names.map((name) => ({ name, contractVersion: 1 }))
+	}
 }

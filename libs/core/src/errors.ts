@@ -122,7 +122,16 @@ export interface SecretResolutionFailedError {
 	secretId: Id
 }
 
-export type SandboxOperation = 'create' | 'find' | 'set-env' | 'run-command' | 'release'
+export type SandboxOperation =
+	| 'create'
+	| 'find'
+	| 'set-env'
+	| 'run-command'
+	| 'read-file'
+	| 'write-file'
+	| 'list-directory'
+	| 'delete-path'
+	| 'release'
 
 export interface SandboxOperationFailedError {
 	type: 'sandbox-operation-failed'

@@ -16,9 +16,17 @@ import type {
 } from '../errors'
 import type { CoreRuntime } from '../runtime'
 import { managedSandboxProviderForConfig, type SandboxProviderResolutionError } from '../runtime/sandboxes'
-import type { ManagedSandbox, ManagedSandboxError, ManagedSandboxProvider } from '../runtime/sandboxes/managed'
-import type { SandboxCommandOutput } from '../services'
+import {
+	managedSandboxFileApiReadinessDirectory,
+	verifyManagedSandboxFileApiReadiness,
+	type ManagedSandbox,
+	type ManagedSandboxError,
+	type ManagedSandboxFileApiReadinessError,
+	type ManagedSandboxProvider,
+} from '../runtime/sandboxes/managed'
+import type { RawSandboxRunCommandInput, SandboxCommandOutput } from '../services'
 import { getRequired, updateRecord } from '../storage/helpers'
+import { globalRuntimeRequirements } from '../utils/agent-run-runtime-requirements'
 import { appendAgentRunEvent } from '../utils/agent-runs'
 import { agentRunSandboxPrepared } from '../utils/agent-runs'
 import { runtimeRecord } from '../utils/runtime-values'
@@ -143,20 +151,59 @@ async function applyRuntimeRequirements(
 	const prefix = validateAppliedRequirementPrefix(agentRun)
 	if (!prefix.ok) return prefix
 
-	let current = agentRun
-	for (let index = current.sandbox.appliedRequirements.length; index < current.desiredRuntimeRequirements.length; index += 1) {
-		const requirement = current.desiredRuntimeRequirements[index]!
-		const applied = await applyRuntimeRequirement(runtime, current, sandbox, index, requirement)
-		if (!applied.ok) return applied
-		if (!applied.value.applied) return { ok: true, value: undefined }
-		current = applied.value.agentRun
-	}
+	const afterGlobals = await applyRuntimeRequirementsThroughIndex(runtime, agentRun, sandbox, globalRuntimeRequirements.length)
+	if (!afterGlobals.ok) return afterGlobals
+	if (!afterGlobals.value.continue) return { ok: true, value: undefined }
 
-	const completed = await completePreparation(runtime, current)
+	const fileApi = await verifyManagedSandboxFileApiReadiness({
+		sandbox,
+		directoryPath: managedSandboxFileApiReadinessDirectory(afterGlobals.value.agentRun.id),
+	})
+	if (!fileApi.ok) return blockFileApiReadinessFailure(runtime, afterGlobals.value.agentRun, fileApi.error)
+
+	const remaining = await applyRuntimeRequirementsThroughIndex(
+		runtime,
+		afterGlobals.value.agentRun,
+		sandbox,
+		afterGlobals.value.agentRun.desiredRuntimeRequirements.length,
+	)
+	if (!remaining.ok) return remaining
+	if (!remaining.value.continue) return { ok: true, value: undefined }
+
+	const completed = await completePreparation(runtime, remaining.value.agentRun)
 	return completed.ok ? { ok: true, value: undefined } : completed
 }
 
+type ApplyRequirementsResult = { continue: true; agentRun: AgentRunWithSandbox } | { continue: false }
 type ApplyRequirementResult = { applied: true; agentRun: AgentRunWithSandbox } | { applied: false }
+
+async function applyRuntimeRequirementsThroughIndex(
+	runtime: CoreRuntime,
+	agentRun: AgentRunWithSandbox,
+	sandbox: ManagedSandbox,
+	endIndexExclusive: number,
+): Promise<CoreResult<ApplyRequirementsResult, Exclude<Error, InvalidInputError>>> {
+	let current = agentRun
+	for (let index = current.sandbox.appliedRequirements.length; index < endIndexExclusive; index += 1) {
+		const requirement = current.desiredRuntimeRequirements[index]
+		if (requirement === undefined) break
+		const applied = await applyRuntimeRequirement(runtime, current, sandbox, index, requirement)
+		if (!applied.ok) return applied
+		if (!applied.value.applied) return { ok: true, value: { continue: false } }
+		current = applied.value.agentRun
+	}
+	return { ok: true, value: { continue: true, agentRun: current } }
+}
+
+async function blockFileApiReadinessFailure(
+	runtime: CoreRuntime,
+	agentRun: AgentRunWithSandbox,
+	error: ManagedSandboxFileApiReadinessError,
+): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
+	if (error.type === 'invalid-core-service-output') return { ok: false, error }
+	const blocked = await blockPreparationFailure(runtime, agentRun, { type: 'sandbox-file-api' }, error.summary)
+	return blocked.ok ? { ok: true, value: undefined } : blocked
+}
 
 async function applyRuntimeRequirement(
 	runtime: CoreRuntime,
@@ -417,7 +464,7 @@ function latestRuntimeOverrideEventId(agentRun: AgentRun): Id | null {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreRuntime, createTestCoreServices, defaultAgentRunSandboxConfig, seedSecret, testModelAgentRun } =
+	const { createTestCoreRuntime, createTestCoreServices, defaultAgentRunSandboxConfig, seedSecret, testModelAgentRun, testRawSandbox } =
 		await import('../utils/test-helpers')
 
 	describe('prepareAgentRun work operation', () => {
@@ -438,6 +485,8 @@ if (import.meta.vitest) {
 		it('creates a sandbox by key and applies environment Secret requirements through managed setEnv', async () => {
 			const files = new Map<string, string>()
 			const commands: unknown[] = []
+			const operations: string[] = []
+			const envRequirement = { type: 'environment-secret' as const, envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }
 			const sandboxes = new Map<string, ReturnType<typeof rawSandbox>>()
 			const options = createTestCoreServices({
 				secrets: {
@@ -448,7 +497,7 @@ if (import.meta.vitest) {
 				sandbox: {
 					kind: 'consumer-managed',
 					create: ({ key }) => {
-						const sandbox = rawSandbox(files, commands)
+						const sandbox = rawSandbox(files, commands, { operations })
 						sandboxes.set(key, sandbox)
 						return Promise.resolve(sandbox)
 					},
@@ -463,27 +512,31 @@ if (import.meta.vitest) {
 						agentRunProfileId: '01k00000000000000000000006',
 						name: 'Agent Run Profile',
 						modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
-						runtimeRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
+						runtimeRequirements: [envRequirement],
 						sandboxConfig: defaultAgentRunSandboxConfig(),
 					},
 				}),
 			)
 			options.tx.agentRuns.records.get('01k00000000000000000000002')!.desiredRuntimeRequirements = [
-				{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' },
+				...globalRuntimeRequirements,
+				envRequirement,
 			]
 			const operation = createPrepareAgentRunOperation(createTestCoreRuntime(options))
 
 			const result = await operation({ agentRunId: '01k00000000000000000000002' }, { correlationId: null })
 
 			expect(result).toEqual({ ok: true, value: undefined })
-			expect(commands).toEqual([])
+			expect(commands).toEqual(initializationAndGlobalCommands())
+			expect(checkPathOperations(operations, '01k00000000000000000000002')).toEqual(
+				fileApiReadinessOperations('01k00000000000000000000002'),
+			)
 			expect(files.get('/workspace/.gorchestra/runtime-env.json')).toBe(`${JSON.stringify({ NPM_TOKEN: 'plaintext-token' })}\n`)
 			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')).toMatchObject({
 				blocked: null,
 				sandbox: {
 					key: '01k00000000000000000000002',
 					created: { at: '2026-06-10T12:00:00.000Z' },
-					appliedRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
+					appliedRequirements: [...globalRuntimeRequirements, envRequirement],
 					appliedThroughEventId: null,
 					released: null,
 				},
@@ -552,11 +605,20 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('reuses one managed sandbox handle for remaining runtime requirements', async () => {
+		it('reuses one managed sandbox handle and applies remaining runtime requirements after the file API check', async () => {
 			const files = new Map<string, string>()
 			const commands: unknown[] = []
+			const operations: string[] = []
+			const envRequirement = { type: 'environment-secret' as const, envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }
+			const installRequirement = {
+				type: 'run-command' as const,
+				label: 'Install',
+				command: { executable: 'npm', args: ['install'], cwd: '/workspace' },
+				root: false,
+				commandSecretEnv: {},
+			}
 			let findCalls = 0
-			const sandbox = rawSandbox(files, commands)
+			const sandbox = rawSandbox(files, commands, { operations })
 			const options = createTestCoreServices({
 				secrets: {
 					preflight: () => Promise.resolve({ ok: true }),
@@ -582,16 +644,7 @@ if (import.meta.vitest) {
 					appliedThroughEventId: null,
 					released: null,
 				},
-				desiredRuntimeRequirements: [
-					{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' },
-					{
-						type: 'run-command',
-						label: 'Install',
-						command: { executable: 'npm', args: ['install'], cwd: '/workspace' },
-						root: false,
-						commandSecretEnv: {},
-					},
-				],
+				desiredRuntimeRequirements: [...globalRuntimeRequirements, envRequirement, installRequirement],
 			})
 			const operation = createPrepareAgentRunOperation(createTestCoreRuntime(options))
 
@@ -600,6 +653,7 @@ if (import.meta.vitest) {
 			expect(result).toEqual({ ok: true, value: undefined })
 			expect(findCalls).toBe(1)
 			expect(commands).toEqual([
+				...initializationAndGlobalCommands(),
 				{
 					command: { executable: 'npm', args: ['install'], cwd: '/workspace' },
 					env: { NPM_TOKEN: 'prepared-token' },
@@ -607,21 +661,170 @@ if (import.meta.vitest) {
 					timeoutMs: 600_000,
 				},
 			])
+			expect(checkPathOperations(operations, '01k00000000000000000000002')).toEqual(
+				fileApiReadinessOperations('01k00000000000000000000002'),
+			)
+			expect(operations.indexOf(`delete:${managedSandboxFileApiReadinessDirectory('01k00000000000000000000002')}`)).toBeLessThan(
+				operations.findIndex((operation) => operation.includes('npm:install')),
+			)
+		})
+
+		it('blocks with sandbox file API target when readiness fails after globals', async () => {
+			const files = new Map<string, string>()
+			const commands: unknown[] = []
+			const operations: string[] = []
+			const options = createTestCoreServices({
+				sandbox: {
+					kind: 'consumer-managed',
+					create: () =>
+						Promise.resolve(
+							rawSandbox(files, commands, {
+								operations,
+								failWritePath: (path) =>
+									path.startsWith(managedSandboxFileApiReadinessDirectory('01k00000000000000000000002')),
+							}),
+						),
+					find: () => Promise.resolve(null),
+				},
+			})
+			options.tx.agentRuns.records.set('01k00000000000000000000002', {
+				...testModelAgentRun(),
+				desiredRuntimeRequirements: [...globalRuntimeRequirements],
+			})
+			const operation = createPrepareAgentRunOperation(createTestCoreRuntime(options))
+
+			const result = await operation({ agentRunId: '01k00000000000000000000002' }, { correlationId: null })
+
+			expect(result).toEqual({ ok: true, value: undefined })
+			expect(commands).toEqual(initializationAndGlobalCommands())
+			expect(checkPathOperations(operations, '01k00000000000000000000002')).toEqual([
+				`write:${managedSandboxFileApiReadinessDirectory('01k00000000000000000000002')}/check.txt`,
+			])
+			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.blocked).toMatchObject({
+				type: 'preparation-failed',
+				target: { type: 'sandbox-file-api' },
+				summary: 'Sandbox file write failed.',
+			})
+			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.sandbox?.appliedRequirements).toEqual([
+				...globalRuntimeRequirements,
+			])
+		})
+
+		it('reruns file API readiness on retry after globals were already applied', async () => {
+			const files = new Map<string, string>()
+			const commands: unknown[] = []
+			const operations: string[] = []
+			const installRequirement = {
+				type: 'run-command' as const,
+				label: 'Install',
+				command: { executable: 'npm', args: ['install'], cwd: '/workspace' },
+				root: false,
+				commandSecretEnv: {},
+			}
+			const sandbox = rawSandbox(files, commands, { operations })
+			const options = createTestCoreServices({
+				sandbox: {
+					kind: 'consumer-managed',
+					create: () => Promise.resolve(sandbox),
+					find: () => Promise.resolve(sandbox),
+				},
+			})
+			options.tx.agentRuns.records.set('01k00000000000000000000002', {
+				...testModelAgentRun(),
+				blocked: { type: 'preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
+				sandbox: {
+					key: '01k00000000000000000000002',
+					created: { at: '2026-06-10T12:00:00.000Z' },
+					appliedRequirements: [...globalRuntimeRequirements],
+					appliedThroughEventId: null,
+					released: null,
+				},
+				desiredRuntimeRequirements: [...globalRuntimeRequirements, installRequirement],
+			})
+			const operation = createPrepareAgentRunOperation(createTestCoreRuntime(options))
+
+			const result = await operation({ agentRunId: '01k00000000000000000000002' }, { correlationId: null })
+
+			expect(result).toEqual({ ok: true, value: undefined })
+			expect(commands).toEqual([
+				internalDirectoryInitializationCommand(),
+				{ command: installRequirement.command, env: {}, root: false, timeoutMs: 600_000 },
+			])
+			expect(checkPathOperations(operations, '01k00000000000000000000002')).toEqual(
+				fileApiReadinessOperations('01k00000000000000000000002'),
+			)
 		})
 	})
 
-	function rawSandbox(files: Map<string, string>, commands: unknown[]) {
+	function internalDirectoryInitializationCommand() {
 		return {
-			runCommand: (input: unknown) => {
+			command: {
+				executable: 'sh',
+				args: ['-c', 'mkdir -p /workspace/.gorchestra && chmod 700 /workspace/.gorchestra'],
+				cwd: '/workspace',
+			},
+			env: {},
+			root: true,
+			timeoutMs: 30_000,
+		}
+	}
+
+	function rawSandbox(
+		files: Map<string, string>,
+		commands: unknown[],
+		options: { operations?: string[]; failWritePath?: (path: string) => boolean } = {},
+	) {
+		const base = testRawSandbox({ files })
+		return {
+			...base,
+			runCommand: (input: RawSandboxRunCommandInput) => {
 				commands.push(input)
+				options.operations?.push(`run:${input.command.executable}:${input.command.args.join(' ')}`)
 				return Promise.resolve({ exitCode: 0, summary: 'Command completed.', stdout: null, stderr: null })
 			},
-			readFile: (path: string) => Promise.resolve(files.get(path) ?? null),
-			writeFile: (path: string, contents: string) => {
-				files.set(path, contents)
-				return Promise.resolve()
+			readFile: (path: string) => {
+				options.operations?.push(`read:${path}`)
+				return base.readFile(path)
 			},
-			release: () => Promise.resolve({ summary: 'released' }),
+			writeFile: (path: string, contentsBase64: string) => {
+				options.operations?.push(`write:${path}`)
+				return options.failWritePath?.(path) ? Promise.reject(new Error('write failed')) : base.writeFile(path, contentsBase64)
+			},
+			listDirectory: (path: string) => {
+				options.operations?.push(`list:${path}`)
+				return base.listDirectory(path)
+			},
+			deletePath: (path: string) => {
+				options.operations?.push(`delete:${path}`)
+				return base.deletePath(path)
+			},
 		}
+	}
+
+	function initializationAndGlobalCommands() {
+		return [
+			internalDirectoryInitializationCommand(),
+			rawCommandForRequirement(globalRuntimeRequirements[0]!),
+			rawCommandForRequirement(globalRuntimeRequirements[1]!),
+		]
+	}
+
+	function rawCommandForRequirement(requirement: (typeof globalRuntimeRequirements)[number]) {
+		return {
+			command: requirement.command,
+			env: {},
+			root: requirement.root,
+			timeoutMs: 600_000,
+		}
+	}
+
+	function fileApiReadinessOperations(key: string): string[] {
+		const directory = managedSandboxFileApiReadinessDirectory(key)
+		const file = `${directory}/check.txt`
+		return [`write:${file}`, `read:${file}`, `list:${directory}`, `delete:${directory}`, `read:${file}`]
+	}
+
+	function checkPathOperations(operations: string[], key: string): string[] {
+		return operations.filter((operation) => operation.includes(managedSandboxFileApiReadinessDirectory(key)))
 	}
 }

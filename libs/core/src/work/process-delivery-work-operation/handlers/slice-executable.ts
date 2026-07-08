@@ -107,7 +107,7 @@ if (import.meta.vitest) {
 	const { buildDeliveryContext } = await import('../../../utils/delivery-context')
 	const { createTestCoreServices, defaultAgentRunSandboxConfig, seedDelivery, seedSlice, seedSelectableModel } =
 		await import('../../../utils/test-helpers')
-	const { ensureGitRequirement, verifyPosixShellRequirement } = await import('../../../utils/agent-run-runtime-requirements')
+	const { ensureGitRequirement, globalRuntimeRequirements } = await import('../../../utils/agent-run-runtime-requirements')
 
 	describe('handleSliceExecutable', () => {
 		it('claims initial executable Slice work with an instructed Agent Run and Slice instruction input event', async () => {
@@ -140,10 +140,11 @@ if (import.meta.vitest) {
 					runtimeRequirements: [],
 					sandboxConfig: defaultAgentRunSandboxConfig(),
 				},
+				toolSet: toolSet(['read', 'grep', 'find', 'ls', 'sh', 'edit', 'write']),
 				modelUseOverride: null,
-				sourceRuntimeRequirements: [verifyPosixShellRequirement, ensureGitRequirement],
+				sourceRuntimeRequirements: [...globalRuntimeRequirements, ensureGitRequirement],
 				runtimeRequirementOverrides: [],
-				desiredRuntimeRequirements: [verifyPosixShellRequirement, ensureGitRequirement],
+				desiredRuntimeRequirements: [...globalRuntimeRequirements, ensureGitRequirement],
 				blocked: { type: 'preparation-pending', blocked: { at: '2026-06-10T12:00:00.000Z' } },
 				sandbox: null,
 				started: { at: '2026-06-10T12:00:00.000Z' },
@@ -192,6 +193,10 @@ if (import.meta.vitest) {
 			})
 		})
 	})
+
+	function toolSet(names: string[]) {
+		return names.map((name) => ({ name, contractVersion: 1 }))
+	}
 
 	const resolution: DeliveryWorkResolution = {
 		workConfig: {

@@ -11,6 +11,7 @@ import {
 	agentRunProfileSnapshotPipe,
 	agentRunPurposePipe,
 	agentRunRuntimeRequirementOverridePipe,
+	agentRunToolSetPipe,
 	agentRunSandboxStatePipe,
 	type AgentRun,
 	type AgentRunEvent,
@@ -178,6 +179,7 @@ export const agentRunSchema = Schema.from('agent_runs')
 	.field('agent', agentPipe)
 	.field('purpose', agentRunPurposePipe)
 	.field('profile', agentRunProfileSnapshotPipe)
+	.field('toolSet', agentRunToolSetPipe)
 	.field('modelUseOverride', v.nullable(agentRunModelUseOverridePipe))
 	.field('sourceRuntimeRequirements', agentRunRuntimeRequirementsPipe)
 	.field('runtimeRequirementOverrides', v.array(agentRunRuntimeRequirementOverridePipe))
