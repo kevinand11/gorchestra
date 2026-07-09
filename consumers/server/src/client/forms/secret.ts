@@ -11,6 +11,22 @@ type SecretCreationFormModel = {
 	value: string
 }
 
+type SecretMetadataFormFields = {
+	name: string
+}
+
+type SecretMetadataFormModel = {
+	name: string
+}
+
+type SecretValueReplacementFormFields = {
+	value: string
+}
+
+type SecretValueReplacementFormModel = {
+	value: string
+}
+
 const secretNamePipe = v.string().pipe(v.min<string>(1, 'Enter a Secret name'))
 const secretValuePipe = v.string().pipe(v.min<string>(1, 'Enter a Secret value'))
 
@@ -28,6 +44,42 @@ export class SecretCreationFormDraft extends FormDraft<SecretCreationFormModel, 
 
 	protected load = (entity: SecretCreationFormModel): void => {
 		this.name = entity.name
+		this.value = entity.value
+	}
+}
+
+export class SecretMetadataFormDraft extends FormDraft<SecretMetadataFormModel, SecretMetadataFormModel, SecretMetadataFormFields> {
+	protected readonly rules = {
+		name: secretNamePipe,
+	}
+
+	constructor() {
+		super({ name: '' })
+	}
+
+	protected model = (): SecretMetadataFormModel => ({ name: this.name })
+
+	protected load = (entity: SecretMetadataFormModel): void => {
+		this.name = entity.name
+	}
+}
+
+export class SecretValueReplacementFormDraft extends FormDraft<
+	SecretValueReplacementFormModel,
+	SecretValueReplacementFormModel,
+	SecretValueReplacementFormFields
+> {
+	protected readonly rules = {
+		value: secretValuePipe,
+	}
+
+	constructor() {
+		super({ value: '' })
+	}
+
+	protected model = (): SecretValueReplacementFormModel => ({ value: this.value })
+
+	protected load = (entity: SecretValueReplacementFormModel): void => {
 		this.value = entity.value
 	}
 }
@@ -54,6 +106,37 @@ if (import.meta.vitest) {
 
 			expect(factory.valid).toBe(false)
 			expect(factory.errors.name).toBe('Enter a Secret name')
+			expect(factory.errors.value).toBe('Enter a Secret value')
+		})
+	})
+
+	describe('SecretMetadataFormDraft', () => {
+		it('models Secret Metadata names without transforming visible fields', () => {
+			const factory = new SecretMetadataFormDraft()
+
+			factory.name = '  GitHub PAT  '
+
+			expect(factory.valid).toBe(true)
+			expect(factory.toModel()).toEqual({ name: '  GitHub PAT  ' })
+		})
+	})
+
+	describe('SecretValueReplacementFormDraft', () => {
+		it('accepts any non-empty Secret value exactly', () => {
+			const factory = new SecretValueReplacementFormDraft()
+
+			factory.value = '   '
+
+			expect(factory.valid).toBe(true)
+			expect(factory.toModel()).toEqual({ value: '   ' })
+		})
+
+		it('rejects an empty Secret value', () => {
+			const factory = new SecretValueReplacementFormDraft().loadEntity({ value: 'value' })
+
+			factory.value = ''
+
+			expect(factory.valid).toBe(false)
 			expect(factory.errors.value).toBe('Enter a Secret value')
 		})
 	})

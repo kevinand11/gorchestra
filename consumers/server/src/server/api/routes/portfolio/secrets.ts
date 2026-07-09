@@ -5,14 +5,18 @@ import { v } from 'valleyed'
 import {
 	createSecretRequestSchema,
 	portfolioRequestCookieSchema,
+	replaceSecretValueRequestSchema,
+	updateSecretMetadataRequestSchema,
 	type CreateSecretRequest,
 	type PaginatedQuery,
 	type PortfolioRequestCookies,
+	type ReplaceSecretValueRequest,
+	type UpdateSecretMetadataRequest,
 } from './shared'
 import { protectSecretPlaintext } from '../../../modules/secret-protection'
 import type { ServerApiContext } from '../../context'
 import { throwCoreOperationError } from '../../errors'
-import { withSelectedPortfolioCore } from '../../portfolio-context'
+import { type SelectedPortfolioCoreContext, withSelectedPortfolioCore } from '../../portfolio-context'
 import { coreIdPipe } from '../../schemas'
 
 export function createSecretsApiRouter(context: ServerApiContext) {
@@ -34,6 +38,36 @@ export function createSecretsApiRouter(context: ServerApiContext) {
 				response: Queries.GetSecret.resultPipe,
 			},
 		})(async (req) => getSelectedPortfolioSecret(context, req.cookies, req.params.secretId))
+		.put('/secrets/:secretId', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ secretId: coreIdPipe }),
+				body: updateSecretMetadataRequestSchema,
+				response: Queries.GetSecret.resultPipe,
+			},
+		})(async (req) => updateSelectedPortfolioSecretMetadata(context, req.cookies, req.params.secretId, req.body))
+		.post('/secrets/:secretId/value', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ secretId: coreIdPipe }),
+				body: replaceSecretValueRequestSchema,
+				response: Queries.GetSecret.resultPipe,
+			},
+		})(async (req) => replaceSelectedPortfolioSecretValue(context, req.cookies, req.params.secretId, req.body))
+		.post('/secrets/:secretId/archive', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ secretId: coreIdPipe }),
+				response: Queries.GetSecret.resultPipe,
+			},
+		})(async (req) => archiveSelectedPortfolioSecret(context, req.cookies, req.params.secretId))
+		.post('/secrets/:secretId/unarchive', {
+			schema: {
+				cookies: portfolioRequestCookieSchema,
+				params: v.object({ secretId: coreIdPipe }),
+				response: Queries.GetSecret.resultPipe,
+			},
+		})(async (req) => unarchiveSelectedPortfolioSecret(context, req.cookies, req.params.secretId))
 }
 
 function listSelectedPortfolioSecrets(
@@ -65,40 +99,63 @@ function createSelectedPortfolioSecret(
 ): Promise<Queries.GetSecret.Result> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
 		const valueRef = protectSecretPlaintext(input.value, context.security.secretEncryptionKey)
-		const secret = await core.commands.createSecret(
-			{ name: input.name, valueRef },
-			{ actor: { type: 'workspace-member', id: workspaceMember.id }, correlationId: null },
-		)
-		return secret.ok ? secretResponseFromCreatedSecret(secret.value) : throwCoreOperationError(secret.error)
+		const secret = await core.commands.createSecret({ name: input.name, valueRef }, commandContext(workspaceMember.id))
+		return secret.ok ? getSecretResponse(core, secret.value.id) : throwCoreOperationError(secret.error)
 	})
 }
 
-function secretResponseFromCreatedSecret(secret: Domain.Secret.Secret): Queries.GetSecret.Result {
-	return { id: secret.id, name: secret.name, created: secret.created, replaced: secret.replaced, archived: false, references: [] }
+function updateSelectedPortfolioSecretMetadata(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	secretId: string,
+	input: UpdateSecretMetadataRequest,
+): Promise<Queries.GetSecret.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
+		const secret = await core.commands.updateSecretMetadata({ secretId, name: input.name }, commandContext(workspaceMember.id))
+		return secret.ok ? getSecretResponse(core, secret.value.id) : throwCoreOperationError(secret.error)
+	})
 }
 
-if (import.meta.vitest) {
-	const { describe, expect, it } = import.meta.vitest
-
-	describe('Portfolio API Secrets', () => {
-		it('redacts protected value refs from newly-created Secret responses', () => {
-			const secret: Domain.Secret.Secret = {
-				id: 'secret-1',
-				name: 'GitHub PAT',
-				valueRef: 'gorchestra-secret-value:v1:encrypted',
-				created: { origin: 'imported', at: '2026-06-21T00:00:00.000Z' },
-				replaced: null,
-				archivePeriods: [],
-			}
-
-			expect(secretResponseFromCreatedSecret(secret)).toEqual({
-				id: 'secret-1',
-				name: 'GitHub PAT',
-				created: secret.created,
-				replaced: null,
-				archived: false,
-				references: [],
-			})
-		})
+function replaceSelectedPortfolioSecretValue(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	secretId: string,
+	input: ReplaceSecretValueRequest,
+): Promise<Queries.GetSecret.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
+		const valueRef = protectSecretPlaintext(input.value, context.security.secretEncryptionKey)
+		const secret = await core.commands.replaceSecretValue({ secretId, valueRef }, commandContext(workspaceMember.id))
+		return secret.ok ? getSecretResponse(core, secret.value.id) : throwCoreOperationError(secret.error)
 	})
+}
+
+function archiveSelectedPortfolioSecret(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	secretId: string,
+): Promise<Queries.GetSecret.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
+		const secret = await core.commands.archiveSecret({ secretId }, commandContext(workspaceMember.id))
+		return secret.ok ? getSecretResponse(core, secret.value.id) : throwCoreOperationError(secret.error)
+	})
+}
+
+function unarchiveSelectedPortfolioSecret(
+	context: ServerApiContext,
+	cookies: PortfolioRequestCookies,
+	secretId: string,
+): Promise<Queries.GetSecret.Result> {
+	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
+		const secret = await core.commands.unarchiveSecret({ secretId }, commandContext(workspaceMember.id))
+		return secret.ok ? getSecretResponse(core, secret.value.id) : throwCoreOperationError(secret.error)
+	})
+}
+
+async function getSecretResponse(core: SelectedPortfolioCoreContext['core'], secretId: string): Promise<Queries.GetSecret.Result> {
+	const secret = await core.queries.getSecret({ secretId })
+	return secret.ok ? secret.value : throwCoreOperationError(secret.error)
+}
+
+function commandContext(workspaceMemberId: string) {
+	return { actor: { type: 'workspace-member', id: workspaceMemberId }, correlationId: null }
 }

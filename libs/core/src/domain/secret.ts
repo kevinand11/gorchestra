@@ -13,7 +13,8 @@ export const secretPipe = v.object({
 	name: nonEmptyTrimmedStringPipe,
 	valueRef: nonEmptyTrimmedStringPipe,
 	created: auditStampPipe,
-	replaced: v.nullable(auditStampPipe),
+	updated: v.nullable(auditStampPipe),
+	valueReplaced: v.nullable(auditStampPipe),
 	archivePeriods: v.array(archivePeriodPipe),
 })
 export type Secret = PipeOutput<typeof secretPipe>
@@ -90,7 +91,8 @@ export const listedSecretPipe = v.object({
 	id: idPipe,
 	name: nonEmptyTrimmedStringPipe,
 	created: auditStampPipe,
-	replaced: v.nullable(auditStampPipe),
+	updated: v.nullable(auditStampPipe),
+	valueReplaced: v.nullable(auditStampPipe),
 	archived: v.boolean(),
 	references: v.array(secretReferencePipe),
 })

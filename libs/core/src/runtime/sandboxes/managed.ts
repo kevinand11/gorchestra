@@ -240,7 +240,7 @@ function manageSandbox(raw: RawSandbox, key: string, options: { logger?: CoreLog
 			try {
 				const output = await raw.listDirectory(safePath.value)
 				const validated = validateCoreServiceOutput(sandboxListDirectoryOutputPipe, output, 'sandbox', 'listDirectory')
-				return validated.ok ? { ok: true, value: validated.value } : validated
+				return validated.ok ? { ok: true, value: managedDirectoryOutput(safePath.value, validated.value) } : validated
 			} catch {
 				return sandboxOperationFailed('list-directory', 'Sandbox directory listing failed.')
 			}
@@ -306,6 +306,12 @@ function managedPublicPath(
 		return sandboxOperationFailed(operation, 'Sandbox path is managed by Gorchestra.')
 	}
 	return { ok: true, value: path }
+}
+
+function managedDirectoryOutput(path: string, output: SandboxListDirectoryOutput): SandboxListDirectoryOutput {
+	return output?.type === 'directory' && path === '/workspace'
+		? { ...output, entries: output.entries.filter((entry) => entry.name !== '.gorchestra') }
+		: output
 }
 
 function managedCommandExecutablePolicy(executable: string, cwd: string): Result<void, ManagedSandboxError> {
@@ -385,7 +391,7 @@ if (import.meta.vitest) {
 
 	describe('manageSandboxProvider', () => {
 		it('manages workspace file APIs and denies protected paths', async () => {
-			const fake = fakeRawSandboxProvider()
+			const fake = fakeRawSandboxProvider(new Map([[runtimeEnvStorePath, '{}\n']]))
 			const provider = manageSandboxProvider(fake.provider)
 			const created = await provider.create({ key: 'agent-run-key', config: fakeConfig() })
 			if (!created.ok) throw new Error('Expected sandbox creation to pass.')
@@ -400,6 +406,10 @@ if (import.meta.vitest) {
 			await expect(created.value.listDirectory({ path: '/workspace/notes' })).resolves.toEqual({
 				ok: true,
 				value: { type: 'directory', entries: [{ name: 'todo.txt', type: 'file' }] },
+			})
+			await expect(created.value.listDirectory({ path: '/workspace' })).resolves.toEqual({
+				ok: true,
+				value: { type: 'directory', entries: [{ name: 'notes', type: 'directory' }] },
 			})
 			await expect(created.value.deletePath({ path: '/workspace/notes' })).resolves.toEqual({ ok: true, value: undefined })
 			await expect(created.value.readFile({ path: '/workspace/notes/todo.txt' })).resolves.toEqual({ ok: true, value: null })
@@ -516,7 +526,8 @@ if (import.meta.vitest) {
 		})
 	})
 
-	function fakeRawSandboxProvider(overrides: Partial<FakeRawSandboxOptions> = {}) {
+	function fakeRawSandboxProvider(filesOrOverrides: Map<string, string> | Partial<FakeRawSandboxOptions> = {}) {
+		const overrides = filesOrOverrides instanceof Map ? { files: filesOrOverrides } : filesOrOverrides
 		const files = overrides.files ?? new Map<string, string>()
 		const commands: RawSandboxRunCommandInput[] = []
 		const fake: FakeRawSandboxOptions = {

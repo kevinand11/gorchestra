@@ -65,8 +65,10 @@ export const createMemoryRevisionRequestSchema = v.object({
 })
 export const createSecretRequestSchema = v.object({
 	name: Domain.Commons.nonEmptyTrimmedStringPipe,
-	value: v.string().pipe(v.asTrimmed(), v.min<string>(1)),
+	value: v.string().pipe(v.min<string>(1)),
 })
+export const updateSecretMetadataRequestSchema = v.object({ name: Domain.Commons.nonEmptyTrimmedStringPipe })
+export const replaceSecretValueRequestSchema = v.object({ value: v.string().pipe(v.min<string>(1)) })
 export const createRepositoryRequestSchema = v.object({ config: Domain.Repository.repositoryConfigPipe })
 
 export type PortfolioRequestCookies = Record<string, string | undefined>
@@ -83,6 +85,8 @@ export type UpdateModelRequest = PipeOutput<typeof updateModelRequestSchema>
 export type CreateMemoryRequest = PipeOutput<typeof createMemoryRequestSchema>
 export type CreateMemoryRevisionRequest = PipeOutput<typeof createMemoryRevisionRequestSchema>
 export type CreateSecretRequest = PipeOutput<typeof createSecretRequestSchema>
+export type UpdateSecretMetadataRequest = PipeOutput<typeof updateSecretMetadataRequestSchema>
+export type ReplaceSecretValueRequest = PipeOutput<typeof replaceSecretValueRequestSchema>
 export type CreateRepositoryRequest = PipeOutput<typeof createRepositoryRequestSchema>
 export type RepositoryPreflightEvidence = Domain.Evidence.ValidationEvidence & { operation: { type: 'repository-preflight' } }
 export type PaginatedQuery = { beforeId: string | undefined; limit: number | undefined; page?: number | undefined }

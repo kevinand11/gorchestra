@@ -27,7 +27,7 @@ type AISDKTurnOutput = {
 	turnOutcome: Extract<AgentRunEvent['body'], { type: 'turn-ended' }>['outcome']
 }
 
-const maxModelStepsPerTurn = 5
+const maxModelStepsPerTurn = 25
 
 export async function runAISDKTurn(
 	runtime: ModelAgentRunRuntime,
@@ -40,9 +40,11 @@ export async function runAISDKTurn(
 ): Promise<Result<AISDKTurnOutput, AgentRunRuntimeError>> {
 	const recorder = new AISDKTurnRecorder(runtime, state, turnStarted, turnModelUse, options)
 	try {
+		const prompt = promptFromMessages(messages)
 		const streamOptions = {
 			model: resolution.languageModel,
-			messages,
+			...(prompt.instructions === undefined ? {} : { instructions: prompt.instructions }),
+			messages: prompt.messages,
 			tools: recorder.tools(),
 			stopWhen: isStepCount(maxModelStepsPerTurn),
 			maxOutputTokens: turnModelUse.model.capabilities.maxOutputTokens,
@@ -78,6 +80,18 @@ export async function runAISDKTurn(
 	}
 }
 
+function promptFromMessages(messages: ModelMessage[]): { instructions: string | undefined; messages: ModelMessage[] } {
+	const instructionParts: string[] = []
+	const modelMessages: ModelMessage[] = []
+
+	for (const message of messages) {
+		if (message.role === 'system') instructionParts.push(message.content)
+		else modelMessages.push(message)
+	}
+
+	return { instructions: instructionParts.length === 0 ? undefined : instructionParts.join('\n\n'), messages: modelMessages }
+}
+
 function aiSdkReasoningForThinking(thinking: ModelAgentTurnThinking): ModelThinkingLevel | undefined {
 	return thinking?.level
 }
@@ -88,4 +102,33 @@ function turnFailureOutcome(
 ): Extract<AgentRunEvent['body'], { type: 'turn-ended' }>['outcome'] {
 	if (signal?.aborted === true) return { type: 'error', reason: { type: 'abort-signal' } }
 	return { type: 'error', reason: providerFailureReason(error) }
+}
+
+if (import.meta.vitest) {
+	const { describe, expect, it } = import.meta.vitest
+
+	describe('AI SDK turn prompt projection', () => {
+		it('moves system messages into instructions while preserving other message roles', () => {
+			const prompt = promptFromMessages([
+				{ role: 'system', content: 'base instructions' },
+				{ role: 'user', content: 'hello' },
+				{ role: 'system', content: 'compacted summary' },
+				{ role: 'assistant', content: [{ type: 'text', text: 'hi' }] },
+			])
+
+			expect(prompt).toEqual({
+				instructions: 'base instructions\n\ncompacted summary',
+				messages: [
+					{ role: 'user', content: 'hello' },
+					{ role: 'assistant', content: [{ type: 'text', text: 'hi' }] },
+				],
+			})
+		})
+
+		it('omits instructions when the context has no system messages', () => {
+			const messages: ModelMessage[] = [{ role: 'user', content: 'hello' }]
+
+			expect(promptFromMessages(messages)).toEqual({ instructions: undefined, messages })
+		})
+	})
 }

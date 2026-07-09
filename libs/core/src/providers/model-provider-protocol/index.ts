@@ -107,7 +107,6 @@ async function runGenerationPreflight(
 		const result = streamText({
 			model: resolution.languageModel,
 			messages: [{ role: 'user', content: 'Reply with OK.' }],
-			maxOutputTokens: 4,
 			maxRetries: 0,
 			...(resolution.providerOptions === undefined ? {} : { providerOptions: resolution.providerOptions }),
 		})

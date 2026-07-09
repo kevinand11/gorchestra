@@ -357,6 +357,18 @@ export function createServerApi(options: ServerApiOptions = {}) {
 		async getSecret(secretId: string) {
 			return routes.request('get', '/api/portfolio/secrets/:secretId', { params: { secretId } })
 		},
+		async updateSecretMetadata(secretId: string, input: { name: string }) {
+			return routes.request('put', '/api/portfolio/secrets/:secretId', { params: { secretId }, body: input })
+		},
+		async replaceSecretValue(secretId: string, input: { value: string }) {
+			return routes.request('post', '/api/portfolio/secrets/:secretId/value', { params: { secretId }, body: input })
+		},
+		async archiveSecret(secretId: string) {
+			return routes.request('post', '/api/portfolio/secrets/:secretId/archive', { params: { secretId } })
+		},
+		async unarchiveSecret(secretId: string) {
+			return routes.request('post', '/api/portfolio/secrets/:secretId/unarchive', { params: { secretId } })
+		},
 		async listMemoryChildren(parentId: string | null, input: PaginatedQueryInput) {
 			return routes.request('get', '/api/portfolio/memories', {
 				query: { parentId: queryValue(parentId), ...paginationQuery(input) },

@@ -381,7 +381,8 @@ export function seedSecret(tx: TestStorageTransaction, id: string, archived = fa
 		name: 'Secret',
 		valueRef: 'protected-ref',
 		created: stamp,
-		replaced: null,
+		updated: null,
+		valueReplaced: null,
 		archivePeriods: archived ? [{ archived: stamp, unarchived: null }] : [],
 	})
 }

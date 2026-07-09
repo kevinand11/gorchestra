@@ -96,14 +96,16 @@ if (import.meta.vitest) {
 			)
 		})
 
-		it('protects plaintext in an opaque value ref and reveals it with the same key', () => {
+		it('protects plaintext in an opaque value ref and reveals exact plaintext with the same key', () => {
 			const key = parseSecretEncryptionKey(Buffer.alloc(32, 7).toString('base64url'))
 
 			const valueRef = protectSecretPlaintext('  token-value  ', key)
+			const whitespaceValueRef = protectSecretPlaintext('   ', key)
 
 			expect(valueRef).toMatch(/^gorchestra-secret-value:v1:/)
 			expect(valueRef).not.toContain('token-value')
 			expect(revealSecretPlaintext(valueRef, key)).toBe('  token-value  ')
+			expect(revealSecretPlaintext(whitespaceValueRef, key)).toBe('   ')
 		})
 
 		it('does not reveal malformed refs or refs encrypted with another key', () => {

@@ -62,7 +62,8 @@ if (import.meta.vitest) {
 					id: '01k00000000000000000000040',
 					name: 'Secret',
 					created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
-					replaced: null,
+					updated: null,
+					valueReplaced: null,
 					archived: false,
 					references: [],
 				},
@@ -85,7 +86,8 @@ if (import.meta.vitest) {
 					id: '01k00000000000000000000040',
 					name: 'Secret',
 					created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
-					replaced: null,
+					updated: null,
+					valueReplaced: null,
 					archived: false,
 					references: [
 						{

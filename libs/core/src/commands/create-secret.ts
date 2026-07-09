@@ -31,7 +31,8 @@ export function createCreateSecretCommand(runtime: CoreRuntime): Operation {
 			name: input.name,
 			valueRef: input.valueRef,
 			created: stamp.value,
-			replaced: null,
+			updated: null,
+			valueReplaced: null,
 			archivePeriods: [],
 		}
 
@@ -60,7 +61,8 @@ if (import.meta.vitest) {
 					name: 'GitHub token',
 					valueRef: 'protected-ref',
 					created: localStamp(),
-					replaced: null,
+					updated: null,
+					valueReplaced: null,
 					archivePeriods: [],
 				},
 			})

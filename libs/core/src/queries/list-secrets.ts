@@ -174,7 +174,8 @@ if (import.meta.vitest) {
 			name: input.name,
 			valueRef: 'protected-value-ref',
 			created: { origin: 'imported', at: input.createdAt ?? stamp.at },
-			replaced: null,
+			updated: null,
+			valueReplaced: null,
 			archivePeriods: input.archived ? [{ archived: { origin: 'imported', at: '2026-06-11T00:00:00.000Z' }, unarchived: null }] : [],
 		}
 	}
@@ -184,7 +185,8 @@ if (import.meta.vitest) {
 			id: input.id,
 			name: input.name,
 			created: { origin: 'imported', at: input.createdAt ?? stamp.at },
-			replaced: null,
+			updated: null,
+			valueReplaced: null,
 			archived: input.archived ?? false,
 			references: [],
 		}

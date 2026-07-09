@@ -342,7 +342,8 @@ if (import.meta.vitest) {
 			name: 'Secret',
 			valueRef: 'protected-ref',
 			created: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
-			replaced: null,
+			updated: null,
+			valueReplaced: null,
 			archivePeriods: archived ? [{ archived: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' }, unarchived: null }] : [],
 		}
 	}

@@ -25,7 +25,7 @@ The recorded operation time and attribution metadata attached to attribution-bea
 _Avoid_: createdBy field, Workspace Member field
 
 **Archive Period**:
-A lifecycle record containing the Audit Stamp that archived a record and, when later reactivated, the Audit Stamp that unarchived it. Current archival state is derived from whether the latest Archive Period has no unarchived stamp.
+A lifecycle record containing the Audit Stamp that archived a record and, when later reactivated, the Audit Stamp that unarchived it. Current archival state is derived from whether the latest Archive Period has no unarchived stamp; archiving removes a record from active use but does not make it immutable.
 _Avoid_: archived flag, deleted flag
 
 **Core Input**:
@@ -73,8 +73,12 @@ An operation-specific exported union of only the error variants a public Core op
 _Avoid_: full CoreError return, catch-all error type
 
 **Secret**:
-A Portfolio-owned sensitive value with a non-unique user-facing name and a stored protected value reference but never plaintext. Users may create, replace, and archive Secret values, and Core may return Secret records from write operations, but users may not view plaintext values after creation; v1 Secrets do not have provider-specific Secret types.
+A Portfolio-owned sensitive value with non-unique user-facing metadata and a stored protected value reference but never plaintext. Users may create Secrets, update Secret Metadata, replace Secret values, and archive Secrets, and Core may return Secret records from write operations, but users may not view plaintext values after creation; v1 Secrets do not have provider-specific Secret types.
 _Avoid_: Credential, token, key, sensitive value
+
+**Secret Metadata**:
+The non-sensitive, user-facing fields of a Secret, currently its name. Secret Metadata excludes the Secret value and Protected Secret Value Reference, and Secret Metadata updates are distinct from Secret Value Replacement.
+_Avoid_: Secret Config, Secret settings, value metadata
 
 **Active Secret**:
 A Secret whose latest Archive Period is absent or unarchived, so Core may use its Protected Secret Value Reference for configured provider access, Agent Run runtime requirements, or sandbox credentials. An inactive Secret is archived and cannot be used without first being unarchived.
@@ -83,6 +87,10 @@ _Avoid_: enabled Secret, live credential, archived Secret reference
 **Protected Secret Value Reference**:
 A consumer-specific protected token that lets the owning Consumer resolve Secret plaintext without Core storing plaintext. It may be an external protected-store reference or an inline encrypted value envelope.
 _Avoid_: Plaintext secret, decrypted secret value
+
+**Secret Value Replacement**:
+The operation of assigning a new protected value to an existing Secret without creating a new Secret identity or exposing the previous plaintext. Secret Value Replacement updates the Secret's value replacement audit evidence while preserving existing Secret References.
+_Avoid_: Secret value update, replacement Secret, value edit
 
 **Secret Reference**:
 A direct Core-owned Portfolio usage of a Secret by a stored data model that may use that Secret for future provider access, Agent Run environment exposure, command-scoped Agent Run preparation access, or Core-owned sandbox runtime credentials. Secret References report whether the referring data model is active and never expose plaintext.

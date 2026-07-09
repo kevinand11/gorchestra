@@ -27,7 +27,7 @@ import { createPreflightRepositoryCommand } from './preflight-repository'
 import { createQueueDeliveryCommand } from './queue-delivery'
 import { createRejectPlanOutputCommand } from './reject-plan-output'
 import { createRejectRevisionOutputCommand } from './reject-revision-output'
-import { createReplaceSecretCommand } from './replace-secret'
+import { createReplaceSecretValueCommand } from './replace-secret-value'
 import { createRetryDeliveryPreflightCommand } from './retry-delivery-preflight'
 import { createSendAgentRunMessageCommand } from './send-agent-run-message'
 import { createSetAgentRunModelUseOverrideCommand } from './set-agent-run-model-use-override'
@@ -41,6 +41,7 @@ import { createUpdateAgentRunProfileCommand } from './update-agent-run-profile'
 import { createUpdateModelCommand } from './update-model'
 import { createUpdateModelProviderCommand } from './update-model-provider'
 import { createUpdateRepositoryConfigCommand } from './update-repository-config'
+import { createUpdateSecretMetadataCommand } from './update-secret-metadata'
 import type { CoreRuntime } from '../runtime'
 
 export type * as AbandonDelivery from './abandon-delivery'
@@ -72,7 +73,7 @@ export type * as PreflightRepository from './preflight-repository'
 export type * as QueueDelivery from './queue-delivery'
 export type * as RejectPlanOutput from './reject-plan-output'
 export type * as RejectRevisionOutput from './reject-revision-output'
-export type * as ReplaceSecret from './replace-secret'
+export type * as ReplaceSecretValue from './replace-secret-value'
 export type * as RetryDeliveryPreflight from './retry-delivery-preflight'
 export type * as SendAgentRunMessage from './send-agent-run-message'
 export type * as SetAgentRunModelUseOverride from './set-agent-run-model-use-override'
@@ -86,6 +87,7 @@ export type * as UpdateAgentRunProfile from './update-agent-run-profile'
 export type * as UpdateModel from './update-model'
 export type * as UpdateModelProvider from './update-model-provider'
 export type * as UpdateRepositoryConfig from './update-repository-config'
+export type * as UpdateSecretMetadata from './update-secret-metadata'
 
 export function createCoreCommands(runtime: CoreRuntime) {
 	return {
@@ -129,7 +131,8 @@ export function createCoreCommands(runtime: CoreRuntime) {
 		createRepository: createCreateRepositoryCommand(runtime),
 		updateRepositoryConfig: createUpdateRepositoryConfigCommand(runtime),
 		createSecret: createCreateSecretCommand(runtime),
-		replaceSecret: createReplaceSecretCommand(runtime),
+		updateSecretMetadata: createUpdateSecretMetadataCommand(runtime),
+		replaceSecretValue: createReplaceSecretValueCommand(runtime),
 		archiveSecret: createArchiveSecretCommand(runtime),
 		unarchiveSecret: createUnarchiveSecretCommand(runtime),
 	}
@@ -186,7 +189,8 @@ if (import.meta.vitest) {
 				'createRepository',
 				'updateRepositoryConfig',
 				'createSecret',
-				'replaceSecret',
+				'updateSecretMetadata',
+				'replaceSecretValue',
 				'archiveSecret',
 				'unarchiveSecret',
 			]
