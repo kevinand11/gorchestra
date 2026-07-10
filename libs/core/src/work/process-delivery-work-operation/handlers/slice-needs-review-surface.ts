@@ -54,10 +54,20 @@ function sliceReviewSurfaceInput(
 	state: SliceNeedsReviewSurfaceState,
 ): CoreResult<SliceReviewSurfaceInput, InvariantViolationError> {
 	const deliveryArtifact = context.deliveryContext.deliveryArtifact
-	if (deliveryArtifact === null) return missingSliceReviewSurfaceDeliveryArtifact()
+	if (deliveryArtifact === null) {
+		return {
+			ok: false,
+			error: { type: 'invariant-violation', message: 'Slice Review Surface creation requires a Delivery Artifact.' },
+		}
+	}
 
-	const sliceArtifact = claimedSliceArtifact(context, slice, state)
-	if (!sliceArtifact.ok) return sliceArtifact
+	const storedSlice = context.deliveryContext.slices.find((candidate) => candidate.slice.id === slice.id)
+	if (storedSlice?.artifact?.id !== state.sliceArtifactId) {
+		return {
+			ok: false,
+			error: { type: 'invariant-violation', message: 'Slice Review Surface creation requires the claimed Slice Artifact.' },
+		}
+	}
 
 	return {
 		ok: true,
@@ -67,32 +77,10 @@ function sliceReviewSurfaceInput(
 			sliceArtifactId: state.sliceArtifactId,
 			repository: context.deliveryContext.repository,
 			accessSecret: context.repositoryAccessSecret,
-			sourceBranch: sliceArtifact.value.config.sliceBranch,
+			sourceBranch: storedSlice.artifact.config.sliceBranch,
 			targetBranch: deliveryArtifact.config.deliveryBranch,
 			title: slice.title,
 		},
-	}
-}
-
-function claimedSliceArtifact(
-	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext'>,
-	slice: Slice,
-	state: SliceNeedsReviewSurfaceState,
-) {
-	const storedSlice = context.deliveryContext.slices.find((candidate) => candidate.slice.id === slice.id)
-	return storedSlice?.artifact?.id === state.sliceArtifactId
-		? { ok: true as const, value: storedSlice.artifact }
-		: missingClaimedSliceArtifact()
-}
-
-function missingSliceReviewSurfaceDeliveryArtifact(): CoreResult<never, InvariantViolationError> {
-	return { ok: false, error: { type: 'invariant-violation', message: 'Slice Review Surface creation requires a Delivery Artifact.' } }
-}
-
-function missingClaimedSliceArtifact(): CoreResult<never, InvariantViolationError> {
-	return {
-		ok: false,
-		error: { type: 'invariant-violation', message: 'Slice Review Surface creation requires the claimed Slice Artifact.' },
 	}
 }
 
@@ -137,95 +125,44 @@ async function writeSliceReviewSurface(
 	input: SliceReviewSurfaceInput,
 	creation: Extract<SourceControlReviewSurfaceCreation, { type: 'review-surface' }>,
 ): Promise<DeliveryWorkHandlerResult> {
-	const records = sliceReviewSurfaceRecords(context, input, creation.pullRequestNumber)
-	return records.ok ? putSliceReviewSurfaceRecords(context, records.value) : records
-}
-
-function sliceReviewSurfaceRecords(
-	context: ResolvedDeliveryHandlerContext,
-	input: SliceReviewSurfaceInput,
-	pullRequestNumber: number,
-): CoreResult<
-	{ reviewSurface: ReviewSurface; action: Action },
-	DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
-> {
-	const identifiers = sliceReviewSurfaceIdentifiers(context)
-	if (!identifiers.ok) return identifiers
-
+	const reviewSurfaceId = nextId(context.values)
+	if (!reviewSurfaceId.ok) return reviewSurfaceId
+	const actionId = nextId(context.values)
+	if (!actionId.ok) return actionId
 	const performed = runtimeRecord(context.values)
 	if (!performed.ok) return performed
 
-	const reviewSurface = sliceReviewSurfaceRecord(context, input, pullRequestNumber, identifiers.value.reviewSurfaceId, performed.value)
-	const action = sliceReviewSurfaceCreationAction(context, input.sliceId, reviewSurface.id, identifiers.value.actionId, performed.value)
-	return { ok: true, value: { reviewSurface, action } }
-}
-
-function sliceReviewSurfaceIdentifiers(
-	context: ResolvedDeliveryHandlerContext,
-): CoreResult<
-	{ reviewSurfaceId: string; actionId: string },
-	DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
-> {
-	const reviewSurfaceId = nextId(context.values)
-	if (!reviewSurfaceId.ok) return reviewSurfaceId
-
-	const actionId = nextId(context.values)
-	return actionId.ok ? { ok: true, value: { reviewSurfaceId: reviewSurfaceId.value, actionId: actionId.value } } : actionId
-}
-
-async function putSliceReviewSurfaceRecords(
-	context: ResolvedDeliveryHandlerContext,
-	records: { reviewSurface: ReviewSurface; action: Action },
-): Promise<DeliveryWorkHandlerResult> {
-	const actionPut = await createRecord('action', context.storage, records.action)
-	if (!actionPut.ok) return actionPut
-
-	const surfacePut = await createRecord('review-surface', context.storage, records.reviewSurface)
-	return surfacePut.ok ? { ok: true, value: { processedCount: 1, failures: [] } } : surfacePut
-}
-
-function sliceReviewSurfaceRecord(
-	context: ResolvedDeliveryHandlerContext,
-	input: SliceReviewSurfaceInput,
-	pullRequestNumber: number,
-	reviewSurfaceId: string,
-	created: ReviewSurface['created'],
-): ReviewSurface {
-	return {
-		id: reviewSurfaceId,
+	const reviewSurface: ReviewSurface = {
+		id: reviewSurfaceId.value,
 		scope: { type: 'slice', sliceId: input.sliceId, sliceArtifactId: input.sliceArtifactId },
 		config: {
 			provider: context.deliveryContext.repository.config.provider,
-			pullRequestNumber,
+			pullRequestNumber: creation.pullRequestNumber,
 			repositoryId: context.deliveryContext.repository.id,
 			sourceBranch: input.sourceBranch,
 			targetBranch: input.targetBranch,
 		},
 		title: input.title,
 		closed: null,
-		created,
+		created: performed.value,
 	}
-}
-
-function sliceReviewSurfaceCreationAction(
-	context: ResolvedDeliveryHandlerContext,
-	sliceId: string,
-	reviewSurfaceId: string,
-	actionId: string,
-	performed: Action['performed'],
-): Action {
-	return {
-		id: actionId,
+	const action: Action = {
+		id: actionId.value,
 		deliveryId: context.deliveryContext.delivery.id,
-		performed,
+		performed: performed.value,
 		authorized: null,
 		result: {
 			type: 'create-slice-review-surface',
-			sliceId,
-			reviewSurfaceId,
+			sliceId: input.sliceId,
+			reviewSurfaceId: reviewSurface.id,
 			dispatchStartedActionId: context.dispatchStartedActionId ?? null,
 		},
 	}
+
+	const actionPut = await createRecord('action', context.storage, action)
+	if (!actionPut.ok) return actionPut
+	const surfacePut = await createRecord('review-surface', context.storage, reviewSurface)
+	return surfacePut.ok ? { ok: true, value: { processedCount: 1, failures: [] } } : surfacePut
 }
 
 async function writeFailedSliceReviewSurfaceCreation(

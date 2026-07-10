@@ -5,7 +5,6 @@ import { handleSliceNeedsReviewSurface } from './slice-needs-review-surface'
 import type { Id } from '../../../domain/commons'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
 import type { InvalidInputError } from '../../../errors'
-import type { CoreStorage } from '../../../services'
 import { buildDeliveryContext, getDeliveryState, getSliceState, resolveDeliveryWork } from '../../../utils/delivery-context'
 import type { CoreRuntime } from '../../../utils/runtime'
 import { withTransaction } from '../../../utils/storage/helpers'
@@ -26,17 +25,10 @@ interface SliceStateCandidate {
 	key: string
 }
 
-export interface SliceWorkOperationCandidate {
-	slice: Slice
-	state: ActionableSliceWorkState
-	key: string
-}
-
 interface SliceWorkSelection {
 	deliveryContext: ResolvedDeliveryHandlerContext['deliveryContext']
 	slice: Slice
 	state: ActionableSliceWorkState
-	key: string
 }
 
 export type ActionableSliceWorkState = Extract<
@@ -52,20 +44,6 @@ interface SliceWorkerPool {
 	workResolution: DeliveryWorkResolution
 	repositoryAccessSecret: ResolvedDeliveryHandlerContext['repositoryAccessSecret']
 	claimedKeys: Set<string>
-}
-
-export function selectActionableSliceWorkOperationCandidates(
-	deliveryContext: ResolvedDeliveryHandlerContext['deliveryContext'],
-	limit: number,
-): CoreResult<SliceWorkOperationCandidate[], Exclude<Error, InvalidInputError>> {
-	const candidates = actionableSliceCandidates(deliveryContext, new Set())
-	return candidates.ok
-		? { ok: true, value: candidates.value.slice(0, Math.max(0, limit)).map((candidate) => sliceWorkOperationCandidate(candidate)) }
-		: candidates
-}
-
-function sliceWorkOperationCandidate(candidate: SliceStateCandidate): SliceWorkOperationCandidate {
-	return { slice: candidate.slice, state: candidate.state, key: candidate.key }
 }
 
 export async function handleDeliverySlicesIncomplete(
@@ -94,75 +72,37 @@ async function runSliceWorkerSlot(pool: SliceWorkerPool): Promise<DeliveryWorkHa
 	const failures: Result['failures'] = []
 
 	while (true) {
-		const result = await runNextSliceWork(pool)
-		if (!result.ok) return result
-		if (result.value === null) return { ok: true, value: { processedCount, failures } }
+		const selection = await withTransaction(pool.runtime.services, async (storage) => {
+			const deliveryContext = await buildDeliveryContext(storage, pool.deliveryId)
+			if (!deliveryContext.ok) return deliveryContext
 
+			const deliveryState = getDeliveryState(deliveryContext.value)
+			if (!deliveryState.ok) return deliveryState
+			if (deliveryState.value.type !== 'slices-incomplete') return { ok: true as const, value: null }
+
+			const candidates = actionableSliceCandidates(deliveryContext.value, pool.claimedKeys)
+			if (!candidates.ok) return candidates
+			const candidate = candidates.value[0]
+			if (candidate === undefined) return { ok: true as const, value: null }
+
+			pool.claimedKeys.add(candidate.key)
+			return {
+				ok: true as const,
+				value: {
+					deliveryContext: deliveryContext.value,
+					slice: candidate.slice,
+					state: candidate.state,
+				},
+			}
+		})
+		if (!selection.ok) return selection
+		if (selection.value === null) return { ok: true, value: { processedCount, failures } }
+
+		const result = await processSliceSelection(pool, selection.value)
+		if (!result.ok) return result
 		processedCount += result.value.processedCount
 		failures.push(...result.value.failures)
 	}
-}
-
-async function runNextSliceWork(pool: SliceWorkerPool): Promise<CoreResult<Result | null, Exclude<Error, InvalidInputError>>> {
-	const selection = await selectNextSliceWork(pool)
-	if (!selection.ok) return selection
-	if (selection.value === null) return { ok: true, value: null }
-
-	return processSliceSelection(pool, selection.value)
-}
-
-async function selectNextSliceWork(
-	pool: SliceWorkerPool,
-): Promise<CoreResult<SliceWorkSelection | null, Exclude<Error, InvalidInputError>>> {
-	return withTransaction(pool.runtime.services, async (storage) => readSliceWorkSelection(storage, pool))
-}
-
-async function readSliceWorkSelection(
-	storage: CoreStorage,
-	pool: SliceWorkerPool,
-): Promise<CoreResult<SliceWorkSelection | null, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await buildDeliveryContext(storage, pool.deliveryId)
-	if (!deliveryContext.ok) return deliveryContext
-
-	return selectFromDeliveryContext(deliveryContext.value, pool.claimedKeys)
-}
-
-function selectFromDeliveryContext(
-	deliveryContext: ResolvedDeliveryHandlerContext['deliveryContext'],
-	claimedKeys: Set<string>,
-): CoreResult<SliceWorkSelection | null, Exclude<Error, InvalidInputError>> {
-	const deliveryState = getDeliveryState(deliveryContext)
-	if (!deliveryState.ok) return deliveryState
-	if (deliveryState.value.type !== 'slices-incomplete') return { ok: true, value: null }
-
-	return selectFirstActionableSlice(deliveryContext, claimedKeys)
-}
-
-function selectFirstActionableSlice(
-	deliveryContext: ResolvedDeliveryHandlerContext['deliveryContext'],
-	claimedKeys: Set<string>,
-): CoreResult<SliceWorkSelection | null, Exclude<Error, InvalidInputError>> {
-	const candidate = firstActionableSlice(deliveryContext, claimedKeys)
-	if (!candidate.ok) return candidate
-	if (candidate.value === null) return { ok: true, value: null }
-
-	claimedKeys.add(candidate.value.key)
-	return { ok: true, value: sliceWorkSelection(deliveryContext, candidate.value) }
-}
-
-function sliceWorkSelection(
-	deliveryContext: ResolvedDeliveryHandlerContext['deliveryContext'],
-	candidate: SliceStateCandidate,
-): SliceWorkSelection {
-	return { deliveryContext, slice: candidate.slice, state: candidate.state, key: candidate.key }
-}
-
-function firstActionableSlice(
-	deliveryContext: ResolvedDeliveryHandlerContext['deliveryContext'],
-	claimedKeys: Set<string>,
-): CoreResult<SliceStateCandidate | null, Exclude<Error, InvalidInputError>> {
-	const candidates = actionableSliceCandidates(deliveryContext, claimedKeys)
-	return candidates.ok ? { ok: true, value: candidates.value[0] ?? null } : candidates
 }
 
 function actionableSliceCandidates(
@@ -174,20 +114,15 @@ function actionableSliceCandidates(
 		const state = getSliceState(deliveryContext, deliverySlice.slice.id)
 		if (!state.ok) return state
 
-		const candidate = sliceStateCandidate(deliverySlice.slice, state.value, order, claimedKeys)
-		if (candidate !== null) candidates.push(candidate)
+		const priority = sliceActionPriority(state.value)
+		if (priority === null) continue
+
+		const actionableState = state.value as ActionableSliceWorkState
+		const key = sliceOperationKey(deliverySlice.slice.id, actionableState)
+		if (!claimedKeys.has(key)) candidates.push({ slice: deliverySlice.slice, state: actionableState, order, priority, key })
 	}
 
-	return { ok: true, value: candidates.sort(compareSliceCandidates) }
-}
-
-function sliceStateCandidate(slice: Slice, state: SliceWorkState, order: number, claimedKeys: Set<string>): SliceStateCandidate | null {
-	const priority = sliceActionPriority(state)
-	if (priority === null) return null
-
-	const actionableState = state as ActionableSliceWorkState
-	const key = sliceOperationKey(slice.id, actionableState)
-	return claimedKeys.has(key) ? null : { slice, state: actionableState, order, priority, key }
+	return { ok: true, value: candidates.sort((left, right) => left.priority - right.priority || left.order - right.order) }
 }
 
 function sliceActionPriority(state: SliceWorkState): SliceActionPriority | null {
@@ -215,41 +150,39 @@ function sliceActionPriority(state: SliceWorkState): SliceActionPriority | null 
 	}
 }
 
-function compareSliceCandidates(left: SliceStateCandidate, right: SliceStateCandidate): number {
-	return left.priority - right.priority || left.order - right.order
-}
-
 function sliceOperationKey(sliceId: Id, state: ActionableSliceWorkState): string {
-	return `${sliceId}:${state.type}:${sliceOperationKeyDetail(state)}`
-}
-
-function sliceOperationKeyDetail(state: ActionableSliceWorkState): string {
+	let detail: string
 	switch (state.type) {
 		case 'needs-artifact-validation':
-			return state.sliceArtifactId
-		case 'needs-delivery-validation':
-			return state.actionId
 		case 'needs-review-surface':
-			return state.sliceArtifactId
+			detail = state.sliceArtifactId
+			break
+		case 'needs-delivery-validation':
+			detail = state.actionId
+			break
 		case 'needs-artifact-creation':
-			return 'current'
+			detail = 'current'
+			break
 		case 'executable':
-			return executableKeyDetail(state)
+			detail = state.mode === 'correction' ? `correction:${state.failureChain.rootActionId}` : 'current'
+			break
 		default:
 			throw new Error(`Unexpected actionable Slice Work State: ${String(state satisfies never)}`)
 	}
-}
-
-function executableKeyDetail(state: Extract<ActionableSliceWorkState, { type: 'executable' }>): string {
-	return state.mode === 'correction' ? `correction:${state.failureChain.rootActionId}` : 'current'
+	return `${sliceId}:${state.type}:${detail}`
 }
 
 async function processSliceSelection(pool: SliceWorkerPool, selection: SliceWorkSelection): Promise<DeliveryWorkHandlerResult> {
+	const context = {
+		deliveryContext: selection.deliveryContext,
+		workResolution: pool.workResolution,
+		repositoryAccessSecret: pool.repositoryAccessSecret,
+	}
 	if (selection.state.type === 'needs-artifact-creation') {
-		return handleSliceNeedsArtifactCreation(pool.runtime, selectionContext(pool, selection), selection.slice, selection.state)
+		return handleSliceNeedsArtifactCreation(pool.runtime, context, selection.slice, selection.state)
 	}
 	if (selection.state.type === 'needs-review-surface') {
-		return handleSliceNeedsReviewSurface(pool.runtime, selectionContext(pool, selection), selection.slice, selection.state)
+		return handleSliceNeedsReviewSurface(pool.runtime, context, selection.slice, selection.state)
 	}
 
 	return withTransaction(pool.runtime.services, async (storage) =>
@@ -262,31 +195,13 @@ async function processSliceSelection(pool: SliceWorkerPool, selection: SliceWork
 	)
 }
 
-function selectionContext(
-	pool: SliceWorkerPool,
-	selection: SliceWorkSelection,
-): Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'workResolution' | 'repositoryAccessSecret'> {
-	return {
-		deliveryContext: selection.deliveryContext,
-		workResolution: pool.workResolution,
-		repositoryAccessSecret: pool.repositoryAccessSecret,
-	}
-}
-
 function combineSliceWorkerResults(results: DeliveryWorkHandlerResult[]): DeliveryWorkHandlerResult {
 	const failed = results.find((result) => !result.ok)
 	if (failed !== undefined) return failed
 
-	return completedSliceWorkerResult(successfulSliceWorkerResults(results))
-}
-
-function successfulSliceWorkerResults(results: DeliveryWorkHandlerResult[]): Result[] {
-	return results.flatMap((result) => (result.ok ? [result.value] : []))
-}
-
-function completedSliceWorkerResult(results: Result[]): DeliveryWorkHandlerResult {
-	const processedCount = results.reduce((total, result) => total + result.processedCount, 0)
-	const failures = results.flatMap((result) => result.failures)
+	const successful = results.flatMap((result) => (result.ok ? [result.value] : []))
+	const processedCount = successful.reduce((total, result) => total + result.processedCount, 0)
+	const failures = successful.flatMap((result) => result.failures)
 	return processedCount === 0 && failures.length === 0 ? noEligibleWork() : { ok: true, value: { processedCount, failures } }
 }
 

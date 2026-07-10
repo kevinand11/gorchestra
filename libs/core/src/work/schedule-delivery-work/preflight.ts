@@ -1,6 +1,5 @@
 import type { Action } from '../../domain/action'
 import type { DeliveryWorkState } from '../../domain/delivery'
-import type { ValidationEvidence } from '../../domain/evidence'
 import type { InvalidInputError } from '../../errors'
 import type { CoreStorage } from '../../services'
 import {
@@ -40,17 +39,33 @@ export async function readSchedulerWork(
 	const resolution = await resolveDeliveryWork(storage, deliveryContext.value)
 	if (!resolution.ok) return resolution
 
-	return resolution.value.type === 'failed'
-		? writeFailedPreflightAction(runtime, storage, deliveryId, resolution.value.checks)
-		: {
-				ok: true,
-				value: {
-					type: 'work',
-					deliveryContext: deliveryContext.value,
-					state: state.value,
-					workResolution: resolution.value.resolution,
-				},
-			}
+	if (resolution.value.type === 'failed') {
+		const actionId = nextId(runtime.values)
+		if (!actionId.ok) return actionId
+
+		const performed = runtimeRecord(runtime.values)
+		if (!performed.ok) return performed
+
+		const action: Action = {
+			id: actionId.value,
+			deliveryId,
+			performed: performed.value,
+			authorized: null,
+			result: { type: 'validate-preflight', checks: resolution.value.checks },
+		}
+		const put = await createRecord('action', storage, action)
+		return put.ok ? { ok: true, value: { type: 'result', result: completed(1) } } : put
+	}
+
+	return {
+		ok: true,
+		value: {
+			type: 'work',
+			deliveryContext: deliveryContext.value,
+			state: state.value,
+			workResolution: resolution.value.resolution,
+		},
+	}
 }
 
 function isSchedulerActionableState(state: DeliveryWorkState): boolean {
@@ -75,31 +90,6 @@ function isSchedulerActionableState(state: DeliveryWorkState): boolean {
 		default:
 			throw new Error(`Unexpected Delivery Work State: ${String(state satisfies never)}`)
 	}
-}
-
-async function writeFailedPreflightAction(
-	runtime: CoreRuntime,
-	storage: CoreStorage,
-	deliveryId: string,
-	checks: ValidationEvidence[],
-): Promise<CoreResult<SchedulerWorkRead, Exclude<Error, InvalidInputError>>> {
-	const actionId = nextId(runtime.values)
-	if (!actionId.ok) return actionId
-
-	const performed = runtimeRecord(runtime.values)
-	if (!performed.ok) return performed
-
-	const action: Action = {
-		id: actionId.value,
-		deliveryId,
-		performed: performed.value,
-		authorized: null,
-		result: { type: 'validate-preflight', checks },
-	}
-	const put = await createRecord('action', storage, action)
-	if (!put.ok) return put
-
-	return { ok: true, value: { type: 'result', result: completed(1) } }
 }
 
 function completed(processedCount = 0): Result {

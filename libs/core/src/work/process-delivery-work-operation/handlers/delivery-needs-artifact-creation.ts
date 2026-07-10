@@ -1,5 +1,4 @@
 import { actionRecord, externalOperationEvidence } from './result'
-import type { Action } from '../../../domain/action'
 import type { DeliveryWorkState } from '../../../domain/delivery'
 import type { DeliveryArtifact } from '../../../domain/delivery-artifact'
 import type { InvariantViolationError } from '../../../errors'
@@ -49,98 +48,54 @@ export async function handleDeliveryNeedsArtifactCreation(
 	)
 }
 
-export async function recordDeliveryArtifactCreationResult(
+async function recordDeliveryArtifactCreationResult(
 	context: ResolvedDeliveryHandlerContext,
 	_state: DeliveryWorkState,
 	input: DeliveryArtifactCreationInput,
 	creation: SourceControlArtifactCreation,
 ): Promise<DeliveryWorkHandlerResult> {
-	return creation.type === 'passed'
-		? writePassedDeliveryArtifactCreation(context, input.artifactBranch)
-		: writeFailedDeliveryArtifactCreation(context, creation.summary)
-}
+	if (creation.type === 'failed') {
+		const action = actionRecord(context, {
+			type: 'record-delivery-external-operation-failure',
+			evidence: externalOperationEvidence(creation.summary),
+			dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+		})
+		if (!action.ok) return action
 
-async function writePassedDeliveryArtifactCreation(
-	context: ResolvedDeliveryHandlerContext,
-	deliveryBranch: string,
-): Promise<DeliveryWorkHandlerResult> {
-	const records = deliveryArtifactCreationRecords(context, deliveryBranch)
-	return records.ok ? putDeliveryArtifactCreationRecords(context, records.value) : records
-}
+		const actionPut = await createRecord('action', context.storage, action.value)
+		return actionPut.ok
+			? {
+					ok: true,
+					value: {
+						processedCount: 1,
+						failures: [{ scope: { type: 'delivery' }, operation: 'create-artifact', summary: creation.summary }],
+					},
+				}
+			: actionPut
+	}
 
-function deliveryArtifactCreationRecords(
-	context: ResolvedDeliveryHandlerContext,
-	deliveryBranch: string,
-): CoreResult<
-	{ artifact: DeliveryArtifact; action: Action },
-	DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
-> {
-	const artifact = deliveryArtifactRecord(context, deliveryBranch)
-	if (!artifact.ok) return artifact
+	const artifactId = nextId(context.values)
+	if (!artifactId.ok) return artifactId
+	const created = runtimeRecord(context.values)
+	if (!created.ok) return created
 
+	const artifact: DeliveryArtifact = {
+		id: artifactId.value,
+		deliveryId: context.deliveryContext.delivery.id,
+		config: { type: 'source-control', deliveryBranch: input.artifactBranch },
+		created: created.value,
+	}
 	const action = actionRecord(context, {
 		type: 'create-delivery-artifact',
-		deliveryArtifactId: artifact.value.id,
-		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
-	})
-	return action.ok ? { ok: true, value: { artifact: artifact.value, action: action.value } } : action
-}
-
-async function putDeliveryArtifactCreationRecords(
-	context: ResolvedDeliveryHandlerContext,
-	records: { artifact: DeliveryArtifact; action: Action },
-): Promise<DeliveryWorkHandlerResult> {
-	const artifactPut = await createRecord('delivery-artifact', context.storage, records.artifact)
-	if (!artifactPut.ok) return artifactPut
-
-	const actionPut = await createRecord('action', context.storage, records.action)
-	if (!actionPut.ok) return actionPut
-
-	return { ok: true, value: { processedCount: 1, failures: [] } }
-}
-
-async function writeFailedDeliveryArtifactCreation(
-	context: ResolvedDeliveryHandlerContext,
-	summary: string,
-): Promise<DeliveryWorkHandlerResult> {
-	const action = actionRecord(context, {
-		type: 'record-delivery-external-operation-failure',
-		evidence: externalOperationEvidence(summary),
+		deliveryArtifactId: artifact.id,
 		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
 	})
 	if (!action.ok) return action
 
+	const artifactPut = await createRecord('delivery-artifact', context.storage, artifact)
+	if (!artifactPut.ok) return artifactPut
 	const actionPut = await createRecord('action', context.storage, action.value)
-	if (!actionPut.ok) return actionPut
-
-	return {
-		ok: true,
-		value: {
-			processedCount: 1,
-			failures: [{ scope: { type: 'delivery' }, operation: 'create-artifact', summary }],
-		},
-	}
-}
-
-function deliveryArtifactRecord(
-	context: ResolvedDeliveryHandlerContext,
-	deliveryBranch: string,
-): CoreResult<DeliveryArtifact, DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	const id = nextId(context.values)
-	if (!id.ok) return id
-
-	const created = runtimeRecord(context.values)
-	if (!created.ok) return created
-
-	return {
-		ok: true,
-		value: {
-			id: id.value,
-			deliveryId: context.deliveryContext.delivery.id,
-			config: { type: 'source-control', deliveryBranch },
-			created: created.value,
-		},
-	}
+	return actionPut.ok ? { ok: true, value: { processedCount: 1, failures: [] } } : actionPut
 }
 
 if (import.meta.vitest) {

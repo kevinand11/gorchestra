@@ -34,13 +34,7 @@ import {
 	startedDeliveryWorkDispatchAction,
 	sliceOperationFromState,
 } from '../delivery-work/dispatch-actions'
-import type {
-	DeliveryWorkHandlerResult,
-	DeliveryWorkHandlerSuccess,
-	Error,
-	ResolvedDeliveryHandlerContext,
-	Result,
-} from '../delivery-work/types'
+import type { DeliveryWorkHandlerResult, Error, ResolvedDeliveryHandlerContext, Result } from '../delivery-work/types'
 
 const processDeliveryWorkOperationInputPipe = v.object({
 	deliveryId: idPipe,
@@ -52,37 +46,49 @@ export type Input = Omit<RawInput, 'operation'> & { operation: DeliveryWorkOpera
 export type Operation = (input: Input, context: WorkContext) => Promise<CoreResult<Result, Error>>
 
 export function createProcessDeliveryWorkOperation(runtime: CoreRuntime): Operation {
-	return buildWorkHandler('processDeliveryWorkOperation', processDeliveryWorkOperationInputPipe, (input) =>
-		handleProcessDeliveryWorkOperation(runtime, input as Input),
-	)
-}
+	return buildWorkHandler('processDeliveryWorkOperation', processDeliveryWorkOperationInputPipe, async (parsedInput) => {
+		const input = parsedInput as Input
+		const started = await withTransaction(runtime.services, (storage) => recordStartedDispatchAction(runtime, storage, input))
+		if (!started.ok) return started
+		if (started.value.type === 'already-started') return { ok: true, value: completed() }
 
-async function handleProcessDeliveryWorkOperation(
-	runtime: CoreRuntime,
-	input: Input,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const started = await withTransaction(runtime.services, (storage) => recordStartedDispatchAction(runtime, storage, input))
-	if (!started.ok) return started
-	if (started.value.type === 'already-started') return { ok: true, value: completed() }
+		const startedActionId = started.value.action.id
+		const current = await withTransaction(runtime.services, async (storage) => {
+			const deliveryContext = await buildDeliveryContext(storage, input.deliveryId)
+			if (!deliveryContext.ok) return deliveryContext
 
-	const startedActionId = started.value.action.id
-	const current = await withTransaction(runtime.services, (storage) => readCurrentOperation(storage, input, startedActionId))
-	if (!current.ok) return current
-	if (!operationsEqual(current.value.operation, input.operation)) {
-		return finishAndRequestScheduler(runtime, input, startedActionId, 'stale-no-op', completed(1))
-	}
+			const filteredContext = {
+				...deliveryContext.value,
+				actions: deliveryContext.value.actions.filter(
+					(action) => !isOwnDispatchAction(action, input.queuedActionId, startedActionId),
+				),
+			}
+			const operation = currentOperation(filteredContext, input.operation)
+			return operation.ok ? { ok: true, value: { deliveryContext: filteredContext, operation: operation.value } } : operation
+		})
+		if (!current.ok) return current
+		if (!operationsEqual(current.value.operation, input.operation)) {
+			return finishAndRequestScheduler(runtime, input, startedActionId, 'stale-no-op', completed(1))
+		}
 
-	const preflight = await runProcessorPreflight(runtime, current.value.deliveryContext)
-	if (!preflight.ok) return preflight
-	if (!deliveryPreflightChecksPassed(preflight.value.checks)) {
-		return writeFailedPreflightFinishAndRequestScheduler(runtime, input, startedActionId, preflight.value.checks)
-	}
+		const preflight = await runProcessorPreflight(runtime, current.value.deliveryContext)
+		if (!preflight.ok) return preflight
+		if (!deliveryPreflightChecksPassed(preflight.value.checks)) {
+			return writeFailedPreflightFinishAndRequestScheduler(runtime, input, startedActionId, preflight.value.checks)
+		}
 
-	const handled = await processFreshOperation(runtime, input, startedActionId, current.value.deliveryContext, preflight.value.context)
-	if (!handled.ok) return handled
+		const handled = await processFreshOperation(runtime, input, startedActionId, preflight.value.context)
+		if (!handled.ok) return handled
 
-	const result = deliveryWorkResult(handled.value)
-	return finishAndRequestScheduler(runtime, input, startedActionId, 'processed', result.value, result.dispatchMarkers)
+		return finishAndRequestScheduler(
+			runtime,
+			input,
+			startedActionId,
+			'processed',
+			{ processedCount: handled.value.processedCount, failures: handled.value.failures },
+			handled.value.dispatchMarkers ?? [],
+		)
+	})
 }
 
 type StartedAttempt = { type: 'started'; action: Action } | { type: 'already-started' }
@@ -104,9 +110,14 @@ async function recordStartedDispatchAction(
 		return invariant(`Delivery Work Operation request does not match queued Action ${input.queuedActionId}.`)
 	}
 
-	const existingStarted = await startedActionForQueuedAction(storage, input.deliveryId, input.queuedActionId)
-	if (!existingStarted.ok) return existingStarted
-	if (existingStarted.value !== null) return { ok: true, value: { type: 'already-started' } }
+	const actions = await listRecords('action', storage, {
+		where: (filter, fields) => filter.eq(fields.deliveryId, input.deliveryId),
+	})
+	if (!actions.ok) return actions
+	const existingStarted = actions.value.find(
+		(action) => action.result.type === 'start-delivery-work-operation' && action.result.queuedActionId === input.queuedActionId,
+	)
+	if (existingStarted !== undefined) return { ok: true, value: { type: 'already-started' } }
 
 	const actionId = nextId(runtime.values)
 	if (!actionId.ok) return actionId
@@ -123,43 +134,6 @@ async function recordStartedDispatchAction(
 	})
 	const put = await createRecord('action', storage, action)
 	return put.ok ? { ok: true, value: { type: 'started', action } } : put
-}
-
-async function startedActionForQueuedAction(
-	storage: Parameters<Parameters<typeof withTransaction>[1]>[0],
-	deliveryId: Id,
-	queuedActionId: Id,
-): Promise<CoreResult<Action | null, Exclude<Error, InvalidInputError>>> {
-	const actions = await listRecords('action', storage, { where: (filter, fields) => filter.eq(fields.deliveryId, deliveryId) })
-	if (!actions.ok) return actions
-
-	return {
-		ok: true,
-		value:
-			actions.value.find(
-				(action) => action.result.type === 'start-delivery-work-operation' && action.result.queuedActionId === queuedActionId,
-			) ?? null,
-	}
-}
-
-async function readCurrentOperation(
-	storage: Parameters<Parameters<typeof withTransaction>[1]>[0],
-	input: Input,
-	startedActionId: Id,
-): Promise<CoreResult<{ deliveryContext: DeliveryContext; operation: DeliveryWorkOperation | null }, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await buildDeliveryContext(storage, input.deliveryId)
-	if (!deliveryContext.ok) return deliveryContext
-
-	const filteredContext = withoutOwnDispatchActions(deliveryContext.value, input.queuedActionId, startedActionId)
-	const operation = currentOperation(filteredContext, input.operation)
-	return operation.ok ? { ok: true, value: { deliveryContext: filteredContext, operation: operation.value } } : operation
-}
-
-function withoutOwnDispatchActions(context: DeliveryContext, queuedActionId: Id, startedActionId: Id): DeliveryContext {
-	return {
-		...context,
-		actions: context.actions.filter((action) => !isOwnDispatchAction(action, queuedActionId, startedActionId)),
-	}
 }
 
 function isOwnDispatchAction(action: Action, queuedActionId: Id, startedActionId: Id): boolean {
@@ -210,7 +184,12 @@ async function runProcessorPreflight(
 				ok: true,
 				value: {
 					checks: checks.value,
-					context: unresolvedHandlerContext(runtime, deliveryContext) as ResolvedDeliveryHandlerContext,
+					context: {
+						services: runtime.services,
+						storage: runtime.services.storage,
+						values: runtime.values,
+						deliveryContext,
+					} as ResolvedDeliveryHandlerContext,
 				},
 			}
 		: {
@@ -229,20 +208,10 @@ async function runProcessorPreflight(
 			}
 }
 
-function unresolvedHandlerContext(runtime: CoreRuntime, deliveryContext: DeliveryContext) {
-	return {
-		services: runtime.services,
-		storage: runtime.services.storage,
-		values: runtime.values,
-		deliveryContext,
-	}
-}
-
 async function processFreshOperation(
 	runtime: CoreRuntime,
 	input: Input,
 	startedActionId: Id,
-	_deliveryContext: DeliveryContext,
 	context: ResolvedDeliveryHandlerContext,
 ): Promise<DeliveryWorkHandlerResult> {
 	const operationContext = { ...context, dispatchStartedActionId: startedActionId }
@@ -320,23 +289,19 @@ async function processFreshSliceOperation(
 				handleSliceExecutable(
 					{ ...context, storage },
 					deliverySlice.slice,
-					executableStateForOperation(operation.detail),
+					operation.detail?.type === 'correction-root'
+						? {
+								type: 'executable',
+								mode: 'correction',
+								failureChain: { rootActionId: operation.detail.actionId, correctionRetries: 0 },
+							}
+						: { type: 'executable', mode: 'initial' },
 					context.workResolution,
 				),
 			)
 		default:
 			throw new Error(`Unexpected Slice Work Operation state: ${String(operation.state satisfies never)}`)
 	}
-}
-
-type SliceDeliveryWorkOperation = Extract<DeliveryWorkOperation, { scope: 'slice' }>
-
-type SliceDeliveryWorkOperationDetail = SliceDeliveryWorkOperation extends { detail?: infer Detail } ? Detail : never
-
-function executableStateForOperation(detail: SliceDeliveryWorkOperationDetail | undefined): Parameters<typeof handleSliceExecutable>[2] {
-	return detail?.type === 'correction-root'
-		? { type: 'executable', mode: 'correction', failureChain: { rootActionId: detail.actionId, correctionRetries: 0 } }
-		: { type: 'executable', mode: 'initial' }
 }
 
 async function writeFailedPreflightFinishAndRequestScheduler(
@@ -426,10 +391,6 @@ async function writeFinishAndAcceptSchedulerRequest(
 		reason: { type: 'delivery-work-requested' },
 	})
 	return marker.ok ? { ok: true, value: { marker: marker.value } } : marker
-}
-
-function deliveryWorkResult(result: DeliveryWorkHandlerSuccess): { value: Result; dispatchMarkers: string[] } {
-	return { value: { processedCount: result.processedCount, failures: result.failures }, dispatchMarkers: result.dispatchMarkers ?? [] }
 }
 
 function operationsEqual(left: DeliveryWorkOperation | null, right: DeliveryWorkOperation): boolean {

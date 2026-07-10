@@ -41,7 +41,7 @@ This root AGENTS.md is the project-wide DOX rail: it gives repo-wide instruction
 ### Global modeling preferences
 
 - Do not export a variable, function, type, or class from a file until another module or public package surface needs it; keep declarations file-local by default.
-- Keep command and query operation flow inline in the handler. A file-local production helper referenced only once by that same module is presumed unnecessary and should be inlined; retain a helper only when it is reused or its interface hides substantial complexity. Apply the same rule to one-use test-registration wrappers, while retaining reusable test fixtures that improve setup readability.
+- Keep operation flow inline at its owning entry point. A file-local production helper referenced only once by that same module is presumed unnecessary and should be inlined; retain a helper only when it is reused or its interface hides substantial complexity. Apply the same rule to one-use test-registration wrappers, while retaining reusable test fixtures that improve setup readability.
 - Core lifecycle data shapes use `field: RuntimeRecord` for runtime lifecycle timestamps, direct domain-named `AuditStamp` fields for consumer-authorized operations, and domain-specific embedded records when a lifecycle moment has additional fields.
 - Authoritative Delivery lifecycle gates such as queueing and closure live on direct Delivery lifecycle fields with domain-named `AuditStamp` records; non-lifecycle execution facts remain Actions.
 - Embedded records must contain all fields that change atomically with that lifecycle moment, so the model cannot represent half-updated states.

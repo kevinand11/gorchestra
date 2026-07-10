@@ -1,10 +1,8 @@
 import { actionRecord, externalOperationEvidence } from './result'
-import type { Action } from '../../../domain/action'
 import type { DeliveryWorkState } from '../../../domain/delivery'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
 import type { SliceArtifact } from '../../../domain/slice-artifact'
 import type { InvariantViolationError } from '../../../errors'
-import { getSliceState } from '../../../utils/delivery-context'
 import { sourceControlSliceBranchName } from '../../../utils/providers/source-control/branches'
 import type { SourceControlArtifactCreation, SourceControlCreateArtifactBranchInput } from '../../../utils/providers/source-control/types'
 import type { CoreRuntime } from '../../../utils/runtime'
@@ -13,30 +11,9 @@ import { createRecord, withTransaction } from '../../../utils/storage/helpers'
 import type { Result as CoreResult } from '../../../utils/types'
 import type { ResolvedDeliveryHandlerContext, DeliveryWorkHandlerResult } from '../../delivery-work/types'
 
-interface SliceStateCandidate {
-	slice: Slice
-	state: SliceWorkState
-}
-
 export type SliceArtifactCreationInput = SourceControlCreateArtifactBranchInput & {
 	deliveryId: string
 	sliceId: string
-}
-
-export function sliceArtifactCreationInput(
-	context: Pick<
-		ResolvedDeliveryHandlerContext,
-		'deliveryContext' | 'workResolution' | 'repositoryAccessSecret' | 'dispatchStartedActionId'
-	>,
-): CoreResult<SliceArtifactCreationInput | null, DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	const candidates = sliceStateCandidates(context)
-	if (!candidates.ok) return candidates
-	if (sliceCapacityFull(candidates.value, context)) return { ok: true, value: null }
-
-	const candidate = candidates.value.find((entry) => entry.state.type === 'needs-artifact-creation')
-	if (candidate === undefined) return { ok: true, value: null }
-
-	return sliceArtifactCreationInputForSlice(context, candidate.slice)
 }
 
 export async function handleSliceNeedsArtifactCreation(
@@ -72,37 +49,58 @@ export async function handleSliceNeedsArtifactCreation(
 	)
 }
 
-export async function recordSliceArtifactCreationResult(
+async function recordSliceArtifactCreationResult(
 	context: ResolvedDeliveryHandlerContext,
 	_deliveryState: DeliveryWorkState,
 	input: SliceArtifactCreationInput,
 	creation: SourceControlArtifactCreation,
 ): Promise<DeliveryWorkHandlerResult> {
-	return creation.type === 'passed'
-		? writePassedSliceArtifactCreation(context, input)
-		: writeFailedSliceArtifactCreation(context, input.sliceId, creation.summary)
-}
+	if (creation.type === 'failed') {
+		const action = actionRecord(context, {
+			type: 'record-slice-external-operation-failure',
+			sliceId: input.sliceId,
+			evidence: externalOperationEvidence(creation.summary),
+			dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+		})
+		if (!action.ok) return action
 
-function sliceStateCandidates(
-	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext'>,
-): CoreResult<SliceStateCandidate[], DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	const candidates: SliceStateCandidate[] = []
-	for (const slice of context.deliveryContext.slices) {
-		const state = getSliceState(context.deliveryContext, slice.slice.id)
-		if (!state.ok) return state
-		candidates.push({ slice: slice.slice, state: state.value })
+		const actionPut = await createRecord('action', context.storage, action.value)
+		return actionPut.ok
+			? {
+					ok: true,
+					value: {
+						processedCount: 1,
+						failures: [
+							{ scope: { type: 'slice', sliceId: input.sliceId }, operation: 'create-artifact', summary: creation.summary },
+						],
+					},
+				}
+			: actionPut
 	}
 
-	return { ok: true, value: candidates }
-}
+	const artifactId = nextId(context.values)
+	if (!artifactId.ok) return artifactId
+	const created = runtimeRecord(context.values)
+	if (!created.ok) return created
 
-function sliceCapacityFull(candidates: SliceStateCandidate[], context: Pick<ResolvedDeliveryHandlerContext, 'workResolution'>): boolean {
-	const activeSlots = candidates.filter((candidate) => isActiveSliceSlotState(candidate.state)).length
-	return activeSlots >= context.workResolution.workConfig.maxProcessableSliceSlots
-}
+	const artifact: SliceArtifact = {
+		id: artifactId.value,
+		sliceId: input.sliceId,
+		config: { type: 'source-control', sliceBranch: input.artifactBranch },
+		created: created.value,
+	}
+	const action = actionRecord(context, {
+		type: 'create-slice-artifact',
+		sliceId: input.sliceId,
+		sliceArtifactId: artifact.id,
+		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+	})
+	if (!action.ok) return action
 
-function isActiveSliceSlotState(state: SliceWorkState): boolean {
-	return state.type === 'needs-artifact-validation' || state.type === 'needs-delivery-validation' || state.type === 'needs-review-surface'
+	const artifactPut = await createRecord('slice-artifact', context.storage, artifact)
+	if (!artifactPut.ok) return artifactPut
+	const actionPut = await createRecord('action', context.storage, action.value)
+	return actionPut.ok ? { ok: true, value: { processedCount: 1, failures: [] } } : actionPut
 }
 
 function sliceArtifactCreationInputForSlice(
@@ -130,92 +128,6 @@ function sliceArtifactCreationInputForSlice(
 	}
 }
 
-async function writePassedSliceArtifactCreation(
-	context: ResolvedDeliveryHandlerContext,
-	input: SliceArtifactCreationInput,
-): Promise<DeliveryWorkHandlerResult> {
-	const records = sliceArtifactCreationRecords(context, input)
-	return records.ok ? putSliceArtifactCreationRecords(context, records.value) : records
-}
-
-function sliceArtifactCreationRecords(
-	context: ResolvedDeliveryHandlerContext,
-	input: SliceArtifactCreationInput,
-): CoreResult<
-	{ artifact: SliceArtifact; action: Action },
-	DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
-> {
-	const artifact = sliceArtifactRecord(context, input)
-	if (!artifact.ok) return artifact
-
-	const action = actionRecord(context, {
-		type: 'create-slice-artifact',
-		sliceId: input.sliceId,
-		sliceArtifactId: artifact.value.id,
-		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
-	})
-	return action.ok ? { ok: true, value: { artifact: artifact.value, action: action.value } } : action
-}
-
-async function putSliceArtifactCreationRecords(
-	context: ResolvedDeliveryHandlerContext,
-	records: { artifact: SliceArtifact; action: Action },
-): Promise<DeliveryWorkHandlerResult> {
-	const artifactPut = await createRecord('slice-artifact', context.storage, records.artifact)
-	if (!artifactPut.ok) return artifactPut
-
-	const actionPut = await createRecord('action', context.storage, records.action)
-	if (!actionPut.ok) return actionPut
-
-	return { ok: true, value: { processedCount: 1, failures: [] } }
-}
-
-async function writeFailedSliceArtifactCreation(
-	context: ResolvedDeliveryHandlerContext,
-	sliceId: string,
-	summary: string,
-): Promise<DeliveryWorkHandlerResult> {
-	const action = actionRecord(context, {
-		type: 'record-slice-external-operation-failure',
-		sliceId,
-		evidence: externalOperationEvidence(summary),
-		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
-	})
-	if (!action.ok) return action
-
-	const actionPut = await createRecord('action', context.storage, action.value)
-	if (!actionPut.ok) return actionPut
-
-	return {
-		ok: true,
-		value: {
-			processedCount: 1,
-			failures: [{ scope: { type: 'slice', sliceId }, operation: 'create-artifact', summary }],
-		},
-	}
-}
-
-function sliceArtifactRecord(
-	context: ResolvedDeliveryHandlerContext,
-	input: SliceArtifactCreationInput,
-): CoreResult<SliceArtifact, DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	const id = nextId(context.values)
-	if (!id.ok) return id
-
-	const created = runtimeRecord(context.values)
-	if (!created.ok) return created
-
-	return {
-		ok: true,
-		value: {
-			id: id.value,
-			sliceId: input.sliceId,
-			config: { type: 'source-control', sliceBranch: input.artifactBranch },
-			created: created.value,
-		},
-	}
-}
-
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { createDeliveryWorkHandlerTestContext } = await import('./test-utils')
@@ -224,7 +136,7 @@ if (import.meta.vitest) {
 		it('builds deterministic provider input from the Delivery Branch', async () => {
 			const context = await handlerContext()
 
-			expect(sliceArtifactCreationInput(context)).toEqual({
+			expect(sliceArtifactCreationInputForSlice(context, context.deliveryContext.slices[0]!.slice)).toEqual({
 				ok: true,
 				value: {
 					deliveryId: '01k00000000000000000000008',
@@ -240,8 +152,8 @@ if (import.meta.vitest) {
 
 		it('stores a Slice Artifact and Action after provider success', async () => {
 			const context = await handlerContext()
-			const input = sliceArtifactCreationInput(context)
-			if (!input.ok || input.value === null) throw new Error('Expected input.')
+			const input = sliceArtifactCreationInputForSlice(context, context.deliveryContext.slices[0]!.slice)
+			if (!input.ok) throw new Error('Expected input.')
 
 			const result = await recordSliceArtifactCreationResult(context, { type: 'slices-incomplete' }, input.value, {
 				type: 'passed',
@@ -269,8 +181,8 @@ if (import.meta.vitest) {
 
 		it('records external-operation failure evidence after provider failure', async () => {
 			const context = await handlerContext()
-			const input = sliceArtifactCreationInput(context)
-			if (!input.ok || input.value === null) throw new Error('Expected input.')
+			const input = sliceArtifactCreationInputForSlice(context, context.deliveryContext.slices[0]!.slice)
+			if (!input.ok) throw new Error('Expected input.')
 
 			const result = await recordSliceArtifactCreationResult(context, { type: 'slices-incomplete' }, input.value, {
 				type: 'failed',

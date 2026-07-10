@@ -12,7 +12,7 @@ import type {
 } from '../errors'
 import { appendAgentRunEvent } from '../utils/agent-runs'
 import type { CoreRuntime } from '../utils/runtime'
-import { managedSandboxProviderForConfig, type SandboxProviderResolutionError } from '../utils/runtime/sandboxes'
+import { managedSandboxProviderForConfig } from '../utils/runtime/sandboxes'
 import { runtimeRecord } from '../utils/runtime-values'
 import { getRequired, updateRecord } from '../utils/storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
@@ -32,33 +32,35 @@ export type Error =
 export type Operation = (input: Input, context: WorkContext) => Promise<CoreResult<Result, Error>>
 
 export function createReleaseAgentRunSandboxOperation(runtime: CoreRuntime): Operation {
-	return buildWorkHandler('releaseAgentRunSandbox', inputPipe, (input: ParsedInput) => releaseAgentRunSandbox(runtime, input.agentRunId))
-}
+	return buildWorkHandler('releaseAgentRunSandbox', inputPipe, async (input: ParsedInput) => {
+		const agentRun = await getRequired('agent-run', runtime.services.storage, input.agentRunId)
+		if (!agentRun.ok) return agentRun
+		if (agentRun.value.sandbox === null || agentRun.value.sandbox.released !== null) return { ok: true, value: undefined }
 
-async function releaseAgentRunSandbox(runtime: CoreRuntime, agentRunId: Id): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
-	const agentRun = await getRequired('agent-run', runtime.services.storage, agentRunId)
-	if (!agentRun.ok) return agentRun
-	if (agentRun.value.sandbox === null || agentRun.value.sandbox.released !== null) return { ok: true, value: undefined }
+		const releasableAgentRun: AgentRunWithSandbox = { ...agentRun.value, sandbox: agentRun.value.sandbox }
+		const provider = await managedSandboxProviderForConfig(runtime, runtime.services.storage, releasableAgentRun.profile.sandboxConfig)
+		if (!provider.ok) {
+			return provider.error.type === 'sandbox-provider-resolution-failed'
+				? recordReleaseFailure(runtime, input.agentRunId, provider.error.summary)
+				: { ok: false, error: provider.error }
+		}
 
-	const releasableAgentRun: AgentRunWithSandbox = { ...agentRun.value, sandbox: agentRun.value.sandbox }
-	const provider = await managedSandboxProviderForConfig(runtime, runtime.services.storage, releasableAgentRun.profile.sandboxConfig)
-	if (!provider.ok) return recordReleaseResolutionFailure(runtime, agentRunId, provider.error)
+		const sandbox = await provider.value.find({ key: releasableAgentRun.sandbox.key })
+		if (!sandbox.ok) {
+			return sandbox.error.type === 'sandbox-operation-failed'
+				? recordReleaseFailure(runtime, input.agentRunId, sandbox.error.summary)
+				: { ok: false, error: sandbox.error }
+		}
+		if (sandbox.value === null) return recordReleased(runtime, releasableAgentRun, 'Agent Run sandbox was already absent.')
 
-	const sandbox = await provider.value.find({ key: releasableAgentRun.sandbox.key })
-	if (!sandbox.ok) {
-		return sandbox.error.type === 'sandbox-operation-failed'
-			? recordReleaseFailure(runtime, agentRunId, sandbox.error.summary)
-			: { ok: false, error: sandbox.error }
-	}
-	if (sandbox.value === null) return recordReleased(runtime, releasableAgentRun, 'Agent Run sandbox was already absent.')
-
-	const release = await sandbox.value.release()
-	if (!release.ok) {
-		return release.error.type === 'sandbox-operation-failed'
-			? recordReleaseFailure(runtime, agentRunId, release.error.summary)
-			: { ok: false, error: release.error }
-	}
-	return recordReleased(runtime, releasableAgentRun, release.value.summary)
+		const release = await sandbox.value.release()
+		if (!release.ok) {
+			return release.error.type === 'sandbox-operation-failed'
+				? recordReleaseFailure(runtime, input.agentRunId, release.error.summary)
+				: { ok: false, error: release.error }
+		}
+		return recordReleased(runtime, releasableAgentRun, release.value.summary)
+	})
 }
 
 async function recordReleased(
@@ -90,16 +92,6 @@ async function recordReleaseFailure(
 		summary,
 	})
 	return failed.ok ? { ok: true, value: undefined } : failed
-}
-
-function recordReleaseResolutionFailure(
-	runtime: CoreRuntime,
-	agentRunId: Id,
-	error: SandboxProviderResolutionError,
-): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> | CoreResult<never, Exclude<Error, InvalidInputError>> {
-	return error.type === 'sandbox-provider-resolution-failed'
-		? recordReleaseFailure(runtime, agentRunId, error.summary)
-		: { ok: false, error }
 }
 
 if (import.meta.vitest) {

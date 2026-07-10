@@ -30,34 +30,27 @@ export type Input = PipeOutput<typeof scheduleDeliveryWorkInputPipe>
 export type Operation = (input: Input, context: WorkContext) => Promise<CoreResult<Result, Error>>
 
 export function createScheduleDeliveryWorkOperation(runtime: CoreRuntime): Operation {
-	return buildWorkHandler('scheduleDeliveryWork', scheduleDeliveryWorkInputPipe, (input) => handleScheduleDeliveryWork(runtime, input))
-}
+	return buildWorkHandler('scheduleDeliveryWork', scheduleDeliveryWorkInputPipe, async (input) => {
+		const read = await withTransaction(runtime.services, (storage) => readSchedulerWork(runtime, storage, input.deliveryId))
+		if (!read.ok) return read
+		if (read.value.type === 'result') return { ok: true, value: read.value.result }
 
-async function handleScheduleDeliveryWork(
-	runtime: CoreRuntime,
-	input: Input,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const read = await withTransaction(runtime.services, (storage) => readSchedulerWork(runtime, storage, input.deliveryId))
-	if (!read.ok) return read
-	if (read.value.type === 'result') return { ok: true, value: read.value.result }
+		const deliveryOperation = deliveryOperationFromState(read.value.state)
+		const operations =
+			deliveryOperation !== null
+				? { ok: true as const, value: [deliveryOperation] }
+				: read.value.state.type === 'slices-incomplete'
+					? sliceOperationsForClaim(read.value)
+					: { ok: true as const, value: [] }
+		if (!operations.ok) return operations
+		if (operations.value.length === 0) return { ok: true, value: completed() }
 
-	const operations = operationsForClaim(read.value)
-	if (!operations.ok) return operations
-	if (operations.value.length === 0) return { ok: true, value: completed() }
+		const queued = await queueOperations(runtime, read.value, operations.value)
+		if (!queued.ok) return queued
 
-	const queued = await queueOperations(runtime, read.value, operations.value)
-	if (!queued.ok) return queued
-
-	for (const marker of queued.value.markers) runtime.services.dispatcher.ready(marker)
-	return { ok: true, value: completed(queued.value.markers.length) }
-}
-
-function operationsForClaim(claim: SchedulerWorkClaim): CoreResult<DeliveryWorkOperation[], Exclude<Error, InvalidInputError>> {
-	const deliveryOperation = deliveryOperationFromState(claim.state)
-	if (deliveryOperation !== null) return { ok: true, value: [deliveryOperation] }
-	if (claim.state.type !== 'slices-incomplete') return { ok: true, value: [] }
-
-	return sliceOperationsForClaim(claim)
+		for (const marker of queued.value.markers) runtime.services.dispatcher.ready(marker)
+		return { ok: true, value: completed(queued.value.markers.length) }
+	})
 }
 
 function sliceOperationsForClaim(claim: SchedulerWorkClaim): CoreResult<DeliveryWorkOperation[], Exclude<Error, InvalidInputError>> {

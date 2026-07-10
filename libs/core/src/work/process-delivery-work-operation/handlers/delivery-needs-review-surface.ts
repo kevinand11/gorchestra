@@ -31,20 +31,13 @@ export async function handleDeliveryNeedsReviewSurface(
 		repositoryAccessSecret: context.repositoryAccessSecret,
 		state,
 	})
-	return input.ok ? createDeliveryReviewSurface(runtime, context, state, input.value) : input
-}
+	if (!input.ok) return input
 
-async function createDeliveryReviewSurface(
-	runtime: CoreRuntime,
-	context: ResolvedDeliveryHandlerContext,
-	state: DeliveryReviewSurfaceState,
-	input: DeliveryReviewSurfaceInput,
-): Promise<DeliveryWorkHandlerResult> {
-	const creation = await runtime.providers.sourceControl.createReviewSurface(input)
+	const creation = await runtime.providers.sourceControl.createReviewSurface(input.value)
 	if (!creation.ok) return creation
 
 	return withTransaction(runtime.services, (storage) =>
-		recordDeliveryReviewSurfaceCreationResult({ ...context, storage }, state, input, creation.value),
+		recordDeliveryReviewSurfaceCreationResult({ ...context, storage }, state, input.value, creation.value),
 	)
 }
 
@@ -109,67 +102,42 @@ async function writeDeliveryReviewSurface(
 	input: DeliveryReviewSurfaceInput,
 	creation: Extract<SourceControlReviewSurfaceCreation, { type: 'review-surface' }>,
 ): Promise<DeliveryWorkHandlerResult> {
-	const records = deliveryReviewSurfaceRecords(context, input, creation.pullRequestNumber)
-	return records.ok ? putDeliveryReviewSurfaceRecords(context, records.value) : records
-}
-
-function deliveryReviewSurfaceRecords(
-	context: ResolvedDeliveryHandlerContext,
-	input: DeliveryReviewSurfaceInput,
-	pullRequestNumber: number,
-): CoreResult<
-	{ reviewSurface: ReviewSurface; action: Action },
-	DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never
-> {
 	const reviewSurfaceId = nextId(context.values)
 	if (!reviewSurfaceId.ok) return reviewSurfaceId
-
 	const actionId = nextId(context.values)
 	if (!actionId.ok) return actionId
-
 	const performed = runtimeRecord(context.values)
 	if (!performed.ok) return performed
 
-	return {
-		ok: true,
-		value: {
-			reviewSurface: {
-				id: reviewSurfaceId.value,
-				scope: { type: 'delivery', deliveryId: input.deliveryId, deliveryArtifactId: input.deliveryArtifactId },
-				config: {
-					provider: context.deliveryContext.repository.config.provider,
-					pullRequestNumber,
-					repositoryId: context.deliveryContext.repository.id,
-					sourceBranch: input.sourceBranch,
-					targetBranch: input.targetBranch,
-				},
-				title: input.title,
-				closed: null,
-				created: performed.value,
-			},
-			action: {
-				id: actionId.value,
-				deliveryId: context.deliveryContext.delivery.id,
-				performed: performed.value,
-				authorized: null,
-				result: {
-					type: 'create-delivery-review-surface',
-					reviewSurfaceId: reviewSurfaceId.value,
-					dispatchStartedActionId: context.dispatchStartedActionId ?? null,
-				},
-			},
+	const reviewSurface: ReviewSurface = {
+		id: reviewSurfaceId.value,
+		scope: { type: 'delivery', deliveryId: input.deliveryId, deliveryArtifactId: input.deliveryArtifactId },
+		config: {
+			provider: context.deliveryContext.repository.config.provider,
+			pullRequestNumber: creation.pullRequestNumber,
+			repositoryId: context.deliveryContext.repository.id,
+			sourceBranch: input.sourceBranch,
+			targetBranch: input.targetBranch,
+		},
+		title: input.title,
+		closed: null,
+		created: performed.value,
+	}
+	const action: Action = {
+		id: actionId.value,
+		deliveryId: context.deliveryContext.delivery.id,
+		performed: performed.value,
+		authorized: null,
+		result: {
+			type: 'create-delivery-review-surface',
+			reviewSurfaceId: reviewSurface.id,
+			dispatchStartedActionId: context.dispatchStartedActionId ?? null,
 		},
 	}
-}
 
-async function putDeliveryReviewSurfaceRecords(
-	context: ResolvedDeliveryHandlerContext,
-	records: { reviewSurface: ReviewSurface; action: Action },
-): Promise<DeliveryWorkHandlerResult> {
-	const surfacePut = await createRecord('review-surface', context.storage, records.reviewSurface)
+	const surfacePut = await createRecord('review-surface', context.storage, reviewSurface)
 	if (!surfacePut.ok) return surfacePut
-
-	const actionPut = await createRecord('action', context.storage, records.action)
+	const actionPut = await createRecord('action', context.storage, action)
 	return actionPut.ok ? { ok: true, value: { processedCount: 1, failures: [] } } : actionPut
 }
 

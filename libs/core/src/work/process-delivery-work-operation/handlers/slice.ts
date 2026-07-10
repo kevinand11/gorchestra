@@ -21,9 +21,7 @@ type NoWorkSliceState = Extract<
 >
 
 type ValidationSliceState = Extract<SliceWorkState, { type: 'needs-delivery-validation' | 'needs-artifact-validation' }>
-type ProviderBackedSliceState = Extract<SliceWorkState, { type: 'needs-review-surface' }>
-
-type RemainingSliceState = Exclude<SliceWorkState, NoWorkSliceState | ValidationSliceState | ProviderBackedSliceState>
+type RemainingSliceState = Exclude<SliceWorkState, NoWorkSliceState | ValidationSliceState | { type: 'needs-review-surface' }>
 
 const noWorkSliceStateTypes = new Set<SliceWorkState['type']>([
 	'complete',
@@ -44,7 +42,15 @@ export function handleSliceWorkState(
 ): Promise<DeliveryWorkHandlerResult> | DeliveryWorkHandlerResult {
 	if (isNoWorkSliceState(state)) return noEligibleWork()
 	if (isValidationSliceState(state)) return handleSliceValidationWorkState(context, slice, state)
-	if (isProviderBackedSliceState(state)) return providerBackedSliceStateInvariant()
+	if (state.type === 'needs-review-surface') {
+		return {
+			ok: false,
+			error: {
+				type: 'invariant-violation',
+				message: 'Provider-backed Slice work must be handled outside the transactional Slice Work State dispatcher.',
+			},
+		}
+	}
 
 	return handleRemainingSliceWorkState(context, slice, state, resolution)
 }
@@ -88,18 +94,4 @@ function isNoWorkSliceState(state: SliceWorkState): state is NoWorkSliceState {
 
 function isValidationSliceState(state: SliceWorkState): state is ValidationSliceState {
 	return validationSliceStateTypes.has(state.type)
-}
-
-function isProviderBackedSliceState(state: SliceWorkState): state is ProviderBackedSliceState {
-	return state.type === 'needs-review-surface'
-}
-
-function providerBackedSliceStateInvariant(): DeliveryWorkHandlerResult {
-	return {
-		ok: false,
-		error: {
-			type: 'invariant-violation',
-			message: 'Provider-backed Slice work must be handled outside the transactional Slice Work State dispatcher.',
-		},
-	}
 }

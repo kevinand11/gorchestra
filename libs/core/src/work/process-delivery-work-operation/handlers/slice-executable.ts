@@ -1,12 +1,7 @@
-import type { AgentRun, ExecutionMode } from '../../../domain/agent-run'
-import type { AgentRunProfile } from '../../../domain/agent-run-profile'
-import type { Id, RuntimeRecord } from '../../../domain/commons'
-import type { Project } from '../../../domain/project'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
 import { appendAgentRunEvent, createModelAgentRunAndRequestPreparation } from '../../../utils/agent-runs'
 import { acceptAgentRunModelTurn } from '../../../utils/dispatch'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
-import type { Result as CoreResult } from '../../../utils/types'
 import type { DeliveryHandlerContext, DeliveryWorkHandlerResult, DeliveryWorkResolution } from '../../delivery-work/types'
 
 export async function handleSliceExecutable(
@@ -15,34 +10,29 @@ export async function handleSliceExecutable(
 	state: Extract<SliceWorkState, { type: 'executable' }>,
 	resolution: DeliveryWorkResolution,
 ): Promise<DeliveryWorkHandlerResult> {
-	const agentRun = sliceExecutionAgentRun(context, slice, state, resolution)
-	if (!agentRun.ok) return agentRun
+	const agentRunId = nextId(context.values)
+	if (!agentRunId.ok) return agentRunId
 
-	return writeSliceExecutionAgentRun(context, agentRun.value)
-}
+	const started = runtimeRecord(context.values)
+	if (!started.ok) return started
 
-interface SliceExecutionAgentRunInput {
-	agentRunId: Id
-	agentRunProfile: AgentRunProfile
-	project: Project
-	purpose: Extract<AgentRun['purpose'], { type: 'execution' }>
-	started: RuntimeRecord
-	initialInputText: string
-}
-
-async function writeSliceExecutionAgentRun(
-	context: DeliveryHandlerContext,
-	agentRun: SliceExecutionAgentRunInput,
-): Promise<DeliveryWorkHandlerResult> {
 	const created = await createModelAgentRunAndRequestPreparation(
 		{ values: context.values, dispatcher: context.services.dispatcher },
 		context.storage,
 		{
-			agentRunId: agentRun.agentRunId,
-			agentRunProfile: agentRun.agentRunProfile,
-			project: agentRun.project,
-			purpose: agentRun.purpose,
-			started: agentRun.started,
+			agentRunId: agentRunId.value,
+			agentRunProfile: resolution.executionProfile,
+			project: context.deliveryContext.project,
+			purpose: {
+				type: 'execution',
+				deliveryId: context.deliveryContext.delivery.id,
+				sliceId: slice.id,
+				mode:
+					state.mode === 'initial'
+						? { type: 'initial' }
+						: { type: 'correction', failureChainRootActionId: state.failureChain.rootActionId },
+			},
+			started: started.value,
 		},
 	)
 	if (!created.ok) return created
@@ -50,7 +40,7 @@ async function writeSliceExecutionAgentRun(
 	const input = await appendAgentRunEvent({ values: context.values }, context.storage, created.value.agentRun.id, {
 		type: 'input-message',
 		source: { type: 'runtime' },
-		parts: [{ type: 'text', text: agentRun.initialInputText, metadata: null }],
+		parts: [{ type: 'text', text: slice.instruction.body, metadata: null }],
 	})
 	if (!input.ok) return input
 
@@ -61,42 +51,6 @@ async function writeSliceExecutionAgentRun(
 		ok: true,
 		value: { processedCount: 1, failures: [], dispatchMarkers: [created.value.preparationDispatchMarker, modelTurnMarker.value] },
 	}
-}
-
-function sliceExecutionAgentRun(
-	context: DeliveryHandlerContext,
-	slice: Slice,
-	state: Extract<SliceWorkState, { type: 'executable' }>,
-	resolution: DeliveryWorkResolution,
-): CoreResult<SliceExecutionAgentRunInput, DeliveryWorkHandlerResult extends CoreResult<unknown, infer TError> ? TError : never> {
-	const agentRunId = nextId(context.values)
-	if (!agentRunId.ok) return agentRunId
-
-	const started = runtimeRecord(context.values)
-	if (!started.ok) return started
-
-	return {
-		ok: true,
-		value: {
-			agentRunId: agentRunId.value,
-			agentRunProfile: resolution.executionProfile,
-			project: context.deliveryContext.project,
-			purpose: {
-				type: 'execution',
-				deliveryId: context.deliveryContext.delivery.id,
-				sliceId: slice.id,
-				mode: executionModeForState(state),
-			},
-			started: started.value,
-			initialInputText: slice.instruction.body,
-		},
-	}
-}
-
-function executionModeForState(state: Extract<SliceWorkState, { type: 'executable' }>): ExecutionMode {
-	return state.mode === 'initial'
-		? { type: 'initial' }
-		: { type: 'correction', failureChainRootActionId: state.failureChain.rootActionId }
 }
 
 if (import.meta.vitest) {

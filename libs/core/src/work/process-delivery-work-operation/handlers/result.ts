@@ -14,14 +14,6 @@ export function noObservedChange(_observed: DeliveryWorkNoObservedChangeTarget):
 	return completed()
 }
 
-export function sliceCapacityFull(_activeSlots: number, _maxProcessableSliceSlots: number): DeliveryWorkHandlerResult {
-	return completed()
-}
-
-export function worked(_actionId: Id, _agentRunId: Id): DeliveryWorkHandlerResult {
-	return completed(1)
-}
-
 export function workedActions(actionIds: Id[]): DeliveryWorkHandlerResult {
 	return completed(actionIds.length)
 }
