@@ -4,15 +4,22 @@ import type { AgentRun } from '../domain/agent-run'
 import { idPipe, nonEmptyTrimmedStringPipe, type RuntimeRecord } from '../domain/commons'
 import type { Plan } from '../domain/plan'
 import type { InvalidInputError } from '../errors'
-import type { CoreRuntime } from '../runtime'
 import type { CoreDispatchRequest } from '../services'
 import type { CommandContext } from './types'
 import { appendAgentRunEvent, createModelAgentRunAndRequestPreparation } from '../utils/agent-runs'
+import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
+import { buildCommandHandler } from '../utils/command-handler'
+import {
+	createRecordValue,
+	getRequired,
+	isArchived,
+	nextId,
+	validateModelThinkingLevel,
+	withAuditStampTransaction,
+} from '../utils/command-storage'
+import { acceptAgentRunModelTurn } from '../utils/dispatch'
+import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
-import { acceptAgentRunModelTurn } from './utils/dispatch'
-import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
-import { buildCommandHandler } from './utils/handler'
-import { createRecordValue, getRequired, loadSelectableAgentRunProfile, nextId, withAuditStampTransaction } from './utils/storage'
 
 const createPlanInputPipe = v.object({
 	projectId: idPipe,
@@ -26,71 +33,96 @@ export type Result = Plan
 export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
+type PlanWriteResult = { plan: Plan; dispatchMarkers: string[] }
+
 export function createCreatePlanCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('createPlan', createPlanInputPipe, (input, context) => handleCreatePlan(runtime, input, context))
-}
+	return buildCommandHandler('createPlan', createPlanInputPipe, async (input, context) => {
+		const planId = nextId(runtime.values)
+		if (!planId.ok) return planId
 
-async function handleCreatePlan(runtime: CoreRuntime, input: Input, context: CommandContext): Promise<CoreResult<Plan, Error>> {
-	const planId = nextId(runtime.values)
-	if (!planId.ok) return planId
+		const agentRunId = nextId(runtime.values)
+		if (!agentRunId.ok) return agentRunId
 
-	const agentRunId = nextId(runtime.values)
-	if (!agentRunId.ok) return agentRunId
+		const written = await withAuditStampTransaction<PlanWriteResult, Error>(runtime, context, async (storage, stamp) => {
+			const started: RuntimeRecord = { at: stamp.at }
 
-	const written = await withAuditStampTransaction(runtime, context, async (storage, stamp) => {
-		const started: RuntimeRecord = { at: stamp.at }
+			const project = await getRequired('project', storage, input.projectId)
+			if (!project.ok) return project
 
-		const project = await getRequired('project', storage, input.projectId)
-		if (!project.ok) return project
+			const profile = await getRequired('agent-run-profile', storage, input.agentRunProfileId)
+			if (!profile.ok) return profile
+			if (isArchived(profile.value.archivePeriods)) {
+				return {
+					ok: false,
+					error: { type: 'resource-archived', resource: 'agent-run-profile', id: input.agentRunProfileId },
+				}
+			}
 
-		const profile = await loadSelectableAgentRunProfile(storage, input.agentRunProfileId)
-		if (!profile.ok) return profile
+			const model = await getRequired('model', storage, profile.value.modelUse.modelId)
+			if (!model.ok) return model
+			if (isArchived(model.value.archivePeriods)) {
+				return { ok: false, error: { type: 'resource-archived', resource: 'model', id: model.value.id } }
+			}
 
-		const plan = await createRecordValue('plan', storage, {
-			id: planId.value,
-			agentRunId: agentRunId.value,
-			projectId: input.projectId,
-			title: input.title,
-			created: stamp,
-			closed: null,
-		})
-		if (!plan.ok) return plan
+			const provider = await getRequired('model-provider', storage, model.value.providerId)
+			if (!provider.ok) return provider
+			if (isArchived(provider.value.archivePeriods)) {
+				return { ok: false, error: { type: 'resource-archived', resource: 'model-provider', id: provider.value.id } }
+			}
 
-		const created = await createModelAgentRunAndRequestPreparation(
-			{ values: runtime.values, dispatcher: runtime.services.dispatcher },
-			storage,
-			{
+			const thinkingLevelValidation = validateModelThinkingLevel(model.value, provider.value, profile.value.modelUse.thinkingLevel)
+			if (!thinkingLevelValidation.ok) return thinkingLevelValidation
+
+			const plan = await createRecordValue('plan', storage, {
+				id: planId.value,
 				agentRunId: agentRunId.value,
-				agentRunProfile: profile.value,
-				project: project.value,
-				purpose: { type: 'planning', planId: planId.value },
-				started,
-			},
-		)
-		if (!created.ok) return created
+				projectId: input.projectId,
+				title: input.title,
+				created: stamp,
+				closed: null,
+			})
+			if (!plan.ok) return plan
 
-		const inputMessage = await appendAgentRunEvent({ values: runtime.values }, storage, created.value.agentRun.id, {
-			type: 'input-message',
-			source: { type: 'operator', authorized: stamp },
-			parts: [{ type: 'text', text: input.initialMessage, metadata: null }],
+			const created = await createModelAgentRunAndRequestPreparation(
+				{ values: runtime.values, dispatcher: runtime.services.dispatcher },
+				storage,
+				{
+					agentRunId: agentRunId.value,
+					agentRunProfile: profile.value,
+					project: project.value,
+					purpose: { type: 'planning', planId: planId.value },
+					started,
+				},
+			)
+			if (!created.ok) return created
+
+			const inputMessage = await appendAgentRunEvent({ values: runtime.values }, storage, created.value.agentRun.id, {
+				type: 'input-message',
+				source: { type: 'operator', authorized: stamp },
+				parts: [{ type: 'text', text: input.initialMessage, metadata: null }],
+			})
+			if (!inputMessage.ok) return inputMessage
+
+			const modelTurnDispatchMarker = await acceptAgentRunModelTurn(
+				runtime.services.dispatcher,
+				agentRunId.value,
+				inputMessage.value.id,
+			)
+			if (!modelTurnDispatchMarker.ok) return modelTurnDispatchMarker
+
+			return {
+				ok: true,
+				value: {
+					plan: plan.value,
+					dispatchMarkers: [created.value.preparationDispatchMarker, modelTurnDispatchMarker.value],
+				},
+			}
 		})
-		if (!inputMessage.ok) return inputMessage
 
-		const modelTurnDispatchMarker = await acceptAgentRunModelTurn(runtime.services.dispatcher, agentRunId.value, inputMessage.value.id)
-		if (!modelTurnDispatchMarker.ok) return modelTurnDispatchMarker
-
-		return {
-			ok: true,
-			value: {
-				plan: plan.value,
-				dispatchMarkers: [created.value.preparationDispatchMarker, modelTurnDispatchMarker.value],
-			},
-		}
+		if (!written.ok) return written
+		for (const dispatchMarker of written.value.dispatchMarkers) runtime.services.dispatcher.ready(dispatchMarker)
+		return { ok: true, value: written.value.plan }
 	})
-
-	if (!written.ok) return written
-	for (const dispatchMarker of written.value.dispatchMarkers) runtime.services.dispatcher.ready(dispatchMarker)
-	return { ok: true, value: written.value.plan }
 }
 
 if (import.meta.vitest) {

@@ -5,9 +5,9 @@ import { listedProjectPipe } from '../domain/project'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
 import { listedProjectFromProjectAndRepositories } from './list-projects'
-import { getRequired, listRecords, withTransaction } from '../storage/helpers'
+import { buildQueryHandler } from '../utils/query-handler'
+import { getRequired, listRecords, withTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = v.object({ projectId: idPipe })
 export type Input = PipeOutput<typeof inputPipe>

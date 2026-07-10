@@ -1,6 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { isArchived } from '../commands/utils/storage'
 import type { AgentRunProfile } from '../domain/agent-run-profile'
 import type { AgentRunRuntimeRequirement, VercelSandboxCredentialsSecretRefs } from '../domain/agent-run-runtime'
 import { idPipe, type Id } from '../domain/commons'
@@ -18,9 +17,10 @@ export type {
 } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices, CoreStorage } from '../services'
-import { getRequired, listRecords, withTransaction, type StorageBoundaryError } from '../storage/helpers'
+import { isArchived } from '../utils/command-storage'
+import { buildQueryHandler } from '../utils/query-handler'
+import { getRequired, listRecords, withTransaction, type StorageBoundaryError } from '../utils/storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = v.object({ secretId: idPipe })
 export type Input = PipeOutput<typeof inputPipe>
@@ -48,47 +48,44 @@ export async function listSecretReferencesBySecretId(
 ): Promise<CoreResult<Map<Id, SecretReference[]>, StorageBoundaryError>> {
 	if (secretIds.length === 0) return { ok: true, value: emptySecretReferencesBySecretId(secretIds) }
 
-	const matches = await collectSecretReferenceMatches(storage, new Set(secretIds))
-	return matches.ok ? { ok: true, value: secretReferencesBySecretId(secretIds, matches.value) } : matches
+	const secretIdSet = new Set(secretIds)
+	const repositories = await listRecords('repository', storage)
+	if (!repositories.ok) return repositories
+
+	const profiles = await listRecords('agent-run-profile', storage)
+	if (!profiles.ok) return profiles
+
+	const modelProviders = await listRecords('model-provider', storage)
+	if (!modelProviders.ok) return modelProviders
+
+	const matches: SecretReferenceMatch[] = [
+		...repositories.value.flatMap((repository) => repositorySecretReference(repository, secretIdSet)),
+		...profiles.value.flatMap((profile) => agentRunProfileSecretReferences(profile, secretIdSet)),
+		...modelProviders.value.flatMap((modelProvider) => modelProviderSecretReferences(modelProvider, secretIdSet)),
+	]
+	const referencesBySecretId = emptySecretReferencesBySecretId(secretIds)
+	for (const { secretId, reference } of matches) referencesBySecretId.get(secretId)?.push(reference)
+	for (const [secretId, references] of referencesBySecretId) {
+		referencesBySecretId.set(
+			secretId,
+			[...references].sort(
+				(left, right) =>
+					[
+						referenceTypeOrder[left.type] - referenceTypeOrder[right.type],
+						referenceActiveRank(left) - referenceActiveRank(right),
+						referenceLabel(left).localeCompare(referenceLabel(right)),
+						referenceId(left).localeCompare(referenceId(right)),
+					].find((value) => value !== 0) ?? 0,
+			),
+		)
+	}
+	return { ok: true, value: referencesBySecretId }
 }
 
 type SecretReferenceMatch = { secretId: Id; reference: SecretReference }
 
-async function collectSecretReferenceMatches(
-	storage: CoreStorage,
-	secretIdSet: Set<Id>,
-): Promise<CoreResult<SecretReferenceMatch[], StorageBoundaryError>> {
-	const repositoryReferences = await listRepositorySecretReferences(storage, secretIdSet)
-	if (!repositoryReferences.ok) return repositoryReferences
-
-	const agentRunProfileReferences = await listAgentRunProfileSecretReferences(storage, secretIdSet)
-	if (!agentRunProfileReferences.ok) return agentRunProfileReferences
-
-	const modelProviderReferences = await listModelProviderSecretReferences(storage, secretIdSet)
-	return modelProviderReferences.ok
-		? { ok: true, value: [...repositoryReferences.value, ...agentRunProfileReferences.value, ...modelProviderReferences.value] }
-		: modelProviderReferences
-}
-
-function secretReferencesBySecretId(secretIds: readonly Id[], matches: SecretReferenceMatch[]): Map<Id, SecretReference[]> {
-	const referencesBySecretId = emptySecretReferencesBySecretId(secretIds)
-	for (const { secretId, reference } of matches) referencesBySecretId.get(secretId)?.push(reference)
-	for (const [secretId, references] of referencesBySecretId) referencesBySecretId.set(secretId, sortSecretReferences(references))
-	return referencesBySecretId
-}
-
 function emptySecretReferencesBySecretId(secretIds: readonly Id[]): Map<Id, SecretReference[]> {
 	return new Map(secretIds.map((secretId) => [secretId, []]))
-}
-
-async function listRepositorySecretReferences(
-	storage: CoreStorage,
-	secretIds: Set<Id>,
-): Promise<CoreResult<SecretReferenceMatch[], StorageBoundaryError>> {
-	const repositories = await listRecords('repository', storage)
-	if (!repositories.ok) return repositories
-
-	return { ok: true, value: repositories.value.flatMap((repository) => repositorySecretReference(repository, secretIds)) }
 }
 
 function repositorySecretReference(repository: Repository, secretIds: Set<Id>): SecretReferenceMatch[] {
@@ -111,16 +108,6 @@ function repositorySecretReference(repository: Repository, secretIds: Set<Id>): 
 					]
 				: []
 	}
-}
-
-async function listAgentRunProfileSecretReferences(
-	storage: CoreStorage,
-	secretIds: Set<Id>,
-): Promise<CoreResult<SecretReferenceMatch[], StorageBoundaryError>> {
-	const profiles = await listRecords('agent-run-profile', storage)
-	if (!profiles.ok) return profiles
-
-	return { ok: true, value: profiles.value.flatMap((profile) => agentRunProfileSecretReferences(profile, secretIds)) }
 }
 
 function agentRunProfileSecretReferences(profile: AgentRunProfile, secretIds: Set<Id>): SecretReferenceMatch[] {
@@ -228,16 +215,6 @@ function vercelCredentialSecretReference(
 		: null
 }
 
-async function listModelProviderSecretReferences(
-	storage: CoreStorage,
-	secretIds: Set<Id>,
-): Promise<CoreResult<SecretReferenceMatch[], StorageBoundaryError>> {
-	const modelProviders = await listRecords('model-provider', storage)
-	if (!modelProviders.ok) return modelProviders
-
-	return { ok: true, value: modelProviders.value.flatMap((modelProvider) => modelProviderSecretReferences(modelProvider, secretIds)) }
-}
-
 function modelProviderSecretReferences(modelProvider: ModelProvider, secretIds: Set<Id>): SecretReferenceMatch[] {
 	const archived = isArchived(modelProvider.archivePeriods)
 	return [
@@ -295,23 +272,6 @@ function secretIdFromAccessValue(value: ModelProviderAccessValue): Id {
 		default:
 			throw new Error('Unexpected Model Provider access value.')
 	}
-}
-
-function sortSecretReferences(references: SecretReference[]): SecretReference[] {
-	return [...references].sort(compareSecretReferences)
-}
-
-function compareSecretReferences(left: SecretReference, right: SecretReference): number {
-	return firstNonZero([
-		referenceTypeOrder[left.type] - referenceTypeOrder[right.type],
-		referenceActiveRank(left) - referenceActiveRank(right),
-		referenceLabel(left).localeCompare(referenceLabel(right)),
-		referenceId(left).localeCompare(referenceId(right)),
-	])
-}
-
-function firstNonZero(values: number[]): number {
-	return values.find((value) => value !== 0) ?? 0
 }
 
 const referenceTypeOrder: Record<SecretReference['type'], number> = {

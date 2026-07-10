@@ -6,9 +6,9 @@ import { modelDetailsPipe } from '../domain/model-provider'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
 import { listedModel, modelProviderSummary } from './model-provider-read-model'
-import { getRequired, withTransaction } from '../storage/helpers'
+import { buildQueryHandler } from '../utils/query-handler'
+import { getRequired, withTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = v.object({ modelId: idPipe })
 export type Input = PipeOutput<typeof inputPipe>

@@ -6,10 +6,10 @@ import type { Repository } from '../domain/repository'
 import type { Slice } from '../domain/slice'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
-import { getRequired, listRecords, notFound, withTransaction } from '../storage/helpers'
+import { deliveryReadModel } from '../utils/delivery-read-model'
+import { buildQueryHandler } from '../utils/query-handler'
+import { getRequired, listRecords, notFound, withTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
-import { deliveryReadModel } from './utils/delivery-read-model'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = v.object({ projectId: idPipe, deliveryId: idPipe })
 export type Input = PipeOutput<typeof inputPipe>
@@ -23,35 +23,23 @@ export function createGetDeliveryQuery(options: CoreServices): Operation {
 	return buildQueryHandler('getDelivery', inputPipe, (input) =>
 		withTransaction(options, async (storage) => {
 			const project = await getRequired('project', storage, input.projectId)
-			return project.ok ? getProjectDeliveryReadModel(storage, input.deliveryId, project.value.id) : project
+			if (!project.ok) return project
+
+			const delivery = await getRequired('delivery', storage, input.deliveryId)
+			if (!delivery.ok) return delivery
+			if (delivery.value.projectId !== project.value.id) return notFound('delivery', input.deliveryId)
+
+			const repository = await getRequired('repository', storage, delivery.value.target.repositoryId)
+			if (!repository.ok) return repository
+			if (repository.value.projectId !== project.value.id) return notFound('repository', repository.value.id)
+
+			const slices = await listRecords('slice', storage, {
+				where: (filter, fields) => filter.eq(fields.deliveryId, delivery.value.id),
+				orderBy: [{ field: 'id', direction: 'desc' }],
+			})
+			return slices.ok ? deliveryReadModel(delivery.value, new Map([[repository.value.id, repository.value]]), slices.value) : slices
 		}),
 	)
-}
-
-async function getProjectDeliveryReadModel(storage: Parameters<typeof getRequired>[1], deliveryId: string, projectId: string) {
-	const delivery = await getProjectDelivery(storage, deliveryId, projectId)
-	if (!delivery.ok) return delivery
-
-	const repository = await getProjectRepository(storage, delivery.value.target.repositoryId, projectId)
-	if (!repository.ok) return repository
-
-	const slices = await listRecords('slice', storage, {
-		where: (filter, fields) => filter.eq(fields.deliveryId, delivery.value.id),
-		orderBy: [{ field: 'id', direction: 'desc' }],
-	})
-	return slices.ok ? deliveryReadModel(delivery.value, new Map([[repository.value.id, repository.value]]), slices.value) : slices
-}
-
-async function getProjectDelivery(storage: Parameters<typeof getRequired>[1], deliveryId: string, projectId: string) {
-	const delivery = await getRequired('delivery', storage, deliveryId)
-	if (!delivery.ok) return delivery
-	return delivery.value.projectId === projectId ? delivery : notFound('delivery', deliveryId)
-}
-
-async function getProjectRepository(storage: Parameters<typeof getRequired>[1], repositoryId: string, projectId: string) {
-	const repository = await getRequired('repository', storage, repositoryId)
-	if (!repository.ok) return repository
-	return repository.value.projectId === projectId ? repository : notFound('repository', repositoryId)
 }
 
 if (import.meta.vitest) {

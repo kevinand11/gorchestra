@@ -4,9 +4,9 @@ import type { CommandContext } from './types'
 import { freeFormStringPipe, idPipe } from '../domain/commons'
 import type { Delivery } from '../domain/delivery'
 import type { CommandStubError } from '../errors'
-import type { CoreRuntime } from '../runtime'
+import { buildStubCommand } from '../utils/command-handler'
+import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
-import { buildStubCommand } from './utils/handler'
 
 const abandonDeliveryInputPipe = v.object({ deliveryId: idPipe, reason: freeFormStringPipe })
 export type Input = PipeOutput<typeof abandonDeliveryInputPipe>

@@ -1,4 +1,3 @@
-import { isArchived } from '../commands/utils/storage'
 import { defaultModelCapabilities, type ListedModel, type Model } from '../domain/model'
 import {
 	modelProviderProtocolForSource,
@@ -6,10 +5,16 @@ import {
 	type ModelProvider,
 	type ModelProviderSummary,
 } from '../domain/model-provider'
-import { availableThinkingLevelsForModel, configurableThinkingLevelsForProtocol } from '../providers/model-provider-protocol/thinking'
+import { isArchived } from '../utils/command-storage'
+import { availableThinkingLevelsForModel, configurableThinkingLevelsForProtocol } from '../utils/providers/model-provider-protocol/thinking'
 
 export function listedModelProviders(modelProviders: ModelProvider[], models: Model[]): ListedModelProvider[] {
-	const modelsByProviderId = groupModelsByProviderId(models)
+	const modelsByProviderId = new Map<string, Model[]>()
+	for (const model of models) {
+		const providerModels = modelsByProviderId.get(model.providerId) ?? []
+		providerModels.push(model)
+		modelsByProviderId.set(model.providerId, providerModels)
+	}
 
 	return modelProviders.map((provider) => {
 		const { archivePeriods, ...providerFields } = provider
@@ -45,16 +50,6 @@ export function modelProviderSummary(provider: ModelProvider): ModelProviderSumm
 		archived: isArchived(provider.archivePeriods),
 		configurableThinkingLevels: configurableThinkingLevelsForProtocol(protocol),
 	}
-}
-
-function groupModelsByProviderId(models: Model[]): Map<string, Model[]> {
-	const grouped = new Map<string, Model[]>()
-	for (const model of models) {
-		const providerModels = grouped.get(model.providerId) ?? []
-		providerModels.push(model)
-		grouped.set(model.providerId, providerModels)
-	}
-	return grouped
 }
 
 if (import.meta.vitest) {

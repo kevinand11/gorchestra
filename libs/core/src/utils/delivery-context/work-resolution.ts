@@ -12,7 +12,7 @@ import type {
 	StorageOperationFailedError,
 } from '../../errors'
 import type { CoreStorage } from '../../services'
-import { getRequired } from '../../storage/helpers'
+import { getRequired } from '../storage/helpers'
 import type { Result } from '../types'
 
 export interface DeliveryWorkResolution {

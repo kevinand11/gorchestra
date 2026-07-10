@@ -1,6 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { agentRunSystemTranscriptPartsPipe, type AgentRunEvent } from '../domain/agent-run'
+import { agentRunSystemTranscriptPartsPipe, type AgentRunEvent } from '../domain/agent-run-event'
 import { idPipe } from '../domain/commons'
 import type {
 	AgentRunNotActiveError,
@@ -11,14 +11,13 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
-import type { CoreStorage } from '../services'
 import type { CommandContext } from './types'
 import { requireInteractiveAgentRunOpen } from '../utils/agent-run-targets'
 import { appendAgentRunEvent } from '../utils/agent-runs'
+import { buildCommandHandler } from '../utils/command-handler'
+import { getRequired, withAuditStampTransaction } from '../utils/command-storage'
+import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { getRequired, withAuditStampTransaction } from './utils/storage'
 
 const compactAgentRunContextInputPipe = v.object({
 	agentRunId: idPipe,
@@ -41,12 +40,21 @@ export type Operation = (input: Input, context: CommandContext) => Promise<CoreR
 
 export function createCompactAgentRunContextCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('compactAgentRunContext', compactAgentRunContextInputPipe, (input, context) =>
-		withAuditStampTransaction(runtime, context, async (storage, stamp) => {
+		withAuditStampTransaction<Result, Exclude<Error, InvalidInputError>>(runtime, context, async (storage, stamp) => {
 			const agentRun = await requireInteractiveAgentRunOpen(storage, input.agentRunId)
 			if (!agentRun.ok) return agentRun
 
-			const compactedThrough = await validateCompactedThroughEvent(storage, input)
+			const compactedThrough = await getRequired('agent-run-event', storage, input.compactedThroughEventId)
 			if (!compactedThrough.ok) return compactedThrough
+			if (compactedThrough.value.agentRunId !== input.agentRunId) {
+				return {
+					ok: false,
+					error: {
+						type: 'invariant-violation',
+						message: `Agent Run Event ${compactedThrough.value.id} is outside Agent Run ${input.agentRunId}.`,
+					},
+				}
+			}
 
 			return appendAgentRunEvent(runtime, storage, input.agentRunId, {
 				type: 'context-compacted',
@@ -58,28 +66,10 @@ export function createCompactAgentRunContextCommand(runtime: CoreRuntime): Opera
 	)
 }
 
-async function validateCompactedThroughEvent(
-	storage: CoreStorage,
-	input: Input,
-): Promise<CoreResult<AgentRunEvent, Exclude<Error, InvalidInputError>>> {
-	const event = await getRequired('agent-run-event', storage, input.compactedThroughEventId)
-	return event.ok ? validateCompactedThroughEventMatchesInput(event.value, input) : event
-}
-
-function validateCompactedThroughEventMatchesInput(event: AgentRunEvent, input: Input): CoreResult<AgentRunEvent, InvariantViolationError> {
-	return event.agentRunId === input.agentRunId
-		? { ok: true, value: event }
-		: invariant(`Agent Run Event ${event.id} is outside Agent Run ${input.agentRunId}.`)
-}
-
-function invariant<TValue = never>(message: string): CoreResult<TValue, InvariantViolationError> {
-	return { ok: false, error: { type: 'invariant-violation', message } }
-}
-
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { context, createTestCoreRuntime, localStamp } = await import('../utils/test-helpers')
-	const { inputEvent, planningAgentRunFixture } = await import('./utils/agent-run-test-utils')
+	const { inputEvent, planningAgentRunFixture } = await import('../utils/agent-run-test-utils')
 	const existingEventId = '01k00000000000000000000003'
 	const outsideEventId = '01k00000000000000000000004'
 	const outsideAgentRunId = '01k00000000000000000100021'

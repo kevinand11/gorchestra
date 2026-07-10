@@ -1,12 +1,12 @@
 import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
-import { agentRunEventPipe } from '../domain/agent-run'
+import { agentRunEventPipe } from '../domain/agent-run-event'
 import { idPipe, paginatedQueryEnvelopePipe, paginatedQueryInputPipe } from '../domain/commons'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
-import { getRequired, listRecordsPaginated, withTransaction } from '../storage/helpers'
+import { buildQueryHandler } from '../utils/query-handler'
+import { getRequired, listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = v.merge(v.object({ agentRunId: idPipe }), paginatedQueryInputPipe)
 export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>

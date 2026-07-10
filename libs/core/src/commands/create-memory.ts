@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { memoryBodyPipe, memoryPipe, memoryTitlePipe, type CurrentMemoryRevision, type Memory, type MemoryRevision } from '../domain/memory'
+import { memoryPipe } from '../domain/memory'
+import { memoryBodyPipe, memoryTitlePipe, type MemoryRevision } from '../domain/memory-revision'
 import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
@@ -8,13 +9,11 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
-import type { CoreStorage } from '../services'
 import type { CommandContext } from './types'
+import { buildCommandHandler } from '../utils/command-handler'
+import { auditStamp, createRecordValue, getRequired, nextId, withTransaction } from '../utils/command-storage'
+import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { auditStamp, createRecordValue, getRequired, nextId, withTransaction } from './utils/storage'
-import type { AuditStamp, Id } from '../domain/commons'
 
 export const inputPipe = v.object({ parentId: v.nullable(v.string()), title: memoryTitlePipe, body: memoryBodyPipe })
 export type Input = PipeOutput<typeof inputPipe>
@@ -30,75 +29,45 @@ export type Error =
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
-type CreateMemoryValues = {
-	memoryId: Id
-	revisionId: Id
-	stamp: AuditStamp
-}
-
 export function createCreateMemoryCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('createMemory', inputPipe, (input, context) => handleCreateMemory(runtime, input, context))
-}
+	return buildCommandHandler('createMemory', inputPipe, (input, context) =>
+		withTransaction<Result, Exclude<Error, InvalidInputError>>(runtime.services, async (storage) => {
+			if (input.parentId !== null) {
+				const parent = await getRequired('memory', storage, input.parentId)
+				if (!parent.ok) return parent
+			}
 
-function handleCreateMemory(runtime: CoreRuntime, input: Input, context: CommandContext): Promise<CoreResult<Result, Error>> {
-	return withTransaction(runtime.services, async (storage) => {
-		const parent = await validateParent(storage, input.parentId)
-		if (!parent.ok) return parent
+			const memoryId = nextId(runtime.values)
+			if (!memoryId.ok) return memoryId
 
-		const values = createMemoryValues(runtime, context)
-		return values.ok ? writeMemory(storage, input, values.value) : values
-	})
-}
+			const revisionId = nextId(runtime.values)
+			if (!revisionId.ok) return revisionId
 
-async function validateParent(
-	storage: CoreStorage,
-	parentId: Id | null,
-): Promise<CoreResult<void, InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError>> {
-	if (parentId === null) return { ok: true, value: undefined }
-	const parent = await getRequired('memory', storage, parentId)
-	return parent.ok ? { ok: true, value: undefined } : parent
-}
+			const stamp = auditStamp(runtime.values, context)
+			if (!stamp.ok) return stamp
 
-function createMemoryValues(runtime: CoreRuntime, context: CommandContext): CoreResult<CreateMemoryValues, InvalidCoreServiceOutputError> {
-	const memoryId = nextId(runtime.values)
-	if (!memoryId.ok) return memoryId
+			const storedRevision = await createRecordValue('memory-revision', storage, {
+				id: revisionId.value,
+				memoryId: memoryId.value,
+				title: input.title,
+				body: input.body,
+				created: stamp.value,
+			})
+			if (!storedRevision.ok) return storedRevision
 
-	const revisionId = nextId(runtime.values)
-	if (!revisionId.ok) return revisionId
-
-	const stamp = auditStamp(runtime.values, context)
-	return stamp.ok ? { ok: true, value: { memoryId: memoryId.value, revisionId: revisionId.value, stamp: stamp.value } } : stamp
-}
-
-async function writeMemory(
-	storage: CoreStorage,
-	input: Input,
-	values: CreateMemoryValues,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const revision = memoryRevision(input, values)
-	const storedRevision = await createRecordValue('memory-revision', storage, revision)
-	if (!storedRevision.ok) return storedRevision
-
-	const memory = memoryRecord(input, values, currentRevision(storedRevision.value))
-	return createRecordValue('memory', storage, memory)
-}
-
-function memoryRevision(input: Input, values: CreateMemoryValues): MemoryRevision {
-	return {
-		id: values.revisionId,
-		memoryId: values.memoryId,
-		title: input.title,
-		body: input.body,
-		created: values.stamp,
-	}
-}
-
-function memoryRecord(input: Input, values: CreateMemoryValues, revision: CurrentMemoryRevision): Memory {
-	return { id: values.memoryId, parentId: input.parentId, created: values.stamp, currentRevision: revision }
-}
-
-function currentRevision(revision: MemoryRevision): CurrentMemoryRevision {
-	return { id: revision.id, title: revision.title, body: revision.body, created: revision.created }
+			return createRecordValue('memory', storage, {
+				id: memoryId.value,
+				parentId: input.parentId,
+				created: stamp.value,
+				currentRevision: {
+					id: storedRevision.value.id,
+					title: storedRevision.value.title,
+					body: storedRevision.value.body,
+					created: storedRevision.value.created,
+				},
+			})
+		}),
+	)
 }
 
 if (import.meta.vitest) {
@@ -139,7 +108,12 @@ if (import.meta.vitest) {
 					id: '01k00000000000000000010001',
 					parentId: null,
 					created: localStamp(),
-					currentRevision: currentRevision(revision),
+					currentRevision: {
+						id: revision.id,
+						title: revision.title,
+						body: revision.body,
+						created: revision.created,
+					},
 				},
 			})
 			expect(options.tx.memoryRevisions.records.get(revision.id)).toEqual(revision)

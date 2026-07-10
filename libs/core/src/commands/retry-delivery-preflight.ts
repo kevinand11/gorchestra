@@ -2,9 +2,8 @@ import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
 import type { Action } from '../domain/action'
-import { idPipe, type AuditStamp, type Id } from '../domain/commons'
+import { idPipe, type Id } from '../domain/commons'
 import type { Delivery } from '../domain/delivery'
-import type { ValidationEvidence } from '../domain/evidence'
 import type {
 	DeliveryPreflightClaimConflictError,
 	DeliveryWorkStateMismatchError,
@@ -14,19 +13,18 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
-import { withTwoPhaseTransaction } from '../storage/helpers'
+import { buildCommandHandler } from '../utils/command-handler'
+import { createRecord, deliveryWorkStateMismatch, prepareAuthorizedAction } from '../utils/command-storage'
 import { buildDeliveryContext, getDeliveryState, type DeliveryContext } from '../utils/delivery-context'
 import {
 	providerBackedDeliveryPreflightInputsStillCurrent,
 	readProviderBackedDeliveryPreflightPlan,
 	runProviderBackedDeliveryPreflightChecks,
-	type ProviderBackedDeliveryPreflightPlan,
 } from '../utils/delivery-preflight'
+import type { CoreRuntime } from '../utils/runtime'
+import { withTwoPhaseTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { createRecord, deliveryWorkStateMismatch, prepareAuthorizedAction } from './utils/storage'
 
 const retryDeliveryPreflightInputPipe = v.object({ deliveryId: idPipe })
 export type Input = PipeOutput<typeof retryDeliveryPreflightInputPipe>
@@ -53,69 +51,41 @@ export type Error =
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createRetryDeliveryPreflightCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('retryDeliveryPreflight', retryDeliveryPreflightInputPipe, (input, context) =>
-		handleRetryDeliveryPreflight(runtime, input, context),
-	)
-}
+	return buildCommandHandler('retryDeliveryPreflight', retryDeliveryPreflightInputPipe, async (input, context) => {
+		const authorizedAction = prepareAuthorizedAction(runtime, context)
+		if (!authorizedAction.ok) return authorizedAction
 
-async function handleRetryDeliveryPreflight(
-	runtime: CoreRuntime,
-	input: Input,
-	context: CommandContext,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const authorizedAction = prepareAuthorizedAction(runtime, context)
-	if (!authorizedAction.ok) return authorizedAction
+		return withTwoPhaseTransaction(runtime.services, {
+			read: async (storage) => {
+				const deliveryContext = await requirePreflightFailedDelivery(storage, input.deliveryId)
+				if (!deliveryContext.ok) return deliveryContext
 
-	return withTwoPhaseTransaction(runtime.services, {
-		read: (storage) => readRetryPreflightPlan(storage, input),
-		run: (claim) => runProviderBackedDeliveryPreflightChecks(runtime, claim.plan),
-		write: (storage, claim, checks) =>
-			writeDeliveryPreflightRetry(
-				storage,
-				input.deliveryId,
-				claim.plan,
-				checks,
-				authorizedAction.value.stamp,
-				authorizedAction.value.actionId,
-			),
+				const plan = await readProviderBackedDeliveryPreflightPlan(storage, deliveryContext.value)
+				return plan.ok ? { ok: true, value: { deliveryContext: deliveryContext.value, plan: plan.value } } : plan
+			},
+			run: (claim) => runProviderBackedDeliveryPreflightChecks(runtime, claim.plan),
+			write: async (storage, claim, checks) => {
+				const deliveryContext = await requirePreflightFailedDelivery(storage, input.deliveryId)
+				if (!deliveryContext.ok) return deliveryContext
+
+				const freshness = await providerBackedDeliveryPreflightInputsStillCurrent(storage, deliveryContext.value, claim.plan)
+				if (!freshness.ok) return freshness
+				if (!freshness.value) {
+					return { ok: false, error: { type: 'delivery-preflight-claim-conflict', deliveryId: input.deliveryId } }
+				}
+
+				const action: Action = {
+					id: authorizedAction.value.actionId,
+					deliveryId: deliveryContext.value.delivery.id,
+					performed: { at: authorizedAction.value.stamp.at },
+					authorized: authorizedAction.value.stamp,
+					result: { type: 'validate-preflight', checks },
+				}
+				const putResult = await createRecord('action', storage, action)
+				return putResult.ok ? { ok: true, value: { delivery: deliveryContext.value.delivery, action } } : putResult
+			},
+		})
 	})
-}
-
-async function readRetryPreflightPlan(
-	storage: CoreStorage,
-	input: Input,
-): Promise<CoreResult<{ deliveryContext: DeliveryContext; plan: ProviderBackedDeliveryPreflightPlan }, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await requirePreflightFailedDelivery(storage, input.deliveryId)
-	if (!deliveryContext.ok) return deliveryContext
-
-	const plan = await readProviderBackedDeliveryPreflightPlan(storage, deliveryContext.value)
-	return plan.ok ? { ok: true, value: { deliveryContext: deliveryContext.value, plan: plan.value } } : plan
-}
-
-async function writeDeliveryPreflightRetry(
-	storage: CoreStorage,
-	deliveryId: Id,
-	plan: ProviderBackedDeliveryPreflightPlan,
-	checks: ValidationEvidence[],
-	stamp: AuditStamp,
-	actionId: Id,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await requirePreflightFailedDelivery(storage, deliveryId)
-	if (!deliveryContext.ok) return deliveryContext
-
-	const freshness = await providerBackedDeliveryPreflightInputsStillCurrent(storage, deliveryContext.value, plan)
-	if (!freshness.ok) return freshness
-	if (!freshness.value) return deliveryPreflightClaimConflict(deliveryId)
-
-	return writePreflightAction(
-		storage,
-		deliveryContext.value.delivery,
-		preflightAction(deliveryContext.value.delivery.id, checks, stamp, actionId),
-	)
-}
-
-function deliveryPreflightClaimConflict(deliveryId: Id): CoreResult<never, DeliveryPreflightClaimConflictError> {
-	return { ok: false, error: { type: 'delivery-preflight-claim-conflict', deliveryId } }
 }
 
 async function requirePreflightFailedDelivery(
@@ -131,27 +101,6 @@ async function requirePreflightFailedDelivery(
 	return deliveryState.value.type === 'preflight-failed'
 		? { ok: true, value: deliveryContext.value }
 		: deliveryWorkStateMismatch(deliveryId, ['preflight-failed'], deliveryState.value)
-}
-
-async function writePreflightAction(
-	storage: CoreStorage,
-	delivery: Delivery,
-	action: Action,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const putResult = await createRecord('action', storage, action)
-	if (!putResult.ok) return putResult
-
-	return { ok: true, value: { delivery, action } }
-}
-
-function preflightAction(deliveryId: Id, checks: ValidationEvidence[], stamp: AuditStamp, actionId: Id): Action {
-	return {
-		id: actionId,
-		deliveryId,
-		performed: { at: stamp.at },
-		authorized: stamp,
-		result: { type: 'validate-preflight', checks },
-	}
 }
 
 if (import.meta.vitest) {

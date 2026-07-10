@@ -2,9 +2,7 @@ import type { Action } from '../../domain/action'
 import type { DeliveryWorkState } from '../../domain/delivery'
 import type { ValidationEvidence } from '../../domain/evidence'
 import type { InvalidInputError } from '../../errors'
-import type { CoreRuntime } from '../../runtime'
 import type { CoreStorage } from '../../services'
-import { createRecord } from '../../storage/helpers'
 import {
 	buildDeliveryContext,
 	getDeliveryState,
@@ -12,7 +10,9 @@ import {
 	type DeliveryContext,
 	type DeliveryWorkResolution,
 } from '../../utils/delivery-context'
+import type { CoreRuntime } from '../../utils/runtime'
 import { nextId, runtimeRecord } from '../../utils/runtime-values'
+import { createRecord } from '../../utils/storage/helpers'
 import type { Result as CoreResult } from '../../utils/types'
 import type { Error, Result } from '../delivery-work/types'
 

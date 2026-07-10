@@ -6,9 +6,9 @@ export type { ListedProject, SourceControlProjectListSource } from '../domain/pr
 import type { Repository } from '../domain/repository'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
-import { listRecords, listRecordsPaginated, withTransaction } from '../storage/helpers'
+import { buildQueryHandler } from '../utils/query-handler'
+import { listRecords, listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = paginatedQueryInputPipe
 export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
@@ -34,14 +34,24 @@ export function createListProjectsQuery(options: CoreServices): Operation {
 						})
 			if (!repositories.ok) return repositories
 
-			return { ok: true, value: { ...projects.value, items: listProjects(projects.value.items, repositories.value) } }
+			const repositoriesByProjectId = new Map<string, Repository[]>()
+			for (const repository of repositories.value) {
+				const projectRepositories = repositoriesByProjectId.get(repository.projectId) ?? []
+				projectRepositories.push(repository)
+				repositoriesByProjectId.set(repository.projectId, projectRepositories)
+			}
+
+			return {
+				ok: true,
+				value: {
+					...projects.value,
+					items: projects.value.items.map((project) =>
+						listedProjectFromProjectAndRepositories(project, repositoriesByProjectId.get(project.id) ?? []),
+					),
+				},
+			}
 		}),
 	) as Operation
-}
-
-function listProjects(projects: Project[], repositories: Repository[]): ListedProject[] {
-	const repositoriesByProjectId = groupRepositoriesByProjectId(repositories)
-	return projects.map((project) => listedProjectFromProjectAndRepositories(project, repositoriesByProjectId.get(project.id) ?? []))
 }
 
 export function listedProjectFromProjectAndRepositories(project: Project, repositories: Repository[]): ListedProject {
@@ -53,16 +63,6 @@ export function listedProjectFromProjectAndRepositories(project: Project, reposi
 		default:
 			throw new Error(`Unexpected Project source: ${String(project.source.type)}`)
 	}
-}
-
-function groupRepositoriesByProjectId(repositories: Repository[]): Map<string, Repository[]> {
-	const grouped = new Map<string, Repository[]>()
-	for (const repository of repositories) {
-		const projectRepositories = grouped.get(repository.projectId) ?? []
-		projectRepositories.push(repository)
-		grouped.set(repository.projectId, projectRepositories)
-	}
-	return grouped
 }
 
 if (import.meta.vitest) {

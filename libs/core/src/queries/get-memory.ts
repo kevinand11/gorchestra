@@ -1,7 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { idPipe } from '../domain/commons'
-import { listedMemoryPipe, type ListedMemory, type Memory, type MemoryRevision } from '../domain/memory'
+import { listedMemoryPipe, type Memory } from '../domain/memory'
+import { type MemoryRevision } from '../domain/memory-revision'
 import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
@@ -9,10 +10,10 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreServices, CoreStorage } from '../services'
-import { getRequired, listRecords, withTransaction } from '../storage/helpers'
+import type { CoreServices } from '../services'
+import { buildQueryHandler } from '../utils/query-handler'
+import { getRequired, listRecords, withTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = v.object({ memoryId: idPipe })
 export type Input = PipeOutput<typeof inputPipe>
@@ -29,76 +30,32 @@ export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createGetMemoryQuery(options: CoreServices): Operation {
 	return buildQueryHandler('getMemory', inputPipe, (input) =>
-		withTransaction(options, (storage) => getListedMemory(storage, input.memoryId)),
+		withTransaction<Result, Exclude<Error, InvalidInputError>>(options, async (storage) => {
+			const memory = await getRequired('memory', storage, input.memoryId)
+			if (!memory.ok) return memory
+
+			const revisions = await listRecords('memory-revision', storage, {
+				where: (filter, fields) => filter.eq(fields.memoryId, memory.value.id),
+				orderBy: [{ field: 'id', direction: 'desc' }],
+			})
+			if (!revisions.ok) return revisions
+			if (!revisions.value.some((revision) => revision.id === memory.value.currentRevision.id)) {
+				return {
+					ok: false,
+					error: {
+						type: 'invariant-violation',
+						message: `Memory ${memory.value.id} current revision ${memory.value.currentRevision.id} is missing.`,
+					},
+				}
+			}
+
+			const children = await listRecords('memory', storage, {
+				where: (filter, fields) => filter.eq(fields.parentId, memory.value.id),
+				orderBy: [{ field: 'id', direction: 'desc' }],
+			})
+			return children.ok ? { ok: true, value: { ...memory.value, revisions: revisions.value, children: children.value } } : children
+		}),
 	)
-}
-
-async function getListedMemory(storage: CoreStorage, memoryId: string): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const memory = await getRequired('memory', storage, memoryId)
-	return memory.ok ? getListedMemoryForRecord(storage, memory.value) : memory
-}
-
-async function getListedMemoryForRecord(
-	storage: CoreStorage,
-	memory: Memory,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const revisions = await listMemoryRevisions(storage, memory.id)
-	return revisions.ok ? getListedMemoryWithRevisions(storage, memory, revisions.value) : revisions
-}
-
-function getListedMemoryWithRevisions(
-	storage: CoreStorage,
-	memory: Memory,
-	revisions: MemoryRevision[],
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	return currentRevisionExists(memory, revisions)
-		? getListedMemoryWithChildren(storage, memory, revisions)
-		: Promise.resolve(missingCurrentRevision(memory))
-}
-
-async function getListedMemoryWithChildren(
-	storage: CoreStorage,
-	memory: Memory,
-	revisions: MemoryRevision[],
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const children = await listMemoryChildren(storage, memory.id)
-	return children.ok ? { ok: true, value: listedMemory(memory, revisions, children.value) } : children
-}
-
-async function listMemoryRevisions(
-	storage: CoreStorage,
-	memoryId: string,
-): Promise<CoreResult<MemoryRevision[], InvalidCoreServiceOutputError | StorageOperationFailedError>> {
-	const revisions = await listRecords('memory-revision', storage, {
-		where: (filter, fields) => filter.eq(fields.memoryId, memoryId),
-		orderBy: [{ field: 'id', direction: 'desc' }],
-	})
-	return revisions
-}
-
-async function listMemoryChildren(
-	storage: CoreStorage,
-	memoryId: string,
-): Promise<CoreResult<Memory[], InvalidCoreServiceOutputError | StorageOperationFailedError>> {
-	return await listRecords('memory', storage, {
-		where: (filter, fields) => filter.eq(fields.parentId, memoryId),
-		orderBy: [{ field: 'id', direction: 'desc' }],
-	})
-}
-
-function listedMemory(memory: Memory, revisions: MemoryRevision[], children: Memory[]): ListedMemory {
-	return { ...memory, revisions, children }
-}
-
-function currentRevisionExists(memory: Memory, revisions: MemoryRevision[]): boolean {
-	return revisions.some((revision) => revision.id === memory.currentRevision.id)
-}
-
-function missingCurrentRevision(memory: Memory): CoreResult<never, InvariantViolationError> {
-	return {
-		ok: false,
-		error: { type: 'invariant-violation', message: `Memory ${memory.id} current revision ${memory.currentRevision.id} is missing.` },
-	}
 }
 
 if (import.meta.vitest) {

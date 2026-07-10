@@ -2,6 +2,7 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { archivePeriodPipe, auditStampPipe, idPipe, jsonObjectPipe, nonEmptyTrimmedStringPipe, type JsonObject } from './commons'
 import { listedModelPipe, positiveModelThinkingLevelPipe } from './model'
+import { coreSchema, schemaToPipe } from '../utils/storage/schema'
 
 export const modelProviderProtocolPipe = v.in(['openai-responses', 'openai-chat-completions', 'anthropic-messages', 'google-generative-ai'])
 export type ModelProviderProtocol = PipeOutput<typeof modelProviderProtocolPipe>
@@ -97,17 +98,17 @@ function hasUniqueHeaderNames(headers: ModelProviderHeader[]): boolean {
 export const modelProviderOptionsPipe = jsonObjectPipe
 export type ModelProviderOptions = JsonObject
 
-export const modelProviderPipe = v.object({
-	id: idPipe,
-	name: nonEmptyTrimmedStringPipe,
-	source: modelProviderSourcePipe,
-	auth: v.nullable(modelProviderAuthPipe),
-	headers: v.array(modelProviderHeaderPipe),
-	providerOptions: v.nullable(modelProviderOptionsPipe),
-	created: auditStampPipe,
-	updated: v.nullable(auditStampPipe),
-	archivePeriods: v.array(archivePeriodPipe),
-})
+export const modelProviderSchema = coreSchema('model_providers')
+	.field('name', nonEmptyTrimmedStringPipe)
+	.field('source', modelProviderSourcePipe)
+	.field('auth', v.nullable(modelProviderAuthPipe))
+	.field('headers', modelProviderHeadersPipe)
+	.field('providerOptions', v.nullable(modelProviderOptionsPipe))
+	.field('created', auditStampPipe)
+	.field('updated', v.nullable(auditStampPipe))
+	.field('archivePeriods', v.array(archivePeriodPipe))
+	.build()
+export const modelProviderPipe = schemaToPipe(modelProviderSchema)
 export type ModelProvider = PipeOutput<typeof modelProviderPipe>
 
 export const listedModelProviderPipe = v.object({
@@ -116,7 +117,7 @@ export const listedModelProviderPipe = v.object({
 	source: modelProviderSourcePipe,
 	protocol: modelProviderProtocolPipe,
 	auth: v.nullable(modelProviderAuthPipe),
-	headers: v.array(modelProviderHeaderPipe),
+	headers: modelProviderHeadersPipe,
 	providerOptions: v.nullable(modelProviderOptionsPipe),
 	created: auditStampPipe,
 	updated: v.nullable(auditStampPipe),
@@ -143,6 +144,35 @@ if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 
 	describe('ModelProvider domain pipes', () => {
+		it('rejects duplicate header names after normalization in stored and listed models', () => {
+			const headers = [
+				{ name: ' X-Team ', value: { type: 'secret' as const, secretId: '01k00000000000000000000040' } },
+				{ name: 'x-team', value: { type: 'secret' as const, secretId: '01k00000000000000000000041' } },
+			]
+			const persisted = {
+				id: '01k00000000000000000000030',
+				name: 'Provider',
+				source: { type: 'openai-responses' as const },
+				auth: null,
+				headers,
+				providerOptions: null,
+				created: { origin: 'imported' as const, at: '2026-07-09T00:00:00.000Z' },
+				updated: null,
+				archivePeriods: [],
+			}
+
+			expect(v.validate(modelProviderPipe, persisted).valid).toBe(false)
+			expect(
+				v.validate(listedModelProviderPipe, {
+					...persisted,
+					protocol: 'openai-responses',
+					archived: false,
+					configurableThinkingLevels: [],
+					models: [],
+				}).valid,
+			).toBe(false)
+		})
+
 		it('accepts flat protocol values and rejects legacy object variants', () => {
 			expect(v.validate(modelProviderProtocolPipe, 'openai-responses')).toMatchObject({ valid: true })
 			expect(v.validate(modelProviderProtocolPipe, { type: 'openai-responses' })).toMatchObject({ valid: false })

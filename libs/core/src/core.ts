@@ -2,7 +2,6 @@ import * as Commands from './commands'
 import type { CorePreflightError, OpenCoreError } from './errors'
 import type { Core as CoreQueries } from './queries'
 import { createCoreQueries } from './queries/create-core-queries'
-import { createCoreRuntime } from './runtime'
 import {
 	coreServicePreflightOutputPipe,
 	coreServicesPipe,
@@ -12,8 +11,9 @@ import {
 	type CoreServicePreflightOutput,
 	type CoreServices,
 } from './services'
-import * as Snapshots from './snapshots'
-import { preflightStorage } from './storage/preflight'
+import { createCoreRuntime } from './utils/runtime'
+import * as Snapshots from './utils/snapshots'
+import { preflightStorage } from './utils/storage/preflight'
 import type { Result } from './utils/types'
 import { validateCoreInput, validateCoreServiceOutput } from './validation'
 import * as Work from './work'

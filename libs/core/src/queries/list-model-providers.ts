@@ -5,9 +5,9 @@ import { listedModelProviderPipe } from '../domain/model-provider'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
 import { listedModelProviders } from './model-provider-read-model'
-import { listRecords, listRecordsPaginated, withTransaction } from '../storage/helpers'
+import { buildQueryHandler } from '../utils/query-handler'
+import { listRecords, listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = paginatedQueryInputPipe
 export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>

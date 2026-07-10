@@ -5,10 +5,8 @@ import { idPipe } from '../domain/commons'
 import { projectConfigPipe } from '../domain/config'
 import type { Project } from '../domain/project'
 import type { InvalidInputError } from '../errors'
-import type { CoreRuntime } from '../runtime'
-import type { Result as CoreResult } from '../utils/types'
-import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
-import { buildCommandHandler } from './utils/handler'
+import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
+import { buildCommandHandler } from '../utils/command-handler'
 import {
 	agentRunProfileIdsFromProjectConfig,
 	getRequired,
@@ -16,7 +14,9 @@ import {
 	updateRecordValue,
 	validateSelectableAgentRunProfiles,
 	withAuditStampTransaction,
-} from './utils/storage'
+} from '../utils/command-storage'
+import type { CoreRuntime } from '../utils/runtime'
+import type { Result as CoreResult } from '../utils/types'
 
 const setProjectConfigInputPipe = v.object({ projectId: idPipe, config: projectConfigPipe })
 export type Input = PipeOutput<typeof setProjectConfigInputPipe>

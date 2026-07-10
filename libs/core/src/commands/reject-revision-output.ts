@@ -1,8 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
-import type { AgentRunEvent } from '../domain/agent-run'
-import { freeFormStringPipe, idPipe, type AuditStamp, type Id } from '../domain/commons'
+import type { AgentRunEvent } from '../domain/agent-run-event'
+import { freeFormStringPipe, idPipe } from '../domain/commons'
 import type {
 	AgentRunNotActiveError,
 	AgentRunPurposeMismatchError,
@@ -14,13 +14,12 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
-import type { CoreStorage } from '../services'
 import { appendAgentRunEvent } from '../utils/agent-runs'
+import { buildCommandHandler } from '../utils/command-handler'
+import { auditStamp, getRequired, withTransaction } from '../utils/command-storage'
 import { getPendingProposalForAgentRunPurpose, proposalRejectedProjectedParts } from '../utils/proposals'
+import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { auditStamp, getRequired, withTransaction } from './utils/storage'
 
 const rejectRevisionOutputInputPipe = v.object({ proposalEventId: idPipe, reason: v.nullable(freeFormStringPipe) })
 export type Input = PipeOutput<typeof rejectRevisionOutputInputPipe>
@@ -40,53 +39,34 @@ export type Error =
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createRejectRevisionOutputCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('rejectRevisionOutput', rejectRevisionOutputInputPipe, (input, context) =>
-		handleRejectRevisionOutput(runtime, input, context),
-	)
-}
+	return buildCommandHandler('rejectRevisionOutput', rejectRevisionOutputInputPipe, async (input, context) => {
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
 
-async function handleRejectRevisionOutput(
-	runtime: CoreRuntime,
-	input: Input,
-	context: CommandContext,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const stamp = auditStamp(runtime.values, context)
-	return stamp.ok ? withTransaction(runtime.services, (storage) => rejectRevisionOutput(runtime, storage, input, stamp.value)) : stamp
-}
+		return withTransaction<Result, Exclude<Error, InvalidInputError>>(runtime.services, async (storage) => {
+			const proposal = await getPendingProposalForAgentRunPurpose(
+				storage,
+				input.proposalEventId,
+				'proposed-revision-output',
+				'revision-planning',
+			)
+			if (!proposal.ok) return proposal
 
-async function rejectRevisionOutput(
-	runtime: CoreRuntime,
-	storage: CoreStorage,
-	input: Input,
-	stamp: AuditStamp,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const proposal = await loadRejectableRevisionProposal(storage, input.proposalEventId)
-	return proposal.ok
-		? appendAgentRunEvent(runtime, storage, proposal.value.agentRunId, {
+			const gate = await getRequired('revision-gate', storage, proposal.value.agentRun.purpose.revisionGateId)
+			if (!gate.ok) return gate
+			if (gate.value.closed !== null) {
+				return { ok: false, error: { type: 'agent-run-not-active', agentRunId: proposal.value.agentRun.id } }
+			}
+
+			return appendAgentRunEvent(runtime, storage, proposal.value.proposal.agentRunId, {
 				type: 'proposal-rejected',
-				proposalEventId: proposal.value.id,
-				authorized: stamp,
+				proposalEventId: proposal.value.proposal.id,
+				authorized: stamp.value,
 				reason: input.reason,
-				projectedParts: proposalRejectedProjectedParts(proposal.value.id, input.reason),
+				projectedParts: proposalRejectedProjectedParts(proposal.value.proposal.id, input.reason),
 			})
-		: proposal
-}
-
-async function loadRejectableRevisionProposal(
-	storage: CoreStorage,
-	proposalEventId: Id,
-): Promise<CoreResult<AgentRunEvent, Exclude<Error, InvalidInputError>>> {
-	const proposal = await getPendingProposalForAgentRunPurpose(storage, proposalEventId, 'proposed-revision-output', 'revision-planning')
-	if (!proposal.ok) return proposal
-
-	const gate = await getRequired('revision-gate', storage, proposal.value.agentRun.purpose.revisionGateId)
-	if (!gate.ok) return gate
-
-	return gate.value.closed === null ? { ok: true, value: proposal.value.proposal } : agentRunNotActive(proposal.value.agentRun.id)
-}
-
-function agentRunNotActive(agentRunId: Id): CoreResult<never, AgentRunNotActiveError> {
-	return { ok: false, error: { type: 'agent-run-not-active', agentRunId } }
+		})
+	})
 }
 
 if (import.meta.vitest) {

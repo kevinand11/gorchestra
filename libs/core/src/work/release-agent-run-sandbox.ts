@@ -1,7 +1,6 @@
 import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
 import type { WorkContext } from './types'
-import { buildWorkHandler } from './utils/handler'
 import type { AgentRun } from '../domain/agent-run'
 import { idPipe, type Id } from '../domain/commons'
 import type {
@@ -11,12 +10,13 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
-import { managedSandboxProviderForConfig, type SandboxProviderResolutionError } from '../runtime/sandboxes'
-import { getRequired, updateRecord } from '../storage/helpers'
 import { appendAgentRunEvent } from '../utils/agent-runs'
+import type { CoreRuntime } from '../utils/runtime'
+import { managedSandboxProviderForConfig, type SandboxProviderResolutionError } from '../utils/runtime/sandboxes'
 import { runtimeRecord } from '../utils/runtime-values'
+import { getRequired, updateRecord } from '../utils/storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
+import { buildWorkHandler } from '../utils/work-handler'
 
 const inputPipe = v.object({ agentRunId: idPipe })
 type ParsedInput = PipeOutput<typeof inputPipe>

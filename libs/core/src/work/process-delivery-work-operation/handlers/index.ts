@@ -7,7 +7,7 @@ import { handleDeliveryValidationFailed } from './delivery-validation-failed'
 import { noEligibleWork } from './result'
 import type { DeliveryWorkState } from '../../../domain/delivery'
 import type { InvariantViolationError } from '../../../errors'
-import type { CoreRuntime } from '../../../runtime'
+import type { CoreRuntime } from '../../../utils/runtime'
 import type { DeliveryHandlerContext, ResolvedDeliveryHandlerContext, DeliveryWorkHandlerResult } from '../../delivery-work/types'
 
 type NoWorkDeliveryState = Extract<

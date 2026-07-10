@@ -11,6 +11,7 @@ import {
 } from './config'
 import { repositoryPipe } from './repository'
 import { slicePipe } from './slice'
+import { coreSchema, schemaToPipe } from '../utils/storage/schema'
 
 /**
  * Derived in priority order: closed, unqueued, operation-running,
@@ -65,17 +66,17 @@ export const deliveryTargetPipe = v.discriminate((value) => value.type, {
 export type DeliveryTarget = PipeOutput<typeof deliveryTargetPipe>
 export type SourceControlDeliveryTarget = Extract<DeliveryTarget, { type: 'source-control' }>
 
-export const deliveryPipe = v.object({
-	id: idPipe,
-	projectId: idPipe,
-	planId: idPipe,
-	title: nonEmptyTrimmedStringPipe,
-	target: deliveryTargetPipe,
-	config: v.nullable(deliveryConfigRecordPipe),
-	accepted: auditStampPipe,
-	queued: v.nullable(auditStampPipe),
-	closed: v.nullable(deliveryClosedPipe),
-})
+export const deliverySchema = coreSchema('deliveries')
+	.field('projectId', idPipe)
+	.field('planId', idPipe)
+	.field('title', nonEmptyTrimmedStringPipe)
+	.field('target', deliveryTargetPipe)
+	.field('config', v.nullable(deliveryConfigRecordPipe))
+	.field('accepted', auditStampPipe)
+	.field('queued', v.nullable(auditStampPipe))
+	.field('closed', v.nullable(deliveryClosedPipe))
+	.build()
+export const deliveryPipe = schemaToPipe(deliverySchema)
 export type Delivery = PipeOutput<typeof deliveryPipe>
 
 export const sourceControlDeliveryReadTargetPipe = v.object({

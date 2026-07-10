@@ -1,6 +1,8 @@
 import { Repo } from 'equipped/orm'
 import { InMemoryAdapter } from 'equipped/orm/adapters/in-memory'
 
+import { createCoreProviders } from './providers'
+import type { CoreRuntime } from './runtime'
 import type { CoreRuntimeValues } from './runtime-values'
 import { noopRawSandboxInstance } from './sandbox-test-helpers'
 export {
@@ -13,50 +15,54 @@ export {
 } from './sandbox-test-helpers'
 import type { CommandContext } from '../commands/types'
 import type { Action } from '../domain/action'
-import type { AgentRun, AgentRunEvent, AgentRunProfileSnapshot } from '../domain/agent-run'
+import type { AgentRun, AgentRunProfileSnapshot } from '../domain/agent-run'
+import type { AgentRunEvent } from '../domain/agent-run-event'
 import type { AgentRunProfile } from '../domain/agent-run-profile'
 import type { AgentRunRuntimeRequirement, AgentRunSandboxConfig } from '../domain/agent-run-runtime'
-import type { DeliveryArtifact, SliceArtifact } from '../domain/artifact'
 import type { AuditStamp, Id } from '../domain/commons'
 import type { DeliveryWorkConfig } from '../domain/config'
 import type { Delivery } from '../domain/delivery'
+import type { DeliveryArtifact } from '../domain/delivery-artifact'
 import type { ExternalOperation, ExternalOperationEvidence, ValidationEvidence, ValidationOperation } from '../domain/evidence'
-import type { Link } from '../domain/graph'
-import type { Memory, MemoryRevision } from '../domain/memory'
+import type { Link } from '../domain/link'
+import type { Memory } from '../domain/memory'
+import type { MemoryRevision } from '../domain/memory-revision'
 import { defaultModelCapabilities, type Model } from '../domain/model'
 import type { ModelProvider } from '../domain/model-provider'
 import type { Plan } from '../domain/plan'
 import type { Project } from '../domain/project'
 import type { Repository } from '../domain/repository'
 import type { ReviewSurface } from '../domain/review-surface'
-import type { Revision, RevisionGate } from '../domain/revision'
+import type { Revision } from '../domain/revision'
+import type { RevisionGate } from '../domain/revision-gate'
 import type { Secret } from '../domain/secret'
 import type { Slice } from '../domain/slice'
-import { createCoreProviders } from '../providers'
-import type { CoreRuntime } from '../runtime'
+import type { SliceArtifact } from '../domain/slice-artifact'
 import type { CoreServices, CoreStorage } from '../services'
-import {
-	actionSchema,
-	agentRunEventSchema,
-	agentRunProfileSchema,
-	agentRunSchema,
-	deliveryArtifactSchema,
-	deliverySchema,
-	linkSchema,
-	memoryRevisionSchema,
-	memorySchema,
-	modelProviderSchema,
-	modelSchema,
-	planSchema,
-	projectSchema,
-	repositorySchema,
-	reviewSurfaceSchema,
-	revisionGateSchema,
-	revisionSchema,
-	secretSchema,
-	sliceArtifactSchema,
-	sliceSchema,
-} from '../storage/schemas'
+import { coreIdResourceSchemas } from './storage/schema-registry'
+
+const {
+	action: actionSchema,
+	'agent-run-event': agentRunEventSchema,
+	'agent-run-profile': agentRunProfileSchema,
+	'agent-run': agentRunSchema,
+	'delivery-artifact': deliveryArtifactSchema,
+	delivery: deliverySchema,
+	link: linkSchema,
+	'memory-revision': memoryRevisionSchema,
+	memory: memorySchema,
+	'model-provider': modelProviderSchema,
+	model: modelSchema,
+	plan: planSchema,
+	project: projectSchema,
+	repository: repositorySchema,
+	'review-surface': reviewSurfaceSchema,
+	'revision-gate': revisionGateSchema,
+	revision: revisionSchema,
+	secret: secretSchema,
+	'slice-artifact': sliceArtifactSchema,
+	slice: sliceSchema,
+} = coreIdResourceSchemas
 
 export const stamp: AuditStamp = { origin: 'imported', at: '2026-06-01T00:00:00.000Z' }
 export const context: CommandContext = {

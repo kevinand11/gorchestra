@@ -40,7 +40,7 @@ export function createAgentRunsApiRouter(context: ServerApiContext) {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ agentRunId: coreIdPipe }),
 				body: sendAgentRunMessageRequestSchema,
-				response: Domain.AgentRun.agentRunEventPipe,
+				response: Domain.AgentRunEvent.agentRunEventPipe,
 			},
 		})(async (req) => sendSelectedPortfolioAgentRunMessage(context, req.cookies, req.params.agentRunId, req.body))
 		.post('/agent-runs/:agentRunId/runtime-requirement-overrides', {
@@ -48,7 +48,7 @@ export function createAgentRunsApiRouter(context: ServerApiContext) {
 				cookies: portfolioRequestCookieSchema,
 				params: v.object({ agentRunId: coreIdPipe }),
 				body: agentRunRuntimeRequirementOverrideRequestSchema,
-				response: Domain.AgentRun.agentRunEventPipe,
+				response: Domain.AgentRunEvent.agentRunEventPipe,
 			},
 		})(async (req) => addSelectedPortfolioAgentRunRuntimeRequirementOverride(context, req.cookies, req.params.agentRunId, req.body))
 }
@@ -81,7 +81,7 @@ function sendSelectedPortfolioAgentRunMessage(
 	cookies: PortfolioRequestCookies,
 	agentRunId: string,
 	input: SendAgentRunMessageRequest,
-): Promise<Domain.AgentRun.AgentRunEvent> {
+): Promise<Domain.AgentRunEvent.AgentRunEvent> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
 		const event = await core.commands.sendAgentRunMessage(
 			{ agentRunId, parts: input.parts },
@@ -96,7 +96,7 @@ function addSelectedPortfolioAgentRunRuntimeRequirementOverride(
 	cookies: PortfolioRequestCookies,
 	agentRunId: string,
 	input: AgentRunRuntimeRequirementOverrideRequest,
-): Promise<Domain.AgentRun.AgentRunEvent> {
+): Promise<Domain.AgentRunEvent.AgentRunEvent> {
 	return withSelectedPortfolioCore(context, cookies, async ({ core, workspaceMember }) => {
 		const event = await core.commands.addAgentRunRuntimeRequirementOverride(
 			{ agentRunId, requirements: input.requirements },

@@ -1,4 +1,4 @@
-import { getRequired } from '../commands/utils/storage'
+import { getRequired } from './command-storage'
 import type { AgentRun } from '../domain/agent-run'
 import type {
 	AgentRunNotActiveError,

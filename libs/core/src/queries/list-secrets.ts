@@ -1,15 +1,15 @@
 import { type PipeInput, type PipeOutput } from 'valleyed'
 
-import { isArchived } from '../commands/utils/storage'
 import { paginatedQueryEnvelopePipe, paginatedQueryInputPipe } from '../domain/commons'
 import { listedSecretPipe, type ListedSecret, type Secret, type SecretReference } from '../domain/secret'
 export type { ListedSecret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
 import { listSecretReferencesBySecretId } from './list-secret-references'
-import { listRecordsPaginated, withTransaction } from '../storage/helpers'
+import { isArchived } from '../utils/command-storage'
+import { buildQueryHandler } from '../utils/query-handler'
+import { listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = paginatedQueryInputPipe
 export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
@@ -30,14 +30,16 @@ export function createListSecretsQuery(options: CoreServices): Operation {
 				secrets.value.items.map((secret) => secret.id),
 			)
 			return references.ok
-				? { ok: true, value: { ...secrets.value, items: listSecrets(secrets.value.items, references.value) } }
+				? {
+						ok: true,
+						value: {
+							...secrets.value,
+							items: secrets.value.items.map((secret) => listSecret(secret, references.value.get(secret.id) ?? [])),
+						},
+					}
 				: references
 		}),
 	) as Operation
-}
-
-function listSecrets(secrets: Secret[], referencesBySecretId: Map<string, SecretReference[]>): ListedSecret[] {
-	return secrets.map((secret) => listSecret(secret, referencesBySecretId.get(secret.id) ?? []))
 }
 
 export function listSecret(secret: Secret, references: SecretReference[]): ListedSecret {

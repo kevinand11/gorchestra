@@ -2,13 +2,11 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { agentRunProfileReferencePipe, type AgentRunProfileReference, type AgentRunProfileReferenceRole } from '../domain/agent-run-profile'
 import { idPipe, type Id } from '../domain/commons'
-import type { Delivery } from '../domain/delivery'
-import type { Project } from '../domain/project'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices, CoreStorage } from '../services'
-import { getRequired, listRecords, withTransaction, type StorageBoundaryError } from '../storage/helpers'
+import type { CoreServices } from '../services'
+import { buildQueryHandler } from '../utils/query-handler'
+import { getRequired, listRecords, withTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = v.object({ agentRunProfileId: idPipe })
 export type Input = PipeOutput<typeof inputPipe>
@@ -24,53 +22,52 @@ export function createListAgentRunProfileReferencesQuery(options: CoreServices):
 			const profile = await getRequired('agent-run-profile', storage, input.agentRunProfileId)
 			if (!profile.ok) return profile
 
-			const references = await listAgentRunProfileReferences(storage, profile.value.id)
-			return references.ok ? { ok: true, value: sortAgentRunProfileReferences(references.value) } : references
+			const projects = await listRecords('project', storage)
+			if (!projects.ok) return projects
+
+			const deliveries = await listRecords('delivery', storage)
+			if (!deliveries.ok) return deliveries
+
+			const references: AgentRunProfileReference[] = [
+				...projects.value.flatMap((project) =>
+					matchingWorkConfigRoles(project.config.value.work, profile.value.id).map((role) => ({
+						type: 'project-config' as const,
+						active: true,
+						role,
+						projectId: project.id,
+						projectTitle: project.title,
+					})),
+				),
+				...deliveries.value.flatMap((delivery) => {
+					const work = delivery.config?.value?.work
+					return work === undefined || work === null
+						? []
+						: matchingWorkConfigRoles(work, profile.value.id).map((role) => ({
+								type: 'delivery-config' as const,
+								active: delivery.closed === null,
+								role,
+								projectId: delivery.projectId,
+								deliveryId: delivery.id,
+								deliveryTitle: delivery.title,
+							}))
+				}),
+			]
+
+			return {
+				ok: true,
+				value: [...references].sort(
+					(left, right) =>
+						[
+							referenceActiveRank(left) - referenceActiveRank(right),
+							referenceTypeOrder[left.type] - referenceTypeOrder[right.type],
+							referenceLabel(left).localeCompare(referenceLabel(right)),
+							referenceRoleOrder[left.role] - referenceRoleOrder[right.role],
+							referenceId(left).localeCompare(referenceId(right)),
+						].find((value) => value !== 0) ?? 0,
+				),
+			}
 		}),
 	)
-}
-
-async function listAgentRunProfileReferences(
-	storage: CoreStorage,
-	agentRunProfileId: Id,
-): Promise<CoreResult<AgentRunProfileReference[], StorageBoundaryError>> {
-	const projects = await listRecords('project', storage)
-	if (!projects.ok) return projects
-
-	const deliveries = await listRecords('delivery', storage)
-	return deliveries.ok
-		? {
-				ok: true,
-				value: [
-					...projects.value.flatMap((project) => projectConfigReferences(project, agentRunProfileId)),
-					...deliveries.value.flatMap((delivery) => deliveryConfigReferences(delivery, agentRunProfileId)),
-				],
-			}
-		: deliveries
-}
-
-function projectConfigReferences(project: Project, agentRunProfileId: Id): AgentRunProfileReference[] {
-	return matchingWorkConfigRoles(project.config.value.work, agentRunProfileId).map((role) => ({
-		type: 'project-config' as const,
-		active: true,
-		role,
-		projectId: project.id,
-		projectTitle: project.title,
-	}))
-}
-
-function deliveryConfigReferences(delivery: Delivery, agentRunProfileId: Id): AgentRunProfileReference[] {
-	const work = delivery.config?.value?.work
-	if (work === undefined || work === null) return []
-
-	return matchingWorkConfigRoles(work, agentRunProfileId).map((role) => ({
-		type: 'delivery-config' as const,
-		active: delivery.closed === null,
-		role,
-		projectId: delivery.projectId,
-		deliveryId: delivery.id,
-		deliveryTitle: delivery.title,
-	}))
 }
 
 type WorkConfigWithAgentRunProfileSelection = {
@@ -81,30 +78,10 @@ type WorkConfigWithAgentRunProfileSelection = {
 function matchingWorkConfigRoles(work: WorkConfigWithAgentRunProfileSelection, agentRunProfileId: Id): AgentRunProfileReferenceRole[] {
 	const roles: AgentRunProfileReferenceRole[] = []
 	if (work.executionAgentRunProfileId === agentRunProfileId) roles.push('execution')
-	if (effectiveRevisionExecutionAgentRunProfileId(work) === agentRunProfileId) roles.push('revision-execution')
+	if ((work.revisionExecutionAgentRunProfileId ?? work.executionAgentRunProfileId) === agentRunProfileId) {
+		roles.push('revision-execution')
+	}
 	return roles
-}
-
-function effectiveRevisionExecutionAgentRunProfileId(work: WorkConfigWithAgentRunProfileSelection): Id {
-	return work.revisionExecutionAgentRunProfileId ?? work.executionAgentRunProfileId
-}
-
-function sortAgentRunProfileReferences(references: AgentRunProfileReference[]): AgentRunProfileReference[] {
-	return [...references].sort(compareAgentRunProfileReferences)
-}
-
-function compareAgentRunProfileReferences(left: AgentRunProfileReference, right: AgentRunProfileReference): number {
-	return firstNonZero([
-		referenceActiveRank(left) - referenceActiveRank(right),
-		referenceTypeOrder[left.type] - referenceTypeOrder[right.type],
-		referenceLabel(left).localeCompare(referenceLabel(right)),
-		referenceRoleOrder[left.role] - referenceRoleOrder[right.role],
-		referenceId(left).localeCompare(referenceId(right)),
-	])
-}
-
-function firstNonZero(values: number[]): number {
-	return values.find((value) => value !== 0) ?? 0
 }
 
 const referenceTypeOrder: Record<AgentRunProfileReference['type'], number> = {

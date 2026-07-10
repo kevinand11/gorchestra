@@ -2,21 +2,22 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { archivePeriodPipe, auditStampPipe, idPipe, nonEmptyTrimmedStringPipe } from './commons'
 import { modelProviderProtocolPipe } from './model-provider'
+import { coreSchema, schemaToPipe } from '../utils/storage/schema'
 
 export const secretValueRefPipe = nonEmptyTrimmedStringPipe
 export const envNamePipe = nonEmptyTrimmedStringPipe.pipe(
 	v.custom<string>((value) => /^[A-Z_][A-Z0-9_]*$/.test(value), 'Expected an environment variable name.'),
 )
 
-export const secretPipe = v.object({
-	id: idPipe,
-	name: nonEmptyTrimmedStringPipe,
-	valueRef: nonEmptyTrimmedStringPipe,
-	created: auditStampPipe,
-	updated: v.nullable(auditStampPipe),
-	valueReplaced: v.nullable(auditStampPipe),
-	archivePeriods: v.array(archivePeriodPipe),
-})
+export const secretSchema = coreSchema('secrets')
+	.field('name', nonEmptyTrimmedStringPipe)
+	.field('valueRef', secretValueRefPipe)
+	.field('created', auditStampPipe)
+	.field('updated', v.nullable(auditStampPipe))
+	.field('valueReplaced', v.nullable(auditStampPipe))
+	.field('archivePeriods', v.array(archivePeriodPipe))
+	.build()
+export const secretPipe = schemaToPipe(secretSchema)
 export type Secret = PipeOutput<typeof secretPipe>
 
 export const repositoryAccessSecretReferencePipe = v.object({

@@ -17,10 +17,18 @@ import type {
 	ResourceArchivedError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
+import { buildCommandHandler } from '../utils/command-handler'
+import {
+	auditStamp,
+	createRecordValue,
+	listRecordsByIds,
+	nextId,
+	secretReferencesFromModelProviderConfig,
+	withTransaction,
+} from '../utils/command-storage'
+import type { CoreRuntime } from '../utils/runtime'
+import { validateActiveSecretReferencesFromRecords } from '../utils/secrets'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { auditStamp, createValidModelProvider, nextId, withTransaction } from './utils/storage'
 
 const createModelProviderInputPipe = v.object({
 	name: nonEmptyTrimmedStringPipe,
@@ -51,7 +59,14 @@ export function createCreateModelProviderCommand(runtime: CoreRuntime): Operatio
 		const id = nextId(runtime.values)
 		if (!id.ok) return Promise.resolve(id)
 
-		return withTransaction(runtime.services, (storage): Promise<CoreResult<ModelProvider, Exclude<Error, InvalidInputError>>> => {
+		return withTransaction(runtime.services, async (storage): Promise<CoreResult<ModelProvider, Exclude<Error, InvalidInputError>>> => {
+			const secretIds = secretReferencesFromModelProviderConfig(input.auth, input.headers)
+			const secrets = await listRecordsByIds('secret', storage, secretIds)
+			if (!secrets.ok) return secrets
+
+			const validReferences = validateActiveSecretReferencesFromRecords(secretIds, secrets.value)
+			if (!validReferences.ok) return validReferences
+
 			const provider: ModelProvider = {
 				id: id.value,
 				name: input.name,
@@ -64,7 +79,7 @@ export function createCreateModelProviderCommand(runtime: CoreRuntime): Operatio
 				archivePeriods: [],
 			}
 
-			return createValidModelProvider(storage, provider)
+			return createRecordValue('model-provider', storage, provider)
 		})
 	})
 }
@@ -76,6 +91,7 @@ if (import.meta.vitest) {
 	describe('createModelProvider command', () => {
 		it('creates Model Providers with normalized config', async () => {
 			const options = createTestCoreServices()
+			options.tx.secrets.fail.list = true
 			const command = createCreateModelProviderCommand(createTestCoreRuntime(options))
 
 			const result = await command(
@@ -103,6 +119,26 @@ if (import.meta.vitest) {
 					archivePeriods: [],
 				},
 			})
+		})
+
+		it('rejects a missing Secret reference without creating a Model Provider', async () => {
+			const options = createTestCoreServices()
+			const command = createCreateModelProviderCommand(createTestCoreRuntime(options))
+			const secretId = '01k00000000000000000000040'
+
+			const result = await command(
+				{
+					name: 'Anthropic',
+					source: { type: 'anthropic' },
+					auth: { value: { type: 'secret', secretId } },
+					headers: [],
+					providerOptions: null,
+				},
+				context,
+			)
+
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'secret', id: secretId } })
+			expect(options.tx.modelProviders.records.size).toBe(0)
 		})
 	})
 }

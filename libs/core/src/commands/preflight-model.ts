@@ -4,28 +4,17 @@ import type { CommandContext } from './types'
 import { idPipe } from '../domain/commons'
 import type { ValidationEvidence } from '../domain/evidence'
 import { defaultModelCapabilities, type Model } from '../domain/model'
-import {
-	modelProviderProtocolForSource,
-	type ModelProvider,
-	type ModelProviderAccessValue,
-	type ModelProviderHeader,
-} from '../domain/model-provider'
-import type {
-	InvalidCoreServiceOutputError,
-	InvalidInputError,
-	ResourceNotFoundError,
-	ResourceArchivedError,
-	StorageOperationFailedError,
-} from '../errors'
-import { modelProviderProtocolPreflight } from '../providers/model-provider-protocol'
-import { validateModelThinkingCapabilityForProtocol } from '../providers/model-provider-protocol/thinking'
-import type { ModelProviderProtocolPreflightFailureReason } from '../providers/model-provider-protocol/types'
-import type { CoreRuntime } from '../runtime'
-import type { CoreServices, CoreStorage, ResolvableSecretValue } from '../services'
+import { modelProviderProtocolForSource, type ModelProvider, type ModelProviderAccessValue } from '../domain/model-provider'
+import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
+import type { CoreStorage, ResolvableSecretValue } from '../services'
+import { buildCommandHandler } from '../utils/command-handler'
+import { getRequired, isArchived, withTransaction } from '../utils/command-storage'
+import { modelProviderProtocolPreflight } from '../utils/providers/model-provider-protocol'
+import { validateModelThinkingCapabilityForProtocol } from '../utils/providers/model-provider-protocol/thinking'
+import type { ModelProviderProtocolPreflightFailureReason } from '../utils/providers/model-provider-protocol/types'
+import type { CoreRuntime } from '../utils/runtime'
 import { validateActiveSecret } from '../utils/secrets'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { getRequired, isArchived, withTransaction } from './utils/storage'
 
 const preflightModelInputPipe = v.object({ modelId: idPipe })
 export type Input = PipeOutput<typeof preflightModelInputPipe>
@@ -44,14 +33,63 @@ type ModelPreflightFactReadiness =
 	| { type: 'passed'; secrets: ResolvableSecretValue[] }
 	| { type: 'failed'; modelProvider: ModelProvider; reason: ModelProviderProtocolPreflightFailureReason }
 
-type ModelPreflightStorageFacts = { model: Model; modelProvider: ModelProvider }
-
 type ModelPreflightLocalError = InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 
 export function createPreflightModelCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
 	return buildCommandHandler('preflightModel', preflightModelInputPipe, async (input) => {
-		const readiness = await readModelPreflightReadiness(options, input)
+		const readiness = await withTransaction<ModelPreflightReadiness, ModelPreflightLocalError>(runtime.services, async (storage) => {
+			const model = await getRequired('model', storage, input.modelId)
+			if (!model.ok) return model
+
+			const modelProvider = await getRequired('model-provider', storage, model.value.providerId)
+			if (!modelProvider.ok) return modelProvider
+
+			if (isArchived(model.value.archivePeriods)) {
+				return {
+					ok: true,
+					value: {
+						type: 'failed',
+						modelProvider: modelProvider.value,
+						reason: { type: 'model-archived', modelId: model.value.id },
+					},
+				}
+			}
+			if (isArchived(modelProvider.value.archivePeriods)) {
+				return {
+					ok: true,
+					value: {
+						type: 'failed',
+						modelProvider: modelProvider.value,
+						reason: { type: 'model-provider-archived', modelProviderId: modelProvider.value.id },
+					},
+				}
+			}
+
+			const thinkingValidation = validateModelThinkingCapabilityForProtocol(
+				model.value,
+				modelProviderProtocolForSource(modelProvider.value.source),
+			)
+			if (!thinkingValidation.ok) {
+				return {
+					ok: true,
+					value: { type: 'failed', modelProvider: modelProvider.value, reason: thinkingValidation.error },
+				}
+			}
+
+			const secretReadiness = await validateModelProviderSecrets(storage, modelProvider.value)
+			if (!secretReadiness.ok) return secretReadiness
+			return secretReadiness.value.type === 'failed'
+				? { ok: true, value: secretReadiness.value }
+				: {
+						ok: true,
+						value: {
+							type: 'passed',
+							model: model.value,
+							modelProvider: modelProvider.value,
+							secrets: secretReadiness.value.secrets,
+						},
+					}
+		})
 		if (!readiness.ok) return readiness
 		if (readiness.value.type === 'failed') {
 			const protocol = modelProviderProtocolForSource(readiness.value.modelProvider.source)
@@ -75,122 +113,35 @@ export function createPreflightModelCommand(runtime: CoreRuntime): Operation {
 	})
 }
 
-function readModelPreflightReadiness(
-	options: CoreServices,
-	input: Input,
-): Promise<CoreResult<ModelPreflightReadiness, ModelPreflightLocalError>> {
-	return withTransaction(options, (storage) => readModelPreflightReadinessFromStorage(storage, input.modelId))
-}
-
-async function readModelPreflightReadinessFromStorage(
-	storage: CoreStorage,
-	modelId: string,
-): Promise<CoreResult<ModelPreflightReadiness, ModelPreflightLocalError>> {
-	const facts = await readModelPreflightStorageFacts(storage, modelId)
-	if (!facts.ok) return facts
-
-	const activeFacts = await validateActiveModelFacts(storage, facts.value.model, facts.value.modelProvider)
-	if (!activeFacts.ok) return activeFacts
-	if (activeFacts.value.type === 'failed') return { ok: true, value: activeFacts.value }
-
-	return { ok: true, value: { type: 'passed', ...facts.value, secrets: activeFacts.value.secrets } }
-}
-
-async function readModelPreflightStorageFacts(
-	storage: CoreStorage,
-	modelId: string,
-): Promise<CoreResult<ModelPreflightStorageFacts, ModelPreflightLocalError>> {
-	const model = await getRequired('model', storage, modelId)
-	if (!model.ok) return model
-
-	const modelProvider = await getRequired('model-provider', storage, model.value.providerId)
-	return modelProvider.ok ? { ok: true, value: { model: model.value, modelProvider: modelProvider.value } } : modelProvider
-}
-
-async function validateActiveModelFacts(
-	storage: CoreStorage,
-	model: Model,
-	modelProvider: ModelProvider,
-): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
-	const archivalReadiness = modelArchivalReadiness(model, modelProvider)
-	if (archivalReadiness.type === 'failed') return { ok: true, value: archivalReadiness }
-
-	const thinkingReadiness = modelThinkingReadiness(model, modelProvider)
-	return thinkingReadiness.type === 'failed' ? { ok: true, value: thinkingReadiness } : validateModelSecrets(storage, modelProvider)
-}
-
-async function validateModelSecrets(
+async function validateModelProviderSecrets(
 	storage: CoreStorage,
 	modelProvider: ModelProvider,
 ): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
-	const authSecret = await validateAuthSecret(storage, modelProvider)
-	return authSecret.ok && authSecret.value.type === 'passed'
-		? validateModelHeaderSecrets(storage, modelProvider, authSecret.value.secrets)
-		: authSecret
+	const auth = await validateModelProviderAuthSecret(storage, modelProvider)
+	if (!auth.ok || auth.value.type === 'failed') return auth
+
+	const headers = await validateModelProviderHeaderSecrets(storage, modelProvider)
+	if (!headers.ok || headers.value.type === 'failed') return headers
+
+	return {
+		ok: true,
+		value: {
+			type: 'passed',
+			secrets: [...new Map([...auth.value.secrets, ...headers.value.secrets].map((secret) => [secret.secretId, secret])).values()],
+		},
+	}
 }
 
-async function validateModelHeaderSecrets(
-	storage: CoreStorage,
-	modelProvider: ModelProvider,
-	authSecrets: ResolvableSecretValue[],
-): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
-	const headerSecrets = await validateHeaderSecrets(storage, modelProvider)
-	return combineModelSecrets(authSecrets, headerSecrets)
-}
-
-function combineModelSecrets(
-	authSecrets: ResolvableSecretValue[],
-	headerSecrets: CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>,
-): CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError> {
-	return headerSecrets.ok && headerSecrets.value.type === 'passed'
-		? { ok: true, value: { type: 'passed', secrets: uniqueSecrets([...authSecrets, ...headerSecrets.value.secrets]) } }
-		: headerSecrets
-}
-
-function modelArchivalReadiness(model: Model, modelProvider: ModelProvider): ModelPreflightFactReadiness {
-	if (isArchived(model.archivePeriods)) return { type: 'failed', modelProvider, reason: { type: 'model-archived', modelId: model.id } }
-
-	return isArchived(modelProvider.archivePeriods)
-		? { type: 'failed', modelProvider, reason: { type: 'model-provider-archived', modelProviderId: modelProvider.id } }
-		: { type: 'passed', secrets: [] }
-}
-
-function modelThinkingReadiness(model: Model, modelProvider: ModelProvider): ModelPreflightFactReadiness {
-	const validation = validateModelThinkingCapabilityForProtocol(model, modelProviderProtocolForSource(modelProvider.source))
-	return validation.ok ? { type: 'passed', secrets: [] } : { type: 'failed', modelProvider, reason: validation.error }
-}
-
-async function validateAuthSecret(
+async function validateModelProviderAuthSecret(
 	storage: CoreStorage,
 	modelProvider: ModelProvider,
 ): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
 	if (modelProvider.auth === null) return { ok: true, value: { type: 'passed', secrets: [] } }
 
-	const secretId = secretIdFromAccessValue(modelProvider.auth.value)
-	const secret = await validateActiveSecret(storage, secretId)
-	return secret.ok
-		? { ok: true, value: { type: 'passed', secrets: [secretValueRef(secret.value)] } }
-		: mapAuthSecretFailure(modelProvider, secret.error)
-}
+	const secret = await validateActiveSecret(storage, secretIdFromAccessValue(modelProvider.auth.value))
+	if (secret.ok) return { ok: true, value: { type: 'passed', secrets: [secretValueRef(secret.value)] } }
 
-async function validateHeaderSecrets(
-	storage: CoreStorage,
-	modelProvider: ModelProvider,
-): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
-	const secrets: ResolvableSecretValue[] = []
-	for (const header of modelProvider.headers) {
-		const secret = await validateActiveSecret(storage, secretIdFromAccessValue(header.value))
-		if (!secret.ok) return mapHeaderSecretFailure(modelProvider, header, secret.error)
-		secrets.push(secretValueRef(secret.value))
-	}
-
-	return { ok: true, value: { type: 'passed', secrets } }
-}
-
-function mapAuthSecretFailure(
-	modelProvider: ModelProvider,
-	error: ResourceNotFoundError | ResourceArchivedError | StorageOperationFailedError | InvalidCoreServiceOutputError,
-): CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError> {
+	const error = secret.error
 	if (error.type === 'not-found' && error.resource === 'secret') {
 		return {
 			ok: true,
@@ -200,44 +151,48 @@ function mapAuthSecretFailure(
 	if (error.type === 'resource-archived') {
 		return {
 			ok: true,
-			value: {
-				type: 'failed',
-				modelProvider,
-				reason: { type: 'model-provider-auth-secret-inactive', secretId: error.id },
-			},
+			value: { type: 'failed', modelProvider, reason: { type: 'model-provider-auth-secret-inactive', secretId: error.id } },
 		}
 	}
-
 	return { ok: false, error }
 }
 
-function mapHeaderSecretFailure(
+async function validateModelProviderHeaderSecrets(
+	storage: CoreStorage,
 	modelProvider: ModelProvider,
-	header: ModelProviderHeader,
-	error: ResourceNotFoundError | ResourceArchivedError | StorageOperationFailedError | InvalidCoreServiceOutputError,
-): CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError> {
-	if (error.type === 'not-found' && error.resource === 'secret') {
-		return {
-			ok: true,
-			value: {
-				type: 'failed',
-				modelProvider,
-				reason: { type: 'model-provider-header-secret-missing', secretId: error.id, headerName: header.name },
-			},
+): Promise<CoreResult<ModelPreflightFactReadiness, ModelPreflightLocalError>> {
+	const secrets: ResolvableSecretValue[] = []
+	for (const header of modelProvider.headers) {
+		const secret = await validateActiveSecret(storage, secretIdFromAccessValue(header.value))
+		if (secret.ok) {
+			secrets.push(secretValueRef(secret.value))
+			continue
 		}
-	}
-	if (error.type === 'resource-archived') {
-		return {
-			ok: true,
-			value: {
-				type: 'failed',
-				modelProvider,
-				reason: { type: 'model-provider-header-secret-inactive', secretId: error.id, headerName: header.name },
-			},
-		}
-	}
 
-	return { ok: false, error }
+		const error = secret.error
+		if (error.type === 'not-found' && error.resource === 'secret') {
+			return {
+				ok: true,
+				value: {
+					type: 'failed',
+					modelProvider,
+					reason: { type: 'model-provider-header-secret-missing', secretId: error.id, headerName: header.name },
+				},
+			}
+		}
+		if (error.type === 'resource-archived') {
+			return {
+				ok: true,
+				value: {
+					type: 'failed',
+					modelProvider,
+					reason: { type: 'model-provider-header-secret-inactive', secretId: error.id, headerName: header.name },
+				},
+			}
+		}
+		return { ok: false, error }
+	}
+	return { ok: true, value: { type: 'passed', secrets } }
 }
 
 function secretIdFromAccessValue(value: ModelProviderAccessValue): string {
@@ -251,10 +206,6 @@ function secretIdFromAccessValue(value: ModelProviderAccessValue): string {
 
 function modelPreflightEvidence(passed: boolean, summary: string): ValidationEvidence {
 	return { type: 'validation', operation: { type: 'model-preflight' }, passed, summary }
-}
-
-function uniqueSecrets(secrets: ResolvableSecretValue[]): ResolvableSecretValue[] {
-	return [...new Map(secrets.map((secret) => [secret.secretId, secret])).values()]
 }
 
 function secretValueRef(secret: { id: string; valueRef: string }): ResolvableSecretValue {

@@ -3,10 +3,10 @@ import { v, type PipeInput, type PipeOutput } from 'valleyed'
 import { idPipe, paginatedQueryEnvelopePipe, paginatedQueryInputPipe } from '../domain/commons'
 import { memoryPipe, type Memory } from '../domain/memory'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices, CoreStorage } from '../services'
-import { getRequired, listRecordsPaginated, withTransaction } from '../storage/helpers'
+import type { CoreServices } from '../services'
+import { buildQueryHandler } from '../utils/query-handler'
+import { getRequired, listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = v.merge(v.object({ parentId: v.nullable(idPipe) }), paginatedQueryInputPipe)
 export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
@@ -18,20 +18,17 @@ export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createListMemoryChildrenQuery(options: CoreServices): Operation {
 	return buildQueryHandler('listMemoryChildren', inputPipe, (input) =>
-		withTransaction(options, (storage) => listMemoryChildren(storage, input)),
+		withTransaction(options, async (storage) => {
+			if (input.parentId !== null) {
+				const parent = await getRequired('memory', storage, input.parentId)
+				if (!parent.ok) return parent
+			}
+
+			return await listRecordsPaginated('memory', storage, input, {
+				where: (filter, fields) => filter.eq(fields.parentId, input.parentId),
+			})
+		}),
 	) as Operation
-}
-
-async function listMemoryChildren(
-	storage: CoreStorage,
-	input: PipeOutput<typeof inputPipe>,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	if (input.parentId !== null) {
-		const parent = await getRequired('memory', storage, input.parentId)
-		if (!parent.ok) return parent
-	}
-
-	return await listRecordsPaginated('memory', storage, input, { where: (filter, fields) => filter.eq(fields.parentId, input.parentId) })
 }
 
 if (import.meta.vitest) {

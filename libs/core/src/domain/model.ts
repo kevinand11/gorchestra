@@ -9,6 +9,7 @@ import {
 	nonNegativeIntegerPipe,
 	positiveIntegerPipe,
 } from './commons'
+import { coreSchema, schemaToPipe } from '../utils/storage/schema'
 
 export const positiveModelThinkingLevelPipe = v.in(['minimal', 'low', 'medium', 'high', 'xhigh'])
 export type PositiveModelThinkingLevel = PipeOutput<typeof positiveModelThinkingLevelPipe>
@@ -73,18 +74,18 @@ export const modelTokenPricingPipe = v.object({
 })
 export type ModelTokenPricing = PipeOutput<typeof modelTokenPricingPipe>
 
-export const modelPipe = v.object({
-	id: idPipe,
-	providerId: idPipe,
-	name: nonEmptyTrimmedStringPipe,
-	providerModelId: nonEmptyTrimmedStringPipe,
-	providerOptions: v.nullable(jsonObjectPipe),
-	capabilities: modelCapabilitiesPipe,
-	pricing: v.nullable(modelTokenPricingPipe),
-	created: auditStampPipe,
-	updated: v.nullable(auditStampPipe),
-	archivePeriods: v.array(archivePeriodPipe),
-})
+export const modelSchema = coreSchema('models')
+	.field('providerId', idPipe)
+	.field('name', nonEmptyTrimmedStringPipe)
+	.field('providerModelId', nonEmptyTrimmedStringPipe)
+	.field('providerOptions', v.nullable(jsonObjectPipe))
+	.field('capabilities', modelCapabilitiesPipe)
+	.field('pricing', v.nullable(modelTokenPricingPipe))
+	.field('created', auditStampPipe)
+	.field('updated', v.nullable(auditStampPipe))
+	.field('archivePeriods', v.array(archivePeriodPipe))
+	.build()
+export const modelPipe = schemaToPipe(modelSchema)
 export type Model = PipeOutput<typeof modelPipe>
 
 export const listedModelPipe = v.object({

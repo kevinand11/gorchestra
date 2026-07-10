@@ -1,4 +1,3 @@
-import type { CoreRuntime } from '../runtime'
 import { createGetAgentRunQuery } from './get-agent-run'
 import { createGetAgentRunProfileQuery } from './get-agent-run-profile'
 import { createGetDeliveryQuery } from './get-delivery'
@@ -21,6 +20,7 @@ import { createListProjectsQuery } from './list-projects'
 import { createListRepositoriesQuery } from './list-repositories'
 import { createListSecretReferencesQuery } from './list-secret-references'
 import { createListSecretsQuery } from './list-secrets'
+import type { CoreRuntime } from '../utils/runtime'
 
 export function createCoreQueries(runtime: CoreRuntime) {
 	const services = runtime.services
@@ -55,7 +55,7 @@ export type Core = ReturnType<typeof createCoreQueries>
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createCoreRuntime } = await import('../runtime')
+	const { createCoreRuntime } = await import('../utils/runtime')
 	const { createTestCoreServices } = await import('../utils/test-helpers')
 
 	describe('Core queries', () => {

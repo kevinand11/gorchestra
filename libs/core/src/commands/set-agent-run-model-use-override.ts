@@ -1,7 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { AgentRunEvent } from '../domain/agent-run'
-import { idPipe, type AuditStamp } from '../domain/commons'
+import type { AgentRunEvent } from '../domain/agent-run-event'
+import { idPipe } from '../domain/commons'
 import { modelUseConfigPipe } from '../domain/config'
 import type {
 	AgentRunNotActiveError,
@@ -14,20 +14,19 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
-import type { CoreStorage } from '../services'
 import type { CommandContext } from './types'
 import { requireInteractiveAgentRunOpen } from '../utils/agent-run-targets'
 import { appendAgentRunEvent } from '../utils/agent-runs'
-import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
+import { buildCommandHandler } from '../utils/command-handler'
 import {
 	loadSelectableModelFacts,
 	modelIdsFromModelUses,
 	updateRecordValue,
 	validateModelUseConfigs,
 	withAuditStampTransaction,
-} from './utils/storage'
+} from '../utils/command-storage'
+import type { CoreRuntime } from '../utils/runtime'
+import type { Result as CoreResult } from '../utils/types'
 
 const setAgentRunModelUseOverrideInputPipe = v.object({ agentRunId: idPipe, modelUse: v.nullable(modelUseConfigPipe) })
 export type Input = PipeOutput<typeof setAgentRunModelUseOverrideInputPipe>
@@ -48,43 +47,36 @@ export type Operation = (input: Input, context: CommandContext) => Promise<CoreR
 
 export function createSetAgentRunModelUseOverrideCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('setAgentRunModelUseOverride', setAgentRunModelUseOverrideInputPipe, (input, context) =>
-		withAuditStampTransaction(runtime, context, (storage, stamp) => setAgentRunModelUseOverride(runtime, storage, input, stamp)),
+		withAuditStampTransaction<Result, Exclude<Error, InvalidInputError>>(runtime, context, async (storage, stamp) => {
+			const agentRun = await requireInteractiveAgentRunOpen(storage, input.agentRunId)
+			if (!agentRun.ok) return agentRun
+
+			if (input.modelUse !== null) {
+				const facts = await loadSelectableModelFacts(storage, modelIdsFromModelUses([input.modelUse]))
+				if (!facts.ok) return facts
+
+				const modelUseValidation = validateModelUseConfigs(facts.value, [input.modelUse])
+				if (!modelUseValidation.ok) return modelUseValidation
+			}
+
+			const updated = await updateRecordValue('agent-run', storage, input.agentRunId, {
+				modelUseOverride: input.modelUse === null ? null : { modelUse: input.modelUse, selected: stamp },
+			})
+			if (!updated.ok) return updated
+
+			return appendAgentRunEvent(runtime, storage, input.agentRunId, {
+				type: 'agent-run-model-use-override-changed',
+				modelUse: input.modelUse,
+				authorized: stamp,
+			})
+		}),
 	)
-}
-
-async function setAgentRunModelUseOverride(
-	runtime: CoreRuntime,
-	storage: CoreStorage,
-	input: Input,
-	stamp: AuditStamp,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const agentRun = await requireInteractiveAgentRunOpen(storage, input.agentRunId)
-	if (!agentRun.ok) return agentRun
-
-	if (input.modelUse !== null) {
-		const facts = await loadSelectableModelFacts(storage, modelIdsFromModelUses([input.modelUse]))
-		if (!facts.ok) return facts
-
-		const modelUseValidation = validateModelUseConfigs(facts.value, [input.modelUse])
-		if (!modelUseValidation.ok) return modelUseValidation
-	}
-
-	const updated = await updateRecordValue('agent-run', storage, input.agentRunId, {
-		modelUseOverride: input.modelUse === null ? null : { modelUse: input.modelUse, selected: stamp },
-	})
-	if (!updated.ok) return updated
-
-	return appendAgentRunEvent(runtime, storage, input.agentRunId, {
-		type: 'agent-run-model-use-override-changed',
-		modelUse: input.modelUse,
-		authorized: stamp,
-	})
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { context, createTestCoreRuntime, localStamp, seedSelectableModel } = await import('../utils/test-helpers')
-	const { planningAgentRunFixture } = await import('./utils/agent-run-test-utils')
+	const { planningAgentRunFixture } = await import('../utils/agent-run-test-utils')
 
 	describe('setAgentRunModelUseOverride command', () => {
 		it('sets a model-use override for an active Planning Agent Run', async () => {

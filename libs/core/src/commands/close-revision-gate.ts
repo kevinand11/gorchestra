@@ -1,8 +1,8 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { AgentRun } from '../domain/agent-run'
-import { idPipe, type AuditStamp } from '../domain/commons'
-import type { RevisionGate } from '../domain/revision'
+import { idPipe } from '../domain/commons'
+import type { RevisionGate } from '../domain/revision-gate'
 import type {
 	AgentRunTurnActiveError,
 	InvalidCoreServiceOutputError,
@@ -12,13 +12,12 @@ import type {
 	RevisionGateClosedError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
-import type { CoreStorage } from '../services'
 import type { CommandContext } from './types'
 import { completeAgentRunByIdAndAcceptSandboxRelease, requireAgentRunIdle } from '../utils/agent-runs'
+import { buildCommandHandler } from '../utils/command-handler'
+import { getRequired, updateRecordValue, withAuditStampTransaction } from '../utils/command-storage'
+import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { getRequired, updateRecordValue, withAuditStampTransaction } from './utils/storage'
 
 const closeRevisionGateInputPipe = v.object({ revisionGateId: idPipe })
 export type Input = PipeOutput<typeof closeRevisionGateInputPipe>
@@ -40,66 +39,39 @@ type DispatchedResult = { result: Result; dispatchMarker: string | null }
 
 export function createCloseRevisionGateCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('closeRevisionGate', closeRevisionGateInputPipe, async (input, context) => {
-		const written = await withAuditStampTransaction(runtime, context, (storage, stamp) =>
-			closeRevisionGate(runtime, storage, input, stamp),
+		const written = await withAuditStampTransaction<DispatchedResult, Exclude<Error, InvalidInputError>>(
+			runtime,
+			context,
+			async (storage, stamp) => {
+				const gate = await getRequired('revision-gate', storage, input.revisionGateId)
+				if (!gate.ok) return gate
+				if (gate.value.closed !== null) {
+					return { ok: false, error: { type: 'revision-gate-closed', revisionGateId: gate.value.id } }
+				}
+
+				const idle = await requireAgentRunIdle(storage, gate.value.agentRunId)
+				if (!idle.ok) return idle
+
+				const revisionGate = await updateRecordValue('revision-gate', storage, gate.value.id, {
+					closed: { type: 'closed-without-revision', closed: stamp },
+				})
+				if (!revisionGate.ok) return revisionGate
+
+				const agentRun = await completeAgentRunByIdAndAcceptSandboxRelease(
+					storage,
+					runtime.services.dispatcher,
+					revisionGate.value.agentRunId,
+					{ at: stamp.at },
+				)
+				return agentRun.ok
+					? { ok: true, value: { result: revisionGate.value, dispatchMarker: agentRun.value.dispatchMarker } }
+					: agentRun
+			},
 		)
 		if (!written.ok) return written
 		if (written.value.dispatchMarker !== null) runtime.services.dispatcher.ready(written.value.dispatchMarker)
 		return { ok: true, value: written.value.result }
 	})
-}
-
-async function closeRevisionGate(
-	runtime: CoreRuntime,
-	storage: CoreStorage,
-	input: Input,
-	stamp: AuditStamp,
-): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
-	const gate = await getOpenRevisionGate(storage, input.revisionGateId)
-	if (!gate.ok) return gate
-
-	const idle = await requireAgentRunIdle(storage, gate.value.agentRunId)
-	return idle.ok ? writeClosedRevisionGate(runtime, storage, gate.value, stamp) : idle
-}
-
-async function getOpenRevisionGate(
-	storage: CoreStorage,
-	revisionGateId: string,
-): Promise<CoreResult<RevisionGate, Exclude<Error, InvalidInputError>>> {
-	const gate = await getRequired('revision-gate', storage, revisionGateId)
-	return gate.ok ? validateRevisionGateOpen(gate.value) : gate
-}
-
-function validateRevisionGateOpen(gate: RevisionGate): CoreResult<RevisionGate, RevisionGateClosedError> {
-	return gate.closed === null ? { ok: true, value: gate } : revisionGateClosed(gate.id)
-}
-
-async function writeClosedRevisionGate(
-	runtime: CoreRuntime,
-	storage: CoreStorage,
-	gate: RevisionGate,
-	stamp: AuditStamp,
-): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
-	const revisionGate = await updateRecordValue('revision-gate', storage, gate.id, {
-		closed: { type: 'closed-without-revision', closed: stamp },
-	})
-	return revisionGate.ok ? completeRevisionPlanningAgentRun(runtime, storage, revisionGate.value, stamp) : revisionGate
-}
-
-async function completeRevisionPlanningAgentRun(
-	runtime: CoreRuntime,
-	storage: CoreStorage,
-	revisionGate: RevisionGate,
-	stamp: AuditStamp,
-): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
-	const agentRun = await completeAgentRunByIdAndAcceptSandboxRelease(storage, runtime.services.dispatcher, revisionGate.agentRunId, {
-		at: stamp.at,
-	})
-	return agentRun.ok ? { ok: true, value: { result: revisionGate, dispatchMarker: agentRun.value.dispatchMarker } } : agentRun
-}
-
-function revisionGateClosed(revisionGateId: string): CoreResult<never, RevisionGateClosedError> {
-	return { ok: false, error: { type: 'revision-gate-closed', revisionGateId } }
 }
 
 if (import.meta.vitest) {

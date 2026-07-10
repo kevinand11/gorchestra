@@ -2,6 +2,7 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { auditStampPipe, idPipe } from './commons'
 import { instructionSourcePipe, revisionDispositionPipe } from './proposals'
+import { coreSchema, schemaToPipe } from '../utils/storage/schema'
 export { revisionDispositionPipe, revisionOutputProposalPipe } from './proposals'
 export type { RevisionDisposition, RevisionOutputProposal } from './proposals'
 
@@ -11,28 +12,12 @@ export const revisionScopePipe = v.discriminate((value) => value.type, {
 })
 export type RevisionScope = PipeOutput<typeof revisionScopePipe>
 
-export const revisionGateClosedPipe = v.discriminate((value) => value.type, {
-	'closed-without-revision': v.object({ type: v.eq('closed-without-revision'), closed: auditStampPipe }),
-	'consumed-by-revision': v.object({ type: v.eq('consumed-by-revision'), consumed: auditStampPipe, revisionId: idPipe }),
-})
-export type RevisionGateClosed = PipeOutput<typeof revisionGateClosedPipe>
-
-export const revisionGatePipe = v.object({
-	id: idPipe,
-	agentRunId: idPipe,
-	scope: revisionScopePipe,
-	reviewSurfaceId: idPipe,
-	opened: auditStampPipe,
-	closed: v.nullable(revisionGateClosedPipe),
-})
-export type RevisionGate = PipeOutput<typeof revisionGatePipe>
-
-export const revisionPipe = v.object({
-	id: idPipe,
-	revisionGateId: idPipe,
-	scope: revisionScopePipe,
-	instruction: instructionSourcePipe,
-	disposition: revisionDispositionPipe,
-	accepted: auditStampPipe,
-})
+export const revisionSchema = coreSchema('revisions')
+	.field('revisionGateId', idPipe)
+	.field('scope', revisionScopePipe)
+	.field('instruction', instructionSourcePipe)
+	.field('disposition', revisionDispositionPipe)
+	.field('accepted', auditStampPipe)
+	.build()
+export const revisionPipe = schemaToPipe(revisionSchema)
 export type Revision = PipeOutput<typeof revisionPipe>

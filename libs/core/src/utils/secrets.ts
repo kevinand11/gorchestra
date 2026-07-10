@@ -3,6 +3,7 @@ import { PipeError } from 'valleyed'
 
 import type { Id } from '../domain/commons'
 import type { Secret } from '../domain/secret'
+import { secretSchema } from '../domain/secret'
 import type {
 	InvalidCoreServiceOutputError,
 	ResourceNotFoundError,
@@ -17,7 +18,6 @@ import {
 	type ResolvableSecretValue,
 	type ResolvedSecretValues,
 } from '../services'
-import { secretSchema } from '../storage/schemas'
 import { validateCoreServiceOutput } from '../validation'
 import type { Result } from './types'
 
@@ -54,13 +54,23 @@ export async function validateActiveSecret(storage: CoreStorage, secretId: Id): 
 
 export async function validateActiveSecretReferences(storage: CoreStorage, secretIds: Id[]): Promise<ValidateActiveSecretReferencesResult> {
 	const uniqueSecretIds = uniqueIds(secretIds)
-	const refs = await readActiveSecretValueRefs(storage, uniqueSecretIds)
-	if (!refs.ok) return refs
+	if (uniqueSecretIds.length === 0) return validateActiveSecretReferencesFromRecords(uniqueSecretIds, [])
 
-	for (const secretId of uniqueSecretIds) {
-		const ref = refs.value[secretId]
-		if (ref === undefined) return { ok: false, error: { type: 'not-found', resource: 'secret', id: secretId } }
-		if (!ref.ok) return ref
+	const secrets = await listSecretRecords(storage, uniqueSecretIds)
+	return secrets.ok ? validateActiveSecretReferencesFromRecords(uniqueSecretIds, secrets.value) : secrets
+}
+
+export function validateActiveSecretReferencesFromRecords(
+	secretIds: Id[],
+	secrets: Secret[],
+): Result<void, ResourceNotFoundError | ResourceArchivedError> {
+	const secretsById = new Map(secrets.map((secret) => [secret.id, secret]))
+	for (const secretId of uniqueIds(secretIds)) {
+		const secret = secretsById.get(secretId)
+		if (secret === undefined) return { ok: false, error: { type: 'not-found', resource: 'secret', id: secretId } }
+		if (isArchived(secret.archivePeriods)) {
+			return { ok: false, error: { type: 'resource-archived', resource: 'secret', id: secretId } }
+		}
 	}
 
 	return { ok: true, value: undefined }

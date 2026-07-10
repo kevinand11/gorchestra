@@ -42,7 +42,7 @@ import { createUpdateModelCommand } from './update-model'
 import { createUpdateModelProviderCommand } from './update-model-provider'
 import { createUpdateRepositoryConfigCommand } from './update-repository-config'
 import { createUpdateSecretMetadataCommand } from './update-secret-metadata'
-import type { CoreRuntime } from '../runtime'
+import type { CoreRuntime } from '../utils/runtime'
 
 export type * as AbandonDelivery from './abandon-delivery'
 export type * as AcceptPlanOutput from './accept-plan-output'
@@ -142,7 +142,7 @@ export type Core = ReturnType<typeof createCoreCommands>
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createCoreRuntime } = await import('../runtime')
+	const { createCoreRuntime } = await import('../utils/runtime')
 	const { createTestCoreServices } = await import('../utils/test-helpers')
 
 	describe('Core commands', () => {

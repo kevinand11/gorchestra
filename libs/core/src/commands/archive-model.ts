@@ -11,10 +11,10 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
+import { buildCommandHandler } from '../utils/command-handler'
+import { archiveStoredRecordWithAudit } from '../utils/command-storage'
+import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { archiveStoredRecordWithAudit } from './utils/storage'
 
 const archiveModelInputPipe = v.object({ modelId: idPipe })
 export type Input = PipeOutput<typeof archiveModelInputPipe>

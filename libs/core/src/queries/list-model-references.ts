@@ -1,12 +1,12 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { idPipe, type ArchivePeriod, type Id } from '../domain/commons'
+import { idPipe } from '../domain/commons'
 import { modelReferencePipe, type ModelReference } from '../domain/model'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices, CoreStorage } from '../services'
-import { getRequired, listRecords, withTransaction, type StorageBoundaryError } from '../storage/helpers'
+import type { CoreServices } from '../services'
+import { buildQueryHandler } from '../utils/query-handler'
+import { getRequired, listRecords, withTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = v.object({ modelId: idPipe })
 export type Input = PipeOutput<typeof inputPipe>
@@ -22,58 +22,38 @@ export function createListModelReferencesQuery(options: CoreServices): Operation
 			const model = await getRequired('model', storage, input.modelId)
 			if (!model.ok) return model
 
-			const references = await listAgentRunProfileModelReferences(storage, model.value.id)
-			return references.ok ? { ok: true, value: sortModelReferences(references.value) } : references
+			const profiles = await listRecords('agent-run-profile', storage)
+			if (!profiles.ok) return profiles
+
+			const references: ModelReference[] = profiles.value.flatMap((profile) =>
+				profile.modelUse.modelId === model.value.id
+					? [
+							{
+								type: 'agent-run-profile' as const,
+								active: profile.archivePeriods.at(-1)?.unarchived !== null,
+								agentRunProfileId: profile.id,
+								agentRunProfileName: profile.name,
+							},
+						]
+					: [],
+			)
+			return {
+				ok: true,
+				value: [...references].sort(
+					(left, right) =>
+						[
+							referenceActiveRank(left) - referenceActiveRank(right),
+							left.agentRunProfileName.localeCompare(right.agentRunProfileName),
+							left.agentRunProfileId.localeCompare(right.agentRunProfileId),
+						].find((value) => value !== 0) ?? 0,
+				),
+			}
 		}),
 	)
 }
 
-async function listAgentRunProfileModelReferences(
-	storage: CoreStorage,
-	modelId: Id,
-): Promise<CoreResult<ModelReference[], StorageBoundaryError>> {
-	const profiles = await listRecords('agent-run-profile', storage)
-	return profiles.ok
-		? {
-				ok: true,
-				value: profiles.value.flatMap((profile) =>
-					profile.modelUse.modelId === modelId
-						? [
-								{
-									type: 'agent-run-profile' as const,
-									active: !isArchived(profile.archivePeriods),
-									agentRunProfileId: profile.id,
-									agentRunProfileName: profile.name,
-								},
-							]
-						: [],
-				),
-			}
-		: profiles
-}
-
-function sortModelReferences(references: ModelReference[]): ModelReference[] {
-	return [...references].sort(compareModelReferences)
-}
-
-function compareModelReferences(left: ModelReference, right: ModelReference): number {
-	return firstNonZero([
-		referenceActiveRank(left) - referenceActiveRank(right),
-		left.agentRunProfileName.localeCompare(right.agentRunProfileName),
-		left.agentRunProfileId.localeCompare(right.agentRunProfileId),
-	])
-}
-
-function firstNonZero(values: number[]): number {
-	return values.find((value) => value !== 0) ?? 0
-}
-
 function referenceActiveRank(reference: Pick<ModelReference, 'active'>): number {
 	return reference.active ? 0 : 1
-}
-
-function isArchived(archivePeriods: ArchivePeriod[]): boolean {
-	return archivePeriods.at(-1)?.unarchived === null
 }
 
 if (import.meta.vitest) {

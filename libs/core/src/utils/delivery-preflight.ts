@@ -14,7 +14,7 @@ import {
 } from '../domain/model-provider'
 import type { Repository } from '../domain/repository'
 import type { InvalidCoreServiceOutputError, ResourceNotFoundError, ResourceArchivedError, StorageOperationFailedError } from '../errors'
-import type { CoreRuntime } from '../runtime'
+import type { CoreRuntime } from './runtime'
 import type { CoreStorage, ResolvableSecretValue } from '../services'
 
 export type {

@@ -3,10 +3,10 @@ import { v, type PipeInput, type PipeOutput } from 'valleyed'
 import { idPipe, paginatedQueryEnvelopePipe, paginatedQueryInputPipe } from '../domain/commons'
 import { planPipe, type Plan } from '../domain/plan'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices, CoreStorage } from '../services'
-import { getRequired, listRecordsPaginated, withTransaction } from '../storage/helpers'
+import type { CoreServices } from '../services'
+import { buildQueryHandler } from '../utils/query-handler'
+import { getRequired, listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = v.merge(v.object({ projectId: idPipe }), paginatedQueryInputPipe)
 export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
@@ -18,25 +18,15 @@ export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createListPlansQuery(options: CoreServices): Operation {
 	return buildQueryHandler('listPlans', inputPipe, (input) =>
-		withTransaction(options, (storage) => listProjectPlanReadModels(storage, input)),
+		withTransaction(options, async (storage) => {
+			const project = await getRequired('project', storage, input.projectId)
+			if (!project.ok) return project
+
+			return await listRecordsPaginated('plan', storage, input, {
+				where: (filter, fields) => filter.eq(fields.projectId, project.value.id),
+			})
+		}),
 	) as Operation
-}
-
-async function listProjectPlanReadModels(
-	storage: CoreStorage,
-	input: PipeOutput<typeof inputPipe>,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const project = await getRequired('project', storage, input.projectId)
-	return project.ok ? listPlansForProject(storage, input, project.value.id) : project
-}
-
-async function listPlansForProject(
-	storage: CoreStorage,
-	input: PipeOutput<typeof inputPipe>,
-	projectId: string,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const plans = await listRecordsPaginated('plan', storage, input, { where: (filter, fields) => filter.eq(fields.projectId, projectId) })
-	return plans
 }
 
 if (import.meta.vitest) {
@@ -44,13 +34,6 @@ if (import.meta.vitest) {
 	const { createTestCoreServices, seedProject, stamp } = await import('../utils/test-helpers')
 
 	describe('listPlans query', () => {
-		registerInputBoundaryTests()
-		registerProjectBoundaryTests()
-		registerPlanReadModelTests()
-		registerStorageFailureTests()
-	})
-
-	function registerInputBoundaryTests() {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.projects.fail.get = true
@@ -62,17 +45,13 @@ if (import.meta.vitest) {
 			})
 			expect(options.transactionCalls()).toBe(0)
 		})
-	}
 
-	function registerProjectBoundaryTests() {
 		it('returns not-found when the target Project does not exist', async () => {
 			const result = await createListPlansQuery(createTestCoreServices())({ projectId: '01k00000000000000000000030' })
 
 			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'project', id: '01k00000000000000000000030' } })
 		})
-	}
 
-	function registerPlanReadModelTests() {
 		it('lists stored Plans for one Project in id-desc order without reading Agent Runs', async () => {
 			const records = seedPlanListRecords()
 			records.options.tx.agentRuns.fail.list = true
@@ -88,16 +67,14 @@ if (import.meta.vitest) {
 				},
 			})
 		})
-	}
 
-	function registerStorageFailureTests() {
 		it('returns storage errors when Plan reads fail', async () => {
 			await expect(createListPlansQuery(planListReadFailure())({ projectId: '01k00000000000000000000030' })).resolves.toEqual({
 				ok: false,
 				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'plan' } },
 			})
 		})
-	}
+	})
 
 	function seedPlanListRecords() {
 		const options = createTestCoreServices()

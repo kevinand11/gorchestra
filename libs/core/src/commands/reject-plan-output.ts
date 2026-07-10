@@ -1,7 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import type { AgentRunEvent } from '../domain/agent-run'
-import { freeFormStringPipe, idPipe, type AuditStamp, type Id } from '../domain/commons'
+import type { AgentRunEvent } from '../domain/agent-run-event'
+import { freeFormStringPipe, idPipe } from '../domain/commons'
 import type {
 	AgentRunPurposeMismatchError,
 	InvalidCoreServiceOutputError,
@@ -12,14 +12,13 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
-import type { CoreStorage } from '../services'
 import type { CommandContext } from './types'
 import { appendAgentRunEvent } from '../utils/agent-runs'
+import { buildCommandHandler } from '../utils/command-handler'
+import { auditStamp, getRequired, withTransaction } from '../utils/command-storage'
 import { getPendingProposalForAgentRunPurpose, proposalRejectedProjectedParts } from '../utils/proposals'
+import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { auditStamp, getRequired, withTransaction } from './utils/storage'
 
 const rejectPlanOutputInputPipe = v.object({ proposalEventId: idPipe, reason: v.nullable(freeFormStringPipe) })
 export type Input = PipeOutput<typeof rejectPlanOutputInputPipe>
@@ -39,47 +38,27 @@ export type Error =
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createRejectPlanOutputCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('rejectPlanOutput', rejectPlanOutputInputPipe, (input, context) =>
-		handleRejectPlanOutput(runtime, input, context),
-	)
-}
+	return buildCommandHandler('rejectPlanOutput', rejectPlanOutputInputPipe, async (input, context) => {
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
 
-async function handleRejectPlanOutput(
-	runtime: CoreRuntime,
-	input: Input,
-	context: CommandContext,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const stamp = auditStamp(runtime.values, context)
-	return stamp.ok ? withTransaction(runtime.services, (storage) => rejectPlanOutput(runtime, storage, input, stamp.value)) : stamp
-}
+		return withTransaction<Result, Exclude<Error, InvalidInputError>>(runtime.services, async (storage) => {
+			const proposal = await getPendingProposalForAgentRunPurpose(storage, input.proposalEventId, 'proposed-plan-output', 'planning')
+			if (!proposal.ok) return proposal
 
-async function rejectPlanOutput(
-	runtime: CoreRuntime,
-	storage: CoreStorage,
-	input: Input,
-	stamp: AuditStamp,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const proposal = await loadRejectablePlanProposal(storage, input.proposalEventId)
-	return proposal.ok
-		? appendAgentRunEvent(runtime, storage, proposal.value.agentRunId, {
+			const { agentRun, proposal: proposalEvent } = proposal.value
+			const plan = await getRequired('plan', storage, agentRun.purpose.planId)
+			if (!plan.ok) return plan
+
+			return appendAgentRunEvent(runtime, storage, proposalEvent.agentRunId, {
 				type: 'proposal-rejected',
-				proposalEventId: proposal.value.id,
-				authorized: stamp,
+				proposalEventId: proposalEvent.id,
+				authorized: stamp.value,
 				reason: input.reason,
-				projectedParts: proposalRejectedProjectedParts(proposal.value.id, input.reason),
+				projectedParts: proposalRejectedProjectedParts(proposalEvent.id, input.reason),
 			})
-		: proposal
-}
-
-async function loadRejectablePlanProposal(
-	storage: CoreStorage,
-	proposalEventId: Id,
-): Promise<CoreResult<AgentRunEvent, Exclude<Error, InvalidInputError>>> {
-	const proposal = await getPendingProposalForAgentRunPurpose(storage, proposalEventId, 'proposed-plan-output', 'planning')
-	if (!proposal.ok) return proposal
-
-	const plan = await getRequired('plan', storage, proposal.value.agentRun.purpose.planId)
-	return plan.ok ? { ok: true, value: proposal.value.proposal } : plan
+		})
+	})
 }
 
 if (import.meta.vitest) {

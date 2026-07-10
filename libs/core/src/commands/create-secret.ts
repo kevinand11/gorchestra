@@ -4,10 +4,10 @@ import type { CommandContext } from './types'
 import { nonEmptyTrimmedStringPipe } from '../domain/commons'
 import { secretValueRefPipe, type Secret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, InvariantViolationError, StorageOperationFailedError } from '../errors'
-import type { CoreRuntime } from '../runtime'
+import { buildCommandHandler } from '../utils/command-handler'
+import { auditStamp, createRecordValue, nextId, withTransaction } from '../utils/command-storage'
+import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { auditStamp, createRecordValue, nextId, withTransaction } from './utils/storage'
 
 const createSecretInputPipe = v.object({ name: nonEmptyTrimmedStringPipe, valueRef: secretValueRefPipe })
 export type Input = PipeOutput<typeof createSecretInputPipe>

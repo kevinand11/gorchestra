@@ -1,17 +1,18 @@
-import { v, type PipeOutput } from 'valleyed'
+import type { PipeOutput } from 'valleyed'
 
 import type { DeliveryWorkOperation } from './action'
 import { auditStampPipe, idPipe, nonEmptyTrimmedStringPipe, nonNegativeIntegerPipe, type Id } from './commons'
 import { instructionSourcePipe } from './plan'
+import { coreSchema, schemaToPipe } from '../utils/storage/schema'
 
-export const slicePipe = v.object({
-	id: idPipe,
-	deliveryId: idPipe,
-	order: nonNegativeIntegerPipe,
-	title: nonEmptyTrimmedStringPipe,
-	instruction: instructionSourcePipe,
-	accepted: auditStampPipe,
-})
+export const sliceSchema = coreSchema('slices')
+	.field('deliveryId', idPipe)
+	.field('order', nonNegativeIntegerPipe)
+	.field('title', nonEmptyTrimmedStringPipe)
+	.field('instruction', instructionSourcePipe)
+	.field('accepted', auditStampPipe)
+	.build()
+export const slicePipe = schemaToPipe(sliceSchema)
 export type Slice = PipeOutput<typeof slicePipe>
 
 /**

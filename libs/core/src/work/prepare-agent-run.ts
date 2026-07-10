@@ -1,7 +1,6 @@
 import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
 import type { WorkContext } from './types'
-import { buildWorkHandler } from './utils/handler'
 import type { AgentRun } from '../domain/agent-run'
 import { runtimeRequirementKey, type AgentRunRuntimeRequirement } from '../domain/agent-run-runtime'
 import { idPipe, type Id } from '../domain/commons'
@@ -14,8 +13,12 @@ import type {
 	SecretResolutionFailedError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
-import { managedSandboxProviderForConfig, type SandboxProviderResolutionError } from '../runtime/sandboxes'
+import type { RawSandboxRunCommandInput, SandboxCommandOutput } from '../services'
+import { globalRuntimeRequirements } from '../utils/agent-run-runtime-requirements'
+import { appendAgentRunEvent } from '../utils/agent-runs'
+import { agentRunSandboxPrepared } from '../utils/agent-runs'
+import type { CoreRuntime } from '../utils/runtime'
+import { managedSandboxProviderForConfig, type SandboxProviderResolutionError } from '../utils/runtime/sandboxes'
 import {
 	managedSandboxFileApiReadinessDirectory,
 	verifyManagedSandboxFileApiReadiness,
@@ -23,15 +26,12 @@ import {
 	type ManagedSandboxError,
 	type ManagedSandboxFileApiReadinessError,
 	type ManagedSandboxProvider,
-} from '../runtime/sandboxes/managed'
-import type { RawSandboxRunCommandInput, SandboxCommandOutput } from '../services'
-import { getRequired, updateRecord } from '../storage/helpers'
-import { globalRuntimeRequirements } from '../utils/agent-run-runtime-requirements'
-import { appendAgentRunEvent } from '../utils/agent-runs'
-import { agentRunSandboxPrepared } from '../utils/agent-runs'
+} from '../utils/runtime/sandboxes/managed'
 import { runtimeRecord } from '../utils/runtime-values'
 import { resolveActiveSecretValues } from '../utils/secrets'
+import { getRequired, updateRecord } from '../utils/storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
+import { buildWorkHandler } from '../utils/work-handler'
 
 const inputPipe = v.object({ agentRunId: idPipe })
 type ParsedInput = PipeOutput<typeof inputPipe>

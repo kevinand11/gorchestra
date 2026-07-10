@@ -1,6 +1,6 @@
 import type { Action, ActionResult } from '../../../domain/action'
 import type { Delivery } from '../../../domain/delivery'
-import type { Link } from '../../../domain/graph'
+import type { Link } from '../../../domain/link'
 import type { ReviewSurface, ReviewSurfaceReplaced } from '../../../domain/review-surface'
 import type { Slice } from '../../../domain/slice'
 import type {

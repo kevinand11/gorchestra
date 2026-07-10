@@ -1,7 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { AgentRun } from '../domain/agent-run'
-import { idPipe, type AuditStamp, type Id } from '../domain/commons'
+import { idPipe } from '../domain/commons'
 import type { Plan } from '../domain/plan'
 import type {
 	AgentRunTurnActiveError,
@@ -12,14 +12,13 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
-import type { CoreStorage } from '../services'
 import type { CommandContext } from './types'
-import { notFound } from '../storage/helpers'
 import { completeAgentRunByIdAndAcceptSandboxRelease, requireAgentRunIdle } from '../utils/agent-runs'
+import { buildCommandHandler } from '../utils/command-handler'
+import { getRequired, updateRecordValue, withAuditStampTransaction } from '../utils/command-storage'
+import type { CoreRuntime } from '../utils/runtime'
+import { notFound } from '../utils/storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { getRequired, updateRecordValue, withAuditStampTransaction } from './utils/storage'
 
 const closePlanInputPipe = v.object({ projectId: idPipe, planId: idPipe })
 export type Input = PipeOutput<typeof closePlanInputPipe>
@@ -40,60 +39,36 @@ type DispatchedResult = { result: Result; dispatchMarker: string | null }
 
 export function createClosePlanCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('closePlan', closePlanInputPipe, async (input, context) => {
-		const written = await withAuditStampTransaction(runtime, context, (storage, stamp) => closePlan(runtime, storage, input, stamp))
+		const written = await withAuditStampTransaction<DispatchedResult, Exclude<Error, InvalidInputError>>(
+			runtime,
+			context,
+			async (storage, stamp) => {
+				const plan = await getRequired('plan', storage, input.planId)
+				if (!plan.ok) return plan
+				if (plan.value.projectId !== input.projectId) return notFound('plan', input.planId)
+				if (plan.value.closed !== null) return { ok: false, error: { type: 'plan-closed', planId: plan.value.id } }
+
+				const idle = await requireAgentRunIdle(storage, plan.value.agentRunId)
+				if (!idle.ok) return idle
+
+				const closedPlan = await updateRecordValue('plan', storage, plan.value.id, { closed: stamp })
+				if (!closedPlan.ok) return closedPlan
+
+				const completed = await completeAgentRunByIdAndAcceptSandboxRelease(
+					storage,
+					runtime.services.dispatcher,
+					closedPlan.value.agentRunId,
+					{ at: stamp.at },
+				)
+				return completed.ok
+					? { ok: true, value: { result: closedPlan.value, dispatchMarker: completed.value.dispatchMarker } }
+					: completed
+			},
+		)
 		if (!written.ok) return written
 		if (written.value.dispatchMarker !== null) runtime.services.dispatcher.ready(written.value.dispatchMarker)
 		return { ok: true, value: written.value.result }
 	})
-}
-
-async function closePlan(
-	runtime: CoreRuntime,
-	storage: CoreStorage,
-	input: Input,
-	stamp: AuditStamp,
-): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
-	const plan = await getOpenProjectPlan(storage, input)
-	if (!plan.ok) return plan
-
-	const idle = await requireAgentRunIdle(storage, plan.value.agentRunId)
-	return idle.ok ? writeClosedPlan(runtime, storage, plan.value, stamp) : idle
-}
-
-async function getOpenProjectPlan(
-	storage: CoreStorage,
-	input: Input,
-): Promise<CoreResult<Plan, ResourceNotFoundError | StorageOperationFailedError | InvalidCoreServiceOutputError | PlanClosedError>> {
-	const plan = await getRequired('plan', storage, input.planId)
-	if (!plan.ok) return plan
-	if (plan.value.projectId !== input.projectId) return notFound('plan', input.planId)
-	return plan.value.closed === null ? { ok: true, value: plan.value } : planClosed(plan.value.id)
-}
-
-async function writeClosedPlan(
-	runtime: CoreRuntime,
-	storage: CoreStorage,
-	plan: Plan,
-	stamp: AuditStamp,
-): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
-	const closedPlan = await updateRecordValue('plan', storage, plan.id, { closed: stamp })
-	return closedPlan.ok ? completePlanningAgentRun(runtime, storage, closedPlan.value, stamp) : closedPlan
-}
-
-async function completePlanningAgentRun(
-	runtime: CoreRuntime,
-	storage: CoreStorage,
-	plan: Plan,
-	stamp: AuditStamp,
-): Promise<CoreResult<DispatchedResult, Exclude<Error, InvalidInputError>>> {
-	const completed = await completeAgentRunByIdAndAcceptSandboxRelease(storage, runtime.services.dispatcher, plan.agentRunId, {
-		at: stamp.at,
-	})
-	return completed.ok ? { ok: true, value: { result: plan, dispatchMarker: completed.value.dispatchMarker } } : completed
-}
-
-function planClosed(planId: Id): CoreResult<never, PlanClosedError> {
-	return { ok: false, error: { type: 'plan-closed', planId } }
 }
 
 if (import.meta.vitest) {

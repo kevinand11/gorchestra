@@ -1,16 +1,12 @@
-import { v, type PipeInput, type PipeOutput } from 'valleyed'
+import { v, type PipeInput } from 'valleyed'
 
 import type { CommandContext } from './types'
-import { idPipe, type AuditStamp } from '../domain/commons'
-import { deliveryConfigPipe, type DeliveryConfigRecord } from '../domain/config'
+import { idPipe } from '../domain/commons'
+import { deliveryConfigPipe } from '../domain/config'
 import type { Delivery, DeliveryWorkState } from '../domain/delivery'
 import type { DeliveryWorkStateMismatchError, InvalidInputError, InvariantViolationError } from '../errors'
-import type { CoreRuntime } from '../runtime'
-import type { CoreStorage } from '../services'
-import { buildDeliveryContext, getDeliveryState } from '../utils/delivery-context'
-import type { Result as CoreResult } from '../utils/types'
-import type { ConfigCommandReferenceError, ConfigCommandStorageError } from './utils/errors'
-import { buildCommandHandler } from './utils/handler'
+import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
+import { buildCommandHandler } from '../utils/command-handler'
 import {
 	agentRunProfileIdsFromDeliveryConfigRecord,
 	auditStamp,
@@ -19,11 +15,13 @@ import {
 	updateRecordValue,
 	validateSelectableAgentRunProfiles,
 	withTransaction,
-} from './utils/storage'
+} from '../utils/command-storage'
+import { buildDeliveryContext, getDeliveryState } from '../utils/delivery-context'
+import type { CoreRuntime } from '../utils/runtime'
+import type { Result as CoreResult } from '../utils/types'
 
 const configureDeliveryInputPipe = v.object({ deliveryId: idPipe, config: deliveryConfigPipe })
 export type Input = PipeInput<typeof configureDeliveryInputPipe>
-type ValidatedInput = PipeOutput<typeof configureDeliveryInputPipe>
 
 export type Result = Delivery
 export type Error =
@@ -37,62 +35,27 @@ export type Error =
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createConfigureDeliveryCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('configureDelivery', configureDeliveryInputPipe, (input, context) =>
-		handleConfigureDelivery(runtime, input, context),
-	)
-}
+	return buildCommandHandler('configureDelivery', configureDeliveryInputPipe, async (input, context) => {
+		const stampResult = auditStamp(runtime.values, context)
+		if (!stampResult.ok) return stampResult
 
-async function handleConfigureDelivery(
-	runtime: CoreRuntime,
-	input: ValidatedInput,
-	context: CommandContext,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const stampResult = auditStamp(runtime.values, context)
-	if (!stampResult.ok) return stampResult
+		return withTransaction<Result, Exclude<Error, InvalidInputError>>(runtime.services, async (storage) => {
+			const deliveryContext = await buildDeliveryContext(storage, input.deliveryId)
+			if (!deliveryContext.ok) return deliveryContext
 
-	return withTransaction(runtime.services, (storage) => writeDeliveryConfig(storage, input, stampResult.value))
-}
+			const deliveryState = getDeliveryState(deliveryContext.value)
+			if (!deliveryState.ok) return deliveryState
+			if (deliveryState.value.type === 'closed') {
+				return deliveryWorkStateMismatch(input.deliveryId, openDeliveryStateTypes, deliveryState.value)
+			}
 
-async function writeDeliveryConfig(
-	storage: CoreStorage,
-	input: ValidatedInput,
-	stamp: AuditStamp,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const deliveryResult = await requireOpenDelivery(storage, input.deliveryId)
-	if (!deliveryResult.ok) return deliveryResult
+			const config = normalizeDeliveryConfigRecord(input.config, stampResult.value)
+			const profileValidation = await validateSelectableAgentRunProfiles(storage, agentRunProfileIdsFromDeliveryConfigRecord(config))
+			if (!profileValidation.ok) return profileValidation
 
-	const config = normalizeDeliveryConfigRecord(input.config, stamp)
-	const profileValidation = await validateSelectableAgentRunProfiles(storage, agentRunProfileIdsFromDeliveryConfigRecord(config))
-	if (!profileValidation.ok) return profileValidation
-
-	return writeConfiguredDelivery(storage, deliveryResult.value, config)
-}
-
-async function requireOpenDelivery(
-	storage: CoreStorage,
-	deliveryId: string,
-): Promise<CoreResult<Delivery, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await buildDeliveryContext(storage, deliveryId)
-	if (!deliveryContext.ok) return deliveryContext
-
-	const deliveryState = getDeliveryState(deliveryContext.value)
-	if (!deliveryState.ok) return deliveryState
-
-	return deliveryState.value.type === 'closed'
-		? closedDeliveryMismatch(deliveryId, deliveryState.value)
-		: { ok: true, value: deliveryContext.value.delivery }
-}
-
-async function writeConfiguredDelivery(
-	storage: CoreStorage,
-	existing: Delivery,
-	config: DeliveryConfigRecord,
-): Promise<CoreResult<Delivery, Exclude<Error, InvalidInputError>>> {
-	return updateRecordValue('delivery', storage, existing.id, { config })
-}
-
-function closedDeliveryMismatch(deliveryId: string, actual: DeliveryWorkState): CoreResult<never, DeliveryWorkStateMismatchError> {
-	return deliveryWorkStateMismatch(deliveryId, openDeliveryStateTypes, actual)
+			return updateRecordValue('delivery', storage, deliveryContext.value.delivery.id, { config })
+		})
+	})
 }
 
 const openDeliveryStateTypes: Exclude<DeliveryWorkState['type'], 'closed'>[] = [

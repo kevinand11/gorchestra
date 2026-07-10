@@ -1,12 +1,12 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { listedAgentRunProfilePipe, type AgentRunProfile } from '../domain/agent-run-profile'
-import { idPipe, type ArchivePeriod } from '../domain/commons'
+import { listedAgentRunProfilePipe } from '../domain/agent-run-profile'
+import { idPipe } from '../domain/commons'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreServices } from '../services'
-import { getRequired, withTransaction } from '../storage/helpers'
+import { buildQueryHandler } from '../utils/query-handler'
+import { getRequired, withTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = v.object({ agentRunProfileId: idPipe })
 export type Input = PipeOutput<typeof inputPipe>
@@ -20,24 +20,21 @@ export function createGetAgentRunProfileQuery(options: CoreServices): Operation 
 	return buildQueryHandler('getAgentRunProfile', inputPipe, (input) =>
 		withTransaction(options, async (storage) => {
 			const profile = await getRequired('agent-run-profile', storage, input.agentRunProfileId)
-			return profile.ok ? { ok: true, value: listedAgentRunProfile(profile.value) } : profile
+			if (!profile.ok) return profile
+
+			return {
+				ok: true,
+				value: {
+					id: profile.value.id,
+					name: profile.value.name,
+					modelUse: profile.value.modelUse,
+					runtimeRequirements: profile.value.runtimeRequirements,
+					sandboxConfig: profile.value.sandboxConfig,
+					created: profile.value.created,
+					updated: profile.value.updated,
+					archived: profile.value.archivePeriods.at(-1)?.unarchived === null,
+				},
+			}
 		}),
 	)
-}
-
-function listedAgentRunProfile(profile: AgentRunProfile): Result {
-	return {
-		id: profile.id,
-		name: profile.name,
-		modelUse: profile.modelUse,
-		runtimeRequirements: profile.runtimeRequirements,
-		sandboxConfig: profile.sandboxConfig,
-		created: profile.created,
-		updated: profile.updated,
-		archived: isArchived(profile.archivePeriods),
-	}
-}
-
-function isArchived(archivePeriods: ArchivePeriod[]): boolean {
-	return archivePeriods.at(-1)?.unarchived === null
 }

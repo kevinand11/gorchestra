@@ -1,6 +1,5 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { validateSourceControlProject } from '../commands/utils/storage'
 import { idPipe } from '../domain/commons'
 import { repositoryPipe, type Repository } from '../domain/repository'
 import type {
@@ -11,9 +10,9 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreServices } from '../services'
-import { getRequired, notFound, withTransaction } from '../storage/helpers'
+import { buildQueryHandler } from '../utils/query-handler'
+import { getRequired, notFound, withTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = v.object({ projectId: idPipe, repositoryId: idPipe })
 export type Input = PipeOutput<typeof inputPipe>
@@ -30,15 +29,26 @@ export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createGetRepositoryQuery(options: CoreServices): Operation {
 	return buildQueryHandler('getRepository', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
-			const project = await validateSourceControlProject(storage, input.projectId)
-			if (!project.ok) return project
+		withTransaction<Result, Exclude<Error, InvalidInputError>>(options, async (storage) => {
+			const projectResult = await getRequired('project', storage, input.projectId)
+			if (!projectResult.ok) return projectResult
+			if (projectResult.value.source.type !== 'source-control') {
+				return {
+					ok: false,
+					error: {
+						type: 'project-source-type-mismatch',
+						projectId: input.projectId,
+						expected: 'source-control',
+						actual: projectResult.value.source.type,
+					},
+				}
+			}
 
-			const repository = await getRequired('repository', storage, input.repositoryId)
-			if (!repository.ok) return repository
+			const repositoryResult = await getRequired('repository', storage, input.repositoryId)
+			if (!repositoryResult.ok) return repositoryResult
 
-			return repository.value.projectId === project.value.id
-				? { ok: true, value: repository.value }
+			return repositoryResult.value.projectId === projectResult.value.id
+				? { ok: true, value: repositoryResult.value }
 				: notFound('repository', input.repositoryId)
 		}),
 	)

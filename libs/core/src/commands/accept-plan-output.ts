@@ -1,18 +1,14 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
-import type { AgentRun, AgentRunEvent } from '../domain/agent-run'
+import type { AgentRun } from '../domain/agent-run'
+import type { AgentRunEvent } from '../domain/agent-run-event'
 import { idPipe, type AuditStamp, type Id } from '../domain/commons'
 import type { Delivery } from '../domain/delivery'
-import type { Link, LinkDef } from '../domain/graph'
-import type { Memory, MemoryRevision } from '../domain/memory'
-import type {
-	PlanOutputProposal,
-	ProposedChildMemoryCreation,
-	ProposedDelivery,
-	ProposedMemoryCreation,
-	ProposedMemoryRevision,
-} from '../domain/plan'
+import type { Link, LinkDef } from '../domain/link'
+import type { Memory } from '../domain/memory'
+import type { MemoryRevision } from '../domain/memory-revision'
+import type { PlanOutputProposal, ProposedChildMemoryCreation, ProposedDelivery, ProposedMemoryCreation } from '../domain/plan'
 import type { Slice } from '../domain/slice'
 import type {
 	AgentRunPurposeMismatchError,
@@ -25,13 +21,13 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
 import type { CoreStorage } from '../services'
 import { appendAgentRunEvent } from '../utils/agent-runs'
+import { buildCommandHandler } from '../utils/command-handler'
+import { auditStamp, createRecordValue, getRequired, nextId, updateRecordValue, withTransaction } from '../utils/command-storage'
 import { getPendingProposalForAgentRunPurpose, proposalAcceptedProjectedParts } from '../utils/proposals'
+import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { auditStamp, createRecordValue, getRequired, nextId, updateRecordValue, withTransaction } from './utils/storage'
 
 const acceptPlanOutputInputPipe = v.object({ proposalEventId: idPipe })
 export type Input = PipeOutput<typeof acceptPlanOutputInputPipe>
@@ -67,39 +63,29 @@ type InvalidPlanOutputFields = InvalidPlanOutputError extends infer TError
 	: never
 
 export function createAcceptPlanOutputCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('acceptPlanOutput', acceptPlanOutputInputPipe, (input, context) =>
-		handleAcceptPlanOutput(runtime, input, context),
-	)
-}
+	return buildCommandHandler('acceptPlanOutput', acceptPlanOutputInputPipe, async (input, context) => {
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
 
-async function handleAcceptPlanOutput(
-	runtime: CoreRuntime,
-	input: Input,
-	context: CommandContext,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const stamp = auditStamp(runtime.values, context)
-	return stamp.ok ? withTransaction(runtime.services, (storage) => acceptPlanOutput(runtime, storage, input, stamp.value)) : stamp
-}
+		return withTransaction<Result, Exclude<Error, InvalidInputError>>(runtime.services, async (storage) => {
+			const proposal = await getPendingProposalForAgentRunPurpose(storage, input.proposalEventId, 'proposed-plan-output', 'planning')
+			if (!proposal.ok) return proposal
 
-async function acceptPlanOutput(
-	runtime: CoreRuntime,
-	storage: CoreStorage,
-	input: Input,
-	stamp: AuditStamp,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const proposal = await getPendingProposalForAgentRunPurpose(storage, input.proposalEventId, 'proposed-plan-output', 'planning')
-	return proposal.ok ? acceptPlanProposal(runtime, storage, proposal.value.proposal, proposal.value.agentRun, stamp) : proposal
-}
+			const plan = await getRequired('plan', storage, proposal.value.agentRun.purpose.planId)
+			if (!plan.ok) return plan
 
-async function acceptPlanProposal(
-	runtime: CoreRuntime,
-	storage: CoreStorage,
-	proposal: AgentRunEvent & { body: Extract<AgentRunEvent['body'], { type: 'proposed-plan-output' }> },
-	agentRun: PlanningAgentRun,
-	stamp: AuditStamp,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const context = await planProposalContext(storage, proposal, agentRun)
-	return context.ok ? materializeAcceptedPlanProposal(runtime, storage, proposal, context.value, stamp) : context
+			const proposalContext = {
+				agentRun: proposal.value.agentRun,
+				planId: plan.value.id,
+				projectId: plan.value.projectId,
+				output: proposal.value.proposal.body.output,
+			}
+			const validatedContext = await validatePlanProposalContext(storage, proposalContext)
+			return validatedContext.ok
+				? materializeAcceptedPlanProposal(runtime, storage, proposal.value.proposal, validatedContext.value, stamp.value)
+				: validatedContext
+		})
+	})
 }
 
 interface PlanProposalContext {
@@ -111,29 +97,17 @@ interface PlanProposalContext {
 	memoryRevisionTargets: Map<Id, Memory>
 }
 
-async function planProposalContext(
-	storage: CoreStorage,
-	proposal: AgentRunEvent & { body: Extract<AgentRunEvent['body'], { type: 'proposed-plan-output' }> },
-	agentRun: PlanningAgentRun,
-): Promise<CoreResult<PlanProposalContext, Exclude<Error, InvalidInputError>>> {
-	const plan = await getRequired('plan', storage, agentRun.purpose.planId)
-	if (!plan.ok) return plan
-
-	const context = { agentRun, planId: plan.value.id, projectId: plan.value.projectId, output: proposal.body.output }
-	return validatePlanOutputStorage(storage, context)
-}
-
-async function validatePlanOutputStorage(
+async function validatePlanProposalContext(
 	storage: CoreStorage,
 	context: Omit<PlanProposalContext, 'existingDeliveryDependencies' | 'memoryRevisionTargets'>,
 ): Promise<CoreResult<PlanProposalContext, Exclude<Error, InvalidInputError>>> {
-	const existingDeliveryDependencies = await validateDeliveryStorage(storage, context)
+	const existingDeliveryDependencies = await validatePlanDeliveryReferences(storage, context)
 	if (!existingDeliveryDependencies.ok) return existingDeliveryDependencies
 
-	const memoryParents = await validateMemoryCreationParents(storage, context.output.proposedMemoryCreations)
+	const memoryParents = await validatePlanMemoryParents(storage, context.output.proposedMemoryCreations)
 	if (!memoryParents.ok) return memoryParents
 
-	const memoryRevisionTargets = await validateMemoryRevisionTargets(storage, context.output.proposedMemoryRevisions)
+	const memoryRevisionTargets = await validatePlanMemoryRevisions(storage, context.output.proposedMemoryRevisions)
 	return memoryRevisionTargets.ok
 		? {
 				ok: true,
@@ -146,50 +120,32 @@ async function validatePlanOutputStorage(
 		: memoryRevisionTargets
 }
 
-async function validateDeliveryStorage(
+async function validatePlanDeliveryReferences(
 	storage: CoreStorage,
 	context: Omit<PlanProposalContext, 'existingDeliveryDependencies' | 'memoryRevisionTargets'>,
 ): Promise<CoreResult<Map<Id, Delivery>, Exclude<Error, InvalidInputError>>> {
-	const existingDeliveryDependencies = new Map<Id, Delivery>()
-	for (const [deliveryKey, delivery] of sortedEntries(context.output.proposedDeliveries)) {
-		const target = await validateDeliveryTarget(storage, context.projectId, deliveryKey, delivery)
-		if (!target.ok) return target
-
-		const dependencies = await validateExistingDeliveryDependencies(storage, delivery)
-		if (!dependencies.ok) return dependencies
-		for (const dependency of dependencies.value.values()) existingDeliveryDependencies.set(dependency.id, dependency)
-	}
-	return { ok: true, value: existingDeliveryDependencies }
-}
-
-async function validateDeliveryTarget(
-	storage: CoreStorage,
-	projectId: Id,
-	proposedDeliveryKey: string,
-	delivery: ProposedDelivery,
-): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
-	const repository = await getRequired('repository', storage, delivery.target.repositoryId)
-	if (!repository.ok) return repository
-
-	return repository.value.projectId === projectId
-		? { ok: true, value: undefined }
-		: invalidPlanOutput({ reason: 'repository-project-mismatch', proposedDeliveryKey, repositoryId: repository.value.id })
-}
-
-async function validateExistingDeliveryDependencies(
-	storage: CoreStorage,
-	delivery: ProposedDelivery,
-): Promise<CoreResult<Map<Id, Delivery>, Exclude<Error, InvalidInputError>>> {
 	const dependencies = new Map<Id, Delivery>()
-	for (const deliveryId of sortedKeys(delivery.dependsOnDeliveryIds)) {
-		const dependency = await getRequired('delivery', storage, deliveryId)
-		if (!dependency.ok) return dependency
-		dependencies.set(dependency.value.id, dependency.value)
+	for (const [deliveryKey, delivery] of sortedEntries(context.output.proposedDeliveries)) {
+		const repository = await getRequired('repository', storage, delivery.target.repositoryId)
+		if (!repository.ok) return repository
+		if (repository.value.projectId !== context.projectId) {
+			return invalidPlanOutput({
+				reason: 'repository-project-mismatch',
+				proposedDeliveryKey: deliveryKey,
+				repositoryId: repository.value.id,
+			})
+		}
+
+		for (const deliveryId of sortedKeys(delivery.dependsOnDeliveryIds)) {
+			const dependency = await getRequired('delivery', storage, deliveryId)
+			if (!dependency.ok) return dependency
+			dependencies.set(dependency.value.id, dependency.value)
+		}
 	}
 	return { ok: true, value: dependencies }
 }
 
-async function validateMemoryCreationParents(
+async function validatePlanMemoryParents(
 	storage: CoreStorage,
 	creations: PlanOutputProposal['proposedMemoryCreations'],
 ): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
@@ -201,7 +157,7 @@ async function validateMemoryCreationParents(
 	return { ok: true, value: undefined }
 }
 
-async function validateMemoryRevisionTargets(
+async function validatePlanMemoryRevisions(
 	storage: CoreStorage,
 	revisions: PlanOutputProposal['proposedMemoryRevisions'],
 ): Promise<CoreResult<Map<Id, Memory>, Exclude<Error, InvalidInputError>>> {
@@ -209,32 +165,20 @@ async function validateMemoryRevisionTargets(
 	for (const [memoryId, revision] of sortedEntries(revisions)) {
 		const memory = await getRequired('memory', storage, memoryId)
 		if (!memory.ok) return memory
-
-		const freshness = validateExpectedRevision(memory.value, revision)
-		if (!freshness.ok) return freshness
-		const changed = validateChangedRevision(memory.value, revision)
-		if (!changed.ok) return changed
-
+		if (memory.value.currentRevision.id !== revision.expectedCurrentRevisionId) {
+			return invalidPlanOutput({
+				reason: 'stale-memory-revision',
+				memoryId: memory.value.id,
+				expectedCurrentRevisionId: revision.expectedCurrentRevisionId,
+				actualCurrentRevisionId: memory.value.currentRevision.id,
+			})
+		}
+		if (memory.value.currentRevision.title === revision.title && memory.value.currentRevision.body === revision.body) {
+			return invalidPlanOutput({ reason: 'noop-memory-revision', memoryId: memory.value.id })
+		}
 		targets.set(memoryId, memory.value)
 	}
 	return { ok: true, value: targets }
-}
-
-function validateExpectedRevision(memory: Memory, revision: ProposedMemoryRevision): CoreResult<void, InvalidPlanOutputError> {
-	return memory.currentRevision.id === revision.expectedCurrentRevisionId
-		? { ok: true, value: undefined }
-		: invalidPlanOutput({
-				reason: 'stale-memory-revision',
-				memoryId: memory.id,
-				expectedCurrentRevisionId: revision.expectedCurrentRevisionId,
-				actualCurrentRevisionId: memory.currentRevision.id,
-			})
-}
-
-function validateChangedRevision(memory: Memory, revision: ProposedMemoryRevision): CoreResult<void, InvalidPlanOutputError> {
-	return memory.currentRevision.title !== revision.title || memory.currentRevision.body !== revision.body
-		? { ok: true, value: undefined }
-		: invalidPlanOutput({ reason: 'noop-memory-revision', memoryId: memory.id })
 }
 
 interface MaterializedPlanOutput {
@@ -253,11 +197,26 @@ async function materializeAcceptedPlanProposal(
 	context: PlanProposalContext,
 	stamp: AuditStamp,
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const materialized = materializedPlanOutput(runtime, context, stamp)
+	const materialized = new PlanOutputBuilder(runtime, context, stamp).build()
 	if (!materialized.ok) return materialized
 
-	const stored = await storeMaterializedPlanOutput(storage, materialized.value)
-	if (!stored.ok) return stored
+	const deliveryResult = await storeRecordSet('delivery', storage, materialized.value.deliveries)
+	const sliceResult = await storeRecordSet('slice', storage, materialized.value.slices)
+	const memoryRevisionResult = await storeRecordSet('memory-revision', storage, materialized.value.memoryRevisions)
+	const memoryResult = await storeRecordSet('memory', storage, materialized.value.memories)
+	let memoryUpdateResult: CoreResult<void, Exclude<Error, InvalidInputError>> = { ok: true, value: undefined }
+	for (const memory of materialized.value.memoryUpdates) {
+		const stored = await updateRecordValue('memory', storage, memory.id, { currentRevision: memory.currentRevision })
+		if (!stored.ok) {
+			memoryUpdateResult = stored
+			break
+		}
+	}
+	const linkResult = await storeRecordSet('link', storage, materialized.value.links)
+	const storageFailure = [deliveryResult, sliceResult, memoryRevisionResult, memoryResult, memoryUpdateResult, linkResult].find(
+		(result) => !result.ok,
+	)
+	if (storageFailure !== undefined && !storageFailure.ok) return storageFailure
 
 	const acceptedEvent = await appendAgentRunEvent(runtime, storage, proposal.agentRunId, {
 		type: 'proposal-accepted',
@@ -265,26 +224,28 @@ async function materializeAcceptedPlanProposal(
 		authorized: stamp,
 		materialized: {
 			type: 'plan-output',
-			deliveryIds: stored.value.deliveries.map((record) => record.id),
-			sliceIds: stored.value.slices.map((record) => record.id),
-			memoryIds: stored.value.memories.map((record) => record.id),
-			memoryRevisionIds: stored.value.memoryRevisions.map((record) => record.id),
-			linkIds: stored.value.links.map((record) => record.id),
+			deliveryIds: materialized.value.deliveries.map((record) => record.id),
+			sliceIds: materialized.value.slices.map((record) => record.id),
+			memoryIds: materialized.value.memories.map((record) => record.id),
+			memoryRevisionIds: materialized.value.memoryRevisions.map((record) => record.id),
+			linkIds: materialized.value.links.map((record) => record.id),
 		},
 		projectedParts: proposalAcceptedProjectedParts(proposal.id),
 	})
 	return acceptedEvent.ok
-		? { ok: true, value: { ...stored.value, proposalEvent: proposal, acceptedEvent: acceptedEvent.value } }
+		? {
+				ok: true,
+				value: {
+					deliveries: materialized.value.deliveries,
+					slices: materialized.value.slices,
+					memories: materialized.value.memories,
+					memoryRevisions: materialized.value.memoryRevisions,
+					links: materialized.value.links,
+					proposalEvent: proposal,
+					acceptedEvent: acceptedEvent.value,
+				},
+			}
 		: acceptedEvent
-}
-
-function materializedPlanOutput(
-	runtime: CoreRuntime,
-	context: PlanProposalContext,
-	stamp: AuditStamp,
-): CoreResult<MaterializedPlanOutput, InvalidCoreServiceOutputError | InvalidPlanOutputError> {
-	const builder = new PlanOutputBuilder(runtime, context, stamp)
-	return builder.build()
 }
 
 class PlanOutputBuilder {
@@ -381,7 +342,12 @@ class PlanOutputBuilder {
 		if (!revisionId.ok) return revisionId
 
 		const revision = memoryRevision(revisionId.value, memoryId.value, creation.title, creation.body, this.stamp)
-		const memory = memoryRecord(memoryId.value, parentId, revision, this.stamp)
+		const memory: Memory = {
+			id: memoryId.value,
+			parentId,
+			currentRevision: currentRevision(revision),
+			created: this.stamp,
+		}
 		this.#memoryRevisions.push(revision)
 		this.#memories.push(memory)
 
@@ -515,46 +481,8 @@ function memoryRevision(id: Id, memoryId: Id, title: string, body: string, stamp
 	return { id, memoryId, title, body, created: stamp }
 }
 
-function memoryRecord(id: Id, parentId: Id | null, revision: MemoryRevision, stamp: AuditStamp): Memory {
-	return { id, parentId, currentRevision: currentRevision(revision), created: stamp }
-}
-
 function currentRevision(revision: MemoryRevision): Memory['currentRevision'] {
 	return { id: revision.id, title: revision.title, body: revision.body, created: revision.created }
-}
-
-async function storeMaterializedPlanOutput(
-	storage: CoreStorage,
-	output: MaterializedPlanOutput,
-): Promise<CoreResult<Omit<MaterializedPlanOutput, 'memoryUpdates'>, Exclude<Error, InvalidInputError>>> {
-	const stored = await storeMaterializedRecords(storage, output)
-	return stored.ok
-		? {
-				ok: true,
-				value: {
-					deliveries: output.deliveries,
-					slices: output.slices,
-					memories: output.memories,
-					memoryRevisions: output.memoryRevisions,
-					links: output.links,
-				},
-			}
-		: stored
-}
-
-async function storeMaterializedRecords(
-	storage: CoreStorage,
-	output: MaterializedPlanOutput,
-): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
-	const results = [
-		await storeRecordSet('delivery', storage, output.deliveries),
-		await storeRecordSet('slice', storage, output.slices),
-		await storeRecordSet('memory-revision', storage, output.memoryRevisions),
-		await storeRecordSet('memory', storage, output.memories),
-		await updateMemoryRecords(storage, output.memoryUpdates),
-		await storeRecordSet('link', storage, output.links),
-	]
-	return firstFailure(results) ?? { ok: true, value: undefined }
 }
 
 async function storeRecordSet<TResource extends 'delivery' | 'slice' | 'memory' | 'memory-revision' | 'link'>(
@@ -567,18 +495,6 @@ async function storeRecordSet<TResource extends 'delivery' | 'slice' | 'memory' 
 		if (!stored.ok) return stored
 	}
 	return { ok: true, value: undefined }
-}
-
-async function updateMemoryRecords(storage: CoreStorage, memories: Memory[]): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
-	for (const memory of memories) {
-		const stored = await updateRecordValue('memory', storage, memory.id, { currentRevision: memory.currentRevision })
-		if (!stored.ok) return stored
-	}
-	return { ok: true, value: undefined }
-}
-
-function firstFailure<TError>(results: Array<CoreResult<unknown, TError>>): CoreResult<never, TError> | null {
-	return results.find((result): result is CoreResult<never, TError> => !result.ok) ?? null
 }
 
 function sortedEntries<T>(record: Record<string, T>): Array<[string, T]> {

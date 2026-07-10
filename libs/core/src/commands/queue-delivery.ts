@@ -1,16 +1,14 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
-import { idPipe, type AuditStamp, type Id } from '../domain/commons'
+import { idPipe } from '../domain/commons'
 import type { Delivery } from '../domain/delivery'
-import type { InvalidInputError } from '../errors'
-import type { CoreRuntime } from '../runtime'
-import type { CoreStorage } from '../services'
+import type { DeliveryActionCommandError } from '../utils/command-errors'
+import { buildCommandHandler } from '../utils/command-handler'
+import { deliveryWorkStateMismatch, updateRecordValue, withAuditStampTransaction } from '../utils/command-storage'
 import { buildDeliveryContext, getDeliveryState } from '../utils/delivery-context'
+import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
-import type { DeliveryActionCommandError } from './utils/errors'
-import { buildCommandHandler } from './utils/handler'
-import { deliveryWorkStateMismatch, updateRecordValue, withAuditStampTransaction } from './utils/storage'
 
 const queueDeliveryInputPipe = v.object({ deliveryId: idPipe })
 export type Input = PipeOutput<typeof queueDeliveryInputPipe>
@@ -23,41 +21,20 @@ export type Error = DeliveryActionCommandError
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createQueueDeliveryCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('queueDelivery', queueDeliveryInputPipe, (input, context) => handleQueueDelivery(runtime, input, context))
-}
+	return buildCommandHandler('queueDelivery', queueDeliveryInputPipe, (input, context) =>
+		withAuditStampTransaction<Result, Error>(runtime, context, async (storage, stamp) => {
+			const deliveryContext = await buildDeliveryContext(storage, input.deliveryId)
+			if (!deliveryContext.ok) return deliveryContext
 
-function handleQueueDelivery(
-	runtime: CoreRuntime,
-	input: Input,
-	context: CommandContext,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	return withAuditStampTransaction(runtime, context, (storage, stamp) => writeQueueDelivery(storage, input, stamp))
-}
+			const deliveryState = getDeliveryState(deliveryContext.value)
+			if (!deliveryState.ok) return deliveryState
+			if (deliveryState.value.type !== 'unqueued') {
+				return deliveryWorkStateMismatch(input.deliveryId, ['unqueued'], deliveryState.value)
+			}
 
-async function writeQueueDelivery(
-	storage: CoreStorage,
-	input: Input,
-	stamp: AuditStamp,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const deliveryResult = await requireUnqueuedDelivery(storage, input.deliveryId)
-	if (!deliveryResult.ok) return deliveryResult
-
-	return updateRecordValue('delivery', storage, deliveryResult.value.id, { queued: stamp })
-}
-
-async function requireUnqueuedDelivery(
-	storage: CoreStorage,
-	deliveryId: Id,
-): Promise<CoreResult<Delivery, Exclude<Error, InvalidInputError>>> {
-	const deliveryContext = await buildDeliveryContext(storage, deliveryId)
-	if (!deliveryContext.ok) return deliveryContext
-
-	const deliveryState = getDeliveryState(deliveryContext.value)
-	if (!deliveryState.ok) return deliveryState
-
-	return deliveryState.value.type === 'unqueued'
-		? { ok: true, value: deliveryContext.value.delivery }
-		: deliveryWorkStateMismatch(deliveryId, ['unqueued'], deliveryState.value)
+			return updateRecordValue('delivery', storage, deliveryContext.value.delivery.id, { queued: stamp })
+		}),
+	)
 }
 
 if (import.meta.vitest) {

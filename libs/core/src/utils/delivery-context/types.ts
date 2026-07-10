@@ -1,12 +1,13 @@
 import type { DeliveryDependencyLink, SliceDependencyLink } from './work-state/types'
 import type { Action } from '../../domain/action'
 import type { AgentRun } from '../../domain/agent-run'
-import type { DeliveryArtifact, SliceArtifact } from '../../domain/artifact'
 import type { Delivery } from '../../domain/delivery'
+import type { DeliveryArtifact } from '../../domain/delivery-artifact'
 import type { Project } from '../../domain/project'
 import type { Repository } from '../../domain/repository'
 import type { ReviewSurface } from '../../domain/review-surface'
 import type { Slice } from '../../domain/slice'
+import type { SliceArtifact } from '../../domain/slice-artifact'
 
 export interface DeliveryDependencySummary {
 	link: DeliveryDependencyLink

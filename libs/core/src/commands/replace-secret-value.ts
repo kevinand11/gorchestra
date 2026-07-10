@@ -10,10 +10,10 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
+import { buildCommandHandler } from '../utils/command-handler'
+import { updateStoredRecordWithAudit } from '../utils/command-storage'
+import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { updateStoredRecordWithAudit } from './utils/storage'
 
 const replaceSecretValueInputPipe = v.object({ secretId: idPipe, valueRef: secretValueRefPipe })
 export type Input = PipeOutput<typeof replaceSecretValueInputPipe>

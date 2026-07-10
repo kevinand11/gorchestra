@@ -4,19 +4,13 @@ import type { CommandContext } from './types'
 import { idPipe } from '../domain/commons'
 import type { ValidationEvidence } from '../domain/evidence'
 import type { Repository } from '../domain/repository'
-import type {
-	InvalidCoreServiceOutputError,
-	InvalidInputError,
-	ResourceNotFoundError,
-	ResourceArchivedError,
-	StorageOperationFailedError,
-} from '../errors'
-import type { CoreRuntime } from '../runtime'
-import type { CoreServices, CoreStorage, ResolvableSecretValue } from '../services'
+import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
+import type { ResolvableSecretValue } from '../services'
+import { buildCommandHandler } from '../utils/command-handler'
+import { getRequired, withTransaction } from '../utils/command-storage'
+import type { CoreRuntime } from '../utils/runtime'
 import { validateActiveSecret } from '../utils/secrets'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { getRequired, withTransaction } from './utils/storage'
 
 const preflightRepositoryInputPipe = v.object({ repositoryId: idPipe })
 export type Input = PipeOutput<typeof preflightRepositoryInputPipe>
@@ -34,11 +28,47 @@ type RepositoryPreflightReadiness =
 type RepositoryPreflightLocalError = InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 
 export function createPreflightRepositoryCommand(runtime: CoreRuntime): Operation {
-	const options = runtime.services
 	return buildCommandHandler('preflightRepository', preflightRepositoryInputPipe, async (input) => {
-		const readiness = await readRepositoryPreflightReadiness(options, input)
+		const readiness = await withTransaction<RepositoryPreflightReadiness, RepositoryPreflightLocalError>(
+			runtime.services,
+			async (storage) => {
+				const repository = await getRequired('repository', storage, input.repositoryId)
+				if (!repository.ok) return repository
+
+				const secret = await validateActiveSecret(storage, repository.value.config.secretId)
+				if (!secret.ok) {
+					const error = secret.error
+					if (error.type === 'not-found' && error.resource === 'secret') {
+						return { ok: true, value: { type: 'failed', summary: 'GitHub repository access Secret is missing.' } }
+					}
+					if (error.type === 'resource-archived') {
+						return { ok: true, value: { type: 'failed', summary: 'GitHub repository access Secret is not active.' } }
+					}
+					return { ok: false, error }
+				}
+
+				return {
+					ok: true,
+					value: {
+						type: 'passed',
+						repository: repository.value,
+						accessSecret: { secretId: secret.value.id, valueRef: secret.value.valueRef },
+					},
+				}
+			},
+		)
 		if (!readiness.ok) return readiness
-		if (readiness.value.type === 'failed') return { ok: true, value: repositoryPreflightEvidence(false, readiness.value.summary) }
+		if (readiness.value.type === 'failed') {
+			return {
+				ok: true,
+				value: {
+					type: 'validation',
+					operation: { type: 'repository-preflight' },
+					passed: false,
+					summary: readiness.value.summary,
+				},
+			}
+		}
 
 		const providerPreflight = await runtime.providers.sourceControl.preflightRepository({
 			repository: readiness.value.repository,
@@ -48,63 +78,19 @@ export function createPreflightRepositoryCommand(runtime: CoreRuntime): Operatio
 
 		return {
 			ok: true,
-			value: repositoryPreflightEvidence(providerPreflight.value.type === 'passed', providerPreflight.value.summary),
+			value: {
+				type: 'validation',
+				operation: { type: 'repository-preflight' },
+				passed: providerPreflight.value.type === 'passed',
+				summary: providerPreflight.value.summary,
+			},
 		}
 	})
 }
 
-function readRepositoryPreflightReadiness(
-	options: CoreServices,
-	input: Input,
-): Promise<CoreResult<RepositoryPreflightReadiness, RepositoryPreflightLocalError>> {
-	return withTransaction(options, (storage) => readRepositoryPreflightReadinessFromStorage(storage, input.repositoryId))
-}
-
-async function readRepositoryPreflightReadinessFromStorage(
-	storage: CoreStorage,
-	repositoryId: string,
-): Promise<CoreResult<RepositoryPreflightReadiness, RepositoryPreflightLocalError>> {
-	const repository = await getRequired('repository', storage, repositoryId)
-	if (!repository.ok) return repository
-
-	const secret = await validateActiveSecret(storage, repository.value.config.secretId)
-	if (!secret.ok) return mapAccessSecretFailure(repository.value, secret.error)
-
-	return { ok: true, value: { type: 'passed', repository: repository.value, accessSecret: secretValueRef(secret.value) } }
-}
-
-function mapAccessSecretFailure(
-	repository: Repository,
-	error: ResourceNotFoundError | ResourceArchivedError | StorageOperationFailedError | InvalidCoreServiceOutputError,
-): CoreResult<RepositoryPreflightReadiness, RepositoryPreflightLocalError> {
-	if (error.type === 'not-found' && error.resource === 'secret') {
-		return { ok: true, value: { type: 'failed', summary: accessSecretSummary(repository, 'missing') } }
-	}
-	if (error.type === 'resource-archived') {
-		return { ok: true, value: { type: 'failed', summary: accessSecretSummary(repository, 'inactive') } }
-	}
-
-	return { ok: false, error }
-}
-
-function accessSecretSummary(repository: Repository, state: 'missing' | 'inactive'): string {
-	switch (repository.config.provider) {
-		case 'github':
-			return state === 'missing' ? 'GitHub repository access Secret is missing.' : 'GitHub repository access Secret is not active.'
-	}
-}
-
-function repositoryPreflightEvidence(passed: boolean, summary: string): ValidationEvidence {
-	return { type: 'validation', operation: { type: 'repository-preflight' }, passed, summary }
-}
-
-function secretValueRef(secret: { id: string; valueRef: string }): ResolvableSecretValue {
-	return { secretId: secret.id, valueRef: secret.valueRef }
-}
-
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createSourceControlProviders } = await import('../providers/source-control')
+	const { createSourceControlProviders } = await import('../utils/providers/source-control')
 	const { context, createTestCoreRuntime, createTestCoreServices, seedSecret, stamp } = await import('../utils/test-helpers')
 
 	describe('preflightRepository command', () => {
@@ -225,6 +211,10 @@ if (import.meta.vitest) {
 			})
 		})
 	})
+
+	function repositoryPreflightEvidence(passed: boolean, summary: string): ValidationEvidence {
+		return { type: 'validation', operation: { type: 'repository-preflight' }, passed, summary }
+	}
 
 	function repositoryFixture() {
 		const options = createTestCoreServices()

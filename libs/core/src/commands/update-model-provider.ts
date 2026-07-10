@@ -11,10 +11,18 @@ import type {
 	ResourceArchivedError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
+import { buildCommandHandler } from '../utils/command-handler'
+import {
+	auditStamp,
+	getRequired,
+	listRecordsByIds,
+	secretReferencesFromModelProviderConfig,
+	updateRecordValue,
+	withTransaction,
+} from '../utils/command-storage'
+import type { CoreRuntime } from '../utils/runtime'
+import { validateActiveSecretReferencesFromRecords } from '../utils/secrets'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { auditStamp, getRequired, updateRecordValue, validateActiveModelProviderSecretReferences, withTransaction } from './utils/storage'
 
 const updateModelProviderInputPipe = v.object({
 	modelProviderId: idPipe,
@@ -46,7 +54,11 @@ export function createUpdateModelProviderCommand(runtime: CoreRuntime): Operatio
 			const existing = await getRequired('model-provider', storage, input.modelProviderId)
 			if (!existing.ok) return existing
 
-			const validReferences = await validateActiveModelProviderSecretReferences(storage, input.auth, input.headers)
+			const secretIds = secretReferencesFromModelProviderConfig(input.auth, input.headers)
+			const secrets = await listRecordsByIds('secret', storage, secretIds)
+			if (!secrets.ok) return secrets
+
+			const validReferences = validateActiveSecretReferencesFromRecords(secretIds, secrets.value)
 			if (!validReferences.ok) return validReferences
 
 			return updateRecordValue('model-provider', storage, existing.value.id, {
@@ -67,6 +79,7 @@ if (import.meta.vitest) {
 	describe('updateModelProvider command', () => {
 		it('updates Model Provider mutable config while preserving source', async () => {
 			const options = createTestCoreServices()
+			options.tx.secrets.fail.list = true
 			options.tx.modelProviders.records.set('01k00000000000000000000032', {
 				id: '01k00000000000000000000032',
 				name: 'Provider',
@@ -100,6 +113,39 @@ if (import.meta.vitest) {
 					providerOptions: { beta: true },
 				},
 			})
+		})
+
+		it('rejects a missing Secret reference without updating the Model Provider', async () => {
+			const options = createTestCoreServices()
+			const modelProviderId = '01k00000000000000000000032'
+			const secretId = '01k00000000000000000000040'
+			const provider: ModelProvider = {
+				id: modelProviderId,
+				name: 'Provider',
+				source: { type: 'anthropic' },
+				auth: null,
+				headers: [],
+				providerOptions: null,
+				created: localStamp(),
+				updated: null,
+				archivePeriods: [],
+			}
+			options.tx.modelProviders.records.set(modelProviderId, provider)
+			const command = createUpdateModelProviderCommand(createTestCoreRuntime(options))
+
+			const result = await command(
+				{
+					modelProviderId,
+					name: 'Updated',
+					auth: { value: { type: 'secret', secretId } },
+					headers: [],
+					providerOptions: null,
+				},
+				context,
+			)
+
+			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'secret', id: secretId } })
+			expect(options.tx.modelProviders.records.get(modelProviderId)).toEqual(provider)
 		})
 	})
 }

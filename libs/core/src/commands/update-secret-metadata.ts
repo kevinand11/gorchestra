@@ -10,10 +10,10 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
+import { buildCommandHandler } from '../utils/command-handler'
+import { getRequired, updateRecordValue, withAuditStampTransaction } from '../utils/command-storage'
+import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { getRequired, updateRecordValue, withAuditStampTransaction } from './utils/storage'
 
 const updateSecretMetadataInputPipe = v.object({ secretId: idPipe, name: nonEmptyTrimmedStringPipe })
 export type Input = PipeOutput<typeof updateSecretMetadataInputPipe>

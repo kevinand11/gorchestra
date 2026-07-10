@@ -1,11 +1,11 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { acceptDispatchRequest, exclusiveDeliverySchedulerClaim } from '../../commands/utils/dispatch'
 import { deliveryWorkOperationPipe, type Action, type DeliveryWorkOperation } from '../../domain/action'
 import { idPipe, type Id } from '../../domain/commons'
 import type { ValidationEvidence } from '../../domain/evidence'
 import type { InvalidInputError } from '../../errors'
-import type { CoreRuntime } from '../../runtime'
+import type { CoreRuntime } from '../../utils/runtime'
+import type { WorkContext } from '../types'
 import { handleDeliveryNeedsArtifactCreation } from './handlers/delivery-needs-artifact-creation'
 import { handleDeliveryNeedsArtifactValidation } from './handlers/delivery-needs-artifact-validation'
 import { handleDeliveryNeedsReviewSurface } from './handlers/delivery-needs-review-surface'
@@ -14,7 +14,6 @@ import { handleSliceNeedsArtifactCreation } from './handlers/slice-needs-artifac
 import { handleSliceNeedsArtifactValidation } from './handlers/slice-needs-artifact-validation'
 import { handleSliceNeedsDeliveryValidation } from './handlers/slice-needs-delivery-validation'
 import { handleSliceNeedsReviewSurface } from './handlers/slice-needs-review-surface'
-import { createRecord, getRequired, listRecords, withTransaction } from '../../storage/helpers'
 import { buildDeliveryContext, getDeliveryState, getSliceState, type DeliveryContext } from '../../utils/delivery-context'
 import {
 	deliveryPreflightChecksPassed,
@@ -23,8 +22,11 @@ import {
 	readProviderBackedDeliveryPreflightPlan,
 	runProviderBackedDeliveryPreflightChecks,
 } from '../../utils/delivery-preflight'
+import { acceptDispatchRequest, exclusiveDeliverySchedulerClaim } from '../../utils/dispatch'
 import { nextId, runtimeRecord } from '../../utils/runtime-values'
+import { createRecord, getRequired, listRecords, withTransaction } from '../../utils/storage/helpers'
 import type { Result as CoreResult } from '../../utils/types'
+import { buildWorkHandler } from '../../utils/work-handler'
 import {
 	deliveryOperationFromState,
 	processedDeliveryWorkDispatchAction,
@@ -39,8 +41,6 @@ import type {
 	ResolvedDeliveryHandlerContext,
 	Result,
 } from '../delivery-work/types'
-import type { WorkContext } from '../types'
-import { buildWorkHandler } from '../utils/handler'
 
 const processDeliveryWorkOperationInputPipe = v.object({
 	deliveryId: idPipe,

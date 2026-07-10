@@ -1,17 +1,11 @@
 import { resolveAgentRunSourceSetup } from './agent-run-source-resolvers'
+import { agentRunProfileSnapshot } from './command-storage'
+import { acceptAgentRunPreparation, acceptAgentRunSandboxRelease } from './dispatch'
 import { validateRuntimeRequirementSecretReferences, type RuntimeRequirementSecretReferenceError } from './runtime-requirement-secrets'
 import { nextId, runtimeRecord, type CoreRuntimeValues } from './runtime-values'
 import type { Result } from './types'
-import { acceptAgentRunPreparation, acceptAgentRunSandboxRelease } from '../commands/utils/dispatch'
-import { agentRunProfileSnapshot } from '../commands/utils/storage'
-import type {
-	AgentRun,
-	AgentRunEvent,
-	AgentRunEventBody,
-	AgentRunProfileSnapshot,
-	AgentRunPurpose,
-	AgentRunToolSet,
-} from '../domain/agent-run'
+import type { AgentRun, AgentRunProfileSnapshot, AgentRunPurpose, AgentRunToolSet } from '../domain/agent-run'
+import type { AgentRunEvent, AgentRunEventBody } from '../domain/agent-run-event'
 import type { AgentRunProfile } from '../domain/agent-run-profile'
 import { appendUniqueRuntimeRequirements, type AgentRunRuntimeRequirement } from '../domain/agent-run-runtime'
 import type { Id, RuntimeRecord } from '../domain/commons'
@@ -23,9 +17,9 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import { instructionForProjectAndAgentRunPurpose } from '../runtime/agent-runs/instructions'
 import type { CoreServices, CoreStorage } from '../services'
-import { createRecord, getRequired, listRecords, updateRecord } from '../storage/helpers'
+import { instructionForProjectAndAgentRunPurpose } from './runtime/agent-runs/instructions'
+import { createRecord, getRequired, listRecords, updateRecord } from './storage/helpers'
 
 export type AgentRunLookupError = InvalidCoreServiceOutputError | StorageOperationFailedError | InvariantViolationError
 export type AgentRunCompletionError = AgentRunLookupError | ResourceNotFoundError

@@ -12,11 +12,11 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import { validateModelThinkingCapabilityForProtocol } from '../providers/model-provider-protocol/thinking'
-import type { CoreRuntime } from '../runtime'
+import { buildCommandHandler } from '../utils/command-handler'
+import { getRequired, updateRecordValue, withAuditStampTransaction } from '../utils/command-storage'
+import { validateModelThinkingCapabilityForProtocol } from '../utils/providers/model-provider-protocol/thinking'
+import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { getRequired, updateRecordValue, withAuditStampTransaction } from './utils/storage'
 
 const updateModelInputPipe = v.object({
 	modelId: idPipe,

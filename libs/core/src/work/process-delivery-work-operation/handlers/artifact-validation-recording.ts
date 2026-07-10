@@ -1,7 +1,7 @@
 import { actionRecord, workedActions } from './result'
 import type { Action } from '../../../domain/action'
 import type { ValidationEvidence, ValidationOperation } from '../../../domain/evidence'
-import { createRecord } from '../../../storage/helpers'
+import { createRecord } from '../../../utils/storage/helpers'
 import type { DeliveryHandlerContext, DeliveryWorkHandlerResult } from '../../delivery-work/types'
 
 export function noConfiguredValidationEvidence(operation: ValidationOperation['type'], summary: string): ValidationEvidence {

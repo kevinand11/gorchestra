@@ -11,18 +11,20 @@ import {
 	type AgentRunRuntimeRequirement,
 	type AgentRunRuntimeRequirements,
 } from '../domain/agent-run-runtime'
-import type { DeliveryArtifact, SliceArtifact } from '../domain/artifact'
 import type { Id } from '../domain/commons'
 import type { Delivery } from '../domain/delivery'
+import type { DeliveryArtifact } from '../domain/delivery-artifact'
 import type { Plan } from '../domain/plan'
 import type { Project } from '../domain/project'
 import type { GitHubRepositoryConfig, Repository } from '../domain/repository'
-import type { Revision, RevisionGate, RevisionScope } from '../domain/revision'
+import type { Revision, RevisionScope } from '../domain/revision'
+import type { RevisionGate } from '../domain/revision-gate'
 import type { Slice } from '../domain/slice'
+import type { SliceArtifact } from '../domain/slice-artifact'
 import type { InvalidCoreServiceOutputError, InvariantViolationError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import { agentRunToolSetFromNames, readOnlyWorkspaceToolNames, writeCapableWorkspaceToolNames } from '../runtime/agent-runs/tools'
 import type { CoreStorage } from '../services'
-import { getRequired, listRecords } from '../storage/helpers'
+import { agentRunToolSetFromNames, readOnlyWorkspaceToolNames, writeCapableWorkspaceToolNames } from './runtime/agent-runs/tools'
+import { getRequired, listRecords } from './storage/helpers'
 
 type AgentRunSourceRuntimeContextError = InvalidCoreServiceOutputError | StorageOperationFailedError | ResourceNotFoundError
 

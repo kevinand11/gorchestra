@@ -1,4 +1,6 @@
-import type { AgentRun, AgentRunEvent, AgentRunSystemTranscriptPart } from '../domain/agent-run'
+import type { Result } from './types'
+import type { AgentRun } from '../domain/agent-run'
+import type { AgentRunEvent, AgentRunSystemTranscriptPart } from '../domain/agent-run-event'
 import type { Id } from '../domain/commons'
 import type {
 	AgentRunPurposeMismatchError,
@@ -8,8 +10,7 @@ import type {
 	ResourceNotFoundError,
 } from '../errors'
 import type { CoreStorage } from '../services'
-import type { Result } from './types'
-import { getRequired, listRecords, type StorageBoundaryError } from '../storage/helpers'
+import { getRequired, listRecords, type StorageBoundaryError } from './storage/helpers'
 
 export type ProposalReviewState =
 	| { type: 'pending' }

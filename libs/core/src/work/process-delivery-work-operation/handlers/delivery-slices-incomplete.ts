@@ -5,10 +5,10 @@ import { handleSliceNeedsReviewSurface } from './slice-needs-review-surface'
 import type { Id } from '../../../domain/commons'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
 import type { InvalidInputError } from '../../../errors'
-import type { CoreRuntime } from '../../../runtime'
 import type { CoreStorage } from '../../../services'
-import { withTransaction } from '../../../storage/helpers'
 import { buildDeliveryContext, getDeliveryState, getSliceState, resolveDeliveryWork } from '../../../utils/delivery-context'
+import type { CoreRuntime } from '../../../utils/runtime'
+import { withTransaction } from '../../../utils/storage/helpers'
 import type { Result as CoreResult } from '../../../utils/types'
 import type {
 	DeliveryWorkResolution,

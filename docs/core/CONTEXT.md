@@ -197,7 +197,7 @@ A Delivery whose closed lifecycle field records an abandoned outcome, removed fr
 _Avoid_: Archived Delivery, Deleted Delivery, canceled Delivery, soft-deleted Delivery
 
 **Slice**:
-An executable and reviewable unit inside exactly one Delivery. A Slice's parent Delivery, immutable Delivery-scoped order, and initial Instruction Source are immutable after acceptance. Slice order records the accepted Plan Output order for semantic same-Delivery sequencing, while public list/read-model arrays still use Core's canonical id-desc list order. Slices participate in the Portfolio graph, and Slice-level dependencies are represented by Links between Slices in the same Delivery.
+An executable and reviewable unit inside exactly one Delivery and therefore exactly one Project. A Slice's parent Delivery, immutable Delivery-scoped order, and initial Instruction Source are immutable after acceptance. Slice order records the accepted Plan Output order for semantic same-Delivery sequencing, while public list/read-model arrays still use Core's canonical id-desc list order. Slices participate in the Portfolio graph, and Slice-level dependencies are represented by Links between Slices in the same Delivery.
 _Avoid_: Step, task, subtask
 
 **Slice Work State**:
@@ -389,11 +389,11 @@ The idempotent runtime work that clears a preparation-pending Blocked Agent Run 
 _Avoid_: Agent Run Sandbox Preparation, Sandbox Assignment, project install, dependency requirement, dependency install, workspace setup
 
 **Delivery Artifact**:
-The Project Source Type-specific authoritative in-progress artifact for a Delivery, created lazily by Gorchestra runtime work when execution first begins, promoted by Gorchestra from an Agent Run Sandbox after evaluation, and available to later Agent Runs or Project Source Type-specific external mutations. Every Project Source Type defines its Delivery Artifact. For a Source Control Project Delivery, the Delivery Artifact is the Delivery Branch.
+The Project Source Type-specific authoritative in-progress artifact for a Delivery in that Delivery's Project, created lazily by Gorchestra runtime work when execution first begins, promoted by Gorchestra from an Agent Run Sandbox after evaluation, and available to later Agent Runs or Project Source Type-specific external mutations. Every Project Source Type defines its Delivery Artifact. For a Source Control Project Delivery, the Delivery Artifact is the Delivery Branch.
 _Avoid_: Working Artifact, Working State, Agent Run Sandbox artifact, workspace, branch state
 
 **Slice Artifact**:
-A Project Source Type-specific temporary artifact for one Slice, created lazily by Gorchestra runtime work when that Slice first begins. Project Source Types may define Slice Artifacts when they support isolated or parallel Slice work. A Slice with a Slice Artifact is complete only after the Slice Artifact is promoted into the Delivery Artifact and the resulting Delivery Artifact passes Slice Delivery Artifact validation. For a Source Control Project Slice, the Slice Artifact is the Slice Branch.
+A Project Source Type-specific temporary artifact for one Slice in that Slice's Project, created lazily by Gorchestra runtime work when that Slice first begins. Project Source Types may define Slice Artifacts when they support isolated or parallel Slice work. A Slice with a Slice Artifact is complete only after the Slice Artifact is promoted into the Delivery Artifact and the resulting Delivery Artifact passes Slice Delivery Artifact validation. For a Source Control Project Slice, the Slice Artifact is the Slice Branch.
 _Avoid_: Working Artifact, Agent Run Sandbox artifact, Delivery Artifact
 
 **Delivery Branch**:
@@ -469,7 +469,7 @@ To close a Delivery's external integration lifecycle after all of its Slices are
 _Avoid_: Release, submit, land
 
 **Review Surface**:
-The place where Delivery or Slice work is presented for human or external review. Review Surface history is preserved when a Review Surface is replaced. For Source Control Projects, a Review Surface is a pull request.
+The place where Delivery or Slice work is presented for human or external review; it belongs to the same Project as its scoped Delivery Artifact or Slice Artifact. Review Surface history is preserved when a Review Surface is replaced. For Source Control Projects, a Review Surface is a pull request.
 _Avoid_: Pull request, review target, submission
 
 **Slice Review Surface**:
@@ -481,7 +481,7 @@ A Review Surface for a Delivery Artifact. For Source Control Projects, this is a
 _Avoid_: Delivery PR, review target
 
 **Revision Gate**:
-Human-controlled artifact-scoped authorization that allows Gorchestra to plan revision work in response to fetched Feedback for a Slice Artifact or Delivery Artifact. Opening a Revision Gate records the identity of the Revision Planning Agent Run it starts with a selected Agent Run Profile while the gate is open, and accepting a Revision Output consumes the gate. A Revision Gate remains open until it is explicitly closed without a Revision or consumed by an accepted Revision; gate closure or consumption completes the associated Revision Planning Agent Run when it is still open. Revision Gate does not create or reopen Slices.
+Human-controlled artifact-scoped authorization within the scoped artifact's Project that allows Gorchestra to plan revision work in response to fetched Feedback for a Slice Artifact or Delivery Artifact. Opening a Revision Gate records the identity of the Revision Planning Agent Run it starts with a selected Agent Run Profile while the gate is open, and accepting a Revision Output consumes the gate. A Revision Gate remains open until it is explicitly closed without a Revision or consumed by an accepted Revision; gate closure or consumption completes the associated Revision Planning Agent Run when it is still open. Revision Gate does not create or reopen Slices.
 _Avoid_: revisionAllowed, needs-revision, changes-requested, per-comment approval
 
 **Revision Output**:
@@ -489,7 +489,7 @@ The structured proposal shape a revision-planning Agent Run must produce for rev
 _Avoid_: revision Slice, feedback Slice, partial acceptance, Plan Output
 
 **Revision**:
-A unit of accepted revision work against a Slice Artifact or Delivery Artifact, created by accepting a Revision Output. A Revision stores the immutable Instruction Source and immutable Revision Disposition for the Agent Runs that perform the revision.
+A unit of accepted revision work against a Slice Artifact or Delivery Artifact in that artifact's Project, created by accepting a Revision Output. A Revision stores the immutable Instruction Source and immutable Revision Disposition for the Agent Runs that perform the revision.
 _Avoid_: Slice, Delivery, Revision Output
 
 **Revision Disposition**:

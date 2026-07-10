@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { freeFormStringPipe, idPipe, isoDateTimePipe, nonEmptyTrimmedStringPipe, positiveIntegerPipe, runtimeRecordPipe } from './commons'
+import { coreSchema, schemaToPipe } from '../utils/storage/schema'
 
 export const reviewSurfaceScopePipe = v.discriminate((value) => value.type, {
 	slice: v.object({ type: v.eq('slice'), sliceId: idPipe, sliceArtifactId: idPipe }),
@@ -42,14 +43,14 @@ export type ReviewSurfaceMerged = Extract<ReviewSurfaceClosed, { type: 'merged' 
 export type ReviewSurfaceClosedWithoutMerge = Extract<ReviewSurfaceClosed, { type: 'closed-without-merge' }>
 export type ReviewSurfaceReplaced = Extract<ReviewSurfaceClosed, { type: 'replaced' }>
 
-export const reviewSurfacePipe = v.object({
-	id: idPipe,
-	scope: reviewSurfaceScopePipe,
-	config: reviewSurfaceConfigPipe,
-	title: nonEmptyTrimmedStringPipe,
-	closed: v.nullable(reviewSurfaceClosedPipe),
-	created: runtimeRecordPipe,
-})
+export const reviewSurfaceSchema = coreSchema('review_surfaces')
+	.field('scope', reviewSurfaceScopePipe)
+	.field('config', reviewSurfaceConfigPipe)
+	.field('title', nonEmptyTrimmedStringPipe)
+	.field('closed', v.nullable(reviewSurfaceClosedPipe))
+	.field('created', runtimeRecordPipe)
+	.build()
+export const reviewSurfacePipe = schemaToPipe(reviewSurfaceSchema)
 export type ReviewSurface = PipeOutput<typeof reviewSurfacePipe>
 
 export const fetchedFeedbackConfigPipe = v.discriminate((value) => value.provider, {

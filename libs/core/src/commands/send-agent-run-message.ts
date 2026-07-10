@@ -1,6 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { agentRunInputTranscriptPartsPipe, type AgentRunEvent } from '../domain/agent-run'
+import { agentRunInputTranscriptPartsPipe, type AgentRunEvent } from '../domain/agent-run-event'
 import { idPipe } from '../domain/commons'
 import type {
 	AgentRunNotActiveError,
@@ -11,15 +11,15 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
 import type { CoreDispatchRequest } from '../services'
 import type { CommandContext } from './types'
 import { requireInteractiveAgentRunOpen } from '../utils/agent-run-targets'
 import { appendAgentRunEvent } from '../utils/agent-runs'
+import { buildCommandHandler } from '../utils/command-handler'
+import { withAuditStampTransaction } from '../utils/command-storage'
+import { acceptAgentRunModelTurn } from '../utils/dispatch'
+import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
-import { acceptAgentRunModelTurn } from './utils/dispatch'
-import { buildCommandHandler } from './utils/handler'
-import { withAuditStampTransaction } from './utils/storage'
 
 const sendAgentRunMessageInputPipe = v.object({
 	agentRunId: idPipe,
@@ -76,7 +76,7 @@ export function createSendAgentRunMessageCommand(runtime: CoreRuntime): Operatio
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { context, createTestCoreRuntime, createTestCoreServices, localStamp } = await import('../utils/test-helpers')
-	const { planningAgentRunFixture } = await import('./utils/agent-run-test-utils')
+	const { planningAgentRunFixture } = await import('../utils/agent-run-test-utils')
 
 	describe('sendAgentRunMessage command', () => {
 		it('validates input before reading storage', async () => {

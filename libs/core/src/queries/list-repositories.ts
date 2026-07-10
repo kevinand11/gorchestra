@@ -1,6 +1,5 @@
 import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
-import { validateSourceControlProject } from '../commands/utils/storage'
 import { mapPaginatedQueryEnvelope, paginatedQueryEnvelopePipe, paginatedQueryInputPipe, idPipe } from '../domain/commons'
 import { repositoryPipe, type Repository } from '../domain/repository'
 import type {
@@ -11,9 +10,9 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreServices } from '../services'
-import { listRecordsPaginated, withTransaction } from '../storage/helpers'
+import { buildQueryHandler } from '../utils/query-handler'
+import { getRequired, listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = v.merge(v.object({ projectId: idPipe }), paginatedQueryInputPipe)
 export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
@@ -30,12 +29,23 @@ export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
 export function createListRepositoriesQuery(options: CoreServices): Operation {
 	return buildQueryHandler('listRepositories', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
-			const project = await validateSourceControlProject(storage, input.projectId)
-			if (!project.ok) return project
+		withTransaction<Result, Exclude<Error, InvalidInputError>>(options, async (storage) => {
+			const projectResult = await getRequired('project', storage, input.projectId)
+			if (!projectResult.ok) return projectResult
+			if (projectResult.value.source.type !== 'source-control') {
+				return {
+					ok: false,
+					error: {
+						type: 'project-source-type-mismatch',
+						projectId: input.projectId,
+						expected: 'source-control',
+						actual: projectResult.value.source.type,
+					},
+				}
+			}
 
 			const repositories = await listRecordsPaginated('repository', storage, input, {
-				where: (filter, fields) => filter.eq(fields.projectId, project.value.id),
+				where: (filter, fields) => filter.eq(fields.projectId, projectResult.value.id),
 			})
 			return repositories.ok
 				? { ok: true, value: mapPaginatedQueryEnvelope(repositories.value, (repository) => repository) }

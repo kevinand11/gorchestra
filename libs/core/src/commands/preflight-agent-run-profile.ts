@@ -1,8 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
-import { buildCommandHandler } from './utils/handler'
-import { getRequired, isArchived, nextId, withTransaction } from './utils/storage'
 import type { AgentRunProfile } from '../domain/agent-run-profile'
 import { idPipe } from '../domain/commons'
 import type { ValidationEvidence } from '../domain/evidence'
@@ -13,17 +11,19 @@ import type {
 	SandboxOperationFailedError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
-import { managedSandboxProviderForConfig, type SandboxProviderResolutionError } from '../runtime/sandboxes'
+import type { RawSandboxRunCommandInput, SandboxCommandOutput } from '../services'
+import { globalRuntimeRequirements, type AgentRunRunCommandRuntimeRequirement } from '../utils/agent-run-runtime-requirements'
+import { buildCommandHandler } from '../utils/command-handler'
+import { getRequired, isArchived, nextId, withTransaction } from '../utils/command-storage'
+import type { CoreRuntime } from '../utils/runtime'
+import { managedSandboxProviderForConfig, type SandboxProviderResolutionError } from '../utils/runtime/sandboxes'
 import {
 	managedSandboxFileApiReadinessDirectory,
 	verifyManagedSandboxFileApiReadiness,
 	type ManagedSandbox,
 	type ManagedSandboxFileApiReadinessError,
 	type ManagedSandboxProvider,
-} from '../runtime/sandboxes/managed'
-import type { CoreStorage, RawSandboxRunCommandInput, SandboxCommandOutput } from '../services'
-import { globalRuntimeRequirements, type AgentRunRunCommandRuntimeRequirement } from '../utils/agent-run-runtime-requirements'
+} from '../utils/runtime/sandboxes/managed'
 import type { Result as CoreResult } from '../utils/types'
 
 const preflightAgentRunProfileInputPipe = v.object({ agentRunProfileId: idPipe })
@@ -46,7 +46,17 @@ const preflightRuntimeEnvCommand: AgentRunRunCommandRuntimeRequirement = {
 
 export function createPreflightAgentRunProfileCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('preflightAgentRunProfile', preflightAgentRunProfileInputPipe, async (input) => {
-		const readiness = await readProfilePreflightReadiness(runtime.services, input.agentRunProfileId)
+		const readiness = await withTransaction<
+			ProfilePreflightReadiness,
+			InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
+		>(runtime.services, async (storage) => {
+			const profile = await getRequired('agent-run-profile', storage, input.agentRunProfileId)
+			if (!profile.ok) return profile
+
+			return isArchived(profile.value.archivePeriods)
+				? { ok: true, value: { type: 'failed', summary: 'Agent Run Profile is archived.' } }
+				: { ok: true, value: { type: 'passed', profile: profile.value } }
+		})
 		if (!readiness.ok) return readiness
 		if (readiness.value.type === 'failed') return { ok: true, value: profilePreflightEvidence(false, readiness.value.summary) }
 
@@ -66,25 +76,6 @@ export function createPreflightAgentRunProfileCommand(runtime: CoreRuntime): Ope
 			`preflight-${readiness.value.profile.id}-${preflightId.value}`,
 		)
 	})
-}
-
-function readProfilePreflightReadiness(
-	options: CoreRuntime['services'],
-	agentRunProfileId: string,
-): Promise<CoreResult<ProfilePreflightReadiness, InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError>> {
-	return withTransaction(options, (storage) => readProfilePreflightReadinessFromStorage(storage, agentRunProfileId))
-}
-
-async function readProfilePreflightReadinessFromStorage(
-	storage: CoreStorage,
-	agentRunProfileId: string,
-): Promise<CoreResult<ProfilePreflightReadiness, InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError>> {
-	const profile = await getRequired('agent-run-profile', storage, agentRunProfileId)
-	if (!profile.ok) return profile
-
-	return isArchived(profile.value.archivePeriods)
-		? { ok: true, value: { type: 'failed', summary: 'Agent Run Profile is archived.' } }
-		: { ok: true, value: { type: 'passed', profile: profile.value } }
 }
 
 async function runSandboxSmokePreflight(

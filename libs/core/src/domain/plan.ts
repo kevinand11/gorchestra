@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import { auditStampPipe, idPipe, nonEmptyTrimmedStringPipe } from './commons'
+import { coreSchema, schemaToPipe } from '../utils/storage/schema'
 export {
 	instructionSourcePipe,
 	planOutputProposalPipe,
@@ -23,12 +24,12 @@ export type {
 	ProposedSourceControlDeliveryTarget,
 } from './proposals'
 
-export const planPipe = v.object({
-	id: idPipe,
-	projectId: idPipe,
-	agentRunId: idPipe,
-	title: nonEmptyTrimmedStringPipe,
-	created: auditStampPipe,
-	closed: v.nullable(auditStampPipe),
-})
+export const planSchema = coreSchema('plans')
+	.field('projectId', idPipe)
+	.field('agentRunId', idPipe)
+	.field('title', nonEmptyTrimmedStringPipe)
+	.field('created', auditStampPipe)
+	.field('closed', v.nullable(auditStampPipe))
+	.build()
+export const planPipe = schemaToPipe(planSchema)
 export type Plan = PipeOutput<typeof planPipe>

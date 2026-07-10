@@ -1,15 +1,15 @@
 import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
-import { idPipe, paginatedQueryEnvelopePipe, paginatedQueryInputPipe, type PaginatedQueryEnvelope } from '../domain/commons'
+import { idPipe, paginatedQueryEnvelopePipe, paginatedQueryInputPipe } from '../domain/commons'
 import { deliveryReadModelPipe, type Delivery } from '../domain/delivery'
 import type { Repository } from '../domain/repository'
 import type { Slice } from '../domain/slice'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices, CoreStorage } from '../services'
-import { getRequired, listRecords, listRecordsPaginated, withTransaction, type StorageBoundaryError } from '../storage/helpers'
+import type { CoreServices } from '../services'
+import { deliveryReadModels } from '../utils/delivery-read-model'
+import { buildQueryHandler } from '../utils/query-handler'
+import { getRequired, listRecords, listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
-import { deliveryReadModels } from './utils/delivery-read-model'
-import { buildQueryHandler } from './utils/handler'
 
 export const inputPipe = v.merge(v.object({ projectId: idPipe }), paginatedQueryInputPipe)
 export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
@@ -25,64 +25,43 @@ export function createListDeliveriesQuery(options: CoreServices): Operation {
 			const project = await getRequired('project', storage, input.projectId)
 			if (!project.ok) return project
 
-			return await listProjectDeliveries(storage, input, project.value.id)
-		}),
-	) as Operation
-}
+			const deliveries = await listRecordsPaginated('delivery', storage, input, {
+				where: (filter, fields) => filter.eq(fields.projectId, project.value.id),
+			})
+			if (!deliveries.ok) return deliveries
 
-async function listProjectDeliveries(
-	storage: CoreStorage,
-	input: PipeOutput<typeof inputPipe>,
-	projectId: string,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const deliveries = await listRecordsPaginated('delivery', storage, input, {
-		where: (filter, fields) => filter.eq(fields.projectId, projectId),
-	})
-	if (!deliveries.ok) return deliveries
+			const repositoryIds = deliveries.value.items.flatMap((delivery) =>
+				delivery.target.type === 'source-control' ? [delivery.target.repositoryId] : [],
+			)
+			const repositories =
+				repositoryIds.length === 0
+					? { ok: true as const, value: [] }
+					: await listRecords('repository', storage, {
+							where: (filter, fields) => filter.in(fields.id, repositoryIds),
+							orderBy: [{ field: 'id', direction: 'desc' }],
+						})
+			if (!repositories.ok) return repositories
 
-	const repositoryIds = deliveries.value.items.flatMap((delivery) =>
-		delivery.target.type === 'source-control' ? [delivery.target.repositoryId] : [],
-	)
-	const repositories =
-		repositoryIds.length === 0
-			? { ok: true as const, value: [] }
-			: await listRecords('repository', storage, {
-					where: (filter, fields) => filter.in(fields.id, repositoryIds),
+			const slicesByDeliveryId = new Map<string, Slice[]>()
+			const deliveryIds = deliveries.value.items.map((delivery) => delivery.id)
+			if (deliveryIds.length > 0) {
+				const slices = await listRecords('slice', storage, {
+					where: (filter, fields) => filter.in(fields.deliveryId, deliveryIds),
 					orderBy: [{ field: 'id', direction: 'desc' }],
 				})
-	if (!repositories.ok) return repositories
+				if (!slices.ok) return slices
 
-	const slices = await listSlicesByDeliveryId(storage, deliveries.value)
-	if (!slices.ok) return slices
+				for (const slice of slices.value) {
+					const deliverySlices = slicesByDeliveryId.get(slice.deliveryId) ?? []
+					deliverySlices.push(slice)
+					slicesByDeliveryId.set(slice.deliveryId, deliverySlices)
+				}
+			}
 
-	const readModels = deliveryReadModels(deliveries.value.items, repositories.value, slices.value)
-	return readModels.ok ? { ok: true, value: { ...deliveries.value, items: readModels.value } } : readModels
-}
-
-async function listSlicesByDeliveryId(
-	storage: CoreStorage,
-	deliveries: PaginatedQueryEnvelope<Delivery>,
-): Promise<CoreResult<Map<string, Slice[]>, StorageBoundaryError>> {
-	const deliveryIds = deliveries.items.map((delivery) => delivery.id)
-	if (deliveryIds.length === 0) return { ok: true, value: new Map() }
-
-	const slices = await listRecords('slice', storage, {
-		where: (filter, fields) => filter.in(fields.deliveryId, deliveryIds),
-		orderBy: [{ field: 'id', direction: 'desc' }],
-	})
-	if (!slices.ok) return slices
-
-	return { ok: true, value: groupSlicesByDeliveryId(slices.value) }
-}
-
-function groupSlicesByDeliveryId(slices: Slice[]): Map<string, Slice[]> {
-	const grouped = new Map<string, Slice[]>()
-	for (const slice of slices) {
-		const deliverySlices = grouped.get(slice.deliveryId) ?? []
-		deliverySlices.push(slice)
-		grouped.set(slice.deliveryId, deliverySlices)
-	}
-	return grouped
+			const readModels = deliveryReadModels(deliveries.value.items, repositories.value, slicesByDeliveryId)
+			return readModels.ok ? { ok: true, value: { ...deliveries.value, items: readModels.value } } : readModels
+		}),
+	) as Operation
 }
 
 if (import.meta.vitest) {

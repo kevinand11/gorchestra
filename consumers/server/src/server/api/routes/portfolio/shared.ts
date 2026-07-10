@@ -24,7 +24,7 @@ export const createPlanRequestSchema = v.object({
 	initialMessage: Domain.Commons.nonEmptyTrimmedStringPipe,
 	agentRunProfileId: Domain.Commons.idPipe,
 })
-export const sendAgentRunMessageRequestSchema = v.object({ parts: Domain.AgentRun.agentRunInputTranscriptPartsPipe })
+export const sendAgentRunMessageRequestSchema = v.object({ parts: Domain.AgentRunEvent.agentRunInputTranscriptPartsPipe })
 export const agentRunRuntimeRequirementOverrideRequestSchema = v.object({
 	requirements: Domain.AgentRunRuntime.agentRunRuntimeRequirementsPipe,
 })
@@ -55,13 +55,13 @@ export const updateModelRequestSchema = v.object({
 })
 export const createMemoryRequestSchema = v.object({
 	parentId: v.nullable(Domain.Commons.idPipe),
-	title: Domain.Memory.memoryTitlePipe,
-	body: Domain.Memory.memoryBodyPipe,
+	title: Domain.MemoryRevision.memoryTitlePipe,
+	body: Domain.MemoryRevision.memoryBodyPipe,
 })
 export const createMemoryRevisionRequestSchema = v.object({
 	expectedCurrentRevisionId: Domain.Commons.idPipe,
-	title: Domain.Memory.memoryTitlePipe,
-	body: Domain.Memory.memoryBodyPipe,
+	title: Domain.MemoryRevision.memoryTitlePipe,
+	body: Domain.MemoryRevision.memoryBodyPipe,
 })
 export const createSecretRequestSchema = v.object({
 	name: Domain.Commons.nonEmptyTrimmedStringPipe,

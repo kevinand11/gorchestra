@@ -1,28 +1,16 @@
 import { v, type PipeOutput } from 'valleyed'
 
-import { auditStampPipe, idPipe, nonEmptyTrimmedStringPipe } from './commons'
+import { auditStampPipe, idPipe } from './commons'
+import { currentMemoryRevisionPipe, memoryRevisionPipe } from './memory-revision'
+import { coreSchema, schemaToPipe } from '../utils/storage/schema'
 
-export const memoryTitlePipe = nonEmptyTrimmedStringPipe
-export const memoryBodyPipe = v.string().pipe(v.asTrimmed())
-
-export const currentMemoryRevisionPipe = v.object({
-	id: idPipe,
-	title: memoryTitlePipe,
-	body: memoryBodyPipe,
-	created: auditStampPipe,
-})
-export type CurrentMemoryRevision = PipeOutput<typeof currentMemoryRevisionPipe>
-
-export const memoryPipe = v.object({
-	id: idPipe,
-	parentId: v.nullable(idPipe),
-	created: auditStampPipe,
-	currentRevision: currentMemoryRevisionPipe,
-})
+export const memorySchema = coreSchema('memories')
+	.field('parentId', v.nullable(idPipe))
+	.field('currentRevision', currentMemoryRevisionPipe)
+	.field('created', auditStampPipe)
+	.build()
+export const memoryPipe = schemaToPipe(memorySchema)
 export type Memory = PipeOutput<typeof memoryPipe>
-
-export const memoryRevisionPipe = v.merge(currentMemoryRevisionPipe, v.object({ memoryId: idPipe }))
-export type MemoryRevision = PipeOutput<typeof memoryRevisionPipe>
 
 export const listedMemoryPipe = v.merge(
 	memoryPipe,

@@ -5,9 +5,12 @@ import type { AgentRunRuntimeRequirement } from './domain/agent-run-runtime'
 import type { Id } from './domain/commons'
 import type { DeliveryClosedOutcome, DeliveryWorkState } from './domain/delivery'
 import type { ExternalOperationEvidence, ValidationEvidence } from './domain/evidence'
-import type { LinkDef } from './domain/graph'
+import type { LinkDef } from './domain/link'
 import type { ModelThinkingLevel } from './domain/model'
 import type { ModelProviderProtocolType } from './domain/model-provider'
+import type { CoreIdResource, CoreResource } from './utils/storage/schema-registry'
+
+export type { CoreIdResource, CoreResource } from './utils/storage/schema-registry'
 
 export type CorePreflightCheckName = 'storage' | 'secrets' | 'dispatcher'
 export type CoreServiceOutputName = CorePreflightCheckName | 'sandbox' | 'runtime'
@@ -36,30 +39,6 @@ export interface InvalidCoreServiceOutputError {
 export type OpenCoreError = InvalidInputError
 
 export type DeliveryWorkStateType = DeliveryWorkState['type']
-
-export type CoreIdResource =
-	| 'project'
-	| 'repository'
-	| 'model-provider'
-	| 'model'
-	| 'agent-run-profile'
-	| 'plan'
-	| 'delivery'
-	| 'slice'
-	| 'link'
-	| 'memory'
-	| 'memory-revision'
-	| 'delivery-artifact'
-	| 'slice-artifact'
-	| 'action'
-	| 'agent-run'
-	| 'agent-run-event'
-	| 'review-surface'
-	| 'revision-gate'
-	| 'revision'
-	| 'secret'
-
-export type CoreResource = CoreIdResource
 
 export type ArchivableCoreResource = Extract<CoreIdResource, 'model-provider' | 'model' | 'agent-run-profile' | 'secret'>
 

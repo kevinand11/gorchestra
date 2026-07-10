@@ -1,8 +1,9 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
-import { idPipe, type AuditStamp, type Id } from '../domain/commons'
-import { memoryBodyPipe, memoryPipe, memoryTitlePipe, type CurrentMemoryRevision, type Memory, type MemoryRevision } from '../domain/memory'
+import { idPipe } from '../domain/commons'
+import { memoryPipe, type Memory } from '../domain/memory'
+import { memoryBodyPipe, memoryTitlePipe, type MemoryRevision } from '../domain/memory-revision'
 import type {
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
@@ -11,11 +12,10 @@ import type {
 	RevisionConflictError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreRuntime } from '../runtime'
-import type { CoreStorage } from '../services'
+import { buildCommandHandler } from '../utils/command-handler'
+import { auditStamp, createRecordValue, getRequired, nextId, updateRecordValue, withTransaction } from '../utils/command-storage'
+import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
-import { buildCommandHandler } from './utils/handler'
-import { auditStamp, createRecordValue, getRequired, nextId, updateRecordValue, withTransaction } from './utils/storage'
 
 export const inputPipe = v.object({
 	memoryId: idPipe,
@@ -38,102 +38,51 @@ export type Error =
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
-type CreateMemoryRevisionValues = {
-	revisionId: Id
-	stamp: AuditStamp
-}
-
 export function createCreateMemoryRevisionCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('createMemoryRevision', inputPipe, (input, context) => handleCreateMemoryRevision(runtime, input, context))
-}
-
-function handleCreateMemoryRevision(runtime: CoreRuntime, input: Input, context: CommandContext): Promise<CoreResult<Result, Error>> {
-	return withTransaction(runtime.services, (storage) => createRevisionInStorage(storage, runtime, input, context))
-}
-
-async function createRevisionInStorage(
-	storage: CoreStorage,
-	runtime: CoreRuntime,
-	input: Input,
-	context: CommandContext,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const memory = await getRequired('memory', storage, input.memoryId)
-	return memory.ok ? createRevisionForMemory(storage, runtime, memory.value, input, context) : memory
-}
-
-function createRevisionForMemory(
-	storage: CoreStorage,
-	runtime: CoreRuntime,
-	memory: Memory,
-	input: Input,
-	context: CommandContext,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const conflict = validateExpectedRevision(memory, input)
-	if (!conflict.ok) return Promise.resolve(conflict)
-	if (unchanged(memory, input)) return Promise.resolve({ ok: true, value: memory })
-
-	return createChangedRevision(storage, runtime, memory, input, context)
-}
-
-function createChangedRevision(
-	storage: CoreStorage,
-	runtime: CoreRuntime,
-	memory: Memory,
-	input: Input,
-	context: CommandContext,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const values = createMemoryRevisionValues(runtime, context)
-	return values.ok ? writeMemoryRevision(storage, memory, input, values.value) : Promise.resolve(values)
-}
-
-function validateExpectedRevision(memory: Memory, input: Input): CoreResult<void, RevisionConflictError> {
-	return memory.currentRevision.id === input.expectedCurrentRevisionId
-		? { ok: true, value: undefined }
-		: {
-				ok: false,
-				error: {
-					type: 'revision-conflict',
-					memoryId: memory.id,
-					expectedCurrentRevisionId: input.expectedCurrentRevisionId,
-					actualCurrentRevisionId: memory.currentRevision.id,
-				},
+	return buildCommandHandler('createMemoryRevision', inputPipe, (input, context) =>
+		withTransaction<Result, Exclude<Error, InvalidInputError>>(runtime.services, async (storage) => {
+			const memory = await getRequired('memory', storage, input.memoryId)
+			if (!memory.ok) return memory
+			if (memory.value.currentRevision.id !== input.expectedCurrentRevisionId) {
+				return {
+					ok: false,
+					error: {
+						type: 'revision-conflict',
+						memoryId: memory.value.id,
+						expectedCurrentRevisionId: input.expectedCurrentRevisionId,
+						actualCurrentRevisionId: memory.value.currentRevision.id,
+					},
+				}
 			}
-}
+			if (input.title === memory.value.currentRevision.title && input.body === memory.value.currentRevision.body) {
+				return { ok: true, value: memory.value }
+			}
 
-function unchanged(memory: Memory, input: Input): boolean {
-	return input.title === memory.currentRevision.title && input.body === memory.currentRevision.body
-}
+			const revisionId = nextId(runtime.values)
+			if (!revisionId.ok) return revisionId
 
-function createMemoryRevisionValues(
-	runtime: CoreRuntime,
-	context: CommandContext,
-): CoreResult<CreateMemoryRevisionValues, InvalidCoreServiceOutputError> {
-	const revisionId = nextId(runtime.values)
-	if (!revisionId.ok) return revisionId
+			const stamp = auditStamp(runtime.values, context)
+			if (!stamp.ok) return stamp
 
-	const stamp = auditStamp(runtime.values, context)
-	return stamp.ok ? { ok: true, value: { revisionId: revisionId.value, stamp: stamp.value } } : stamp
-}
+			const storedRevision = await createRecordValue('memory-revision', storage, {
+				id: revisionId.value,
+				memoryId: memory.value.id,
+				title: input.title,
+				body: input.body,
+				created: stamp.value,
+			})
+			if (!storedRevision.ok) return storedRevision
 
-async function writeMemoryRevision(
-	storage: CoreStorage,
-	memory: Memory,
-	input: Input,
-	values: CreateMemoryRevisionValues,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const revision = memoryRevision(memory.id, input, values)
-	const storedRevision = await createRecordValue('memory-revision', storage, revision)
-	if (!storedRevision.ok) return storedRevision
-
-	return updateRecordValue('memory', storage, memory.id, { currentRevision: currentRevision(storedRevision.value) })
-}
-
-function memoryRevision(memoryId: Id, input: Input, values: CreateMemoryRevisionValues): MemoryRevision {
-	return { id: values.revisionId, memoryId, title: input.title, body: input.body, created: values.stamp }
-}
-
-function currentRevision(revision: MemoryRevision): CurrentMemoryRevision {
-	return { id: revision.id, title: revision.title, body: revision.body, created: revision.created }
+			return updateRecordValue('memory', storage, memory.value.id, {
+				currentRevision: {
+					id: storedRevision.value.id,
+					title: storedRevision.value.title,
+					body: storedRevision.value.body,
+					created: storedRevision.value.created,
+				},
+			})
+		}),
+	)
 }
 
 if (import.meta.vitest) {
@@ -186,7 +135,12 @@ if (import.meta.vitest) {
 					id: '01k00000000000000000000019',
 					parentId: null,
 					created: stamp,
-					currentRevision: currentRevision(revision),
+					currentRevision: {
+						id: revision.id,
+						title: revision.title,
+						body: revision.body,
+						created: revision.created,
+					},
 				},
 			})
 			expect(options.tx.memoryRevisions.records.get(revision.id)).toEqual(revision)

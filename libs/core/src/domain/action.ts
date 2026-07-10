@@ -2,6 +2,7 @@ import { v, type PipeOutput } from 'valleyed'
 
 import { auditStampPipe, idPipe, runtimeRecordPipe } from './commons'
 import { externalOperationEvidencePipe, validationEvidencePipe } from './evidence'
+import { coreSchema, schemaToPipe } from '../utils/storage/schema'
 
 const deliveryWorkOperationDeliveryStatePipe = v.in(['needs-artifact-creation', 'needs-artifact-validation', 'needs-review-surface'])
 const deliveryWorkOperationSliceStatePipe = v.in([
@@ -134,11 +135,11 @@ export const actionResultPipe = v.discriminate((value) => value.type, {
 })
 export type ActionResult = PipeOutput<typeof actionResultPipe>
 
-export const actionPipe = v.object({
-	id: idPipe,
-	deliveryId: idPipe,
-	performed: runtimeRecordPipe,
-	authorized: v.nullable(auditStampPipe),
-	result: actionResultPipe,
-})
-export type Action = Omit<PipeOutput<typeof actionPipe>, 'result'> & { result: ActionResult }
+export const actionSchema = coreSchema('actions')
+	.field('deliveryId', idPipe)
+	.field('performed', runtimeRecordPipe)
+	.field('authorized', v.nullable(auditStampPipe))
+	.field('result', actionResultPipe)
+	.build()
+export const actionPipe = schemaToPipe(actionSchema)
+export type Action = PipeOutput<typeof actionPipe>
