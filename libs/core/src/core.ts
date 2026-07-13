@@ -260,13 +260,13 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('treats logger and event sink as optional-only Core Services', () => {
+		it('treats logger and notifications as optional-only Core Services', () => {
 			expect(openCore(coreServices())).toMatchObject({ ok: true })
 			expect(
 				openCore({
 					...coreServices(),
 					logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
-					eventSink: { publish: () => {} },
+					notifications: { publish: () => {} },
 				}),
 			).toMatchObject({ ok: true })
 			expect(openCore({ ...coreServices(), logger: null as never })).toMatchObject({
@@ -278,15 +278,26 @@ if (import.meta.vitest) {
 					pipeError: { messages: [expect.objectContaining({ path: 'logger' })] },
 				},
 			})
-			expect(openCore({ ...coreServices(), eventSink: null as never })).toMatchObject({
+			expect(openCore({ ...coreServices(), notifications: null } as unknown as CoreServices)).toMatchObject({
 				ok: false,
 				error: {
 					type: 'invalid-input',
 					boundary: 'core',
 					operation: 'openCore',
-					pipeError: { messages: [expect.objectContaining({ path: 'eventSink' })] },
+					pipeError: { messages: [expect.objectContaining({ path: 'notifications' })] },
 				},
 			})
+			for (const notifications of [{}, { publish: 'not-a-function' }]) {
+				expect(openCore({ ...coreServices(), notifications } as unknown as CoreServices)).toMatchObject({
+					ok: false,
+					error: {
+						type: 'invalid-input',
+						boundary: 'core',
+						operation: 'openCore',
+						pipeError: { messages: [expect.objectContaining({ path: 'notifications.publish' })] },
+					},
+				})
+			}
 		})
 
 		it('preflights required Core Services outside commands and queries', async () => {
@@ -323,9 +334,9 @@ if (import.meta.vitest) {
 						throw new Error('logger was checked')
 					},
 				},
-				eventSink: {
+				notifications: {
 					publish: () => {
-						throw new Error('event sink was checked')
+						throw new Error('notifications were checked')
 					},
 				},
 			})

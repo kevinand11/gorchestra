@@ -34,7 +34,7 @@ async function executeShell(input: ShInput, context: CoreAgentRunToolContext) {
 	const timeoutMs = timeoutMsFromInput(input.timeout)
 	const output = await runNonRootWorkspaceShell({ context, label: 'Agent Run sh tool', script: input.command, timeoutMs })
 	const projected = commandToolOutput(output)
-	context.onUpdate({ type: 'structured', value: { exitCode: output.exitCode } })
+	await context.onUpdate({ type: 'structured', value: { exitCode: output.exitCode } })
 	if (output.exitCode !== 0) failToolExecution({ type: 'command-exit', exitCode: output.exitCode }, projected)
 	return projected
 }

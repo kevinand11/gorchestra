@@ -23,6 +23,7 @@ import {
 	runProviderBackedDeliveryPreflightChecks,
 } from '../../utils/delivery-preflight'
 import { acceptDispatchRequest, exclusiveDeliverySchedulerClaim } from '../../utils/dispatch'
+import { withNotificationTransaction } from '../../utils/notifications'
 import { nextId, runtimeRecord } from '../../utils/runtime-values'
 import { createRecord, getRequired, listRecords, withTransaction } from '../../utils/storage/helpers'
 import type { Result as CoreResult } from '../../utils/types'
@@ -285,7 +286,7 @@ async function processFreshSliceOperation(
 		case 'needs-artifact-creation':
 			return handleSliceNeedsArtifactCreation(runtime, context, deliverySlice.slice, { type: 'needs-artifact-creation' })
 		case 'executable':
-			return withTransaction(runtime.services, async (storage) =>
+			return withNotificationTransaction(runtime, async (storage, notifications) =>
 				handleSliceExecutable(
 					{ ...context, storage },
 					deliverySlice.slice,
@@ -297,6 +298,7 @@ async function processFreshSliceOperation(
 							}
 						: { type: 'executable', mode: 'initial' },
 					context.workResolution,
+					notifications,
 				),
 			)
 		default:

@@ -16,12 +16,11 @@ import type {
 } from '../errors'
 import type { CommandContext } from './types'
 import { requireInteractiveAgentRunOpen } from '../utils/agent-run-targets'
-import { appendAgentRunEvent } from '../utils/agent-runs'
+import { appendAgentRunEvent, updateAgentRunRecord } from '../utils/agent-runs'
 import { buildCommandHandler } from '../utils/command-handler'
 import {
 	loadSelectableModelFacts,
 	modelIdsFromModelUses,
-	updateRecordValue,
 	validateModelUseConfigs,
 	withAuditStampTransaction,
 } from '../utils/command-storage'
@@ -47,7 +46,7 @@ export type Operation = (input: Input, context: CommandContext) => Promise<CoreR
 
 export function createSetAgentRunModelUseOverrideCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('setAgentRunModelUseOverride', setAgentRunModelUseOverrideInputPipe, (input, context) =>
-		withAuditStampTransaction<Result, Exclude<Error, InvalidInputError>>(runtime, context, async (storage, stamp) => {
+		withAuditStampTransaction<Result, Exclude<Error, InvalidInputError>>(runtime, context, async (storage, stamp, notifications) => {
 			const agentRun = await requireInteractiveAgentRunOpen(storage, input.agentRunId)
 			if (!agentRun.ok) return agentRun
 
@@ -59,12 +58,12 @@ export function createSetAgentRunModelUseOverrideCommand(runtime: CoreRuntime): 
 				if (!modelUseValidation.ok) return modelUseValidation
 			}
 
-			const updated = await updateRecordValue('agent-run', storage, input.agentRunId, {
+			const updated = await updateAgentRunRecord(storage, notifications, input.agentRunId, {
 				modelUseOverride: input.modelUse === null ? null : { modelUse: input.modelUse, selected: stamp },
 			})
 			if (!updated.ok) return updated
 
-			return appendAgentRunEvent(runtime, storage, input.agentRunId, {
+			return appendAgentRunEvent({ values: runtime.values, notifications }, storage, input.agentRunId, {
 				type: 'agent-run-model-use-override-changed',
 				modelUse: input.modelUse,
 				authorized: stamp,

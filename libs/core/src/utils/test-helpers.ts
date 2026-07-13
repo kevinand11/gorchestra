@@ -1,6 +1,7 @@
 import { Repo } from 'equipped/orm'
 import { InMemoryAdapter } from 'equipped/orm/adapters/in-memory'
 
+import { createNotificationEmitter } from './notification-emitter'
 import { createCoreProviders } from './providers'
 import type { CoreRuntime } from './runtime'
 import type { CoreRuntimeValues } from './runtime-values'
@@ -88,8 +89,14 @@ export function externalOperationEvidence(
 
 export function createTestCoreRuntime(
 	services = createTestCoreServices(),
-	overrides: { providers?: CoreRuntime['providers']; agentRuns?: CoreRuntime['agentRuns']; values?: CoreRuntimeValues } = {},
+	overrides: {
+		providers?: CoreRuntime['providers']
+		agentRuns?: CoreRuntime['agentRuns']
+		notifications?: CoreRuntime['notifications']
+		values?: CoreRuntimeValues
+	} = {},
 ): CoreRuntime {
+	const values = overrides.values ?? services.values
 	return {
 		services,
 		providers: overrides.providers ?? createCoreProviders(services),
@@ -97,7 +104,8 @@ export function createTestCoreRuntime(
 			runExecutionAgentRun: () => Promise.resolve(),
 			runModelAgentRun: () => Promise.resolve({ ok: true, value: undefined }),
 		},
-		values: overrides.values ?? services.values,
+		notifications: overrides.notifications ?? createNotificationEmitter(values, services.notifications),
+		values,
 	}
 }
 
@@ -163,7 +171,9 @@ export function neverCalledProviderBackedPreflightProviders(): CoreRuntime['prov
 	}
 }
 
-export function createTestCoreServices(overrides: Partial<Pick<CoreServices, 'dispatcher' | 'sandbox' | 'secrets'>> = {}): CoreServices & {
+export function createTestCoreServices(
+	overrides: Partial<Pick<CoreServices, 'dispatcher' | 'notifications' | 'sandbox' | 'secrets'>> = {},
+): CoreServices & {
 	tx: TestStorageTransaction
 	values: CoreRuntimeValues
 	transactionCalls: () => number
@@ -180,6 +190,7 @@ export function createTestCoreServices(overrides: Partial<Pick<CoreServices, 'di
 		},
 		sandbox: overrides.sandbox ?? noopSandbox,
 		dispatcher: overrides.dispatcher ?? noopDispatcher,
+		notifications: overrides.notifications,
 		values,
 		tx: storage.tx,
 		transactionCalls: () => storage.transactionCalls,

@@ -8,8 +8,6 @@ import {
 	type ToolSet,
 } from 'ai'
 
-import { appendAndEmit, emit } from './event-emission'
-import type { AgentRunModelDelta } from './live-events'
 import { recordToolProposal } from './tool-proposals'
 import { providerTool, toolOutput, validateToolInput, type CoreAgentRunToolDefinition } from './tools'
 import { AgentRunToolExecutionCoordinator } from './tools/coordinator'
@@ -25,6 +23,8 @@ import type {
 	AgentRunToolTranscriptPart,
 } from '../../../domain/agent-run-event'
 import type { Id, RuntimeRecord } from '../../../domain/commons'
+import type { AssistantMessageDraftDelta, ToolCallUpdate } from '../../../domain/notifications'
+import { appendAgentRunEvent } from '../../agent-runs'
 import { runtimeRecord, type CoreRuntimeValues } from '../../runtime-values'
 import type { Result } from '../../types'
 
@@ -65,50 +65,50 @@ export class AISDKTurnRecorder {
 		return Object.fromEntries(this.state.tools.map((coreTool) => [coreTool.name, this.aiTool(coreTool)]))
 	}
 
-	async onLanguageModelCallStart(callId: string): Promise<void> {
+	onLanguageModelCallStart(callId: string): Promise<void> {
 		this.#currentDraftId = draftIdForCallId(callId)
 		this.#draftIdByCallId.set(callId, this.#currentDraftId)
 		this.#contentIndexByPartId.clear()
 		this.#textByPartId.clear()
 		this.#nextContentIndex = 0
-		await emit(this.options, {
+		this.runtime.notifications.emit({
 			type: 'assistant-message-draft-updated',
+			agentRunId: this.state.agentRun.id,
 			turnStartedEventId: this.turnStarted.id,
 			draftId: this.#currentDraftId,
 			delta: { type: 'model-output-started' },
 		})
+		return Promise.resolve()
 	}
 
 	async onLanguageModelCallEnd(event: LanguageModelCallEndEvent<ToolSet>): Promise<void> {
 		const usage = usageFromAIUsage(event.usage)
 		const parts = await this.redactedAssistantPartsFromAIContent(event.content)
-		const assistant = await appendAndEmit(
-			this.runtime,
-			this.state.agentRun.id,
-			{
-				type: 'assistant-message',
-				turnStartedEventId: this.turnStarted.id,
-				model: assistantMessageModel(this.turnModelUse),
-				finishReason: event.finishReason,
-				usage,
-				cost: costFromUsage(usage, this.turnModelUse.model.pricing),
-				responseId: event.responseId.length === 0 ? null : event.responseId,
-				parts,
-			},
-			this.options,
-		)
+		const assistant = await appendAgentRunEvent(this.runtime, this.runtime.services.storage, this.state.agentRun.id, {
+			type: 'assistant-message',
+			turnStartedEventId: this.turnStarted.id,
+			model: assistantMessageModel(this.turnModelUse),
+			finishReason: event.finishReason,
+			usage,
+			cost: costFromUsage(usage, this.turnModelUse.model.pricing),
+			responseId: event.responseId.length === 0 ? null : event.responseId,
+			parts,
+		})
 		if (!assistant.ok) return this.fail(assistant.error)
 
 		if (assistant.value.body.type !== 'assistant-message') throw new Error('Expected assistant-message event body after append.')
 		this.registerPendingToolCalls(assistant.value as AgentRunEventWithBody<'assistant-message'>)
 		const draftId = this.#draftIdByCallId.get(event.callId)
 		if (draftId !== undefined) {
-			await emit(this.options, {
+			this.runtime.notifications.emit({
 				type: 'assistant-message-draft-updated',
+				agentRunId: this.state.agentRun.id,
 				turnStartedEventId: this.turnStarted.id,
 				draftId,
-				delta: { type: 'model-output-ended' },
+				delta: { type: 'model-output-ended', assistantMessageEventId: assistant.value.id },
 			})
+			this.#draftIdByCallId.delete(event.callId)
+			if (this.#currentDraftId === draftId) this.#currentDraftId = null
 		}
 	}
 
@@ -119,14 +119,14 @@ export class AISDKTurnRecorder {
 		switch (chunk.type) {
 			case 'text-start':
 				this.startPart(chunk.id)
-				await this.emitModelDelta(draftId, { type: 'text-started', contentIndex: this.indexForPart(chunk.id) })
+				this.emitModelDelta(draftId, { type: 'text-started', contentIndex: this.indexForPart(chunk.id) })
 				return
 			case 'text-delta':
 				this.appendPartText(chunk.id, chunk.text)
-				await this.emitModelDelta(draftId, { type: 'text-delta', contentIndex: this.indexForPart(chunk.id), delta: chunk.text })
+				this.emitModelDelta(draftId, { type: 'text-delta', contentIndex: this.indexForPart(chunk.id), delta: chunk.text })
 				return
 			case 'text-end':
-				await this.emitModelDelta(draftId, {
+				this.emitModelDelta(draftId, {
 					type: 'text-ended',
 					contentIndex: this.indexForPart(chunk.id),
 					text: this.#textByPartId.get(chunk.id) ?? '',
@@ -134,14 +134,14 @@ export class AISDKTurnRecorder {
 				return
 			case 'reasoning-start':
 				this.startPart(chunk.id)
-				await this.emitModelDelta(draftId, { type: 'thinking-started', contentIndex: this.indexForPart(chunk.id) })
+				this.emitModelDelta(draftId, { type: 'thinking-started', contentIndex: this.indexForPart(chunk.id) })
 				return
 			case 'reasoning-delta':
 				this.appendPartText(chunk.id, chunk.text)
-				await this.emitModelDelta(draftId, { type: 'thinking-delta', contentIndex: this.indexForPart(chunk.id), delta: chunk.text })
+				this.emitModelDelta(draftId, { type: 'thinking-delta', contentIndex: this.indexForPart(chunk.id), delta: chunk.text })
 				return
 			case 'reasoning-end':
-				await this.emitModelDelta(draftId, {
+				this.emitModelDelta(draftId, {
 					type: 'thinking-ended',
 					contentIndex: this.indexForPart(chunk.id),
 					text: this.#textByPartId.get(chunk.id) ?? '',
@@ -149,7 +149,7 @@ export class AISDKTurnRecorder {
 				return
 			case 'tool-input-start':
 				this.startPart(chunk.id)
-				await this.emitModelDelta(draftId, {
+				this.emitModelDelta(draftId, {
 					type: 'tool-call-arguments-started',
 					contentIndex: this.indexForPart(chunk.id),
 					toolCallId: chunk.id,
@@ -157,34 +157,33 @@ export class AISDKTurnRecorder {
 				})
 				return
 			case 'tool-input-delta':
-				await this.emitModelDelta(draftId, {
-					type: 'tool-call-arguments-delta',
-					contentIndex: this.indexForPart(chunk.id),
-					toolCallId: chunk.id,
-					delta: chunk.delta,
-				})
 				return
-			case 'tool-call':
-				await this.emitModelDelta(draftId, {
+			case 'tool-call': {
+				const input = await this.state.sandbox.redactJson({ value: chunk.input })
+				if (!input.ok) return
+				this.emitModelDelta(draftId, {
 					type: 'tool-call-arguments-ended',
 					contentIndex: this.indexForPart(chunk.toolCallId),
 					toolCallId: chunk.toolCallId,
 					toolName: chunk.toolName,
-					input: chunk.input,
+					input: input.value,
 				})
 				return
+			}
 			default:
 				return
 		}
 	}
 
 	recordUnclosedModelFailure(_error: unknown, _signal: AbortSignal | undefined): Result<void, AgentRunRuntimeError> {
+		this.discardCurrentDraft()
 		return { ok: true, value: undefined }
 	}
 
-	private emitModelDelta(draftId: string, delta: AgentRunModelDelta) {
-		return emit(this.options, {
+	private emitModelDelta(draftId: string, delta: AssistantMessageDraftDelta): void {
+		this.runtime.notifications.emit({
 			type: 'assistant-message-draft-updated',
+			agentRunId: this.state.agentRun.id,
 			turnStartedEventId: this.turnStarted.id,
 			draftId,
 			delta,
@@ -280,14 +279,7 @@ export class AISDKTurnRecorder {
 					assistantMessageEventId: group.assistantMessageEventId,
 					toolCallId: execution.toolCallId,
 					signal: execution.abortSignal ?? this.options.signal ?? new AbortController().signal,
-					onUpdate: (update) => {
-						void emit(this.options, {
-							type: 'tool-call-updated',
-							turnStartedEventId: this.turnStarted.id,
-							toolCallId: execution.toolCallId,
-							update,
-						})
-					},
+					onUpdate: (update) => this.publishToolUpdate(execution.toolCallId, update),
 					recordProposal: (body) =>
 						recordToolProposal(this.runtime, this.state.agentRun.id, group.assistantMessageEventId, execution.toolCallId, body),
 					sandbox: this.state.sandbox,
@@ -319,6 +311,34 @@ export class AISDKTurnRecorder {
 				truncation: output.truncation,
 				metadata: null,
 			})
+		}
+	}
+
+	private async publishToolUpdate(toolCallId: string, update: ToolCallUpdate): Promise<void> {
+		switch (update.type) {
+			case 'progress':
+				this.runtime.notifications.emit({
+					type: 'tool-call-updated',
+					agentRunId: this.state.agentRun.id,
+					turnStartedEventId: this.turnStarted.id,
+					toolCallId,
+					update,
+				})
+				return
+			case 'structured': {
+				const redacted = await this.state.sandbox.redactJson({ value: update.value })
+				if (!redacted.ok) return
+				this.runtime.notifications.emit({
+					type: 'tool-call-updated',
+					agentRunId: this.state.agentRun.id,
+					turnStartedEventId: this.turnStarted.id,
+					toolCallId,
+					update: { type: 'structured', value: redacted.value },
+				})
+				return
+			}
+			default:
+				throw new Error(`Unexpected Tool Call Update type: ${String(update satisfies never)}`)
 		}
 	}
 
@@ -368,25 +388,38 @@ export class AISDKTurnRecorder {
 	private async maybeAppendToolMessage(group: PendingToolGroup): Promise<void> {
 		if (group.partsByToolCallId.size !== group.orderedToolCallIds.length) return
 		const parts = group.orderedToolCallIds.map((toolCallId) => group.partsByToolCallId.get(toolCallId)!)
-		const event = await appendAndEmit(
-			this.runtime,
-			this.state.agentRun.id,
-			{
-				type: 'tool-message',
-				turnStartedEventId: group.turnStartedEventId,
-				respondsToAssistantMessageEventId: group.assistantMessageEventId,
-				source: { type: 'tool-execution' },
-				parts,
-			},
-			this.options,
-		)
+		const event = await appendAgentRunEvent(this.runtime, this.runtime.services.storage, this.state.agentRun.id, {
+			type: 'tool-message',
+			turnStartedEventId: group.turnStartedEventId,
+			respondsToAssistantMessageEventId: group.assistantMessageEventId,
+			source: { type: 'tool-execution' },
+			parts,
+		})
 		if (!event.ok) this.fail(event.error)
 		for (const toolCallId of group.orderedToolCallIds) this.#pendingToolGroupByToolCallId.delete(toolCallId)
 	}
 
 	private fail(error: AgentRunRuntimeError): never {
+		this.discardCurrentDraft()
 		this.#error = error
 		throw new Error(`Agent Run transcript persistence failed: ${error.type}`)
+	}
+
+	private discardCurrentDraft(): void {
+		const draftId = this.#currentDraftId
+		if (draftId === null) return
+
+		this.runtime.notifications.emit({
+			type: 'assistant-message-draft-updated',
+			agentRunId: this.state.agentRun.id,
+			turnStartedEventId: this.turnStarted.id,
+			draftId,
+			delta: { type: 'model-output-discarded' },
+		})
+		for (const [callId, candidate] of this.#draftIdByCallId) {
+			if (candidate === draftId) this.#draftIdByCallId.delete(callId)
+		}
+		this.#currentDraftId = null
 	}
 
 	private failTool(error: AgentRunRuntimeError): AgentRunToolOutput {
@@ -447,10 +480,119 @@ function runtimeRecordOrSame(values: CoreRuntimeValues, fallback: RuntimeRecord)
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
+	const { v } = await import('valleyed')
 	const { defaultModelCapabilities } = await import('../../../domain/model')
 	const { createTestCoreRuntime, createTestCoreServices, testModelAgentRun } = await import('../../test-helpers')
 
 	describe('AISDKTurnRecorder', () => {
+		it('publishes an Agent Run-scoped Assistant Message Draft start', async () => {
+			const fixture = recorderFixture({})
+
+			await fixture.recorder.onLanguageModelCallStart('call-1')
+
+			expect(fixture.notifications).toEqual([
+				{
+					id: '01k00000000000000000010001',
+					data: {
+						type: 'assistant-message-draft-updated',
+						agentRunId: '01k00000000000000000000002',
+						turnStartedEventId: '01k00000000000000000000010',
+						draftId: 'ai-sdk-call:call-1',
+						delta: { type: 'model-output-started' },
+					},
+				},
+			])
+		})
+
+		it('publishes safe assistant deltas in source order while omitting raw tool argument deltas', async () => {
+			const fixture = recorderFixture({ redactedValue: { token: '[REDACTED]' } })
+			await fixture.recorder.onLanguageModelCallStart('call-1')
+			fixture.notifications.length = 0
+
+			await fixture.recorder.onChunk({ type: 'text-start', id: 'text-1' })
+			await fixture.recorder.onChunk({ type: 'text-delta', id: 'text-1', text: 'Hello' })
+			await fixture.recorder.onChunk({ type: 'text-end', id: 'text-1' })
+			await fixture.recorder.onChunk({
+				type: 'tool-input-start',
+				id: 'tool-call-1',
+				toolName: 'sample-tool',
+			})
+			await fixture.recorder.onChunk({
+				type: 'tool-input-delta',
+				id: 'tool-call-1',
+				delta: '{"token":"secret"}',
+			})
+			await fixture.recorder.onChunk({
+				type: 'tool-call',
+				toolCallId: 'tool-call-1',
+				toolName: 'sample-tool',
+				input: { token: 'secret' },
+			})
+
+			expect(
+				fixture.notifications.map((notification) => (notification as { data: { type: string; delta?: unknown } }).data.delta),
+			).toEqual([
+				{ type: 'text-started', contentIndex: 0 },
+				{ type: 'text-delta', contentIndex: 0, delta: 'Hello' },
+				{ type: 'text-ended', contentIndex: 0, text: 'Hello' },
+				{ type: 'tool-call-arguments-started', contentIndex: 1, toolCallId: 'tool-call-1', toolName: 'sample-tool' },
+				{
+					type: 'tool-call-arguments-ended',
+					contentIndex: 1,
+					toolCallId: 'tool-call-1',
+					toolName: 'sample-tool',
+					input: { token: '[REDACTED]' },
+				},
+			])
+			expect(fixture.notifications.map((notification) => (notification as { data: { agentRunId: string } }).data.agentRunId)).toEqual(
+				fixture.notifications.map(() => '01k00000000000000000000002'),
+			)
+		})
+
+		it('drops an unredactable live tool input without failing model execution', async () => {
+			const fixture = recorderFixture({ redactionFails: true })
+			await fixture.recorder.onLanguageModelCallStart('call-1')
+			fixture.notifications.length = 0
+
+			await expect(
+				fixture.recorder.onChunk({
+					type: 'tool-call',
+					toolCallId: 'tool-call-1',
+					toolName: 'sample-tool',
+					input: { token: 'secret' },
+				}),
+			).resolves.toBeUndefined()
+			expect(fixture.recorder.operationError()).toBeNull()
+			expect(fixture.notifications).toEqual([])
+		})
+
+		it('publishes the durable assistant event before ending its Assistant Message Draft', async () => {
+			const fixture = recorderFixture({ redactedValue: { token: '[REDACTED]' } })
+			await fixture.recorder.onLanguageModelCallStart('call-1')
+			fixture.notifications.length = 0
+
+			await fixture.recorder.onLanguageModelCallEnd(languageModelCallEndEvent({ token: 'secret-token' }))
+
+			const notifications = fixture.notifications as Array<{
+				id: string
+				data: { type: string; event?: AgentRunEvent; delta?: { type: string; assistantMessageEventId?: string } }
+			}>
+			expect(notifications.map((notification) => notification.data.type)).toEqual([
+				'agent-run-event-created',
+				'assistant-message-draft-updated',
+			])
+			expect(notifications[1]).toEqual({
+				id: '01k00000000000000000010004',
+				data: {
+					type: 'assistant-message-draft-updated',
+					agentRunId: '01k00000000000000000000002',
+					turnStartedEventId: '01k00000000000000000000010',
+					draftId: 'ai-sdk-call:call-1',
+					delta: { type: 'model-output-ended', assistantMessageEventId: notifications[0]?.data.event?.id },
+				},
+			})
+		})
+
 		it('redacts persisted assistant tool-call inputs while keeping execution context pending', async () => {
 			const fixture = recorderFixture({ redactedValue: { token: '[REDACTED]' } })
 
@@ -466,8 +608,77 @@ if (import.meta.vitest) {
 			expect(fixture.recorder.operationError()).toBeNull()
 		})
 
-		it('fails closed before persisting an assistant message when tool-call input redaction fails', async () => {
+		it('publishes redacted progress and structured Tool Call updates', async () => {
+			const coreTool: CoreAgentRunToolDefinition = {
+				name: 'sample-tool',
+				contractVersion: 1,
+				description: 'Sample tool.',
+				inputPipe: v.any<unknown>(),
+				promptSnippet: 'Use sample tool',
+				promptGuidelines: [],
+				workspaceMutationKind: 'read-only',
+				execute: async (_input, context) => {
+					await context.onUpdate({ type: 'progress', label: 'Running', current: 1, total: 2 })
+					await context.onUpdate({ type: 'structured', value: { token: 'secret' } })
+					return toolOutput('done')
+				},
+			}
+			const fixture = recorderFixture({ redactedValue: { token: '[REDACTED]' }, tools: [coreTool] })
+			await fixture.recorder.onLanguageModelCallStart('call-1')
+			await fixture.recorder.onLanguageModelCallEnd(languageModelCallEndEvent({ token: 'secret-token' }))
+			fixture.notifications.length = 0
+			const providerTool = fixture.recorder.tools()['sample-tool'] as {
+				execute(input: unknown, options: ToolExecutionOptions<Record<string, unknown>>): Promise<AgentRunToolOutput>
+			}
+
+			await providerTool.execute({}, {
+				toolCallId: 'tool-call-1',
+				messages: [],
+				abortSignal: undefined,
+			} as unknown as ToolExecutionOptions<Record<string, unknown>>)
+
+			expect(
+				fixture.notifications
+					.map((notification) => (notification as { data: { type: string; update?: unknown } }).data)
+					.filter((data) => data.type === 'tool-call-updated'),
+			).toEqual([
+				{
+					type: 'tool-call-updated',
+					agentRunId: '01k00000000000000000000002',
+					turnStartedEventId: '01k00000000000000000000010',
+					toolCallId: 'tool-call-1',
+					update: { type: 'progress', label: 'Running', current: 1, total: 2 },
+				},
+				{
+					type: 'tool-call-updated',
+					agentRunId: '01k00000000000000000000002',
+					turnStartedEventId: '01k00000000000000000000010',
+					toolCallId: 'tool-call-1',
+					update: { type: 'structured', value: { token: '[REDACTED]' } },
+				},
+			])
+		})
+
+		it('discards an unclosed Assistant Message Draft exactly once after model failure', async () => {
+			const fixture = recorderFixture({})
+			await fixture.recorder.onLanguageModelCallStart('call-1')
+			fixture.notifications.length = 0
+
+			expect(fixture.recorder.recordUnclosedModelFailure(new Error('provider failed'), undefined)).toEqual({
+				ok: true,
+				value: undefined,
+			})
+			fixture.recorder.recordUnclosedModelFailure(new Error('provider failed again'), undefined)
+
+			expect(fixture.notifications.map((notification) => (notification as { data: { delta?: unknown } }).data.delta)).toEqual([
+				{ type: 'model-output-discarded' },
+			])
+		})
+
+		it('fails closed and discards the draft before persisting an assistant message when redaction fails', async () => {
 			const fixture = recorderFixture({ redactionFails: true })
+			await fixture.recorder.onLanguageModelCallStart('call-1')
+			fixture.notifications.length = 0
 
 			await expect(fixture.recorder.onLanguageModelCallEnd(languageModelCallEndEvent({ token: 'secret-token' }))).rejects.toThrow(
 				'Agent Run transcript persistence failed: sandbox-operation-failed',
@@ -481,12 +692,16 @@ if (import.meta.vitest) {
 			expect([...fixture.services.tx.agentRunEvents.records.values()].some((event) => event.body.type === 'assistant-message')).toBe(
 				false,
 			)
+			expect(fixture.notifications.map((notification) => (notification as { data: { delta?: unknown } }).data.delta)).toEqual([
+				{ type: 'model-output-discarded' },
+			])
 		})
 	})
 
-	function recorderFixture(input: { redactedValue?: unknown; redactionFails?: boolean }) {
+	function recorderFixture(input: { redactedValue?: unknown; redactionFails?: boolean; tools?: CoreAgentRunToolDefinition[] }) {
 		const agentRunId = '01k00000000000000000000002'
-		const services = createTestCoreServices()
+		const notifications: unknown[] = []
+		const services = createTestCoreServices({ notifications: { publish: (notification) => notifications.push(notification) } })
 		const agentRun = {
 			...testModelAgentRun({ id: agentRunId }),
 			blocked: null,
@@ -512,7 +727,7 @@ if (import.meta.vitest) {
 		}
 		const recorder = new AISDKTurnRecorder(
 			runtime,
-			{ agentRun, events: [turnStarted], tools: [], sandbox: testManagedSandbox(input) },
+			{ agentRun, events: [turnStarted], tools: input.tools ?? [], sandbox: testManagedSandbox(input) },
 			turnStarted,
 			{
 				model: {
@@ -542,7 +757,7 @@ if (import.meta.vitest) {
 			},
 			{},
 		)
-		return { recorder, services }
+		return { recorder, services, notifications }
 	}
 
 	function testManagedSandbox(input: { redactedValue?: unknown; redactionFails?: boolean }) {

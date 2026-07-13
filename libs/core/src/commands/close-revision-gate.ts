@@ -42,7 +42,7 @@ export function createCloseRevisionGateCommand(runtime: CoreRuntime): Operation 
 		const written = await withAuditStampTransaction<DispatchedResult, Exclude<Error, InvalidInputError>>(
 			runtime,
 			context,
-			async (storage, stamp) => {
+			async (storage, stamp, notifications) => {
 				const gate = await getRequired('revision-gate', storage, input.revisionGateId)
 				if (!gate.ok) return gate
 				if (gate.value.closed !== null) {
@@ -60,6 +60,7 @@ export function createCloseRevisionGateCommand(runtime: CoreRuntime): Operation 
 				const agentRun = await completeAgentRunByIdAndAcceptSandboxRelease(
 					storage,
 					runtime.services.dispatcher,
+					notifications,
 					revisionGate.value.agentRunId,
 					{ at: stamp.at },
 				)

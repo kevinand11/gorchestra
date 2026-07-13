@@ -1,11 +1,11 @@
 import type { ModelMessage } from 'ai'
 
-import type { AgentRunLiveEvent } from './live-events'
 import type { CoreAgentRunToolDefinition } from './tools'
 import type { AgentRun } from '../../../domain/agent-run'
 import type { AgentRunEvent, AgentRunToolOutput } from '../../../domain/agent-run-event'
 import type { Id } from '../../../domain/commons'
 import type { ModelThinkingLevel } from '../../../domain/model'
+import type { ToolCallUpdate } from '../../../domain/notifications'
 import type {
 	InvalidCoreServiceOutputError,
 	InvariantViolationError,
@@ -15,6 +15,7 @@ import type {
 	StorageOperationFailedError,
 } from '../../../errors'
 import type { CoreServices } from '../../../services'
+import type { NotificationEmitter } from '../../notifications'
 import type { CoreProviders } from '../../providers'
 import type { CoreRuntimeValues } from '../../runtime-values'
 import type { ManagedSandbox } from '../sandboxes/managed'
@@ -42,12 +43,7 @@ export interface CoreAgentRunToolContext {
 	agentRunId: Id
 	assistantMessageEventId: Id
 	toolCallId: string
-	onUpdate(
-		update:
-			| { type: 'text-delta'; delta: string }
-			| { type: 'progress'; label: string; current: number | null; total: number | null }
-			| { type: 'structured'; value: unknown },
-	): void
+	onUpdate(update: ToolCallUpdate): Promise<void>
 	signal: AbortSignal
 	recordProposal(body: { type: 'proposed-plan-output' | 'proposed-revision-output'; output: unknown }): Promise<AgentRunToolOutput>
 	sandbox: ManagedSandbox
@@ -63,12 +59,12 @@ export type AgentRunRuntimeError =
 
 export interface RunModelAgentRunOptions {
 	signal?: AbortSignal
-	onEvent?(event: AgentRunLiveEvent): void | Promise<void>
 }
 
 export interface ModelAgentRunRuntime {
 	services: CoreServices
 	providers: CoreProviders
+	notifications: NotificationEmitter
 	values: CoreRuntimeValues
 }
 

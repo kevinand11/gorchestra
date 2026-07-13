@@ -5,6 +5,7 @@ import { handleSliceNeedsArtifactValidation } from './slice-needs-artifact-valid
 import { handleSliceNeedsDeliveryValidation } from './slice-needs-delivery-validation'
 import { handleSliceOperationFailed } from './slice-operation-failed'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
+import type { NotificationEmitter } from '../../../utils/notifications'
 import type { DeliveryHandlerContext, DeliveryWorkResolution, DeliveryWorkHandlerResult } from '../../delivery-work/types'
 
 type NoWorkSliceState = Extract<
@@ -39,6 +40,7 @@ export function handleSliceWorkState(
 	slice: Slice,
 	state: SliceWorkState,
 	resolution: DeliveryWorkResolution,
+	notifications: NotificationEmitter,
 ): Promise<DeliveryWorkHandlerResult> | DeliveryWorkHandlerResult {
 	if (isNoWorkSliceState(state)) return noEligibleWork()
 	if (isValidationSliceState(state)) return handleSliceValidationWorkState(context, slice, state)
@@ -52,7 +54,7 @@ export function handleSliceWorkState(
 		}
 	}
 
-	return handleRemainingSliceWorkState(context, slice, state, resolution)
+	return handleRemainingSliceWorkState(context, slice, state, resolution, notifications)
 }
 
 function handleSliceValidationWorkState(
@@ -75,6 +77,7 @@ function handleRemainingSliceWorkState(
 	slice: Slice,
 	state: RemainingSliceState,
 	resolution: DeliveryWorkResolution,
+	notifications: NotificationEmitter,
 ): Promise<DeliveryWorkHandlerResult> | DeliveryWorkHandlerResult {
 	switch (state.type) {
 		case 'awaiting-review':
@@ -82,7 +85,7 @@ function handleRemainingSliceWorkState(
 		case 'slice-operation-failed':
 			return handleSliceOperationFailed()
 		case 'executable':
-			return handleSliceExecutable(context, slice, state, resolution)
+			return handleSliceExecutable(context, slice, state, resolution, notifications)
 		default:
 			throw new Error(`Unexpected remaining Slice Work State: ${String(state satisfies never)}`)
 	}

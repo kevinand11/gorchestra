@@ -14,10 +14,10 @@ import type {
 	ResourceArchivedError,
 	StorageOperationFailedError,
 } from '../errors'
-import { appendAgentRunEvent } from '../utils/agent-runs'
+import { appendAgentRunEvent, updateAgentRunRecord } from '../utils/agent-runs'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import { buildCommandHandler } from '../utils/command-handler'
-import { getRequired, runtimeRecord, updateRecordValue, withAuditStampTransaction } from '../utils/command-storage'
+import { getRequired, runtimeRecord, withAuditStampTransaction } from '../utils/command-storage'
 import { acceptAgentRunPreparation } from '../utils/dispatch'
 import type { CoreRuntime } from '../utils/runtime'
 import { validateRuntimeRequirementSecretReferences } from '../utils/runtime-requirement-secrets'
@@ -50,7 +50,7 @@ export function createAddAgentRunRuntimeRequirementOverrideCommand(runtime: Core
 		const written = await withAuditStampTransaction(
 			runtime,
 			context,
-			async (storage, stamp): Promise<CoreResult<WrittenOverride, Exclude<Error, InvalidInputError>>> => {
+			async (storage, stamp, notifications): Promise<CoreResult<WrittenOverride, Exclude<Error, InvalidInputError>>> => {
 				const duplicateRequirement = firstDuplicateRuntimeRequirement(input.requirements)
 				if (duplicateRequirement !== null) return duplicateRuntimeRequirement(duplicateRequirement)
 
@@ -70,7 +70,7 @@ export function createAddAgentRunRuntimeRequirementOverrideCommand(runtime: Core
 				const blocked = runtimeRecord(runtime.values)
 				if (!blocked.ok) return blocked
 
-				const event = await appendAgentRunEvent(runtime, storage, input.agentRunId, {
+				const event = await appendAgentRunEvent({ values: runtime.values, notifications }, storage, input.agentRunId, {
 					type: 'agent-run-runtime-requirement-override-added',
 					requirements: input.requirements,
 					authorized: stamp,
@@ -82,7 +82,7 @@ export function createAddAgentRunRuntimeRequirementOverrideCommand(runtime: Core
 					{ requirements: input.requirements, added: stamp, eventId: event.value.id },
 				]
 				const desiredRuntimeRequirements = [...agentRun.value.desiredRuntimeRequirements, ...input.requirements]
-				const updated = await updateRecordValue('agent-run', storage, input.agentRunId, {
+				const updated = await updateAgentRunRecord(storage, notifications, input.agentRunId, {
 					runtimeRequirementOverrides,
 					desiredRuntimeRequirements,
 					blocked: { type: 'preparation-pending', blocked: blocked.value },
@@ -119,14 +119,19 @@ if (import.meta.vitest) {
 		it('appends an override batch for active autonomous Agent Runs and dispatches Agent Run preparation', async () => {
 			const dispatches: unknown[] = []
 			const readyMarkers: string[] = []
+			const publicationOrder: string[] = []
 			const options = createTestCoreServices({
+				notifications: { publish: (notification) => publicationOrder.push(`notification:${notification.data.type}`) },
 				dispatcher: {
 					preflight: () => Promise.resolve({ ok: true }),
 					request: (request) => {
 						dispatches.push(request)
 						return Promise.resolve('marker-1')
 					},
-					ready: (marker) => readyMarkers.push(marker),
+					ready: (marker) => {
+						publicationOrder.push('dispatcher-ready')
+						readyMarkers.push(marker)
+					},
 				},
 			})
 			seedSecret(options.tx, '01k00000000000000000000040')
@@ -174,6 +179,62 @@ if (import.meta.vitest) {
 				},
 			])
 			expect(readyMarkers).toEqual(['marker-1'])
+			expect(publicationOrder).toEqual(['notification:agent-run-event-created', 'notification:agent-run-updated', 'dispatcher-ready'])
+		})
+
+		it('rolls back queued notifications and writes when dispatch acceptance fails', async () => {
+			const notifications: unknown[] = []
+			const readyMarkers: string[] = []
+			const options = createTestCoreServices({
+				notifications: { publish: (notification) => notifications.push(notification) },
+				dispatcher: {
+					preflight: () => Promise.resolve({ ok: true }),
+					request: () => Promise.resolve(''),
+					ready: (marker) => readyMarkers.push(marker),
+				},
+			})
+			seedSecret(options.tx, '01k00000000000000000000040')
+			const original = testModelAgentRun()
+			options.tx.agentRuns.records.set(original.id, original)
+			const command = createAddAgentRunRuntimeRequirementOverrideCommand(createTestCoreRuntime(options))
+
+			const result = await command(
+				{
+					agentRunId: original.id,
+					requirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
+				},
+				context,
+			)
+
+			expect(result).toMatchObject({ ok: false, error: { type: 'invalid-core-service-output', service: 'dispatcher' } })
+			expect(options.tx.agentRuns.records.get(original.id)).toEqual(original)
+			expect(options.tx.agentRunEvents.records.size).toBe(0)
+			expect(notifications).toEqual([])
+			expect(readyMarkers).toEqual([])
+		})
+
+		it('does not fail successful work when notification publishing throws', async () => {
+			const options = createTestCoreServices({
+				notifications: {
+					publish: () => {
+						throw new Error('notifications unavailable')
+					},
+				},
+			})
+			seedSecret(options.tx, '01k00000000000000000000040')
+			const agentRun = testModelAgentRun()
+			options.tx.agentRuns.records.set(agentRun.id, agentRun)
+			const command = createAddAgentRunRuntimeRequirementOverrideCommand(createTestCoreRuntime(options))
+
+			const result = await command(
+				{
+					agentRunId: agentRun.id,
+					requirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
+				},
+				context,
+			)
+
+			expect(result).toMatchObject({ ok: true, value: { body: { type: 'agent-run-runtime-requirement-override-added' } } })
 		})
 
 		it('rejects completed Agent Runs', async () => {

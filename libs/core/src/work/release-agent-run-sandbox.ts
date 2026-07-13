@@ -10,11 +10,11 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import { appendAgentRunEvent } from '../utils/agent-runs'
+import { appendAgentRunEvent, updateAgentRunRecord } from '../utils/agent-runs'
 import type { CoreRuntime } from '../utils/runtime'
 import { managedSandboxProviderForConfig } from '../utils/runtime/sandboxes'
 import { runtimeRecord } from '../utils/runtime-values'
-import { getRequired, updateRecord } from '../utils/storage/helpers'
+import { getRequired } from '../utils/storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 import { buildWorkHandler } from '../utils/work-handler'
 
@@ -72,7 +72,7 @@ async function recordReleased(
 	if (!released.ok) return released
 
 	const sandbox = { ...agentRun.sandbox, released: released.value }
-	const updated = await updateRecord('agent-run', runtime.services.storage, agentRun.id, { sandbox })
+	const updated = await updateAgentRunRecord(runtime.services.storage, runtime.notifications, agentRun.id, { sandbox })
 	if (!updated.ok) return updated
 
 	const event = await appendAgentRunEvent(runtime, runtime.services.storage, agentRun.id, {
@@ -115,8 +115,10 @@ if (import.meta.vitest) {
 
 		it('releases created sandboxes idempotently and wipes runtime env before raw release', async () => {
 			const releasedKeys: string[] = []
+			const notificationTypes: string[] = []
 			const files = new Map<string, string>()
 			const options = createTestCoreServices({
+				notifications: { publish: (notification) => notificationTypes.push(notification.data.type) },
 				sandbox: {
 					kind: 'consumer-managed',
 					create: () => Promise.resolve(rawSandbox(files, () => Promise.resolve({ summary: 'released' }))),
@@ -146,6 +148,7 @@ if (import.meta.vitest) {
 			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')?.sandbox?.released).toEqual({
 				at: '2026-06-10T12:00:00.000Z',
 			})
+			expect(notificationTypes).toEqual(['agent-run-updated', 'agent-run-event-created'])
 		})
 
 		it('records release completion when runtime env wipe fails but raw release succeeds', async () => {

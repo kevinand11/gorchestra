@@ -1,15 +1,11 @@
 import type { AgentRun } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
 import type { CoreServices } from '../../services'
+import { createNotificationEmitter, type NotificationEmitter } from '../notification-emitter'
 import { createCoreProviders, type CoreProviders } from '../providers'
 import { defaultCoreRuntimeValues, type CoreRuntimeValues } from '../runtime-values'
 import type { Result } from '../types'
-import type { AgentRunLiveEvent } from './agent-runs/live-events'
 import { runModelAgentRun } from './agent-runs/model-loop'
-
-export interface CoreAgentRunRuntimeEvents {
-	onAgentRunEvent?(event: AgentRunLiveEvent): void | Promise<void>
-}
 
 export interface CoreAgentRunRuntime {
 	runExecutionAgentRun(input: { agentRun: AgentRun }): Promise<void>
@@ -26,6 +22,7 @@ export interface CoreRuntime {
 	services: CoreServices
 	providers: CoreProviders
 	agentRuns: CoreAgentRunRuntime
+	notifications: NotificationEmitter
 	values: CoreRuntimeValues
 }
 
@@ -36,11 +33,13 @@ export function createCoreRuntime(services: CoreServices, overrides: CoreRuntime
 }
 
 function coreRuntimeShell(services: CoreServices, overrides: CoreRuntimeOverrides): CoreRuntime {
+	const values = coreRuntimeValuesFor(overrides)
 	return {
 		services,
 		providers: coreProvidersFor(services, overrides),
 		agentRuns: createNoopAgentRunRuntime(),
-		values: coreRuntimeValuesFor(overrides),
+		notifications: createNotificationEmitter(values, services.notifications),
+		values,
 	}
 }
 
@@ -88,6 +87,7 @@ if (import.meta.vitest) {
 			expect(Object.keys(runtime.providers.modelProviderProtocols)).toEqual(['preflightModel', 'resolveLanguageModel'])
 			expect(typeof runtime.agentRuns.runExecutionAgentRun).toBe('function')
 			expect(typeof runtime.agentRuns.runModelAgentRun).toBe('function')
+			expect(typeof runtime.notifications.emit).toBe('function')
 			expect(typeof runtime.values.nextId).toBe('function')
 			expect(typeof runtime.values.now).toBe('function')
 		})

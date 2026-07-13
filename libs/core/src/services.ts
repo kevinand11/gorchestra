@@ -4,6 +4,7 @@ import { v, type PipeOutput } from 'valleyed'
 import type { DeliveryWorkOperation } from './domain/action'
 import type { AgentRunSandboxConfig, AgentRunSandboxSourceConfig, ConsumerManagedSandboxSourceConfig } from './domain/agent-run-runtime'
 import { freeFormStringPipe, idPipe, nonEmptyTrimmedStringPipe, nonNegativeIntegerPipe, type Id } from './domain/commons'
+import type { Notification } from './domain/notifications'
 import type { UndefinedToOptional } from './utils/types'
 
 export const coreServicePreflightOutputPipe = v.discriminate((v) => v.ok.toString(), {
@@ -180,8 +181,6 @@ export const rawSandboxPipe = v.object({
 })
 export type RawSandboxOutput = PipeOutput<typeof rawSandboxPipe>
 
-export type CoreEvent = never
-
 type PreflightFn = () => Promise<CoreServicePreflightOutput>
 
 export const storagePipe = v.instanceOf(Repo<CoreStorageAdapter>)
@@ -209,10 +208,10 @@ export const coreDispatcherServicePipe = v.object({
 })
 export type CoreDispatcherService = PipeOutput<typeof coreDispatcherServicePipe>
 
-const coreEventSinkPipe = v.object({
-	publish: typedFunctionDependencyPipe<(event: CoreEvent) => void>(),
+const coreNotificationsServicePipe = v.object({
+	publish: typedFunctionDependencyPipe<(notification: Notification) => void>(),
 })
-export type CoreEventSink = PipeOutput<typeof coreEventSinkPipe>
+export type CoreNotificationsService = PipeOutput<typeof coreNotificationsServicePipe>
 
 const coreLoggerPipe = v.object({
 	debug: typedFunctionDependencyPipe<(message: string, context: Record<string, unknown> | null) => void>(),
@@ -228,7 +227,7 @@ export const coreServicesPipe = v.object({
 	sandbox: coreSandboxServicePipe,
 	dispatcher: coreDispatcherServicePipe,
 	logger: v.optional(coreLoggerPipe),
-	eventSink: v.optional(coreEventSinkPipe),
+	notifications: v.optional(coreNotificationsServicePipe),
 })
 export type CoreServices = UndefinedToOptional<PipeOutput<typeof coreServicesPipe>>
 

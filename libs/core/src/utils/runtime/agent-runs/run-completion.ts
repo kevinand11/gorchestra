@@ -1,8 +1,9 @@
 import type { AgentRunRuntimeError, ModelAgentRunRuntime } from './types'
 import type { AgentRun } from '../../../domain/agent-run'
+import { updateAgentRunRecord } from '../../agent-runs'
 import { acceptAgentRunSandboxRelease, acceptDispatchRequest, exclusiveDeliverySchedulerClaim } from '../../dispatch'
+import { withNotificationTransaction } from '../../notifications'
 import { runtimeRecord } from '../../runtime-values'
-import { updateRecord, withTransaction } from '../../storage/helpers'
 import type { Result } from '../../types'
 
 export function completeAutonomousRunIfNeeded(
@@ -17,8 +18,8 @@ export function completeAutonomousRunIfNeeded(
 async function completeAgentRun(runtime: ModelAgentRunRuntime, agentRun: AgentRun): Promise<Result<void, AgentRunRuntimeError>> {
 	const completed = runtimeRecord(runtime.values)
 	if (!completed.ok) return completed
-	const updated = await withTransaction<string[], AgentRunRuntimeError>(runtime.services, async (storage) => {
-		const stored = await updateRecord('agent-run', storage, agentRun.id, { completed: completed.value })
+	const updated = await withNotificationTransaction<string[], AgentRunRuntimeError>(runtime, async (storage, notifications) => {
+		const stored = await updateAgentRunRecord(storage, notifications, agentRun.id, { completed: completed.value })
 		if (!stored.ok) return stored
 
 		const schedulerMarker =

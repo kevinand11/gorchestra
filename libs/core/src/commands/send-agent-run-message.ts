@@ -49,11 +49,11 @@ export function createSendAgentRunMessageCommand(runtime: CoreRuntime): Operatio
 		const written = await withAuditStampTransaction(
 			runtime,
 			context,
-			async (storage, stamp): Promise<CoreResult<DispatchedAgentRunMessage, Exclude<Error, InvalidInputError>>> => {
+			async (storage, stamp, notifications): Promise<CoreResult<DispatchedAgentRunMessage, Exclude<Error, InvalidInputError>>> => {
 				const agentRun = await requireInteractiveAgentRunOpen(storage, input.agentRunId)
 				if (!agentRun.ok) return agentRun
 
-				const event = await appendAgentRunEvent(runtime, storage, input.agentRunId, {
+				const event = await appendAgentRunEvent({ values: runtime.values, notifications }, storage, input.agentRunId, {
 					type: 'input-message',
 					source: { type: 'operator', authorized: stamp },
 					parts: input.parts,

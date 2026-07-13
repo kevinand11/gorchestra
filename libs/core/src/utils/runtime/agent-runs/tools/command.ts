@@ -9,7 +9,7 @@ export async function runNonRootWorkspaceShell(input: {
 	script: string
 	timeoutMs: number
 }): Promise<SandboxCommandOutput> {
-	input.context.onUpdate({ type: 'progress', label: input.label, current: null, total: null })
+	await input.context.onUpdate({ type: 'progress', label: input.label, current: null, total: null })
 	const output = await input.context.sandbox.runCommand({
 		label: input.label,
 		command: { executable: 'sh', args: ['-c', input.script], cwd: '/workspace' },

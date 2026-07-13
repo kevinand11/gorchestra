@@ -24,7 +24,8 @@ import type {
 import type { CoreStorage } from '../services'
 import { appendAgentRunEvent } from '../utils/agent-runs'
 import { buildCommandHandler } from '../utils/command-handler'
-import { auditStamp, createRecordValue, getRequired, nextId, updateRecordValue, withTransaction } from '../utils/command-storage'
+import { auditStamp, createRecordValue, getRequired, nextId, updateRecordValue } from '../utils/command-storage'
+import { withNotificationTransaction, type NotificationEmitter } from '../utils/notifications'
 import { getPendingProposalForAgentRunPurpose, proposalAcceptedProjectedParts } from '../utils/proposals'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
@@ -67,7 +68,7 @@ export function createAcceptPlanOutputCommand(runtime: CoreRuntime): Operation {
 		const stamp = auditStamp(runtime.values, context)
 		if (!stamp.ok) return stamp
 
-		return withTransaction<Result, Exclude<Error, InvalidInputError>>(runtime.services, async (storage) => {
+		return withNotificationTransaction<Result, Exclude<Error, InvalidInputError>>(runtime, async (storage, notifications) => {
 			const proposal = await getPendingProposalForAgentRunPurpose(storage, input.proposalEventId, 'proposed-plan-output', 'planning')
 			if (!proposal.ok) return proposal
 
@@ -82,7 +83,14 @@ export function createAcceptPlanOutputCommand(runtime: CoreRuntime): Operation {
 			}
 			const validatedContext = await validatePlanProposalContext(storage, proposalContext)
 			return validatedContext.ok
-				? materializeAcceptedPlanProposal(runtime, storage, proposal.value.proposal, validatedContext.value, stamp.value)
+				? materializeAcceptedPlanProposal(
+						runtime,
+						storage,
+						notifications,
+						proposal.value.proposal,
+						validatedContext.value,
+						stamp.value,
+					)
 				: validatedContext
 		})
 	})
@@ -193,6 +201,7 @@ interface MaterializedPlanOutput {
 async function materializeAcceptedPlanProposal(
 	runtime: CoreRuntime,
 	storage: CoreStorage,
+	notifications: NotificationEmitter,
 	proposal: AgentRunEvent,
 	context: PlanProposalContext,
 	stamp: AuditStamp,
@@ -218,7 +227,7 @@ async function materializeAcceptedPlanProposal(
 	)
 	if (storageFailure !== undefined && !storageFailure.ok) return storageFailure
 
-	const acceptedEvent = await appendAgentRunEvent(runtime, storage, proposal.agentRunId, {
+	const acceptedEvent = await appendAgentRunEvent({ values: runtime.values, notifications }, storage, proposal.agentRunId, {
 		type: 'proposal-accepted',
 		proposalEventId: proposal.id,
 		authorized: stamp,

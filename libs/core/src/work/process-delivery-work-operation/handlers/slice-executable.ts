@@ -1,6 +1,7 @@
 import type { Slice, SliceWorkState } from '../../../domain/slice'
 import { appendAgentRunEvent, createModelAgentRunAndRequestPreparation } from '../../../utils/agent-runs'
 import { acceptAgentRunModelTurn } from '../../../utils/dispatch'
+import type { NotificationEmitter } from '../../../utils/notifications'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
 import type { DeliveryHandlerContext, DeliveryWorkHandlerResult, DeliveryWorkResolution } from '../../delivery-work/types'
 
@@ -9,6 +10,7 @@ export async function handleSliceExecutable(
 	slice: Slice,
 	state: Extract<SliceWorkState, { type: 'executable' }>,
 	resolution: DeliveryWorkResolution,
+	notifications: NotificationEmitter,
 ): Promise<DeliveryWorkHandlerResult> {
 	const agentRunId = nextId(context.values)
 	if (!agentRunId.ok) return agentRunId
@@ -17,7 +19,7 @@ export async function handleSliceExecutable(
 	if (!started.ok) return started
 
 	const created = await createModelAgentRunAndRequestPreparation(
-		{ values: context.values, dispatcher: context.services.dispatcher },
+		{ values: context.values, dispatcher: context.services.dispatcher, notifications },
 		context.storage,
 		{
 			agentRunId: agentRunId.value,
@@ -37,7 +39,7 @@ export async function handleSliceExecutable(
 	)
 	if (!created.ok) return created
 
-	const input = await appendAgentRunEvent({ values: context.values }, context.storage, created.value.agentRun.id, {
+	const input = await appendAgentRunEvent({ values: context.values, notifications }, context.storage, created.value.agentRun.id, {
 		type: 'input-message',
 		source: { type: 'runtime' },
 		parts: [{ type: 'text', text: slice.instruction.body, metadata: null }],
@@ -68,6 +70,7 @@ if (import.meta.vitest) {
 				context.tx.slices.records.get('01k00000000000000000000042')!,
 				{ type: 'executable', mode: 'initial' },
 				resolution,
+				{ emit: () => {} },
 			)
 
 			expect(result).toEqual({
@@ -130,6 +133,7 @@ if (import.meta.vitest) {
 					failureChain: { rootActionId: '01k00000000000000000010020', correctionRetries: 1 },
 				},
 				resolution,
+				{ emit: () => {} },
 			)
 
 			expect(result).toEqual({
@@ -201,6 +205,12 @@ if (import.meta.vitest) {
 		const deliveryContext = await buildDeliveryContext(options.tx, '01k00000000000000000000008')
 		if (!deliveryContext.ok) throw new Error('Expected Delivery Context.')
 
-		return { services: options, storage: options.tx, values: options.values, tx: options.tx, deliveryContext: deliveryContext.value }
+		return {
+			services: options,
+			storage: options.tx,
+			values: options.values,
+			tx: options.tx,
+			deliveryContext: deliveryContext.value,
+		}
 	}
 }

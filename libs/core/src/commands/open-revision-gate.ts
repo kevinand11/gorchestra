@@ -9,15 +9,8 @@ import type { InvalidInputError, ResourceArchivedError, ReviewSurfaceAlreadyMerg
 import { createModelAgentRunAndRequestPreparation } from '../utils/agent-runs'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import { buildCommandHandler } from '../utils/command-handler'
-import {
-	auditStamp,
-	createRecordValue,
-	getRequired,
-	loadSelectableAgentRunProfile,
-	nextId,
-	runtimeRecord,
-	withTransaction,
-} from '../utils/command-storage'
+import { auditStamp, createRecordValue, getRequired, loadSelectableAgentRunProfile, nextId, runtimeRecord } from '../utils/command-storage'
+import { withNotificationTransaction } from '../utils/notifications'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -58,9 +51,9 @@ export function createOpenRevisionGateCommand(runtime: CoreRuntime): Operation {
 		const started = runtimeRecord(runtime.values)
 		if (!started.ok) return started
 
-		const written = await withTransaction<OpenRevisionGateWrite, Exclude<Error, InvalidInputError>>(
-			runtime.services,
-			async (storage) => {
+		const written = await withNotificationTransaction<OpenRevisionGateWrite, Exclude<Error, InvalidInputError>>(
+			runtime,
+			async (storage, notifications) => {
 				const reviewSurface = await getRequired('review-surface', storage, input.reviewSurfaceId)
 				if (!reviewSurface.ok) return reviewSurface
 				if (reviewSurface.value.closed?.type === 'merged') {
@@ -127,7 +120,7 @@ export function createOpenRevisionGateCommand(runtime: CoreRuntime): Operation {
 				if (!revisionGate.ok) return revisionGate
 
 				const created = await createModelAgentRunAndRequestPreparation(
-					{ values: runtime.values, dispatcher: runtime.services.dispatcher },
+					{ values: runtime.values, dispatcher: runtime.services.dispatcher, notifications },
 					storage,
 					{
 						agentRunId: agentRunId.value,

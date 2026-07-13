@@ -43,7 +43,7 @@ export function createCreatePlanCommand(runtime: CoreRuntime): Operation {
 		const agentRunId = nextId(runtime.values)
 		if (!agentRunId.ok) return agentRunId
 
-		const written = await withAuditStampTransaction<PlanWriteResult, Error>(runtime, context, async (storage, stamp) => {
+		const written = await withAuditStampTransaction<PlanWriteResult, Error>(runtime, context, async (storage, stamp, notifications) => {
 			const started: RuntimeRecord = { at: stamp.at }
 
 			const project = await getRequired('project', storage, input.projectId)
@@ -84,7 +84,7 @@ export function createCreatePlanCommand(runtime: CoreRuntime): Operation {
 			if (!plan.ok) return plan
 
 			const created = await createModelAgentRunAndRequestPreparation(
-				{ values: runtime.values, dispatcher: runtime.services.dispatcher },
+				{ values: runtime.values, dispatcher: runtime.services.dispatcher, notifications },
 				storage,
 				{
 					agentRunId: agentRunId.value,
@@ -96,7 +96,7 @@ export function createCreatePlanCommand(runtime: CoreRuntime): Operation {
 			)
 			if (!created.ok) return created
 
-			const inputMessage = await appendAgentRunEvent({ values: runtime.values }, storage, created.value.agentRun.id, {
+			const inputMessage = await appendAgentRunEvent({ values: runtime.values, notifications }, storage, created.value.agentRun.id, {
 				type: 'input-message',
 				source: { type: 'operator', authorized: stamp },
 				parts: [{ type: 'text', text: input.initialMessage, metadata: null }],

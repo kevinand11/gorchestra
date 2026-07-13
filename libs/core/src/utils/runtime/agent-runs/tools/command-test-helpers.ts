@@ -15,7 +15,10 @@ export function commandToolFixture(
 		assistantMessageEventId: '01k00000000000000000000003',
 		toolCallId: 'call-1',
 		signal: new AbortController().signal,
-		onUpdate: (update) => updates.push(update),
+		onUpdate: (update) => {
+			updates.push(update)
+			return Promise.resolve()
+		},
 		recordProposal: () => Promise.resolve(options.proposalOutput ?? toolOutput('proposal')),
 		sandbox: fakeSandbox(output, commands),
 	}

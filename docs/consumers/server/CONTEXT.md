@@ -20,6 +20,10 @@ _Avoid_: Core query envelope
 The Server Consumer capability that receives Core Dispatch Requests and arranges runtime execution for the selected Portfolio. The dispatcher is responsible for execution arrangement, not for deciding Core Agent Run or Delivery work behavior. The v1 dispatcher returns opaque markers for accepted requests and starts processing only when the marker is readied after the Core transaction succeeds. It scopes Core Dispatch Coordination Claims by Portfolio storage namespace and runs readied requests only when all claims can be acquired.
 _Avoid_: Scheduler, worker agent, Core runtime, Agent Run Dispatcher
 
+**Agent Run Channel**:
+A selected-Portfolio live delivery scope for one Agent Run that carries its Agent Run Notifications to authorized clients. Agent Run identity alone does not grant channel access.
+_Avoid_: Agent Run Event channel, global Agent Run channel, unauthenticated channel
+
 **User**:
 A global app identity in the Server Consumer. A User may have separate Workspace Member identities in different Workspaces.
 _Avoid_: Workspace Member, account

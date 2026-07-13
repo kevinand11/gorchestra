@@ -40,7 +40,7 @@ export type Operation = (input: Input, context: CommandContext) => Promise<CoreR
 
 export function createCompactAgentRunContextCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('compactAgentRunContext', compactAgentRunContextInputPipe, (input, context) =>
-		withAuditStampTransaction<Result, Exclude<Error, InvalidInputError>>(runtime, context, async (storage, stamp) => {
+		withAuditStampTransaction<Result, Exclude<Error, InvalidInputError>>(runtime, context, async (storage, stamp, notifications) => {
 			const agentRun = await requireInteractiveAgentRunOpen(storage, input.agentRunId)
 			if (!agentRun.ok) return agentRun
 
@@ -56,7 +56,7 @@ export function createCompactAgentRunContextCommand(runtime: CoreRuntime): Opera
 				}
 			}
 
-			return appendAgentRunEvent(runtime, storage, input.agentRunId, {
+			return appendAgentRunEvent({ values: runtime.values, notifications }, storage, input.agentRunId, {
 				type: 'context-compacted',
 				source: { type: 'operator', authorized: stamp },
 				compactedThroughEventId: compactedThrough.value.id,

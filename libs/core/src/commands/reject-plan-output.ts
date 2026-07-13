@@ -15,7 +15,8 @@ import type {
 import type { CommandContext } from './types'
 import { appendAgentRunEvent } from '../utils/agent-runs'
 import { buildCommandHandler } from '../utils/command-handler'
-import { auditStamp, getRequired, withTransaction } from '../utils/command-storage'
+import { auditStamp, getRequired } from '../utils/command-storage'
+import { withNotificationTransaction } from '../utils/notifications'
 import { getPendingProposalForAgentRunPurpose, proposalRejectedProjectedParts } from '../utils/proposals'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
@@ -42,7 +43,7 @@ export function createRejectPlanOutputCommand(runtime: CoreRuntime): Operation {
 		const stamp = auditStamp(runtime.values, context)
 		if (!stamp.ok) return stamp
 
-		return withTransaction<Result, Exclude<Error, InvalidInputError>>(runtime.services, async (storage) => {
+		return withNotificationTransaction<Result, Exclude<Error, InvalidInputError>>(runtime, async (storage, notifications) => {
 			const proposal = await getPendingProposalForAgentRunPurpose(storage, input.proposalEventId, 'proposed-plan-output', 'planning')
 			if (!proposal.ok) return proposal
 
@@ -50,7 +51,7 @@ export function createRejectPlanOutputCommand(runtime: CoreRuntime): Operation {
 			const plan = await getRequired('plan', storage, agentRun.purpose.planId)
 			if (!plan.ok) return plan
 
-			return appendAgentRunEvent(runtime, storage, proposalEvent.agentRunId, {
+			return appendAgentRunEvent({ values: runtime.values, notifications }, storage, proposalEvent.agentRunId, {
 				type: 'proposal-rejected',
 				proposalEventId: proposalEvent.id,
 				authorized: stamp.value,

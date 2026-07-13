@@ -16,7 +16,7 @@ import type {
 } from '../errors'
 import { appendAgentRunEvent } from '../utils/agent-runs'
 import { buildCommandHandler } from '../utils/command-handler'
-import { auditStamp, getRequired, withTransaction } from '../utils/command-storage'
+import { getRequired, withAuditStampTransaction } from '../utils/command-storage'
 import { getPendingProposalForAgentRunPurpose, proposalRejectedProjectedParts } from '../utils/proposals'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
@@ -39,11 +39,8 @@ export type Error =
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createRejectRevisionOutputCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('rejectRevisionOutput', rejectRevisionOutputInputPipe, async (input, context) => {
-		const stamp = auditStamp(runtime.values, context)
-		if (!stamp.ok) return stamp
-
-		return withTransaction<Result, Exclude<Error, InvalidInputError>>(runtime.services, async (storage) => {
+	return buildCommandHandler('rejectRevisionOutput', rejectRevisionOutputInputPipe, (input, context) =>
+		withAuditStampTransaction<Result, Exclude<Error, InvalidInputError>>(runtime, context, async (storage, stamp, notifications) => {
 			const proposal = await getPendingProposalForAgentRunPurpose(
 				storage,
 				input.proposalEventId,
@@ -58,15 +55,15 @@ export function createRejectRevisionOutputCommand(runtime: CoreRuntime): Operati
 				return { ok: false, error: { type: 'agent-run-not-active', agentRunId: proposal.value.agentRun.id } }
 			}
 
-			return appendAgentRunEvent(runtime, storage, proposal.value.proposal.agentRunId, {
+			return appendAgentRunEvent({ values: runtime.values, notifications }, storage, proposal.value.proposal.agentRunId, {
 				type: 'proposal-rejected',
 				proposalEventId: proposal.value.proposal.id,
-				authorized: stamp.value,
+				authorized: stamp,
 				reason: input.reason,
 				projectedParts: proposalRejectedProjectedParts(proposal.value.proposal.id, input.reason),
 			})
-		})
-	})
+		}),
+	)
 }
 
 if (import.meta.vitest) {

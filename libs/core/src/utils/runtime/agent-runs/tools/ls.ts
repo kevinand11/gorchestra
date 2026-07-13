@@ -129,7 +129,7 @@ if (import.meta.vitest) {
 			assistantMessageEventId: '01k00000000000000000000003',
 			toolCallId: 'call-1',
 			signal: new AbortController().signal,
-			onUpdate: () => {},
+			onUpdate: () => Promise.resolve(),
 			recordProposal: () => Promise.resolve(toolOutput('proposal')),
 			sandbox: fakeSandbox(files, emptyDirectories),
 		}

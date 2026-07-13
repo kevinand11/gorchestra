@@ -42,7 +42,7 @@ export function createClosePlanCommand(runtime: CoreRuntime): Operation {
 		const written = await withAuditStampTransaction<DispatchedResult, Exclude<Error, InvalidInputError>>(
 			runtime,
 			context,
-			async (storage, stamp) => {
+			async (storage, stamp, notifications) => {
 				const plan = await getRequired('plan', storage, input.planId)
 				if (!plan.ok) return plan
 				if (plan.value.projectId !== input.projectId) return notFound('plan', input.planId)
@@ -57,6 +57,7 @@ export function createClosePlanCommand(runtime: CoreRuntime): Operation {
 				const completed = await completeAgentRunByIdAndAcceptSandboxRelease(
 					storage,
 					runtime.services.dispatcher,
+					notifications,
 					closedPlan.value.agentRunId,
 					{ at: stamp.at },
 				)

@@ -31,6 +31,7 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreStorage } from '../services'
+import { withNotificationTransaction, type NotificationEmitter } from './notifications'
 import { validateModelThinkingLevelForUse } from './providers/model-provider-protocol/thinking'
 import type { CoreRuntime } from './runtime'
 import { validateRuntimeRequirementSecretReferences } from './runtime-requirement-secrets'
@@ -94,12 +95,12 @@ export async function updateRecordValue<Resource extends CoreIdResource>(
 export function withAuditStampTransaction<TValue, TError>(
 	runtime: CoreRuntime,
 	context: CommandContext,
-	run: (storage: CoreStorage, stamp: AuditStamp) => Promise<Result<TValue, TError>>,
+	run: (storage: CoreStorage, stamp: AuditStamp, notifications: NotificationEmitter) => Promise<Result<TValue, TError>>,
 ): Promise<Result<TValue, TError | InvalidCoreServiceOutputError | StorageOperationFailedError>> {
 	const stamp = auditStamp(runtime.values, context)
 	if (!stamp.ok) return Promise.resolve(stamp)
 
-	return withTransaction(runtime.services, (storage) => run(storage, stamp.value))
+	return withNotificationTransaction(runtime, (storage, notifications) => run(storage, stamp.value, notifications))
 }
 
 export function updateStoredRecordWithAudit<Resource extends CoreIdResource>(

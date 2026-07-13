@@ -13,8 +13,7 @@ import type {
 } from '../errors'
 import type { RawSandboxRunCommandInput, SandboxCommandOutput } from '../services'
 import { globalRuntimeRequirements } from '../utils/agent-run-runtime-requirements'
-import { appendAgentRunEvent } from '../utils/agent-runs'
-import { agentRunSandboxPrepared } from '../utils/agent-runs'
+import { agentRunSandboxPrepared, appendAgentRunEvent, updateAgentRunRecord } from '../utils/agent-runs'
 import type { CoreRuntime } from '../utils/runtime'
 import { managedSandboxProviderForConfig } from '../utils/runtime/sandboxes'
 import {
@@ -25,7 +24,7 @@ import {
 } from '../utils/runtime/sandboxes/managed'
 import { runtimeRecord } from '../utils/runtime-values'
 import { resolveActiveSecretValues } from '../utils/secrets'
-import { getRequired, updateRecord } from '../utils/storage/helpers'
+import { getRequired } from '../utils/storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 import { buildWorkHandler } from '../utils/work-handler'
 
@@ -128,7 +127,9 @@ async function recordSandboxCreated(
 		appliedRequirements: [],
 		appliedThroughEventId: null,
 	}
-	const updated = await updateRecord('agent-run', runtime.services.storage, agentRun.id, { sandbox: agentRunSandbox })
+	const updated = await updateAgentRunRecord(runtime.services.storage, runtime.notifications, agentRun.id, {
+		sandbox: agentRunSandbox,
+	})
 	if (!updated.ok) return updated
 
 	const updatedAgentRun = requireAgentRunSandbox(updated.value)
@@ -245,7 +246,7 @@ async function recordAppliedRuntimeRequirement(
 	requirement: AgentRunRuntimeRequirement,
 ): Promise<CoreResult<ApplyRequirementResult, Exclude<Error, InvalidInputError>>> {
 	const nextSandbox = { ...agentRun.sandbox, appliedRequirements: [...agentRun.sandbox.appliedRequirements, requirement], released: null }
-	const updated = await updateRecord('agent-run', runtime.services.storage, agentRun.id, { sandbox: nextSandbox })
+	const updated = await updateAgentRunRecord(runtime.services.storage, runtime.notifications, agentRun.id, { sandbox: nextSandbox })
 	if (!updated.ok) return updated
 
 	const updatedAgentRun = requireAgentRunSandbox(updated.value)
@@ -406,7 +407,7 @@ async function completePreparation(
 ): Promise<CoreResult<AgentRun, Exclude<Error, InvalidInputError>>> {
 	const appliedThroughEventId = latestRuntimeOverrideEventId(agentRun)
 	const sandbox = { ...agentRun.sandbox, appliedThroughEventId, released: null }
-	const updated = await updateRecord('agent-run', runtime.services.storage, agentRun.id, { blocked: null, sandbox })
+	const updated = await updateAgentRunRecord(runtime.services.storage, runtime.notifications, agentRun.id, { blocked: null, sandbox })
 	if (!updated.ok) return updated
 
 	const event = await appendAgentRunEvent(runtime, runtime.services.storage, agentRun.id, {
@@ -427,7 +428,7 @@ async function blockPreparationFailure(
 	if (!blockedRecord.ok) return blockedRecord
 
 	const blocked: AgentRun['blocked'] = { type: 'preparation-failed', blocked: blockedRecord.value, target, summary }
-	const updated = await updateRecord('agent-run', runtime.services.storage, agentRun.id, { blocked })
+	const updated = await updateAgentRunRecord(runtime.services.storage, runtime.notifications, agentRun.id, { blocked })
 	if (!updated.ok) return updated
 
 	const event = await appendAgentRunEvent(runtime, runtime.services.storage, agentRun.id, {

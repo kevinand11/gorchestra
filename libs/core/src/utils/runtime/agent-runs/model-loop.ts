@@ -1,6 +1,5 @@
 import { runAISDKTurn } from './ai-sdk-turn'
 import { buildAgentRunModelContext } from './context'
-import { appendAndEmit } from './event-emission'
 import { completeAutonomousRunIfNeeded } from './run-completion'
 import { resolveToolSet } from './tools'
 import { nextTurnClaim, type TurnReasonClaim } from './turn-claims'
@@ -11,7 +10,7 @@ import type { AgentRunEvent, TurnErrorReason } from '../../../domain/agent-run-e
 import type { Id } from '../../../domain/commons'
 import type { ModelNotSelectableError, ModelThinkingLevelUnavailableError } from '../../../errors'
 import type { CoreStorage } from '../../../services'
-import { agentRunSandboxPrepared } from '../../agent-runs'
+import { agentRunSandboxPrepared, appendAgentRunEvent } from '../../agent-runs'
 import type { CoreProviders } from '../../providers'
 import { getRequired, listRecords } from '../../storage/helpers'
 import type { Result } from '../../types'
@@ -91,7 +90,7 @@ async function runTurn(
 	claim: TurnReasonClaim,
 	options: RunModelAgentRunOptions,
 ): Promise<Result<TurnResult, AgentRunRuntimeError>> {
-	const turnStarted = await appendAndEmit(runtime, state.agentRun.id, turnStartedBody(claim), options)
+	const turnStarted = await appendAgentRunEvent(runtime, runtime.services.storage, state.agentRun.id, turnStartedBody(claim))
 	return turnStarted.ok ? runStartedTurn(runtime, state, claim, turnStarted.value, options) : turnStarted
 }
 
@@ -107,7 +106,7 @@ async function runStartedTurn(
 	options: RunModelAgentRunOptions,
 ): Promise<Result<TurnResult, AgentRunRuntimeError>> {
 	const turnModelUse = await loadTurnModelUse(runtime.services.storage, state.agentRun)
-	if (!turnModelUse.ok) return handleTurnModelUseError(runtime, state.agentRun.id, turnStarted, turnModelUse.error, options)
+	if (!turnModelUse.ok) return handleTurnModelUseError(runtime, state.agentRun.id, turnStarted, turnModelUse.error)
 
 	const resolution = await runtime.providers.modelProviderProtocols.resolveLanguageModel({
 		mode: 'agent-run',
@@ -115,21 +114,20 @@ async function runStartedTurn(
 		modelProvider: turnModelUse.value.modelProvider,
 		thinking: turnModelUse.value.thinking,
 	})
-	if (!resolution.ok) return handleTurnModelUseError(runtime, state.agentRun.id, turnStarted, resolution.error, options)
+	if (!resolution.ok) return handleTurnModelUseError(runtime, state.agentRun.id, turnStarted, resolution.error)
 	if (!('languageModel' in resolution.value)) {
-		return recordTurnFailure(runtime, state.agentRun.id, turnStarted, resolution.value, options)
+		return recordTurnFailure(runtime, state.agentRun.id, turnStarted, resolution.value)
 	}
 
 	const modelContext = buildAgentRunModelContext(state.events, claim.contextThroughEventId)
 	const aiTurn = await runAISDKTurn(runtime, state, turnStarted, turnModelUse.value, modelContext.messages, resolution.value, options)
 	if (!aiTurn.ok) return aiTurn
 
-	const ended = await appendAndEmit(
-		runtime,
-		state.agentRun.id,
-		{ type: 'turn-ended', turnStartedEventId: turnStarted.id, outcome: aiTurn.value.turnOutcome },
-		options,
-	)
+	const ended = await appendAgentRunEvent(runtime, runtime.services.storage, state.agentRun.id, {
+		type: 'turn-ended',
+		turnStartedEventId: turnStarted.id,
+		outcome: aiTurn.value.turnOutcome,
+	})
 	if (!ended.ok) return ended
 
 	return { ok: true, value: aiTurn.value.turnOutcome.type === 'completed' ? { type: 'completed' } : { type: 'failed' } }
@@ -140,10 +138,9 @@ async function handleTurnModelUseError(
 	agentRunId: Id,
 	turnStarted: AgentRunEvent,
 	error: AgentRunRuntimeError | ModelThinkingLevelUnavailableError | ModelNotSelectableError,
-	options: RunModelAgentRunOptions,
 ): Promise<Result<TurnResult, AgentRunRuntimeError>> {
 	if (error.type === 'model-thinking-level-unavailable' || error.type === 'model-not-selectable') {
-		return recordTurnFailure(runtime, agentRunId, turnStarted, { type: 'runtime-error' }, options)
+		return recordTurnFailure(runtime, agentRunId, turnStarted, { type: 'runtime-error' })
 	}
 	return { ok: false, error }
 }
@@ -153,14 +150,12 @@ async function recordTurnFailure(
 	agentRunId: Id,
 	turnStarted: AgentRunEvent,
 	reason: TurnErrorReason,
-	options: RunModelAgentRunOptions,
 ): Promise<Result<TurnResult, AgentRunRuntimeError>> {
-	const turnEnded = await appendAndEmit(
-		runtime,
-		agentRunId,
-		{ type: 'turn-ended', turnStartedEventId: turnStarted.id, outcome: { type: 'error', reason } },
-		options,
-	)
+	const turnEnded = await appendAgentRunEvent(runtime, runtime.services.storage, agentRunId, {
+		type: 'turn-ended',
+		turnStartedEventId: turnStarted.id,
+		outcome: { type: 'error', reason },
+	})
 	return turnEnded.ok ? { ok: true, value: { type: 'failed' } } : turnEnded
 }
 
@@ -267,7 +262,7 @@ if (import.meta.vitest) {
 	}
 
 	function modelLoopRuntime(services: ReturnType<typeof createTestCoreServices>): ModelAgentRunRuntime {
-		return { services, providers: { ...createTestProviders() }, values: services.values }
+		return { services, providers: { ...createTestProviders() }, notifications: { emit: () => {} }, values: services.values }
 	}
 
 	function createTestProviders(): CoreProviders {
