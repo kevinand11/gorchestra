@@ -14,7 +14,6 @@ import {
 	nextId,
 	normalizeProjectConfigRecord,
 	validateSelectableAgentRunProfiles,
-	withTransaction,
 } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
@@ -38,7 +37,7 @@ export function createCreateProjectCommand(runtime: CoreRuntime): Operation {
 		const idResult = nextId(runtime.values)
 		if (!idResult.ok) return Promise.resolve(idResult)
 
-		return withTransaction(runtime.services, async (storage): Promise<CoreResult<Project, Exclude<Error, InvalidInputError>>> => {
+		return runtime.transactions.run(async ({ storage }): Promise<CoreResult<Project, Exclude<Error, InvalidInputError>>> => {
 			const profileValidation = await validateSelectableAgentRunProfiles(storage, agentRunProfileIdsFromProjectConfig(input.config))
 			if (!profileValidation.ok) return profileValidation
 

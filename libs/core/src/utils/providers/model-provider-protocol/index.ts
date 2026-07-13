@@ -41,7 +41,7 @@ import { secretSchema } from '../../../domain/secret'
 import type { CoreStorageOperation, SecretResolutionFailedError } from '../../../errors'
 import type { CoreServices, CoreStorage, ResolvableSecretValue } from '../../../services'
 import { resolveSecretValueRefs } from '../../secrets'
-import { withTransaction } from '../../storage/transactions'
+import type { CoreTransactions } from '../../transactions'
 import type { Result } from '../../types'
 
 export interface ModelProviderProtocolProviderImplementations {
@@ -53,6 +53,7 @@ export interface ModelProviderProtocolProviderImplementations {
 
 export function createModelProviderProtocolProviders(
 	services: CoreServices,
+	transactions: CoreTransactions,
 	implementations: ModelProviderProtocolProviderImplementations = {},
 ): ModelProviderProtocolProviders {
 	const concrete = createConcreteProviders(implementations)
@@ -62,7 +63,7 @@ export function createModelProviderProtocolProviders(
 			return preflightModelWithConcreteProviders(services, concrete, input)
 		},
 		resolveLanguageModel(input) {
-			return resolveLanguageModelWithConcreteProviders(services, concrete, input)
+			return resolveLanguageModelWithConcreteProviders(services, transactions, concrete, input)
 		},
 	}
 }
@@ -126,10 +127,11 @@ async function runGenerationPreflight(
 
 async function resolveLanguageModelWithConcreteProviders(
 	services: CoreServices,
+	transactions: CoreTransactions,
 	concrete: Required<ModelProviderProtocolProviderImplementations>,
 	input: Omit<Extract<AISDKLanguageModelResolutionInput, { mode: 'agent-run' }>, 'access'>,
 ): Promise<Result<AISDKLanguageModelResolution | TurnErrorReason, ResolveAISDKLanguageModelError | ModelAgentTurnAccessError>> {
-	const access = await resolveModelProviderProtocolAccessFromStorage(services, input.modelProvider)
+	const access = await resolveModelProviderProtocolAccessFromStorage(services, transactions, input.modelProvider)
 	if (!access.ok) return access
 	if (!isProtocolAccess(access.value)) return { ok: true, value: modelAccessFailureOutcome(access.value) }
 
@@ -177,20 +179,14 @@ type ModelProviderSecretReadinessError = ModelAgentTurnAccessError
 
 async function resolveModelProviderProtocolAccessFromStorage(
 	services: CoreServices,
+	transactions: CoreTransactions,
 	modelProvider: ModelProvider,
 ): Promise<Result<ModelProviderProtocolAccess | ModelProviderProtocolPreflight, ModelAgentTurnAccessError>> {
-	const secrets = await readModelProviderSecretReadiness(services, modelProvider)
+	const secrets = await transactions.run(({ storage }) => readModelProviderSecretReadinessFromStorage(storage, modelProvider))
 	if (!secrets.ok) return secrets
 	return secrets.value.type === 'failed'
 		? { ok: true, value: secrets.value.preflight }
 		: resolveModelProviderProtocolAccess(services, modelProvider, secrets.value.secrets)
-}
-
-function readModelProviderSecretReadiness(
-	services: CoreServices,
-	modelProvider: ModelProvider,
-): Promise<Result<ModelProviderSecretReadiness, ModelProviderSecretReadinessError>> {
-	return withTransaction(services, (storage) => readModelProviderSecretReadinessFromStorage(storage, modelProvider))
 }
 
 async function readModelProviderSecretReadinessFromStorage(
@@ -479,6 +475,7 @@ export type {
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { noopRawSandboxInstance } = await import('../../sandbox-test-helpers')
+	const { createCoreTransactions } = await import('../../transactions')
 	const { defaultModelCapabilities } = await import('../../../domain/model')
 
 	describe('Model Provider Protocol family', () => {
@@ -487,7 +484,7 @@ if (import.meta.vitest) {
 				Promise.resolve({ '01k00000000000000000000040': 'token', '01k00000000000000000000041': 'org-1' }),
 			)
 			let observedAccess: ModelProviderProtocolAccess | null = null
-			const providers = createModelProviderProtocolProviders(services, {
+			const providers = createModelProviderProtocolProviders(services, transactionsFor(services), {
 				openAIResponses: {
 					resolveLanguageModel(input) {
 						observedAccess = input.access
@@ -507,7 +504,9 @@ if (import.meta.vitest) {
 
 		it('returns failed preflight when a requested Secret value is missing', async () => {
 			const services = coreServices(() => Promise.resolve({ '01k00000000000000000000040': 'token' }))
-			const providers = createModelProviderProtocolProviders(services, { openAIResponses: neverCalledOpenAIResponsesProvider() })
+			const providers = createModelProviderProtocolProviders(services, transactionsFor(services), {
+				openAIResponses: neverCalledOpenAIResponsesProvider(),
+			})
 
 			const result = await providers.preflightModel(openAIResponsesPreflightInput())
 
@@ -528,7 +527,7 @@ if (import.meta.vitest) {
 					Promise.resolve(Object.fromEntries(secrets.map((secret) => [secret.secretId, `${secret.valueRef}-plaintext`]))),
 			)
 			let observedAccess: ModelProviderProtocolAccess | null = null
-			const providers = createModelProviderProtocolProviders(services, {
+			const providers = createModelProviderProtocolProviders(services, transactionsFor(services), {
 				openAIResponses: {
 					resolveLanguageModel(input) {
 						observedAccess = input.access
@@ -546,6 +545,10 @@ if (import.meta.vitest) {
 			})
 		})
 	})
+
+	function transactionsFor(services: CoreServices) {
+		return createCoreTransactions({ services, notifications: { emit: () => {} } })
+	}
 
 	function openAIResponsesPreflightInput(): ModelProviderProtocolPreflightModelInput {
 		return {

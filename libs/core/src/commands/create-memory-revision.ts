@@ -13,7 +13,7 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import { buildCommandHandler } from '../utils/command-handler'
-import { auditStamp, createRecordValue, getRequired, nextId, updateRecordValue, withTransaction } from '../utils/command-storage'
+import { auditStamp, createRecordValue, getRequired, nextId, updateRecordValue } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -39,8 +39,11 @@ export type Error =
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreateMemoryRevisionCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('createMemoryRevision', inputPipe, (input, context) =>
-		withTransaction<Result, Exclude<Error, InvalidInputError>>(runtime.services, async (storage) => {
+	return buildCommandHandler('createMemoryRevision', inputPipe, async (input, context) => {
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
+
+		return runtime.transactions.run<Result, Exclude<Error, InvalidInputError>>(async ({ storage }) => {
 			const memory = await getRequired('memory', storage, input.memoryId)
 			if (!memory.ok) return memory
 			if (memory.value.currentRevision.id !== input.expectedCurrentRevisionId) {
@@ -61,9 +64,6 @@ export function createCreateMemoryRevisionCommand(runtime: CoreRuntime): Operati
 			const revisionId = nextId(runtime.values)
 			if (!revisionId.ok) return revisionId
 
-			const stamp = auditStamp(runtime.values, context)
-			if (!stamp.ok) return stamp
-
 			const storedRevision = await createRecordValue('memory-revision', storage, {
 				id: revisionId.value,
 				memoryId: memory.value.id,
@@ -81,8 +81,8 @@ export function createCreateMemoryRevisionCommand(runtime: CoreRuntime): Operati
 					created: storedRevision.value.created,
 				},
 			})
-		}),
-	)
+		})
+	})
 }
 
 if (import.meta.vitest) {

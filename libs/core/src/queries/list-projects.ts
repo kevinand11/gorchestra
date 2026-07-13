@@ -5,9 +5,9 @@ import { listedProjectPipe, type ListedProject, type Project } from '../domain/p
 export type { ListedProject, SourceControlProjectListSource } from '../domain/project'
 import type { Repository } from '../domain/repository'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { buildQueryHandler } from '../utils/query-handler'
-import { listRecords, listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
+import { listRecords, listRecordsPaginated } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 
 export const inputPipe = paginatedQueryInputPipe
@@ -18,9 +18,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createListProjectsQuery(options: CoreServices): Operation {
+export function createListProjectsQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('listProjects', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			const projects = await listRecordsPaginated('project', storage, input)
 			if (!projects.ok) return projects
 
@@ -74,7 +74,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.projects.fail.list = true
-			const query = createListProjectsQuery(options)
+			const query = createListProjectsQuery(options.transactions)
 
 			const result = await query(null as unknown as Input)
 
@@ -86,7 +86,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns an empty Project list for an empty Portfolio', async () => {
-			const query = createListProjectsQuery(createTestCoreServices())
+			const query = createListProjectsQuery(createTestCoreServices().transactions)
 
 			const result = await query({})
 
@@ -148,7 +148,7 @@ if (import.meta.vitest) {
 				'01k00000000000000000100028',
 				repository({ id: '01k00000000000000000100028', projectId: '01k00000000000000000100029', owner: 'Other', name: 'Repo' }),
 			)
-			const query = createListProjectsQuery(options)
+			const query = createListProjectsQuery(options.transactions)
 
 			const result = await query({})
 
@@ -203,7 +203,7 @@ if (import.meta.vitest) {
 		it('returns storage errors when Project or Repository reads fail', async () => {
 			const projectReadFailure = createTestCoreServices()
 			projectReadFailure.tx.projects.fail.list = true
-			await expect(createListProjectsQuery(projectReadFailure)({})).resolves.toEqual({
+			await expect(createListProjectsQuery(projectReadFailure.transactions)({})).resolves.toEqual({
 				ok: false,
 				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'project' } },
 			})
@@ -214,7 +214,7 @@ if (import.meta.vitest) {
 				project({ id: '01k00000000000000000100022', title: 'Project' }),
 			)
 			repositoryReadFailure.tx.repositories.fail.list = true
-			await expect(createListProjectsQuery(repositoryReadFailure)({})).resolves.toEqual({
+			await expect(createListProjectsQuery(repositoryReadFailure.transactions)({})).resolves.toEqual({
 				ok: false,
 				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'repository' } },
 			})

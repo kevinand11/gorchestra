@@ -25,7 +25,7 @@ import type { CoreStorage } from '../services'
 import { appendAgentRunEvent } from '../utils/agent-runs'
 import { buildCommandHandler } from '../utils/command-handler'
 import { auditStamp, createRecordValue, getRequired, nextId, updateRecordValue } from '../utils/command-storage'
-import { withNotificationTransaction, type NotificationEmitter } from '../utils/notifications'
+import type { NotificationEmitter } from '../utils/notification-emitter'
 import { getPendingProposalForAgentRunPurpose, proposalAcceptedProjectedParts } from '../utils/proposals'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
@@ -68,7 +68,7 @@ export function createAcceptPlanOutputCommand(runtime: CoreRuntime): Operation {
 		const stamp = auditStamp(runtime.values, context)
 		if (!stamp.ok) return stamp
 
-		return withNotificationTransaction<Result, Exclude<Error, InvalidInputError>>(runtime, async (storage, notifications) => {
+		return runtime.transactions.run<Result, Exclude<Error, InvalidInputError>>(async ({ storage, notifications }) => {
 			const proposal = await getPendingProposalForAgentRunPurpose(storage, input.proposalEventId, 'proposed-plan-output', 'planning')
 			if (!proposal.ok) return proposal
 

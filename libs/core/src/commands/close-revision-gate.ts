@@ -13,9 +13,9 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CommandContext } from './types'
-import { completeAgentRunByIdAndAcceptSandboxRelease, requireAgentRunIdle } from '../utils/agent-runs'
+import { completeAgentRunByIdAndRequestSandboxRelease, requireAgentRunIdle } from '../utils/agent-runs'
 import { buildCommandHandler } from '../utils/command-handler'
-import { getRequired, updateRecordValue, withAuditStampTransaction } from '../utils/command-storage'
+import { auditStamp, getRequired, updateRecordValue } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -35,43 +35,35 @@ export type Error =
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
-type DispatchedResult = { result: Result; dispatchMarker: string | null }
-
 export function createCloseRevisionGateCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('closeRevisionGate', closeRevisionGateInputPipe, async (input, context) => {
-		const written = await withAuditStampTransaction<DispatchedResult, Exclude<Error, InvalidInputError>>(
-			runtime,
-			context,
-			async (storage, stamp, notifications) => {
-				const gate = await getRequired('revision-gate', storage, input.revisionGateId)
-				if (!gate.ok) return gate
-				if (gate.value.closed !== null) {
-					return { ok: false, error: { type: 'revision-gate-closed', revisionGateId: gate.value.id } }
-				}
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
 
-				const idle = await requireAgentRunIdle(storage, gate.value.agentRunId)
-				if (!idle.ok) return idle
+		return runtime.transactions.run<Result, Exclude<Error, InvalidInputError>>(async ({ storage, notifications, dispatch }) => {
+			const gate = await getRequired('revision-gate', storage, input.revisionGateId)
+			if (!gate.ok) return gate
+			if (gate.value.closed !== null) {
+				return { ok: false, error: { type: 'revision-gate-closed', revisionGateId: gate.value.id } }
+			}
 
-				const revisionGate = await updateRecordValue('revision-gate', storage, gate.value.id, {
-					closed: { type: 'closed-without-revision', closed: stamp },
-				})
-				if (!revisionGate.ok) return revisionGate
+			const idle = await requireAgentRunIdle(storage, gate.value.agentRunId)
+			if (!idle.ok) return idle
 
-				const agentRun = await completeAgentRunByIdAndAcceptSandboxRelease(
-					storage,
-					runtime.services.dispatcher,
-					notifications,
-					revisionGate.value.agentRunId,
-					{ at: stamp.at },
-				)
-				return agentRun.ok
-					? { ok: true, value: { result: revisionGate.value, dispatchMarker: agentRun.value.dispatchMarker } }
-					: agentRun
-			},
-		)
-		if (!written.ok) return written
-		if (written.value.dispatchMarker !== null) runtime.services.dispatcher.ready(written.value.dispatchMarker)
-		return { ok: true, value: written.value.result }
+			const revisionGate = await updateRecordValue('revision-gate', storage, gate.value.id, {
+				closed: { type: 'closed-without-revision', closed: stamp.value },
+			})
+			if (!revisionGate.ok) return revisionGate
+
+			const agentRun = await completeAgentRunByIdAndRequestSandboxRelease(
+				storage,
+				dispatch,
+				notifications,
+				revisionGate.value.agentRunId,
+				{ at: stamp.value.at },
+			)
+			return agentRun.ok ? revisionGate : agentRun
+		})
 	})
 }
 

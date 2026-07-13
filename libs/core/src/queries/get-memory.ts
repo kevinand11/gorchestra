@@ -10,9 +10,9 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreServices } from '../services'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, listRecords, withTransaction } from '../utils/storage/helpers'
+import { getRequired, listRecords } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult } from '../utils/types'
 
 export const inputPipe = v.object({ memoryId: idPipe })
@@ -28,9 +28,9 @@ export type Error =
 	| InvariantViolationError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createGetMemoryQuery(options: CoreServices): Operation {
+export function createGetMemoryQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('getMemory', inputPipe, (input) =>
-		withTransaction<Result, Exclude<Error, InvalidInputError>>(options, async (storage) => {
+		transactions.run<Result, Exclude<Error, InvalidInputError>>(async ({ storage }) => {
 			const memory = await getRequired('memory', storage, input.memoryId)
 			if (!memory.ok) return memory
 
@@ -67,7 +67,7 @@ if (import.meta.vitest) {
 			const options = createTestCoreServices()
 			options.tx.memories.fail.get = true
 
-			const result = await createGetMemoryQuery(options)({ memoryId: '' })
+			const result = await createGetMemoryQuery(options.transactions)({ memoryId: '' })
 
 			expect(result).toMatchObject({
 				ok: false,
@@ -96,7 +96,7 @@ if (import.meta.vitest) {
 			for (const record of [parent, childB, childA]) options.tx.memories.records.set(record.id, record)
 			for (const record of [revisionOlder, revisionCurrent]) options.tx.memoryRevisions.records.set(record.id, record)
 
-			const result = await createGetMemoryQuery(options)({ memoryId: parent.id })
+			const result = await createGetMemoryQuery(options.transactions)({ memoryId: parent.id })
 
 			expect(result).toEqual({
 				ok: true,
@@ -105,7 +105,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the target Memory does not exist', async () => {
-			const result = await createGetMemoryQuery(createTestCoreServices())({ memoryId: '01k00000000000000000000019' })
+			const result = await createGetMemoryQuery(createTestCoreServices().transactions)({ memoryId: '01k00000000000000000000019' })
 
 			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'memory', id: '01k00000000000000000000019' } })
 		})
@@ -119,7 +119,7 @@ if (import.meta.vitest) {
 			})
 			options.tx.memories.records.set(storedMemory.id, storedMemory)
 
-			const result = await createGetMemoryQuery(options)({ memoryId: storedMemory.id })
+			const result = await createGetMemoryQuery(options.transactions)({ memoryId: storedMemory.id })
 
 			expect(result).toEqual({
 				ok: false,
@@ -137,7 +137,9 @@ if (import.meta.vitest) {
 				memory({ id: '01k00000000000000000000019', title: 'Memory' }),
 			)
 			revisionReadFailure.tx.memoryRevisions.fail.list = true
-			await expect(createGetMemoryQuery(revisionReadFailure)({ memoryId: '01k00000000000000000000019' })).resolves.toEqual({
+			await expect(
+				createGetMemoryQuery(revisionReadFailure.transactions)({ memoryId: '01k00000000000000000000019' }),
+			).resolves.toEqual({
 				ok: false,
 				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'memory-revision' } },
 			})

@@ -3,9 +3,9 @@ import { v, type PipeOutput } from 'valleyed'
 import { idPipe } from '../domain/commons'
 import { planPipe, type Plan } from '../domain/plan'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, notFound, withTransaction } from '../utils/storage/helpers'
+import { getRequired, notFound } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult } from '../utils/types'
 
 export const inputPipe = v.object({ projectId: idPipe, planId: idPipe })
@@ -16,9 +16,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createGetPlanQuery(options: CoreServices): Operation {
+export function createGetPlanQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('getPlan', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			const project = await getRequired('project', storage, input.projectId)
 			if (!project.ok) return project
 
@@ -38,7 +38,7 @@ if (import.meta.vitest) {
 			const options = createTestCoreServices()
 			options.tx.projects.fail.get = true
 
-			const result = await createGetPlanQuery(options)({ projectId: '', planId: '01k00000000000000000000028' })
+			const result = await createGetPlanQuery(options.transactions)({ projectId: '', planId: '01k00000000000000000000028' })
 
 			expect(result).toMatchObject({
 				ok: false,
@@ -52,7 +52,7 @@ if (import.meta.vitest) {
 			records.options.tx.agentRuns.fail.list = true
 			records.options.tx.agentRuns.fail.get = true
 
-			const result = await createGetPlanQuery(records.options)({
+			const result = await createGetPlanQuery(records.options.transactions)({
 				projectId: '01k00000000000000000000030',
 				planId: '01k00000000000000000000028',
 			})
@@ -67,7 +67,7 @@ if (import.meta.vitest) {
 				plan({ id: '01k00000000000000000000028', projectId: '01k00000000000000000000030', title: 'Plan setup' }),
 			)
 
-			const result = await createGetPlanQuery(options)({
+			const result = await createGetPlanQuery(options.transactions)({
 				projectId: '01k00000000000000000000030',
 				planId: '01k00000000000000000000028',
 			})
@@ -79,7 +79,7 @@ if (import.meta.vitest) {
 			const records = seedPlanDetailRecords('01k00000000000000000000031')
 			seedProject(records.options.tx, '01k00000000000000000000030')
 
-			const result = await createGetPlanQuery(records.options)({
+			const result = await createGetPlanQuery(records.options.transactions)({
 				projectId: '01k00000000000000000000030',
 				planId: '01k00000000000000000000028',
 			})

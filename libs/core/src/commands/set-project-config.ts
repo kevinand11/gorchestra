@@ -9,11 +9,11 @@ import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../
 import { buildCommandHandler } from '../utils/command-handler'
 import {
 	agentRunProfileIdsFromProjectConfig,
+	auditStamp,
 	getRequired,
 	normalizeProjectConfigRecord,
 	updateRecordValue,
 	validateSelectableAgentRunProfiles,
-	withAuditStampTransaction,
 } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
@@ -26,26 +26,22 @@ export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigComm
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createSetProjectConfigCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('setProjectConfig', setProjectConfigInputPipe, (input, context) =>
-		withAuditStampTransaction(
-			runtime,
-			context,
-			async (storage, stamp): Promise<CoreResult<Project, Exclude<Error, InvalidInputError>>> => {
-				const projectResult = await getRequired('project', storage, input.projectId)
-				if (!projectResult.ok) return projectResult
+	return buildCommandHandler('setProjectConfig', setProjectConfigInputPipe, async (input, context) => {
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
 
-				const profileValidation = await validateSelectableAgentRunProfiles(
-					storage,
-					agentRunProfileIdsFromProjectConfig(input.config),
-				)
-				if (!profileValidation.ok) return profileValidation
+		return runtime.transactions.run(async ({ storage }): Promise<CoreResult<Project, Exclude<Error, InvalidInputError>>> => {
+			const projectResult = await getRequired('project', storage, input.projectId)
+			if (!projectResult.ok) return projectResult
 
-				return updateRecordValue('project', storage, projectResult.value.id, {
-					config: normalizeProjectConfigRecord(input.config, stamp),
-				})
-			},
-		),
-	)
+			const profileValidation = await validateSelectableAgentRunProfiles(storage, agentRunProfileIdsFromProjectConfig(input.config))
+			if (!profileValidation.ok) return profileValidation
+
+			return updateRecordValue('project', storage, projectResult.value.id, {
+				config: normalizeProjectConfigRecord(input.config, stamp.value),
+			})
+		})
+	})
 }
 
 if (import.meta.vitest) {

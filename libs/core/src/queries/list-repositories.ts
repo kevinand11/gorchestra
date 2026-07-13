@@ -9,9 +9,9 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreServices } from '../services'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
+import { getRequired, listRecordsPaginated } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 
 export const inputPipe = v.merge(v.object({ projectId: idPipe }), paginatedQueryInputPipe)
@@ -27,9 +27,9 @@ export type Error =
 	| StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createListRepositoriesQuery(options: CoreServices): Operation {
+export function createListRepositoriesQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('listRepositories', inputPipe, (input) =>
-		withTransaction<Result, Exclude<Error, InvalidInputError>>(options, async (storage) => {
+		transactions.run<Result, Exclude<Error, InvalidInputError>>(async ({ storage }) => {
 			const projectResult = await getRequired('project', storage, input.projectId)
 			if (!projectResult.ok) return projectResult
 			if (projectResult.value.source.type !== 'source-control') {
@@ -62,7 +62,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.projects.fail.get = true
-			const query = createListRepositoriesQuery(options)
+			const query = createListRepositoriesQuery(options.transactions)
 
 			const result = await query({ projectId: '' })
 
@@ -74,7 +74,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the target Project does not exist', async () => {
-			const query = createListRepositoriesQuery(createTestCoreServices())
+			const query = createListRepositoriesQuery(createTestCoreServices().transactions)
 
 			const result = await query({ projectId: '01k00000000000000000000030' })
 
@@ -86,7 +86,7 @@ if (import.meta.vitest) {
 			seedProject(options.tx, '01k00000000000000000000030')
 			seedProject(options.tx, '01k00000000000000000000031')
 			seedRepositoryFixtures(options)
-			const query = createListRepositoriesQuery(options)
+			const query = createListRepositoriesQuery(options.transactions)
 
 			const result = await query({ projectId: '01k00000000000000000000030' })
 
@@ -119,7 +119,7 @@ if (import.meta.vitest) {
 			const options = createTestCoreServices()
 			seedProject(options.tx, '01k00000000000000000000030')
 			options.tx.repositories.fail.list = true
-			const query = createListRepositoriesQuery(options)
+			const query = createListRepositoriesQuery(options.transactions)
 
 			const result = await query({ projectId: '01k00000000000000000000030' })
 

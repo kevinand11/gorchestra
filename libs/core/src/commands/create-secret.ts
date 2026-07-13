@@ -5,7 +5,7 @@ import { nonEmptyTrimmedStringPipe } from '../domain/commons'
 import { secretValueRefPipe, type Secret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, InvariantViolationError, StorageOperationFailedError } from '../errors'
 import { buildCommandHandler } from '../utils/command-handler'
-import { auditStamp, createRecordValue, nextId, withTransaction } from '../utils/command-storage'
+import { auditStamp, createRecordValue, nextId } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -36,9 +36,8 @@ export function createCreateSecretCommand(runtime: CoreRuntime): Operation {
 			archivePeriods: [],
 		}
 
-		return withTransaction(
-			runtime.services,
-			(storage): Promise<CoreResult<Secret, Exclude<Error, InvalidInputError>>> => createRecordValue('secret', storage, secret),
+		return runtime.transactions.run(
+			({ storage }): Promise<CoreResult<Secret, Exclude<Error, InvalidInputError>>> => createRecordValue('secret', storage, secret),
 		)
 	})
 }

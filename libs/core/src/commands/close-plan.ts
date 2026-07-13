@@ -13,9 +13,9 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CommandContext } from './types'
-import { completeAgentRunByIdAndAcceptSandboxRelease, requireAgentRunIdle } from '../utils/agent-runs'
+import { completeAgentRunByIdAndRequestSandboxRelease, requireAgentRunIdle } from '../utils/agent-runs'
 import { buildCommandHandler } from '../utils/command-handler'
-import { getRequired, updateRecordValue, withAuditStampTransaction } from '../utils/command-storage'
+import { auditStamp, getRequired, updateRecordValue } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import { notFound } from '../utils/storage/helpers'
 import type { Result as CoreResult } from '../utils/types'
@@ -35,40 +35,32 @@ export type Error =
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
-type DispatchedResult = { result: Result; dispatchMarker: string | null }
-
 export function createClosePlanCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('closePlan', closePlanInputPipe, async (input, context) => {
-		const written = await withAuditStampTransaction<DispatchedResult, Exclude<Error, InvalidInputError>>(
-			runtime,
-			context,
-			async (storage, stamp, notifications) => {
-				const plan = await getRequired('plan', storage, input.planId)
-				if (!plan.ok) return plan
-				if (plan.value.projectId !== input.projectId) return notFound('plan', input.planId)
-				if (plan.value.closed !== null) return { ok: false, error: { type: 'plan-closed', planId: plan.value.id } }
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
 
-				const idle = await requireAgentRunIdle(storage, plan.value.agentRunId)
-				if (!idle.ok) return idle
+		return runtime.transactions.run<Result, Exclude<Error, InvalidInputError>>(async ({ storage, notifications, dispatch }) => {
+			const plan = await getRequired('plan', storage, input.planId)
+			if (!plan.ok) return plan
+			if (plan.value.projectId !== input.projectId) return notFound('plan', input.planId)
+			if (plan.value.closed !== null) return { ok: false, error: { type: 'plan-closed', planId: plan.value.id } }
 
-				const closedPlan = await updateRecordValue('plan', storage, plan.value.id, { closed: stamp })
-				if (!closedPlan.ok) return closedPlan
+			const idle = await requireAgentRunIdle(storage, plan.value.agentRunId)
+			if (!idle.ok) return idle
 
-				const completed = await completeAgentRunByIdAndAcceptSandboxRelease(
-					storage,
-					runtime.services.dispatcher,
-					notifications,
-					closedPlan.value.agentRunId,
-					{ at: stamp.at },
-				)
-				return completed.ok
-					? { ok: true, value: { result: closedPlan.value, dispatchMarker: completed.value.dispatchMarker } }
-					: completed
-			},
-		)
-		if (!written.ok) return written
-		if (written.value.dispatchMarker !== null) runtime.services.dispatcher.ready(written.value.dispatchMarker)
-		return { ok: true, value: written.value.result }
+			const closedPlan = await updateRecordValue('plan', storage, plan.value.id, { closed: stamp.value })
+			if (!closedPlan.ok) return closedPlan
+
+			const completed = await completeAgentRunByIdAndRequestSandboxRelease(
+				storage,
+				dispatch,
+				notifications,
+				closedPlan.value.agentRunId,
+				{ at: stamp.value.at },
+			)
+			return completed.ok ? closedPlan : completed
+		})
 	})
 }
 

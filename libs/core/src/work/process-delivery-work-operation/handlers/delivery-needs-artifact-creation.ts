@@ -6,7 +6,7 @@ import { sourceControlDeliveryBranchName } from '../../../utils/providers/source
 import type { SourceControlArtifactCreation, SourceControlCreateArtifactBranchInput } from '../../../utils/providers/source-control/types'
 import type { CoreRuntime } from '../../../utils/runtime'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
-import { createRecord, withTransaction } from '../../../utils/storage/helpers'
+import { createRecord } from '../../../utils/storage/helpers'
 import type { Result as CoreResult } from '../../../utils/types'
 import type { DeliveryWorkHandlerResult, ResolvedDeliveryHandlerContext } from '../../delivery-work/types'
 
@@ -43,7 +43,7 @@ export async function handleDeliveryNeedsArtifactCreation(
 	const creation = await runtime.providers.sourceControl.createArtifactBranch(input.value)
 	if (!creation.ok) return creation
 
-	return withTransaction(runtime.services, (storage) =>
+	return runtime.transactions.run(({ storage }) =>
 		recordDeliveryArtifactCreationResult({ ...context, storage }, state, input.value, creation.value),
 	)
 }

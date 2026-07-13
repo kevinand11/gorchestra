@@ -14,7 +14,7 @@ import type {
 import type { RawSandboxRunCommandInput, SandboxCommandOutput } from '../services'
 import { globalRuntimeRequirements, type AgentRunRunCommandRuntimeRequirement } from '../utils/agent-run-runtime-requirements'
 import { buildCommandHandler } from '../utils/command-handler'
-import { getRequired, isArchived, nextId, withTransaction } from '../utils/command-storage'
+import { getRequired, isArchived, nextId } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import { managedSandboxProviderForConfig, type SandboxProviderResolutionError } from '../utils/runtime/sandboxes'
 import {
@@ -46,10 +46,10 @@ const preflightRuntimeEnvCommand: AgentRunRunCommandRuntimeRequirement = {
 
 export function createPreflightAgentRunProfileCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('preflightAgentRunProfile', preflightAgentRunProfileInputPipe, async (input) => {
-		const readiness = await withTransaction<
+		const readiness = await runtime.transactions.run<
 			ProfilePreflightReadiness,
 			InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
-		>(runtime.services, async (storage) => {
+		>(async ({ storage }) => {
 			const profile = await getRequired('agent-run-profile', storage, input.agentRunProfileId)
 			if (!profile.ok) return profile
 

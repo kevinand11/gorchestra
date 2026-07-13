@@ -3,10 +3,10 @@ import { v, type PipeOutput } from 'valleyed'
 import { idPipe } from '../domain/commons'
 import { listedModelProviderPipe } from '../domain/model-provider'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { listedModelProviders } from './model-provider-read-model'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, listRecords, withTransaction } from '../utils/storage/helpers'
+import { getRequired, listRecords } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult } from '../utils/types'
 
 export const inputPipe = v.object({ modelProviderId: idPipe })
@@ -17,9 +17,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createGetModelProviderQuery(options: CoreServices): Operation {
+export function createGetModelProviderQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('getModelProvider', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			const provider = await getRequired('model-provider', storage, input.modelProviderId)
 			if (!provider.ok) return provider
 
@@ -40,7 +40,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.modelProviders.fail.get = true
-			const query = createGetModelProviderQuery(options)
+			const query = createGetModelProviderQuery(options.transactions)
 
 			const result = await query({ modelProviderId: '' })
 
@@ -52,7 +52,9 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the provider is missing', async () => {
-			const result = await createGetModelProviderQuery(createTestCoreServices())({ modelProviderId: '01k00000000000000000000032' })
+			const result = await createGetModelProviderQuery(createTestCoreServices().transactions)({
+				modelProviderId: '01k00000000000000000000032',
+			})
 
 			expect(result).toEqual({
 				ok: false,
@@ -76,7 +78,7 @@ if (import.meta.vitest) {
 				...options.tx.models.records.get('01k00000000000000000100048')!,
 				providerId: '01k00000000000000000000033',
 			})
-			const query = createGetModelProviderQuery(options)
+			const query = createGetModelProviderQuery(options.transactions)
 
 			const result = await query({ modelProviderId: '01k00000000000000000000032' })
 
@@ -92,7 +94,7 @@ if (import.meta.vitest) {
 			seedModelProvider(options.tx, '01k00000000000000000000032')
 			options.tx.models.fail.list = true
 
-			const result = await createGetModelProviderQuery(options)({ modelProviderId: '01k00000000000000000000032' })
+			const result = await createGetModelProviderQuery(options.transactions)({ modelProviderId: '01k00000000000000000000032' })
 
 			expect(result).toEqual({
 				ok: false,

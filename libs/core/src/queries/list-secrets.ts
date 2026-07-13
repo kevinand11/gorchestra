@@ -4,11 +4,11 @@ import { paginatedQueryEnvelopePipe, paginatedQueryInputPipe } from '../domain/c
 import { listedSecretPipe, type ListedSecret, type Secret, type SecretReference } from '../domain/secret'
 export type { ListedSecret } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { listSecretReferencesBySecretId } from './list-secret-references'
 import { isArchived } from '../utils/command-storage'
 import { buildQueryHandler } from '../utils/query-handler'
-import { listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
+import { listRecordsPaginated } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 
 export const inputPipe = paginatedQueryInputPipe
@@ -19,9 +19,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createListSecretsQuery(options: CoreServices): Operation {
+export function createListSecretsQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('listSecrets', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			const secrets = await listRecordsPaginated('secret', storage, input)
 			if (!secrets.ok) return secrets
 
@@ -55,7 +55,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.secrets.fail.list = true
-			const query = createListSecretsQuery(options)
+			const query = createListSecretsQuery(options.transactions)
 
 			const result = await query(null as unknown as Input)
 
@@ -67,7 +67,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns an empty Secret list for an empty Portfolio', async () => {
-			const query = createListSecretsQuery(createTestCoreServices())
+			const query = createListSecretsQuery(createTestCoreServices().transactions)
 
 			const result = await query({})
 
@@ -95,7 +95,7 @@ if (import.meta.vitest) {
 				'01k00000000000000000100001',
 				secret({ id: '01k00000000000000000100001', name: 'Tie A', createdAt: '2026-06-09T00:00:00.000Z', archived: true }),
 			)
-			const query = createListSecretsQuery(options)
+			const query = createListSecretsQuery(options.transactions)
 
 			const result = await query({})
 
@@ -127,7 +127,7 @@ if (import.meta.vitest) {
 				config: { provider: 'github', owner: 'Octo', name: 'Repo', secretId: '01k00000000000000000000040' },
 				created: { origin: 'imported', at: '2026-06-12T00:00:00.000Z' },
 			})
-			const query = createListSecretsQuery(options)
+			const query = createListSecretsQuery(options.transactions)
 
 			const result = await query({})
 
@@ -159,7 +159,7 @@ if (import.meta.vitest) {
 		it('returns storage errors when Secret reads fail', async () => {
 			const options = createTestCoreServices()
 			options.tx.secrets.fail.list = true
-			const query = createListSecretsQuery(options)
+			const query = createListSecretsQuery(options.transactions)
 
 			const result = await query({})
 

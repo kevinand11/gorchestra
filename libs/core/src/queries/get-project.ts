@@ -3,10 +3,10 @@ import { v, type PipeOutput } from 'valleyed'
 import { idPipe } from '../domain/commons'
 import { listedProjectPipe } from '../domain/project'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { listedProjectFromProjectAndRepositories } from './list-projects'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, listRecords, withTransaction } from '../utils/storage/helpers'
+import { getRequired, listRecords } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult } from '../utils/types'
 
 export const inputPipe = v.object({ projectId: idPipe })
@@ -17,9 +17,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createGetProjectQuery(options: CoreServices): Operation {
+export function createGetProjectQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('getProject', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			const project = await getRequired('project', storage, input.projectId)
 			if (!project.ok) return project
 
@@ -46,7 +46,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.projects.fail.get = true
-			const query = createGetProjectQuery(options)
+			const query = createGetProjectQuery(options.transactions)
 
 			const result = await query({ projectId: '' })
 
@@ -88,7 +88,7 @@ if (import.meta.vitest) {
 				'01k00000000000000000100028',
 				repository({ id: '01k00000000000000000100028', projectId: '01k00000000000000000000031', owner: 'Other', name: 'Repo' }),
 			)
-			const query = createGetProjectQuery(options)
+			const query = createGetProjectQuery(options.transactions)
 
 			const result = await query({ projectId: '01k00000000000000000000030' })
 
@@ -120,7 +120,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the target Project does not exist', async () => {
-			const query = createGetProjectQuery(createTestCoreServices())
+			const query = createGetProjectQuery(createTestCoreServices().transactions)
 
 			const result = await query({ projectId: '01k00000000000000000000030' })
 

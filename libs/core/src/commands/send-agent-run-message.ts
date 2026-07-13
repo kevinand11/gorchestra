@@ -16,8 +16,8 @@ import type { CommandContext } from './types'
 import { requireInteractiveAgentRunOpen } from '../utils/agent-run-targets'
 import { appendAgentRunEvent } from '../utils/agent-runs'
 import { buildCommandHandler } from '../utils/command-handler'
-import { withAuditStampTransaction } from '../utils/command-storage'
-import { acceptAgentRunModelTurn } from '../utils/dispatch'
+import { auditStamp } from '../utils/command-storage'
+import { requestAgentRunModelTurn } from '../utils/dispatch'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -39,37 +39,25 @@ export type Error =
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
-type DispatchedAgentRunMessage = {
-	event: AgentRunEvent
-	dispatchMarker: string
-}
-
 export function createSendAgentRunMessageCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('sendAgentRunMessage', sendAgentRunMessageInputPipe, async (input, context) => {
-		const written = await withAuditStampTransaction(
-			runtime,
-			context,
-			async (storage, stamp, notifications): Promise<CoreResult<DispatchedAgentRunMessage, Exclude<Error, InvalidInputError>>> => {
-				const agentRun = await requireInteractiveAgentRunOpen(storage, input.agentRunId)
-				if (!agentRun.ok) return agentRun
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
 
-				const event = await appendAgentRunEvent({ values: runtime.values, notifications }, storage, input.agentRunId, {
-					type: 'input-message',
-					source: { type: 'operator', authorized: stamp },
-					parts: input.parts,
-				})
-				if (!event.ok) return event
+		return runtime.transactions.run<Result, Exclude<Error, InvalidInputError>>(async ({ storage, notifications, dispatch }) => {
+			const agentRun = await requireInteractiveAgentRunOpen(storage, input.agentRunId)
+			if (!agentRun.ok) return agentRun
 
-				const dispatchMarker = await acceptAgentRunModelTurn(runtime.services.dispatcher, input.agentRunId, event.value.id)
-				if (!dispatchMarker.ok) return dispatchMarker
+			const event = await appendAgentRunEvent({ values: runtime.values, notifications }, storage, input.agentRunId, {
+				type: 'input-message',
+				source: { type: 'operator', authorized: stamp.value },
+				parts: input.parts,
+			})
+			if (!event.ok) return event
 
-				return { ok: true, value: { event: event.value, dispatchMarker: dispatchMarker.value } }
-			},
-		)
-		if (!written.ok) return written
-
-		runtime.services.dispatcher.ready(written.value.dispatchMarker)
-		return { ok: true, value: written.value.event }
+			const requested = await requestAgentRunModelTurn(dispatch, input.agentRunId, event.value.id)
+			return requested.ok ? event : requested
+		})
 	})
 }
 

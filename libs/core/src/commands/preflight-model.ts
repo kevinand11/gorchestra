@@ -8,7 +8,7 @@ import { modelProviderProtocolForSource, type ModelProvider, type ModelProviderA
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { CoreStorage, ResolvableSecretValue } from '../services'
 import { buildCommandHandler } from '../utils/command-handler'
-import { getRequired, isArchived, withTransaction } from '../utils/command-storage'
+import { getRequired, isArchived } from '../utils/command-storage'
 import { modelProviderProtocolPreflight } from '../utils/providers/model-provider-protocol'
 import { validateModelThinkingCapabilityForProtocol } from '../utils/providers/model-provider-protocol/thinking'
 import type { ModelProviderProtocolPreflightFailureReason } from '../utils/providers/model-provider-protocol/types'
@@ -37,7 +37,7 @@ type ModelPreflightLocalError = InvalidCoreServiceOutputError | ResourceNotFound
 
 export function createPreflightModelCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('preflightModel', preflightModelInputPipe, async (input) => {
-		const readiness = await withTransaction<ModelPreflightReadiness, ModelPreflightLocalError>(runtime.services, async (storage) => {
+		const readiness = await runtime.transactions.run<ModelPreflightReadiness, ModelPreflightLocalError>(async ({ storage }) => {
 			const model = await getRequired('model', storage, input.modelId)
 			if (!model.ok) return model
 

@@ -7,7 +7,7 @@ import type { Repository } from '../domain/repository'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
 import type { ResolvableSecretValue } from '../services'
 import { buildCommandHandler } from '../utils/command-handler'
-import { getRequired, withTransaction } from '../utils/command-storage'
+import { getRequired } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import { validateActiveSecret } from '../utils/secrets'
 import type { Result as CoreResult } from '../utils/types'
@@ -29,9 +29,8 @@ type RepositoryPreflightLocalError = InvalidCoreServiceOutputError | ResourceNot
 
 export function createPreflightRepositoryCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('preflightRepository', preflightRepositoryInputPipe, async (input) => {
-		const readiness = await withTransaction<RepositoryPreflightReadiness, RepositoryPreflightLocalError>(
-			runtime.services,
-			async (storage) => {
+		const readiness = await runtime.transactions.run<RepositoryPreflightReadiness, RepositoryPreflightLocalError>(
+			async ({ storage }) => {
 				const repository = await getRequired('repository', storage, input.repositoryId)
 				if (!repository.ok) return repository
 

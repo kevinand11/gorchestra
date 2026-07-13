@@ -14,7 +14,6 @@ import {
 	normalizeDeliveryConfigRecord,
 	updateRecordValue,
 	validateSelectableAgentRunProfiles,
-	withTransaction,
 } from '../utils/command-storage'
 import { buildDeliveryContext, getDeliveryState } from '../utils/delivery-context'
 import type { CoreRuntime } from '../utils/runtime'
@@ -39,7 +38,7 @@ export function createConfigureDeliveryCommand(runtime: CoreRuntime): Operation 
 		const stampResult = auditStamp(runtime.values, context)
 		if (!stampResult.ok) return stampResult
 
-		return withTransaction<Result, Exclude<Error, InvalidInputError>>(runtime.services, async (storage) => {
+		return runtime.transactions.run<Result, Exclude<Error, InvalidInputError>>(async ({ storage }) => {
 			const deliveryContext = await buildDeliveryContext(storage, input.deliveryId)
 			if (!deliveryContext.ok) return deliveryContext
 

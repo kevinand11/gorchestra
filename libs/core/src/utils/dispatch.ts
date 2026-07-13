@@ -1,8 +1,8 @@
-import { nonEmptyTrimmedStringPipe, type Id } from '../domain/commons'
+import type { Id } from '../domain/commons'
 import type { InvalidCoreServiceOutputError } from '../errors'
-import type { CoreDispatchRequest, CoreServices, DispatchCoordinationClaim } from '../services'
+import type { CoreDispatchRequest, DispatchCoordinationClaim } from '../services'
+import type { CoreTransactionDispatch } from './transactions'
 import type { Result } from './types'
-import { validateCoreServiceOutput } from '../validation'
 
 export function exclusiveAgentRunClaim(agentRunId: Id): DispatchCoordinationClaim {
 	return { scope: [{ type: 'agent-run', id: agentRunId }], mode: { type: 'exclusive' } }
@@ -29,20 +29,12 @@ export function deliverySliceOperationClaims(deliveryId: Id, sliceId: Id, capaci
 	]
 }
 
-export async function acceptDispatchRequest(
-	dispatcher: CoreServices['dispatcher'],
-	input: CoreDispatchRequest,
-): Promise<Result<string, InvalidCoreServiceOutputError>> {
-	const marker = await dispatcher.request(input)
-	return validateCoreServiceOutput(nonEmptyTrimmedStringPipe, marker, 'dispatcher', 'request')
-}
-
-export function acceptAgentRunPreparation(
-	dispatcher: CoreServices['dispatcher'],
+export function requestAgentRunPreparation(
+	dispatch: CoreTransactionDispatch,
 	agentRunId: Id,
 	reason: Extract<CoreDispatchRequest, { type: 'agent-run-preparation' }>['reason'],
-): Promise<Result<string, InvalidCoreServiceOutputError>> {
-	return acceptDispatchRequest(dispatcher, {
+): Promise<Result<void, InvalidCoreServiceOutputError>> {
+	return dispatch.request({
 		type: 'agent-run-preparation',
 		agentRunId,
 		coordinationClaims: [exclusiveAgentRunClaim(agentRunId)],
@@ -50,12 +42,12 @@ export function acceptAgentRunPreparation(
 	})
 }
 
-export function acceptAgentRunModelTurn(
-	dispatcher: CoreServices['dispatcher'],
+export function requestAgentRunModelTurn(
+	dispatch: CoreTransactionDispatch,
 	agentRunId: Id,
 	inputEventId: Id,
-): Promise<Result<string, InvalidCoreServiceOutputError>> {
-	return acceptDispatchRequest(dispatcher, {
+): Promise<Result<void, InvalidCoreServiceOutputError>> {
+	return dispatch.request({
 		type: 'agent-run-model-turn',
 		agentRunId,
 		coordinationClaims: [exclusiveAgentRunClaim(agentRunId)],
@@ -63,11 +55,11 @@ export function acceptAgentRunModelTurn(
 	})
 }
 
-export function acceptAgentRunSandboxRelease(
-	dispatcher: CoreServices['dispatcher'],
+export function requestAgentRunSandboxRelease(
+	dispatch: CoreTransactionDispatch,
 	agentRunId: Id,
-): Promise<Result<string, InvalidCoreServiceOutputError>> {
-	return acceptDispatchRequest(dispatcher, {
+): Promise<Result<void, InvalidCoreServiceOutputError>> {
+	return dispatch.request({
 		type: 'agent-run-sandbox-release',
 		agentRunId,
 		coordinationClaims: [exclusiveAgentRunClaim(agentRunId)],

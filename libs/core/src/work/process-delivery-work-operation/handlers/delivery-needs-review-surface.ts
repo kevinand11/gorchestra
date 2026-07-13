@@ -6,7 +6,7 @@ import type { InvariantViolationError } from '../../../errors'
 import type { SourceControlCreateReviewSurfaceInput, SourceControlReviewSurfaceCreation } from '../../../utils/providers/source-control'
 import type { CoreRuntime } from '../../../utils/runtime'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
-import { createRecord, withTransaction } from '../../../utils/storage/helpers'
+import { createRecord } from '../../../utils/storage/helpers'
 import type { Result as CoreResult } from '../../../utils/types'
 import type { DeliveryWorkHandlerResult, ResolvedDeliveryHandlerContext } from '../../delivery-work/types'
 
@@ -36,7 +36,7 @@ export async function handleDeliveryNeedsReviewSurface(
 	const creation = await runtime.providers.sourceControl.createReviewSurface(input.value)
 	if (!creation.ok) return creation
 
-	return withTransaction(runtime.services, (storage) =>
+	return runtime.transactions.run(({ storage }) =>
 		recordDeliveryReviewSurfaceCreationResult({ ...context, storage }, state, input.value, creation.value),
 	)
 }

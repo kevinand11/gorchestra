@@ -64,11 +64,7 @@ export interface ResolvedDeliveryHandlerContext extends DeliveryHandlerContext {
 
 export type { DeliveryWorkResolution }
 
-export interface DeliveryWorkHandlerSuccess extends Result {
-	dispatchMarkers?: string[]
-}
-
-export type DeliveryWorkHandlerResult = CoreResult<DeliveryWorkHandlerSuccess, Exclude<Error, InvalidInputError>>
+export type DeliveryWorkHandlerResult = CoreResult<Result, Exclude<Error, InvalidInputError>>
 
 export type DeliveryWorkStorageError =
 	| InvalidCoreServiceOutputError

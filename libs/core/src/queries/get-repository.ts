@@ -9,9 +9,9 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreServices } from '../services'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, notFound, withTransaction } from '../utils/storage/helpers'
+import { getRequired, notFound } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult } from '../utils/types'
 
 export const inputPipe = v.object({ projectId: idPipe, repositoryId: idPipe })
@@ -27,9 +27,9 @@ export type Error =
 	| StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createGetRepositoryQuery(options: CoreServices): Operation {
+export function createGetRepositoryQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('getRepository', inputPipe, (input) =>
-		withTransaction<Result, Exclude<Error, InvalidInputError>>(options, async (storage) => {
+		transactions.run<Result, Exclude<Error, InvalidInputError>>(async ({ storage }) => {
 			const projectResult = await getRequired('project', storage, input.projectId)
 			if (!projectResult.ok) return projectResult
 			if (projectResult.value.source.type !== 'source-control') {
@@ -62,7 +62,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.projects.fail.get = true
-			const query = createGetRepositoryQuery(options)
+			const query = createGetRepositoryQuery(options.transactions)
 
 			const result = await query({ projectId: '', repositoryId: '01k00000000000000000000034' })
 
@@ -83,7 +83,7 @@ if (import.meta.vitest) {
 				name: 'Repo',
 			})
 			options.tx.repositories.records.set('01k00000000000000000000034', storedRepository)
-			const query = createGetRepositoryQuery(options)
+			const query = createGetRepositoryQuery(options.transactions)
 
 			const result = await query({ projectId: '01k00000000000000000000030', repositoryId: '01k00000000000000000000034' })
 
@@ -96,7 +96,7 @@ if (import.meta.vitest) {
 				'01k00000000000000000000034',
 				repository({ id: '01k00000000000000000000034', projectId: '01k00000000000000000000030', owner: 'Octo', name: 'Repo' }),
 			)
-			const query = createGetRepositoryQuery(options)
+			const query = createGetRepositoryQuery(options.transactions)
 
 			const result = await query({ projectId: '01k00000000000000000000030', repositoryId: '01k00000000000000000000034' })
 
@@ -110,7 +110,7 @@ if (import.meta.vitest) {
 				'01k00000000000000000000034',
 				repository({ id: '01k00000000000000000000034', projectId: '01k00000000000000000000031', owner: 'Octo', name: 'Repo' }),
 			)
-			const query = createGetRepositoryQuery(options)
+			const query = createGetRepositoryQuery(options.transactions)
 
 			const result = await query({ projectId: '01k00000000000000000000030', repositoryId: '01k00000000000000000000034' })
 

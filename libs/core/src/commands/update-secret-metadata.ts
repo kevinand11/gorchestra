@@ -11,7 +11,7 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import { buildCommandHandler } from '../utils/command-handler'
-import { getRequired, updateRecordValue, withAuditStampTransaction } from '../utils/command-storage'
+import { auditStamp, getRequired, updateRecordValue } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -30,22 +30,21 @@ export type Error =
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createUpdateSecretMetadataCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('updateSecretMetadata', updateSecretMetadataInputPipe, (input, context) =>
-		withAuditStampTransaction(
-			runtime,
-			context,
-			async (storage, stamp): Promise<CoreResult<Secret, Exclude<Error, InvalidInputError>>> => {
-				const existing = await getRequired('secret', storage, input.secretId)
-				if (!existing.ok) return existing
+	return buildCommandHandler('updateSecretMetadata', updateSecretMetadataInputPipe, async (input, context) => {
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
 
-				return updateRecordValue('secret', storage, input.secretId, {
-					...existing.value,
-					name: input.name,
-					updated: stamp,
-				})
-			},
-		),
-	)
+		return runtime.transactions.run(async ({ storage }): Promise<CoreResult<Secret, Exclude<Error, InvalidInputError>>> => {
+			const existing = await getRequired('secret', storage, input.secretId)
+			if (!existing.ok) return existing
+
+			return updateRecordValue('secret', storage, input.secretId, {
+				...existing.value,
+				name: input.name,
+				updated: stamp.value,
+			})
+		})
+	})
 }
 
 if (import.meta.vitest) {

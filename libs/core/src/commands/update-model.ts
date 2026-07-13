@@ -13,7 +13,7 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import { buildCommandHandler } from '../utils/command-handler'
-import { getRequired, updateRecordValue, withAuditStampTransaction } from '../utils/command-storage'
+import { auditStamp, getRequired, updateRecordValue } from '../utils/command-storage'
 import { validateModelThinkingCapabilityForProtocol } from '../utils/providers/model-provider-protocol/thinking'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
@@ -40,33 +40,32 @@ export type Error =
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createUpdateModelCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('updateModel', updateModelInputPipe, (input, context) =>
-		withAuditStampTransaction(
-			runtime,
-			context,
-			async (storage, stamp): Promise<CoreResult<Model, Exclude<Error, InvalidInputError>>> => {
-				const existing = await getRequired('model', storage, input.modelId)
-				if (!existing.ok) return existing
+	return buildCommandHandler('updateModel', updateModelInputPipe, async (input, context) => {
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
 
-				const provider = await getRequired('model-provider', storage, existing.value.providerId)
-				if (!provider.ok) return provider
+		return runtime.transactions.run(async ({ storage }): Promise<CoreResult<Model, Exclude<Error, InvalidInputError>>> => {
+			const existing = await getRequired('model', storage, input.modelId)
+			if (!existing.ok) return existing
 
-				const updated = {
-					...existing.value,
-					name: input.name,
-					providerOptions: input.providerOptions,
-					capabilities: input.capabilities,
-					pricing: input.pricing,
-					updated: stamp,
-				}
-				const protocol = modelProviderProtocolForSource(provider.value.source)
-				const capabilityValidation = validateModelThinkingCapabilityForProtocol(updated, protocol)
-				if (!capabilityValidation.ok) return capabilityValidation
+			const provider = await getRequired('model-provider', storage, existing.value.providerId)
+			if (!provider.ok) return provider
 
-				return updateRecordValue('model', storage, input.modelId, updated)
-			},
-		),
-	)
+			const updated = {
+				...existing.value,
+				name: input.name,
+				providerOptions: input.providerOptions,
+				capabilities: input.capabilities,
+				pricing: input.pricing,
+				updated: stamp.value,
+			}
+			const protocol = modelProviderProtocolForSource(provider.value.source)
+			const capabilityValidation = validateModelThinkingCapabilityForProtocol(updated, protocol)
+			if (!capabilityValidation.ok) return capabilityValidation
+
+			return updateRecordValue('model', storage, input.modelId, updated)
+		})
+	})
 }
 
 if (import.meta.vitest) {

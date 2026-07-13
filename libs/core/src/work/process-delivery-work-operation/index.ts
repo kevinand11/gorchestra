@@ -4,6 +4,7 @@ import { deliveryWorkOperationPipe, type Action, type DeliveryWorkOperation } fr
 import { idPipe, type Id } from '../../domain/commons'
 import type { ValidationEvidence } from '../../domain/evidence'
 import type { InvalidInputError } from '../../errors'
+import type { CoreStorage } from '../../services'
 import type { CoreRuntime } from '../../utils/runtime'
 import type { WorkContext } from '../types'
 import { handleDeliveryNeedsArtifactCreation } from './handlers/delivery-needs-artifact-creation'
@@ -22,10 +23,10 @@ import {
 	readProviderBackedDeliveryPreflightPlan,
 	runProviderBackedDeliveryPreflightChecks,
 } from '../../utils/delivery-preflight'
-import { acceptDispatchRequest, exclusiveDeliverySchedulerClaim } from '../../utils/dispatch'
-import { withNotificationTransaction } from '../../utils/notifications'
+import { exclusiveDeliverySchedulerClaim } from '../../utils/dispatch'
 import { nextId, runtimeRecord } from '../../utils/runtime-values'
-import { createRecord, getRequired, listRecords, withTransaction } from '../../utils/storage/helpers'
+import { createRecord, getRequired, listRecords } from '../../utils/storage/helpers'
+import type { CoreTransactionDispatch } from '../../utils/transactions'
 import type { Result as CoreResult } from '../../utils/types'
 import { buildWorkHandler } from '../../utils/work-handler'
 import {
@@ -49,12 +50,12 @@ export type Operation = (input: Input, context: WorkContext) => Promise<CoreResu
 export function createProcessDeliveryWorkOperation(runtime: CoreRuntime): Operation {
 	return buildWorkHandler('processDeliveryWorkOperation', processDeliveryWorkOperationInputPipe, async (parsedInput) => {
 		const input = parsedInput as Input
-		const started = await withTransaction(runtime.services, (storage) => recordStartedDispatchAction(runtime, storage, input))
+		const started = await runtime.transactions.run(({ storage }) => recordStartedDispatchAction(runtime, storage, input))
 		if (!started.ok) return started
 		if (started.value.type === 'already-started') return { ok: true, value: completed() }
 
 		const startedActionId = started.value.action.id
-		const current = await withTransaction(runtime.services, async (storage) => {
+		const current = await runtime.transactions.run(async ({ storage }) => {
 			const deliveryContext = await buildDeliveryContext(storage, input.deliveryId)
 			if (!deliveryContext.ok) return deliveryContext
 
@@ -81,14 +82,7 @@ export function createProcessDeliveryWorkOperation(runtime: CoreRuntime): Operat
 		const handled = await processFreshOperation(runtime, input, startedActionId, preflight.value.context)
 		if (!handled.ok) return handled
 
-		return finishAndRequestScheduler(
-			runtime,
-			input,
-			startedActionId,
-			'processed',
-			{ processedCount: handled.value.processedCount, failures: handled.value.failures },
-			handled.value.dispatchMarkers ?? [],
-		)
+		return finishAndRequestScheduler(runtime, input, startedActionId, 'processed', handled.value)
 	})
 }
 
@@ -96,7 +90,7 @@ type StartedAttempt = { type: 'started'; action: Action } | { type: 'already-sta
 
 async function recordStartedDispatchAction(
 	runtime: CoreRuntime,
-	storage: Parameters<Parameters<typeof withTransaction>[1]>[0],
+	storage: CoreStorage,
 	input: Input,
 ): Promise<CoreResult<StartedAttempt, Exclude<Error, InvalidInputError>>> {
 	const queued = await getRequired('action', storage, input.queuedActionId)
@@ -172,7 +166,7 @@ async function runProcessorPreflight(
 	runtime: CoreRuntime,
 	deliveryContext: DeliveryContext,
 ): Promise<CoreResult<{ checks: ValidationEvidence[]; context: ResolvedDeliveryHandlerContext }, Exclude<Error, InvalidInputError>>> {
-	const plan = await withTransaction(runtime.services, (storage) => readProviderBackedDeliveryPreflightPlan(storage, deliveryContext))
+	const plan = await runtime.transactions.run(({ storage }) => readProviderBackedDeliveryPreflightPlan(storage, deliveryContext))
 	if (!plan.ok) return plan
 
 	const checks = await runProviderBackedDeliveryPreflightChecks(runtime, plan.value)
@@ -235,7 +229,7 @@ async function processFreshDeliveryOperation(
 		case 'needs-artifact-creation':
 			return handleDeliveryNeedsArtifactCreation(runtime, context, { type: 'needs-artifact-creation' })
 		case 'needs-artifact-validation':
-			return withTransaction(runtime.services, async (storage) =>
+			return runtime.transactions.run(async ({ storage }) =>
 				handleDeliveryNeedsArtifactValidation({ ...context, storage }, { type: 'needs-artifact-validation' }),
 			)
 		case 'needs-review-surface': {
@@ -259,7 +253,7 @@ async function processFreshSliceOperation(
 
 	switch (operation.state) {
 		case 'needs-delivery-validation':
-			return withTransaction(runtime.services, async (storage) =>
+			return runtime.transactions.run(async ({ storage }) =>
 				handleSliceNeedsDeliveryValidation({ ...context, storage }, deliverySlice.slice, {
 					type: 'needs-delivery-validation',
 					actionId: operation.detail?.type === 'action' ? operation.detail.actionId : '',
@@ -269,7 +263,7 @@ async function processFreshSliceOperation(
 			const sliceArtifactId = operation.detail?.type === 'artifact' ? operation.detail.artifactId : deliverySlice.artifact?.id
 			return sliceArtifactId === undefined
 				? invariant(`Slice ${operation.sliceId} Artifact is missing from Delivery Context.`)
-				: withTransaction(runtime.services, async (storage) =>
+				: runtime.transactions.run(async ({ storage }) =>
 						handleSliceNeedsArtifactValidation({ ...context, storage }, deliverySlice.slice, {
 							type: 'needs-artifact-validation',
 							mode: 'initial',
@@ -286,9 +280,9 @@ async function processFreshSliceOperation(
 		case 'needs-artifact-creation':
 			return handleSliceNeedsArtifactCreation(runtime, context, deliverySlice.slice, { type: 'needs-artifact-creation' })
 		case 'executable':
-			return withNotificationTransaction(runtime, async (storage, notifications) =>
+			return runtime.transactions.run((transaction) =>
 				handleSliceExecutable(
-					{ ...context, storage },
+					{ ...context, storage: transaction.storage },
 					deliverySlice.slice,
 					operation.detail?.type === 'correction-root'
 						? {
@@ -298,7 +292,7 @@ async function processFreshSliceOperation(
 							}
 						: { type: 'executable', mode: 'initial' },
 					context.workResolution,
-					notifications,
+					transaction,
 				),
 			)
 		default:
@@ -312,7 +306,7 @@ async function writeFailedPreflightFinishAndRequestScheduler(
 	startedActionId: Id,
 	checks: ValidationEvidence[],
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const written = await withTransaction(runtime.services, async (storage) => {
+	return runtime.transactions.run(async ({ storage, dispatch }) => {
 		const preflightId = nextId(runtime.values)
 		if (!preflightId.ok) return preflightId
 		const preflightPerformed = runtimeRecord(runtime.values)
@@ -328,39 +322,32 @@ async function writeFailedPreflightFinishAndRequestScheduler(
 		const preflightPut = await createRecord('action', storage, preflightAction)
 		if (!preflightPut.ok) return preflightPut
 
-		return writeFinishAndAcceptSchedulerRequest(runtime, storage, input, startedActionId, 'processed')
+		const finished = await writeFinishAndRequestScheduler(runtime, storage, dispatch, input, startedActionId, 'processed')
+		return finished.ok ? { ok: true, value: completed(1) } : finished
 	})
-	if (!written.ok) return written
-
-	runtime.services.dispatcher.ready(written.value.marker)
-	return { ok: true, value: completed(1) }
 }
 
-async function finishAndRequestScheduler(
+function finishAndRequestScheduler(
 	runtime: CoreRuntime,
 	input: Input,
 	startedActionId: Id,
 	outcome: 'processed' | 'stale-no-op',
 	result: Result,
-	dispatchMarkers: string[] = [],
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	const written = await withTransaction(runtime.services, (storage) =>
-		writeFinishAndAcceptSchedulerRequest(runtime, storage, input, startedActionId, outcome),
-	)
-	if (!written.ok) return written
-
-	runtime.services.dispatcher.ready(written.value.marker)
-	for (const dispatchMarker of dispatchMarkers) runtime.services.dispatcher.ready(dispatchMarker)
-	return { ok: true, value: result }
+	return runtime.transactions.run(async ({ storage, dispatch }) => {
+		const finished = await writeFinishAndRequestScheduler(runtime, storage, dispatch, input, startedActionId, outcome)
+		return finished.ok ? { ok: true, value: result } : finished
+	})
 }
 
-async function writeFinishAndAcceptSchedulerRequest(
+async function writeFinishAndRequestScheduler(
 	runtime: CoreRuntime,
-	storage: Parameters<Parameters<typeof withTransaction>[1]>[0],
+	storage: CoreStorage,
+	dispatch: CoreTransactionDispatch,
 	input: Input,
 	startedActionId: Id,
 	outcome: 'processed' | 'stale-no-op',
-): Promise<CoreResult<{ marker: string }, Exclude<Error, InvalidInputError>>> {
+): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
 	const actionId = nextId(runtime.values)
 	if (!actionId.ok) return actionId
 
@@ -386,13 +373,12 @@ async function writeFinishAndAcceptSchedulerRequest(
 	const put = await createRecord('action', storage, action)
 	if (!put.ok) return put
 
-	const marker = await acceptDispatchRequest(runtime.services.dispatcher, {
+	return dispatch.request({
 		type: 'delivery-work-scheduler',
 		deliveryId: input.deliveryId,
 		coordinationClaims: [exclusiveDeliverySchedulerClaim(input.deliveryId)],
 		reason: { type: 'delivery-work-requested' },
 	})
-	return marker.ok ? { ok: true, value: { marker: marker.value } } : marker
 }
 
 function operationsEqual(left: DeliveryWorkOperation | null, right: DeliveryWorkOperation): boolean {

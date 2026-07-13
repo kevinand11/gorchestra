@@ -5,10 +5,10 @@ import { deliveryReadModelPipe, type Delivery } from '../domain/delivery'
 import type { Repository } from '../domain/repository'
 import type { Slice } from '../domain/slice'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { deliveryReadModel } from '../utils/delivery-read-model'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, listRecords, notFound, withTransaction } from '../utils/storage/helpers'
+import { getRequired, listRecords, notFound } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult } from '../utils/types'
 
 export const inputPipe = v.object({ projectId: idPipe, deliveryId: idPipe })
@@ -19,9 +19,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createGetDeliveryQuery(options: CoreServices): Operation {
+export function createGetDeliveryQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('getDelivery', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			const project = await getRequired('project', storage, input.projectId)
 			if (!project.ok) return project
 
@@ -50,7 +50,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.projects.fail.get = true
-			const query = createGetDeliveryQuery(options)
+			const query = createGetDeliveryQuery(options.transactions)
 
 			const result = await query({ projectId: '', deliveryId: '01k00000000000000000000008' })
 
@@ -86,7 +86,7 @@ if (import.meta.vitest) {
 				'01k00000000000000000100038',
 				slice({ id: '01k00000000000000000100038', deliveryId: '01k00000000000000000000008', order: 0, title: 'Schema' }),
 			)
-			const query = createGetDeliveryQuery(options)
+			const query = createGetDeliveryQuery(options.transactions)
 
 			const result = await query({ projectId: '01k00000000000000000000030', deliveryId: '01k00000000000000000000008' })
 
@@ -114,7 +114,7 @@ if (import.meta.vitest) {
 					repositoryId: '01k00000000000000000000034',
 				}),
 			)
-			const query = createGetDeliveryQuery(options)
+			const query = createGetDeliveryQuery(options.transactions)
 
 			const result = await query({ projectId: '01k00000000000000000000030', deliveryId: '01k00000000000000000000008' })
 
@@ -133,7 +133,7 @@ if (import.meta.vitest) {
 					repositoryId: '01k00000000000000000000034',
 				}),
 			)
-			const query = createGetDeliveryQuery(options)
+			const query = createGetDeliveryQuery(options.transactions)
 
 			const result = await query({ projectId: '01k00000000000000000000030', deliveryId: '01k00000000000000000000008' })
 

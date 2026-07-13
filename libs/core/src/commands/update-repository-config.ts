@@ -12,7 +12,7 @@ import type {
 } from '../errors'
 import type { RepositoryCommandReferenceError } from '../utils/command-errors'
 import { buildCommandHandler } from '../utils/command-handler'
-import { getRequired, listRecords, updateRecordValue, withTransaction } from '../utils/command-storage'
+import { getRequired, listRecords, updateRecordValue } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -33,7 +33,7 @@ export type Operation = (input: Input, context: CommandContext) => Promise<CoreR
 
 export function createUpdateRepositoryConfigCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('updateRepositoryConfig', updateRepositoryConfigInputPipe, (input) =>
-		withTransaction<Repository, Exclude<Error, InvalidInputError>>(runtime.services, async (storage) => {
+		runtime.transactions.run<Repository, Exclude<Error, InvalidInputError>>(async ({ storage }) => {
 			const repositoryResult = await getRequired('repository', storage, input.repositoryId)
 			if (!repositoryResult.ok) return repositoryResult
 

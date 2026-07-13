@@ -36,7 +36,7 @@ export function openCore(services: CoreServices): Result<GorchestraCore, OpenCor
 	return {
 		ok: true,
 		value: {
-			preflight: () => preflightCore(runtime.services),
+			preflight: () => preflightCore(runtime),
 			commands: Commands.createCoreCommands(runtime),
 			queries: createCoreQueries(runtime),
 			snapshots: Snapshots.createCoreSnapshots(runtime),
@@ -47,17 +47,19 @@ export function openCore(services: CoreServices): Result<GorchestraCore, OpenCor
 
 type CorePreflightCheckResult = Result<CorePreflightCheck, CorePreflightError>
 
-async function preflightCore(options: CoreServices): Promise<Result<CorePreflightReport, CorePreflightError>> {
-	const checks = await collectCorePreflightChecks(options)
+async function preflightCore(runtime: ReturnType<typeof createCoreRuntime>): Promise<Result<CorePreflightReport, CorePreflightError>> {
+	const checks = await collectCorePreflightChecks(runtime)
 	if (!checks.ok) return checks
 
 	return { ok: true, value: corePreflightReport(checks.value) }
 }
 
-async function collectCorePreflightChecks(options: CoreServices): Promise<Result<CorePreflightChecks, CorePreflightError>> {
-	const storage = await preflightStorage(options.storage)
-	const secrets = await preflightCoreService('secrets', () => options.secrets.preflight())
-	const dispatcher = await preflightCoreService('dispatcher', () => options.dispatcher.preflight())
+async function collectCorePreflightChecks(
+	runtime: ReturnType<typeof createCoreRuntime>,
+): Promise<Result<CorePreflightChecks, CorePreflightError>> {
+	const storage = await preflightStorage(runtime.transactions)
+	const secrets = await preflightCoreService('secrets', () => runtime.services.secrets.preflight())
+	const dispatcher = await preflightCoreService('dispatcher', () => runtime.services.dispatcher.preflight())
 	const failure = firstCorePreflightFailure([secrets, dispatcher])
 	if (failure !== null) return failure
 

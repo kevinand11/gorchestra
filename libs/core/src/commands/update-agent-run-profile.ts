@@ -8,7 +8,7 @@ import { modelUseConfigPipe } from '../domain/config'
 import type { DuplicateAgentRunRuntimeRequirementError, InvalidInputError, ResourceArchivedError } from '../errors'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import { buildCommandHandler } from '../utils/command-handler'
-import { getRequired, updateRecordValue, validateAgentRunProfileConfig, withAuditStampTransaction } from '../utils/command-storage'
+import { auditStamp, getRequired, updateRecordValue, validateAgentRunProfileConfig } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -31,27 +31,26 @@ export type Error =
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createUpdateAgentRunProfileCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('updateAgentRunProfile', updateAgentRunProfileInputPipe, (input, context) =>
-		withAuditStampTransaction(
-			runtime,
-			context,
-			async (storage, stamp): Promise<CoreResult<AgentRunProfile, Exclude<Error, InvalidInputError>>> => {
-				const existing = await getRequired('agent-run-profile', storage, input.agentRunProfileId)
-				if (!existing.ok) return existing
+	return buildCommandHandler('updateAgentRunProfile', updateAgentRunProfileInputPipe, async (input, context) => {
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
 
-				const configValidation = await validateAgentRunProfileConfig(storage, input)
-				if (!configValidation.ok) return configValidation
+		return runtime.transactions.run(async ({ storage }): Promise<CoreResult<AgentRunProfile, Exclude<Error, InvalidInputError>>> => {
+			const existing = await getRequired('agent-run-profile', storage, input.agentRunProfileId)
+			if (!existing.ok) return existing
 
-				return updateRecordValue('agent-run-profile', storage, input.agentRunProfileId, {
-					name: input.name,
-					modelUse: input.modelUse,
-					runtimeRequirements: input.runtimeRequirements,
-					sandboxConfig: input.sandboxConfig,
-					updated: stamp,
-				})
-			},
-		),
-	)
+			const configValidation = await validateAgentRunProfileConfig(storage, input)
+			if (!configValidation.ok) return configValidation
+
+			return updateRecordValue('agent-run-profile', storage, input.agentRunProfileId, {
+				name: input.name,
+				modelUse: input.modelUse,
+				runtimeRequirements: input.runtimeRequirements,
+				sandboxConfig: input.sandboxConfig,
+				updated: stamp.value,
+			})
+		})
+	})
 }
 
 if (import.meta.vitest) {

@@ -3,9 +3,9 @@ import { v, type PipeOutput } from 'valleyed'
 import { agentRunProfileReferencePipe, type AgentRunProfileReference, type AgentRunProfileReferenceRole } from '../domain/agent-run-profile'
 import { idPipe, type Id } from '../domain/commons'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, listRecords, withTransaction } from '../utils/storage/helpers'
+import { getRequired, listRecords } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult } from '../utils/types'
 
 export const inputPipe = v.object({ agentRunProfileId: idPipe })
@@ -16,9 +16,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createListAgentRunProfileReferencesQuery(options: CoreServices): Operation {
+export function createListAgentRunProfileReferencesQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('listAgentRunProfileReferences', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			const profile = await getRequired('agent-run-profile', storage, input.agentRunProfileId)
 			if (!profile.ok) return profile
 
@@ -137,7 +137,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.agentRunProfiles.fail.get = true
-			const query = createListAgentRunProfileReferencesQuery(options)
+			const query = createListAgentRunProfileReferencesQuery(options.transactions)
 
 			const result = await query({ agentRunProfileId: '' })
 
@@ -149,7 +149,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the target Agent Run Profile does not exist', async () => {
-			const query = createListAgentRunProfileReferencesQuery(createTestCoreServices())
+			const query = createListAgentRunProfileReferencesQuery(createTestCoreServices().transactions)
 
 			const result = await query({ agentRunProfileId: '01k00000000000000000000006' })
 
@@ -169,7 +169,7 @@ if (import.meta.vitest) {
 				revisionExecutionAgentRunProfileId: '01k00000000000000000000006',
 			})
 			options.tx.projects.records.get('01k00000000000000000000031')!.title = 'Repair UI'
-			const query = createListAgentRunProfileReferencesQuery(options)
+			const query = createListAgentRunProfileReferencesQuery(options.transactions)
 
 			const result = await query({ agentRunProfileId: '01k00000000000000000000006' })
 
@@ -226,7 +226,7 @@ if (import.meta.vitest) {
 				abandoned: stamp,
 				reason: 'No longer needed.',
 			}
-			const query = createListAgentRunProfileReferencesQuery(options)
+			const query = createListAgentRunProfileReferencesQuery(options.transactions)
 
 			const result = await query({ agentRunProfileId: '01k00000000000000000000006' })
 
@@ -292,7 +292,7 @@ if (import.meta.vitest) {
 				}),
 			)
 			options.tx.projects.records.clear()
-			const query = createListAgentRunProfileReferencesQuery(options)
+			const query = createListAgentRunProfileReferencesQuery(options.transactions)
 
 			const result = await query({ agentRunProfileId: '01k00000000000000000000006' })
 
@@ -303,7 +303,7 @@ if (import.meta.vitest) {
 			const options = createTestCoreServices()
 			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
 			options.tx.projects.fail.list = true
-			const query = createListAgentRunProfileReferencesQuery(options)
+			const query = createListAgentRunProfileReferencesQuery(options.transactions)
 
 			const result = await query({ agentRunProfileId: '01k00000000000000000000006' })
 

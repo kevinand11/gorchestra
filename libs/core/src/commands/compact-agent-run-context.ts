@@ -15,7 +15,7 @@ import type { CommandContext } from './types'
 import { requireInteractiveAgentRunOpen } from '../utils/agent-run-targets'
 import { appendAgentRunEvent } from '../utils/agent-runs'
 import { buildCommandHandler } from '../utils/command-handler'
-import { getRequired, withAuditStampTransaction } from '../utils/command-storage'
+import { auditStamp, getRequired } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -39,8 +39,11 @@ export type Error =
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createCompactAgentRunContextCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('compactAgentRunContext', compactAgentRunContextInputPipe, (input, context) =>
-		withAuditStampTransaction<Result, Exclude<Error, InvalidInputError>>(runtime, context, async (storage, stamp, notifications) => {
+	return buildCommandHandler('compactAgentRunContext', compactAgentRunContextInputPipe, async (input, context) => {
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
+
+		return runtime.transactions.run<Result, Exclude<Error, InvalidInputError>>(async ({ storage, notifications }) => {
 			const agentRun = await requireInteractiveAgentRunOpen(storage, input.agentRunId)
 			if (!agentRun.ok) return agentRun
 
@@ -58,12 +61,12 @@ export function createCompactAgentRunContextCommand(runtime: CoreRuntime): Opera
 
 			return appendAgentRunEvent({ values: runtime.values, notifications }, storage, input.agentRunId, {
 				type: 'context-compacted',
-				source: { type: 'operator', authorized: stamp },
+				source: { type: 'operator', authorized: stamp.value },
 				compactedThroughEventId: compactedThrough.value.id,
 				replacementParts: input.replacementParts,
 			})
-		}),
-	)
+		})
+	})
 }
 
 if (import.meta.vitest) {

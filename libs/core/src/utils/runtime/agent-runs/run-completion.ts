@@ -1,8 +1,7 @@
 import type { AgentRunRuntimeError, ModelAgentRunRuntime } from './types'
 import type { AgentRun } from '../../../domain/agent-run'
 import { updateAgentRunRecord } from '../../agent-runs'
-import { acceptAgentRunSandboxRelease, acceptDispatchRequest, exclusiveDeliverySchedulerClaim } from '../../dispatch'
-import { withNotificationTransaction } from '../../notifications'
+import { exclusiveDeliverySchedulerClaim, requestAgentRunSandboxRelease } from '../../dispatch'
 import { runtimeRecord } from '../../runtime-values'
 import type { Result } from '../../types'
 
@@ -18,28 +17,20 @@ export function completeAutonomousRunIfNeeded(
 async function completeAgentRun(runtime: ModelAgentRunRuntime, agentRun: AgentRun): Promise<Result<void, AgentRunRuntimeError>> {
 	const completed = runtimeRecord(runtime.values)
 	if (!completed.ok) return completed
-	const updated = await withNotificationTransaction<string[], AgentRunRuntimeError>(runtime, async (storage, notifications) => {
+	return runtime.transactions.run<void, AgentRunRuntimeError>(async ({ storage, notifications, dispatch }) => {
 		const stored = await updateAgentRunRecord(storage, notifications, agentRun.id, { completed: completed.value })
 		if (!stored.ok) return stored
 
-		const schedulerMarker =
-			agentRun.purpose.type === 'execution'
-				? await acceptDispatchRequest(runtime.services.dispatcher, {
-						type: 'delivery-work-scheduler',
-						deliveryId: agentRun.purpose.deliveryId,
-						coordinationClaims: [exclusiveDeliverySchedulerClaim(agentRun.purpose.deliveryId)],
-						reason: { type: 'delivery-work-requested' },
-					})
-				: null
-		if (schedulerMarker !== null && !schedulerMarker.ok) return schedulerMarker
+		if (agentRun.purpose.type === 'execution') {
+			const schedulerRequested = await dispatch.request({
+				type: 'delivery-work-scheduler',
+				deliveryId: agentRun.purpose.deliveryId,
+				coordinationClaims: [exclusiveDeliverySchedulerClaim(agentRun.purpose.deliveryId)],
+				reason: { type: 'delivery-work-requested' },
+			})
+			if (!schedulerRequested.ok) return schedulerRequested
+		}
 
-		const releaseMarker = await acceptAgentRunSandboxRelease(runtime.services.dispatcher, agentRun.id)
-		if (!releaseMarker.ok) return releaseMarker
-
-		return { ok: true, value: [...(schedulerMarker === null ? [] : [schedulerMarker.value]), releaseMarker.value] }
+		return requestAgentRunSandboxRelease(dispatch, agentRun.id)
 	})
-	if (!updated.ok) return updated
-
-	for (const marker of updated.value) runtime.services.dispatcher.ready(marker)
-	return { ok: true, value: undefined }
 }

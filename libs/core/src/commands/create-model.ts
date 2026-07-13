@@ -12,7 +12,7 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import { buildCommandHandler } from '../utils/command-handler'
-import { auditStamp, createRecordValue, getRequired, isArchived, nextId, withTransaction } from '../utils/command-storage'
+import { auditStamp, createRecordValue, getRequired, isArchived, nextId } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -44,7 +44,7 @@ export function createCreateModelCommand(runtime: CoreRuntime): Operation {
 		const id = nextId(runtime.values)
 		if (!id.ok) return Promise.resolve(id)
 
-		return withTransaction(runtime.services, async (storage): Promise<CoreResult<Model, Exclude<Error, InvalidInputError>>> => {
+		return runtime.transactions.run(async ({ storage }): Promise<CoreResult<Model, Exclude<Error, InvalidInputError>>> => {
 			const provider = await getRequired('model-provider', storage, input.providerId)
 			if (!provider.ok) return provider
 			if (isArchived(provider.value.archivePeriods)) {

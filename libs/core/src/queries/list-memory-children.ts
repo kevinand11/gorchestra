@@ -3,9 +3,9 @@ import { v, type PipeInput, type PipeOutput } from 'valleyed'
 import { idPipe, paginatedQueryEnvelopePipe, paginatedQueryInputPipe } from '../domain/commons'
 import { memoryPipe, type Memory } from '../domain/memory'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
+import { getRequired, listRecordsPaginated } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 
 export const inputPipe = v.merge(v.object({ parentId: v.nullable(idPipe) }), paginatedQueryInputPipe)
@@ -16,9 +16,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createListMemoryChildrenQuery(options: CoreServices): Operation {
+export function createListMemoryChildrenQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('listMemoryChildren', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			if (input.parentId !== null) {
 				const parent = await getRequired('memory', storage, input.parentId)
 				if (!parent.ok) return parent
@@ -39,7 +39,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.memories.fail.list = true
-			const query = createListMemoryChildrenQuery(options)
+			const query = createListMemoryChildrenQuery(options.transactions)
 
 			const result = await query({ parentId: '' })
 
@@ -59,7 +59,7 @@ if (import.meta.vitest) {
 			options.tx.memories.records.set(memoryA.id, memoryA)
 			options.tx.memories.records.set(memoryChild.id, memoryChild)
 
-			const result = await createListMemoryChildrenQuery(options)({ parentId: null })
+			const result = await createListMemoryChildrenQuery(options.transactions)({ parentId: null })
 
 			expect(result).toEqual({
 				ok: true,
@@ -79,7 +79,7 @@ if (import.meta.vitest) {
 			const grandchild = memory({ id: '01k00000000000000000100007', parentId: childA.id, title: 'Grandchild' })
 			for (const record of [parent, childB, childA, grandchild]) options.tx.memories.records.set(record.id, record)
 
-			const result = await createListMemoryChildrenQuery(options)({ parentId: parent.id })
+			const result = await createListMemoryChildrenQuery(options.transactions)({ parentId: parent.id })
 
 			expect(result).toEqual({
 				ok: true,
@@ -92,7 +92,9 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found for a missing parent', async () => {
-			const result = await createListMemoryChildrenQuery(createTestCoreServices())({ parentId: '01k00000000000000000100054' })
+			const result = await createListMemoryChildrenQuery(createTestCoreServices().transactions)({
+				parentId: '01k00000000000000000100054',
+			})
 
 			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'memory', id: '01k00000000000000000100054' } })
 		})
@@ -100,7 +102,7 @@ if (import.meta.vitest) {
 		it('returns storage errors from child listing', async () => {
 			const listFailure = createTestCoreServices()
 			listFailure.tx.memories.fail.list = true
-			await expect(createListMemoryChildrenQuery(listFailure)({ parentId: null })).resolves.toEqual({
+			await expect(createListMemoryChildrenQuery(listFailure.transactions)({ parentId: null })).resolves.toEqual({
 				ok: false,
 				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'memory' } },
 			})

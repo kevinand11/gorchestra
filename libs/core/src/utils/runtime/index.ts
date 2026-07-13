@@ -4,6 +4,7 @@ import type { CoreServices } from '../../services'
 import { createNotificationEmitter, type NotificationEmitter } from '../notification-emitter'
 import { createCoreProviders, type CoreProviders } from '../providers'
 import { defaultCoreRuntimeValues, type CoreRuntimeValues } from '../runtime-values'
+import { createCoreTransactions, type CoreTransactions } from '../transactions'
 import type { Result } from '../types'
 import { runModelAgentRun } from './agent-runs/model-loop'
 
@@ -23,6 +24,7 @@ export interface CoreRuntime {
 	providers: CoreProviders
 	agentRuns: CoreAgentRunRuntime
 	notifications: NotificationEmitter
+	transactions: CoreTransactions
 	values: CoreRuntimeValues
 }
 
@@ -34,17 +36,20 @@ export function createCoreRuntime(services: CoreServices, overrides: CoreRuntime
 
 function coreRuntimeShell(services: CoreServices, overrides: CoreRuntimeOverrides): CoreRuntime {
 	const values = coreRuntimeValuesFor(overrides)
+	const notifications = createNotificationEmitter(values, services.notifications)
+	const transactions = createCoreTransactions({ services, notifications })
 	return {
 		services,
-		providers: coreProvidersFor(services, overrides),
+		providers: coreProvidersFor(services, transactions, overrides),
 		agentRuns: createNoopAgentRunRuntime(),
-		notifications: createNotificationEmitter(values, services.notifications),
+		notifications,
+		transactions,
 		values,
 	}
 }
 
-function coreProvidersFor(services: CoreServices, overrides: CoreRuntimeOverrides): CoreProviders {
-	return overrides.providers ?? createCoreProviders(services)
+function coreProvidersFor(services: CoreServices, transactions: CoreTransactions, overrides: CoreRuntimeOverrides): CoreProviders {
+	return overrides.providers ?? createCoreProviders(services, transactions)
 }
 
 function coreRuntimeValuesFor(overrides: CoreRuntimeOverrides): CoreRuntimeValues {
@@ -88,6 +93,7 @@ if (import.meta.vitest) {
 			expect(typeof runtime.agentRuns.runExecutionAgentRun).toBe('function')
 			expect(typeof runtime.agentRuns.runModelAgentRun).toBe('function')
 			expect(typeof runtime.notifications.emit).toBe('function')
+			expect(typeof runtime.transactions.run).toBe('function')
 			expect(typeof runtime.values.nextId).toBe('function')
 			expect(typeof runtime.values.now).toBe('function')
 		})

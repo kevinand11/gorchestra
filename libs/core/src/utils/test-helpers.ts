@@ -6,6 +6,7 @@ import { createCoreProviders } from './providers'
 import type { CoreRuntime } from './runtime'
 import type { CoreRuntimeValues } from './runtime-values'
 import { noopRawSandboxInstance } from './sandbox-test-helpers'
+import { createCoreTransactions, type CoreTransactions } from './transactions'
 export {
 	deleteTestSandboxPath,
 	listTestSandboxDirectory,
@@ -97,14 +98,17 @@ export function createTestCoreRuntime(
 	} = {},
 ): CoreRuntime {
 	const values = overrides.values ?? services.values
+	const notifications = overrides.notifications ?? createNotificationEmitter(values, services.notifications)
+	const transactions = createCoreTransactions({ services, notifications })
 	return {
 		services,
-		providers: overrides.providers ?? createCoreProviders(services),
+		providers: overrides.providers ?? createCoreProviders(services, transactions),
 		agentRuns: overrides.agentRuns ?? {
 			runExecutionAgentRun: () => Promise.resolve(),
 			runModelAgentRun: () => Promise.resolve({ ok: true, value: undefined }),
 		},
-		notifications: overrides.notifications ?? createNotificationEmitter(values, services.notifications),
+		notifications,
+		transactions,
 		values,
 	}
 }
@@ -175,13 +179,13 @@ export function createTestCoreServices(
 	overrides: Partial<Pick<CoreServices, 'dispatcher' | 'notifications' | 'sandbox' | 'secrets'>> = {},
 ): CoreServices & {
 	tx: TestStorageTransaction
+	transactions: CoreTransactions
 	values: CoreRuntimeValues
 	transactionCalls: () => number
 } {
 	const storage = createTestCoreStorageWithView()
 	const values = deterministicRuntimeValues()
-
-	return {
+	const services = {
 		storage: storage.service,
 		secrets: overrides.secrets ?? {
 			preflight: () => Promise.resolve({ ok: true }),
@@ -191,8 +195,16 @@ export function createTestCoreServices(
 		sandbox: overrides.sandbox ?? noopSandbox,
 		dispatcher: overrides.dispatcher ?? noopDispatcher,
 		notifications: overrides.notifications,
+	}
+
+	return {
+		...services,
 		values,
 		tx: storage.tx,
+		transactions: createCoreTransactions({
+			services,
+			notifications: createNotificationEmitter(values, services.notifications),
+		}),
 		transactionCalls: () => storage.transactionCalls,
 	}
 }

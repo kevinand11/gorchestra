@@ -6,7 +6,7 @@ import { idPipe } from '../domain/commons'
 import type { Delivery, DeliveryWorkState } from '../domain/delivery'
 import type { DeliveryActionCommandError } from '../utils/command-errors'
 import { buildCommandHandler } from '../utils/command-handler'
-import { deliveryWorkStateMismatch, updateRecordValue, withAuditStampTransaction } from '../utils/command-storage'
+import { auditStamp, deliveryWorkStateMismatch, updateRecordValue } from '../utils/command-storage'
 import { buildDeliveryContext, getDeliveryState } from '../utils/delivery-context'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
@@ -22,8 +22,11 @@ export type Error = DeliveryActionCommandError
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createShipDeliveryCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('shipDelivery', shipDeliveryInputPipe, (input, context) =>
-		withAuditStampTransaction<Result, Error>(runtime, context, async (storage, stamp) => {
+	return buildCommandHandler('shipDelivery', shipDeliveryInputPipe, async (input, context) => {
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
+
+		return runtime.transactions.run<Result, Error>(async ({ storage }) => {
 			const deliveryContext = await buildDeliveryContext(storage, input.deliveryId)
 			if (!deliveryContext.ok) return deliveryContext
 
@@ -34,10 +37,10 @@ export function createShipDeliveryCommand(runtime: CoreRuntime): Operation {
 			}
 
 			return updateRecordValue('delivery', storage, deliveryContext.value.delivery.id, {
-				closed: { type: 'shipped', shipped: stamp, integration: deliveryState.value.integration },
+				closed: { type: 'shipped', shipped: stamp.value, integration: deliveryState.value.integration },
 			})
-		}),
-	)
+		})
+	})
 }
 
 if (import.meta.vitest) {

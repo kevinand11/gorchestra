@@ -1,8 +1,8 @@
 import type { Slice, SliceWorkState } from '../../../domain/slice'
 import { appendAgentRunEvent, createModelAgentRunAndRequestPreparation } from '../../../utils/agent-runs'
-import { acceptAgentRunModelTurn } from '../../../utils/dispatch'
-import type { NotificationEmitter } from '../../../utils/notifications'
+import { requestAgentRunModelTurn } from '../../../utils/dispatch'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
+import type { CoreTransaction } from '../../../utils/transactions'
 import type { DeliveryHandlerContext, DeliveryWorkHandlerResult, DeliveryWorkResolution } from '../../delivery-work/types'
 
 export async function handleSliceExecutable(
@@ -10,7 +10,7 @@ export async function handleSliceExecutable(
 	slice: Slice,
 	state: Extract<SliceWorkState, { type: 'executable' }>,
 	resolution: DeliveryWorkResolution,
-	notifications: NotificationEmitter,
+	transaction: CoreTransaction,
 ): Promise<DeliveryWorkHandlerResult> {
 	const agentRunId = nextId(context.values)
 	if (!agentRunId.ok) return agentRunId
@@ -19,8 +19,8 @@ export async function handleSliceExecutable(
 	if (!started.ok) return started
 
 	const created = await createModelAgentRunAndRequestPreparation(
-		{ values: context.values, dispatcher: context.services.dispatcher, notifications },
-		context.storage,
+		{ values: context.values, dispatch: transaction.dispatch, notifications: transaction.notifications },
+		transaction.storage,
 		{
 			agentRunId: agentRunId.value,
 			agentRunProfile: resolution.executionProfile,
@@ -39,20 +39,20 @@ export async function handleSliceExecutable(
 	)
 	if (!created.ok) return created
 
-	const input = await appendAgentRunEvent({ values: context.values, notifications }, context.storage, created.value.agentRun.id, {
-		type: 'input-message',
-		source: { type: 'runtime' },
-		parts: [{ type: 'text', text: slice.instruction.body, metadata: null }],
-	})
+	const input = await appendAgentRunEvent(
+		{ values: context.values, notifications: transaction.notifications },
+		transaction.storage,
+		created.value.agentRun.id,
+		{
+			type: 'input-message',
+			source: { type: 'runtime' },
+			parts: [{ type: 'text', text: slice.instruction.body, metadata: null }],
+		},
+	)
 	if (!input.ok) return input
 
-	const modelTurnMarker = await acceptAgentRunModelTurn(context.services.dispatcher, created.value.agentRun.id, input.value.id)
-	if (!modelTurnMarker.ok) return modelTurnMarker
-
-	return {
-		ok: true,
-		value: { processedCount: 1, failures: [], dispatchMarkers: [created.value.preparationDispatchMarker, modelTurnMarker.value] },
-	}
+	const modelTurnRequested = await requestAgentRunModelTurn(transaction.dispatch, created.value.agentRun.id, input.value.id)
+	return modelTurnRequested.ok ? { ok: true, value: { processedCount: 1, failures: [] } } : modelTurnRequested
 }
 
 if (import.meta.vitest) {
@@ -65,18 +65,17 @@ if (import.meta.vitest) {
 	describe('handleSliceExecutable', () => {
 		it('claims initial executable Slice work with an instructed Agent Run and Slice instruction input event', async () => {
 			const context = await executableHandlerContext()
-			const result = await handleSliceExecutable(
-				context,
-				context.tx.slices.records.get('01k00000000000000000000042')!,
-				{ type: 'executable', mode: 'initial' },
-				resolution,
-				{ emit: () => {} },
+			const result = await context.services.transactions.run((transaction) =>
+				handleSliceExecutable(
+					{ ...context, storage: transaction.storage },
+					context.tx.slices.records.get('01k00000000000000000000042')!,
+					{ type: 'executable', mode: 'initial' },
+					resolution,
+					transaction,
+				),
 			)
 
-			expect(result).toEqual({
-				ok: true,
-				value: { processedCount: 1, failures: [], dispatchMarkers: ['dispatch-marker', 'dispatch-marker'] },
-			})
+			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
 			expect(context.tx.actions.records.size).toBe(0)
 			expect(context.tx.agentRuns.records.get('01k00000000000000000010001')).toEqual({
 				id: '01k00000000000000000010001',
@@ -124,22 +123,21 @@ if (import.meta.vitest) {
 
 		it('claims correction executable Slice work in correction mode', async () => {
 			const context = await executableHandlerContext()
-			const result = await handleSliceExecutable(
-				context,
-				context.tx.slices.records.get('01k00000000000000000000042')!,
-				{
-					type: 'executable',
-					mode: 'correction',
-					failureChain: { rootActionId: '01k00000000000000000010020', correctionRetries: 1 },
-				},
-				resolution,
-				{ emit: () => {} },
+			const result = await context.services.transactions.run((transaction) =>
+				handleSliceExecutable(
+					{ ...context, storage: transaction.storage },
+					context.tx.slices.records.get('01k00000000000000000000042')!,
+					{
+						type: 'executable',
+						mode: 'correction',
+						failureChain: { rootActionId: '01k00000000000000000010020', correctionRetries: 1 },
+					},
+					resolution,
+					transaction,
+				),
 			)
 
-			expect(result).toEqual({
-				ok: true,
-				value: { processedCount: 1, failures: [], dispatchMarkers: ['dispatch-marker', 'dispatch-marker'] },
-			})
+			expect(result).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
 			expect(context.tx.agentRuns.records.get('01k00000000000000000010001')?.purpose).toEqual({
 				type: 'execution',
 				deliveryId: '01k00000000000000000000008',

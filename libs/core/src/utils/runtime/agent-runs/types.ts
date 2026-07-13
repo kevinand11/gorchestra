@@ -15,9 +15,10 @@ import type {
 	StorageOperationFailedError,
 } from '../../../errors'
 import type { CoreServices } from '../../../services'
-import type { NotificationEmitter } from '../../notifications'
+import type { NotificationEmitter } from '../../notification-emitter'
 import type { CoreProviders } from '../../providers'
 import type { CoreRuntimeValues } from '../../runtime-values'
+import type { CoreTransactions } from '../../transactions'
 import type { ManagedSandbox } from '../sandboxes/managed'
 
 export interface AgentRunModelContext {
@@ -65,6 +66,7 @@ export interface ModelAgentRunRuntime {
 	services: CoreServices
 	providers: CoreProviders
 	notifications: NotificationEmitter
+	transactions: CoreTransactions
 	values: CoreRuntimeValues
 }
 

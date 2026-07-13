@@ -3,10 +3,10 @@ import { type PipeInput, type PipeOutput } from 'valleyed'
 import { paginatedQueryEnvelopePipe, paginatedQueryInputPipe } from '../domain/commons'
 import { listedModelProviderPipe } from '../domain/model-provider'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { listedModelProviders } from './model-provider-read-model'
 import { buildQueryHandler } from '../utils/query-handler'
-import { listRecords, listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
+import { listRecords, listRecordsPaginated } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 
 export const inputPipe = paginatedQueryInputPipe
@@ -17,9 +17,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createListModelProvidersQuery(options: CoreServices): Operation {
+export function createListModelProvidersQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('listModelProviders', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			const providers = await listRecordsPaginated('model-provider', storage, input)
 			if (!providers.ok) return providers
 
@@ -46,7 +46,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.modelProviders.fail.list = true
-			const query = createListModelProvidersQuery(options)
+			const query = createListModelProvidersQuery(options.transactions)
 
 			const result = await query(null as unknown as Input)
 
@@ -58,7 +58,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns an empty Model Provider list for an empty Portfolio', async () => {
-			const query = createListModelProvidersQuery(createTestCoreServices())
+			const query = createListModelProvidersQuery(createTestCoreServices().transactions)
 
 			const result = await query({})
 
@@ -103,7 +103,7 @@ if (import.meta.vitest) {
 				created: { origin: 'imported', at: '2026-06-10T00:00:00.000Z' },
 				archivePeriods: [{ archived: stamp, unarchived: null }],
 			})
-			const query = createListModelProvidersQuery(options)
+			const query = createListModelProvidersQuery(options.transactions)
 
 			const result = await query({})
 
@@ -131,7 +131,7 @@ if (import.meta.vitest) {
 		it('returns storage errors when providers or models cannot be listed', async () => {
 			const providerFailure = createTestCoreServices()
 			providerFailure.tx.modelProviders.fail.list = true
-			await expect(createListModelProvidersQuery(providerFailure)({})).resolves.toEqual({
+			await expect(createListModelProvidersQuery(providerFailure.transactions)({})).resolves.toEqual({
 				ok: false,
 				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'model-provider' } },
 			})
@@ -139,7 +139,7 @@ if (import.meta.vitest) {
 			const modelFailure = createTestCoreServices()
 			seedModelProvider(modelFailure.tx, '01k00000000000000000100052')
 			modelFailure.tx.models.fail.list = true
-			await expect(createListModelProvidersQuery(modelFailure)({})).resolves.toEqual({
+			await expect(createListModelProvidersQuery(modelFailure.transactions)({})).resolves.toEqual({
 				ok: false,
 				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'model' } },
 			})

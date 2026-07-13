@@ -9,15 +9,8 @@ import type { CommandContext } from './types'
 import { appendAgentRunEvent, createModelAgentRunAndRequestPreparation } from '../utils/agent-runs'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import { buildCommandHandler } from '../utils/command-handler'
-import {
-	createRecordValue,
-	getRequired,
-	isArchived,
-	nextId,
-	validateModelThinkingLevel,
-	withAuditStampTransaction,
-} from '../utils/command-storage'
-import { acceptAgentRunModelTurn } from '../utils/dispatch'
+import { auditStamp, createRecordValue, getRequired, isArchived, nextId, validateModelThinkingLevel } from '../utils/command-storage'
+import { requestAgentRunModelTurn } from '../utils/dispatch'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -33,8 +26,6 @@ export type Result = Plan
 export type Error = InvalidInputError | ConfigCommandReferenceError | ConfigCommandStorageError
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
-type PlanWriteResult = { plan: Plan; dispatchMarkers: string[] }
-
 export function createCreatePlanCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('createPlan', createPlanInputPipe, async (input, context) => {
 		const planId = nextId(runtime.values)
@@ -43,8 +34,11 @@ export function createCreatePlanCommand(runtime: CoreRuntime): Operation {
 		const agentRunId = nextId(runtime.values)
 		if (!agentRunId.ok) return agentRunId
 
-		const written = await withAuditStampTransaction<PlanWriteResult, Error>(runtime, context, async (storage, stamp, notifications) => {
-			const started: RuntimeRecord = { at: stamp.at }
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
+
+		return runtime.transactions.run<Plan, Error>(async ({ storage, notifications, dispatch }) => {
+			const started: RuntimeRecord = { at: stamp.value.at }
 
 			const project = await getRequired('project', storage, input.projectId)
 			if (!project.ok) return project
@@ -78,50 +72,30 @@ export function createCreatePlanCommand(runtime: CoreRuntime): Operation {
 				agentRunId: agentRunId.value,
 				projectId: input.projectId,
 				title: input.title,
-				created: stamp,
+				created: stamp.value,
 				closed: null,
 			})
 			if (!plan.ok) return plan
 
-			const created = await createModelAgentRunAndRequestPreparation(
-				{ values: runtime.values, dispatcher: runtime.services.dispatcher, notifications },
-				storage,
-				{
-					agentRunId: agentRunId.value,
-					agentRunProfile: profile.value,
-					project: project.value,
-					purpose: { type: 'planning', planId: planId.value },
-					started,
-				},
-			)
+			const created = await createModelAgentRunAndRequestPreparation({ values: runtime.values, dispatch, notifications }, storage, {
+				agentRunId: agentRunId.value,
+				agentRunProfile: profile.value,
+				project: project.value,
+				purpose: { type: 'planning', planId: planId.value },
+				started,
+			})
 			if (!created.ok) return created
 
 			const inputMessage = await appendAgentRunEvent({ values: runtime.values, notifications }, storage, created.value.agentRun.id, {
 				type: 'input-message',
-				source: { type: 'operator', authorized: stamp },
+				source: { type: 'operator', authorized: stamp.value },
 				parts: [{ type: 'text', text: input.initialMessage, metadata: null }],
 			})
 			if (!inputMessage.ok) return inputMessage
 
-			const modelTurnDispatchMarker = await acceptAgentRunModelTurn(
-				runtime.services.dispatcher,
-				agentRunId.value,
-				inputMessage.value.id,
-			)
-			if (!modelTurnDispatchMarker.ok) return modelTurnDispatchMarker
-
-			return {
-				ok: true,
-				value: {
-					plan: plan.value,
-					dispatchMarkers: [created.value.preparationDispatchMarker, modelTurnDispatchMarker.value],
-				},
-			}
+			const modelTurnRequested = await requestAgentRunModelTurn(dispatch, agentRunId.value, inputMessage.value.id)
+			return modelTurnRequested.ok ? plan : modelTurnRequested
 		})
-
-		if (!written.ok) return written
-		for (const dispatchMarker of written.value.dispatchMarkers) runtime.services.dispatcher.ready(dispatchMarker)
-		return { ok: true, value: written.value.plan }
 	})
 }
 
@@ -193,19 +167,25 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('requests Agent Run preparation and initial model turn dispatch and readies them after commit', async () => {
+		it('publishes Notifications and readies Dispatch markers after commit in invocation order', async () => {
 			const dispatches: CoreDispatchRequest[] = []
-			const readyMarkers: string[] = []
+			const effects: string[] = []
 			const options = createTestCoreServices({
 				dispatcher: {
 					preflight: () => Promise.resolve({ ok: true }),
 					request: (request) => {
 						dispatches.push(request)
-						return Promise.resolve('marker-1')
+						return Promise.resolve(`marker-${dispatches.length}`)
 					},
-					ready: (marker) => {
-						readyMarkers.push(marker)
-					},
+					ready: (marker) => effects.push(`ready:${marker}`),
+				},
+				notifications: {
+					publish: ({ data }) =>
+						effects.push(
+							data.type === 'agent-run-event-created'
+								? `notification:${data.type}:${data.event.body.type}`
+								: `notification:${data.type}`,
+						),
 				},
 			})
 			seedProject(options.tx, '01k00000000000000000000030')
@@ -239,8 +219,46 @@ if (import.meta.vitest) {
 					reason: { type: 'input-appended', inputEventId: '01k00000000000000000010004' },
 				},
 			])
-			expect(readyMarkers).toEqual(['marker-1', 'marker-1'])
+			expect(effects).toEqual([
+				'notification:agent-run-created',
+				'notification:agent-run-event-created:instruction-snapshot',
+				'ready:marker-1',
+				'notification:agent-run-event-created:input-message',
+				'ready:marker-2',
+			])
 			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010004')?.body.type).toBe('input-message')
+		})
+
+		it('rolls back all writes and post-commit effects when the initial model turn request is invalid', async () => {
+			const published: unknown[] = []
+			const readyMarkers: string[] = []
+			let requestCount = 0
+			const options = createTestCoreServices({
+				dispatcher: {
+					preflight: () => Promise.resolve({ ok: true }),
+					request: () => {
+						requestCount += 1
+						return Promise.resolve(requestCount === 1 ? 'marker-1' : ' ')
+					},
+					ready: (marker) => readyMarkers.push(marker),
+				},
+				notifications: { publish: (notification) => published.push(notification) },
+			})
+			seedProject(options.tx, '01k00000000000000000000030')
+			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
+			const command = createCreatePlanCommand(createTestCoreRuntime(options))
+
+			const result = await command(validPlanCreationInput(), context)
+
+			expect(result).toMatchObject({
+				ok: false,
+				error: { type: 'invalid-core-service-output', service: 'dispatcher', operation: 'request' },
+			})
+			expect(options.tx.plans.records.size).toBe(0)
+			expect(options.tx.agentRuns.records.size).toBe(0)
+			expect(options.tx.agentRunEvents.records.size).toBe(0)
+			expect(published).toEqual([])
+			expect(readyMarkers).toEqual([])
 		})
 
 		it('rejects archived selected profiles', async () => {

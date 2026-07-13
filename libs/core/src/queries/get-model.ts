@@ -4,10 +4,10 @@ import { idPipe } from '../domain/commons'
 import { defaultModelCapabilities } from '../domain/model'
 import { modelDetailsPipe } from '../domain/model-provider'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { listedModel, modelProviderSummary } from './model-provider-read-model'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, withTransaction } from '../utils/storage/helpers'
+import { getRequired } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult } from '../utils/types'
 
 export const inputPipe = v.object({ modelId: idPipe })
@@ -18,9 +18,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createGetModelQuery(options: CoreServices): Operation {
+export function createGetModelQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('getModel', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			const model = await getRequired('model', storage, input.modelId)
 			if (!model.ok) return model
 
@@ -40,7 +40,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.models.fail.get = true
-			const query = createGetModelQuery(options)
+			const query = createGetModelQuery(options.transactions)
 
 			const result = await query({ modelId: '' })
 
@@ -52,7 +52,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the target Model does not exist', async () => {
-			const result = await createGetModelQuery(createTestCoreServices())({ modelId: '01k00000000000000000000024' })
+			const result = await createGetModelQuery(createTestCoreServices().transactions)({ modelId: '01k00000000000000000000024' })
 
 			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'model', id: '01k00000000000000000000024' } })
 		})
@@ -61,7 +61,7 @@ if (import.meta.vitest) {
 			const options = createTestCoreServices()
 			seedSelectableModel(options.tx, '01k00000000000000000000024')
 			options.tx.modelProviders.records.delete('01k00000000000000000050024')
-			const query = createGetModelQuery(options)
+			const query = createGetModelQuery(options.transactions)
 
 			const result = await query({ modelId: '01k00000000000000000000024' })
 
@@ -91,7 +91,7 @@ if (import.meta.vitest) {
 				updated: null,
 				archivePeriods: [{ archived: stamp, unarchived: null }],
 			})
-			const query = createGetModelQuery(options)
+			const query = createGetModelQuery(options.transactions)
 
 			const result = await query({ modelId: '01k00000000000000000000024' })
 
@@ -126,7 +126,7 @@ if (import.meta.vitest) {
 			options.storage.on = () => {
 				throw new Error('get failed')
 			}
-			const query = createGetModelQuery(options)
+			const query = createGetModelQuery(options.transactions)
 
 			const result = await query({ modelId: '01k00000000000000000000024' })
 

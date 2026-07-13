@@ -23,7 +23,7 @@ import {
 	runProviderBackedDeliveryPreflightChecks,
 } from '../utils/delivery-preflight'
 import type { CoreRuntime } from '../utils/runtime'
-import { withTwoPhaseTransaction } from '../utils/storage/helpers'
+import { runTwoPhase } from '../utils/two-phase'
 import type { Result as CoreResult } from '../utils/types'
 
 const retryDeliveryPreflightInputPipe = v.object({ deliveryId: idPipe })
@@ -55,8 +55,8 @@ export function createRetryDeliveryPreflightCommand(runtime: CoreRuntime): Opera
 		const authorizedAction = prepareAuthorizedAction(runtime, context)
 		if (!authorizedAction.ok) return authorizedAction
 
-		return withTwoPhaseTransaction(runtime.services, {
-			read: async (storage) => {
+		return runTwoPhase(runtime.transactions, {
+			read: async ({ storage }) => {
 				const deliveryContext = await requirePreflightFailedDelivery(storage, input.deliveryId)
 				if (!deliveryContext.ok) return deliveryContext
 
@@ -64,7 +64,7 @@ export function createRetryDeliveryPreflightCommand(runtime: CoreRuntime): Opera
 				return plan.ok ? { ok: true, value: { deliveryContext: deliveryContext.value, plan: plan.value } } : plan
 			},
 			run: (claim) => runProviderBackedDeliveryPreflightChecks(runtime, claim.plan),
-			write: async (storage, claim, checks) => {
+			write: async ({ storage }, claim, checks) => {
 				const deliveryContext = await requirePreflightFailedDelivery(storage, input.deliveryId)
 				if (!deliveryContext.ok) return deliveryContext
 

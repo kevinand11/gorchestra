@@ -12,7 +12,7 @@ import type {
 } from '../errors'
 import type { RepositoryCommandReferenceError } from '../utils/command-errors'
 import { buildCommandHandler } from '../utils/command-handler'
-import { auditStamp, createRecordValue, getRequired, listRecords, nextId, withTransaction } from '../utils/command-storage'
+import { auditStamp, createRecordValue, getRequired, listRecords, nextId } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -39,7 +39,7 @@ export function createCreateRepositoryCommand(runtime: CoreRuntime): Operation {
 		const idResult = nextId(runtime.values)
 		if (!idResult.ok) return idResult
 
-		return withTransaction<Repository, Exclude<Error, InvalidInputError>>(runtime.services, async (storage) => {
+		return runtime.transactions.run<Repository, Exclude<Error, InvalidInputError>>(async ({ storage }) => {
 			const projectResult = await getRequired('project', storage, input.projectId)
 			if (!projectResult.ok) return projectResult
 			if (projectResult.value.source.type !== 'source-control') {

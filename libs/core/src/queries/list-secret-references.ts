@@ -16,10 +16,11 @@ export type {
 	SecretReference,
 } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices, CoreStorage } from '../services'
+import type { CoreStorage } from '../services'
 import { isArchived } from '../utils/command-storage'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, listRecords, withTransaction, type StorageBoundaryError } from '../utils/storage/helpers'
+import { getRequired, listRecords, type StorageBoundaryError } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult } from '../utils/types'
 
 export const inputPipe = v.object({ secretId: idPipe })
@@ -30,9 +31,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createListSecretReferencesQuery(options: CoreServices): Operation {
+export function createListSecretReferencesQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('listSecretReferences', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			const secret = await getRequired('secret', storage, input.secretId)
 			if (!secret.ok) return secret
 
@@ -333,7 +334,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.secrets.fail.get = true
-			const query = createListSecretReferencesQuery(options)
+			const query = createListSecretReferencesQuery(options.transactions)
 
 			const result = await query({ secretId: '' })
 
@@ -345,7 +346,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the target Secret does not exist', async () => {
-			const query = createListSecretReferencesQuery(createTestCoreServices())
+			const query = createListSecretReferencesQuery(createTestCoreServices().transactions)
 
 			const result = await query({ secretId: '01k00000000000000000000040' })
 
@@ -357,7 +358,7 @@ if (import.meta.vitest) {
 			seedSecret(options.tx, '01k00000000000000000000040')
 			seedSecret(options.tx, '01k00000000000000000000041')
 			seedSecretReferenceFixtures(options)
-			const query = createListSecretReferencesQuery(options)
+			const query = createListSecretReferencesQuery(options.transactions)
 
 			const result = await query({ secretId: '01k00000000000000000000040' })
 
@@ -426,7 +427,7 @@ if (import.meta.vitest) {
 				resources: { vcpus: 2 },
 				networkPolicy: { type: 'allow-all' },
 			}
-			const query = createListSecretReferencesQuery(options)
+			const query = createListSecretReferencesQuery(options.transactions)
 
 			const result = await query({ secretId: '01k00000000000000000000040' })
 
@@ -454,7 +455,7 @@ if (import.meta.vitest) {
 				archived: true,
 				runtimeRequirements: [{ type: 'environment-secret', envName: 'A_INACTIVE', secretId: '01k00000000000000000000040' }],
 			})
-			const query = createListSecretReferencesQuery(options)
+			const query = createListSecretReferencesQuery(options.transactions)
 
 			const result = await query({ secretId: '01k00000000000000000000040' })
 
@@ -483,7 +484,7 @@ if (import.meta.vitest) {
 			const options = createTestCoreServices()
 			seedSecret(options.tx, '01k00000000000000000000040')
 			options.tx.repositories.fail.list = true
-			const query = createListSecretReferencesQuery(options)
+			const query = createListSecretReferencesQuery(options.transactions)
 
 			const result = await query({ secretId: '01k00000000000000000000040' })
 

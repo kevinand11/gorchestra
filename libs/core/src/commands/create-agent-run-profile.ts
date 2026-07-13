@@ -8,7 +8,7 @@ import { modelUseConfigPipe } from '../domain/config'
 import type { DuplicateAgentRunRuntimeRequirementError, InvalidInputError, ResourceArchivedError } from '../errors'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import { buildCommandHandler } from '../utils/command-handler'
-import { auditStamp, createRecordValue, nextId, validateAgentRunProfileConfig, withTransaction } from '../utils/command-storage'
+import { auditStamp, createRecordValue, nextId, validateAgentRunProfileConfig } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -37,25 +37,22 @@ export function createCreateAgentRunProfileCommand(runtime: CoreRuntime): Operat
 		const id = nextId(runtime.values)
 		if (!id.ok) return Promise.resolve(id)
 
-		return withTransaction(
-			runtime.services,
-			async (storage): Promise<CoreResult<AgentRunProfile, Exclude<Error, InvalidInputError>>> => {
-				const configValidation = await validateAgentRunProfileConfig(storage, input)
-				if (!configValidation.ok) return configValidation
+		return runtime.transactions.run(async ({ storage }): Promise<CoreResult<AgentRunProfile, Exclude<Error, InvalidInputError>>> => {
+			const configValidation = await validateAgentRunProfileConfig(storage, input)
+			if (!configValidation.ok) return configValidation
 
-				const profile: AgentRunProfile = {
-					id: id.value,
-					name: input.name,
-					modelUse: input.modelUse,
-					runtimeRequirements: input.runtimeRequirements,
-					sandboxConfig: input.sandboxConfig,
-					created: stamp.value,
-					updated: null,
-					archivePeriods: [],
-				}
-				return createRecordValue('agent-run-profile', storage, profile)
-			},
-		)
+			const profile: AgentRunProfile = {
+				id: id.value,
+				name: input.name,
+				modelUse: input.modelUse,
+				runtimeRequirements: input.runtimeRequirements,
+				sandboxConfig: input.sandboxConfig,
+				created: stamp.value,
+				updated: null,
+				archivePeriods: [],
+			}
+			return createRecordValue('agent-run-profile', storage, profile)
+		})
 	})
 }
 

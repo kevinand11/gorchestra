@@ -18,14 +18,7 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import { buildCommandHandler } from '../utils/command-handler'
-import {
-	auditStamp,
-	createRecordValue,
-	listRecordsByIds,
-	nextId,
-	secretReferencesFromModelProviderConfig,
-	withTransaction,
-} from '../utils/command-storage'
+import { auditStamp, createRecordValue, listRecordsByIds, nextId, secretReferencesFromModelProviderConfig } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import { validateActiveSecretReferencesFromRecords } from '../utils/secrets'
 import type { Result as CoreResult } from '../utils/types'
@@ -59,7 +52,7 @@ export function createCreateModelProviderCommand(runtime: CoreRuntime): Operatio
 		const id = nextId(runtime.values)
 		if (!id.ok) return Promise.resolve(id)
 
-		return withTransaction(runtime.services, async (storage): Promise<CoreResult<ModelProvider, Exclude<Error, InvalidInputError>>> => {
+		return runtime.transactions.run(async ({ storage }): Promise<CoreResult<ModelProvider, Exclude<Error, InvalidInputError>>> => {
 			const secretIds = secretReferencesFromModelProviderConfig(input.auth, input.headers)
 			const secrets = await listRecordsByIds('secret', storage, secretIds)
 			if (!secrets.ok) return secrets

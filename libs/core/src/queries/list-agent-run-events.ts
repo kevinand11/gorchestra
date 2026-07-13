@@ -3,9 +3,9 @@ import { v, type PipeInput, type PipeOutput } from 'valleyed'
 import { agentRunEventPipe } from '../domain/agent-run-event'
 import { idPipe, paginatedQueryEnvelopePipe, paginatedQueryInputPipe } from '../domain/commons'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
+import { getRequired, listRecordsPaginated } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 
 export const inputPipe = v.merge(v.object({ agentRunId: idPipe }), paginatedQueryInputPipe)
@@ -16,9 +16,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createListAgentRunEventsQuery(options: CoreServices): Operation {
+export function createListAgentRunEventsQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('listAgentRunEvents', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			const agentRun = await getRequired('agent-run', storage, input.agentRunId)
 			if (!agentRun.ok) return agentRun
 
@@ -37,7 +37,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.agentRuns.fail.get = true
-			const query = createListAgentRunEventsQuery(options)
+			const query = createListAgentRunEventsQuery(options.transactions)
 
 			const result = await query({ agentRunId: '', limit: 1 })
 
@@ -49,7 +49,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the target Agent Run does not exist', async () => {
-			const query = createListAgentRunEventsQuery(createTestCoreServices())
+			const query = createListAgentRunEventsQuery(createTestCoreServices().transactions)
 
 			const result = await query({ agentRunId: '01k00000000000000000000002' })
 
@@ -68,7 +68,7 @@ if (import.meta.vitest) {
 			})
 			options.tx.agentRunEvents.records.set(second.id, second)
 			options.tx.agentRunEvents.records.set('01k00000000000000000000003', agentRunEvent('01k00000000000000000000003', 1))
-			const query = createListAgentRunEventsQuery(options)
+			const query = createListAgentRunEventsQuery(options.transactions)
 
 			const result = await query({ agentRunId: '01k00000000000000000000002', beforeId: '01k00000000000000000000006', limit: 10 })
 
@@ -87,7 +87,7 @@ if (import.meta.vitest) {
 			seedAgentRun(options)
 			seedAgentRunEvents(options, 101)
 
-			const result = await createListAgentRunEventsQuery(options)({ agentRunId: '01k00000000000000000000002' })
+			const result = await createListAgentRunEventsQuery(options.transactions)({ agentRunId: '01k00000000000000000000002' })
 
 			expect(result).toMatchObject({ ok: true })
 			expect(result.ok ? result.value.items.map((event) => event.id) : []).toEqual(rangeDesc(101, 1).map(cursor))

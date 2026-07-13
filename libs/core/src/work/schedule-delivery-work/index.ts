@@ -6,10 +6,10 @@ import { idPipe } from '../../domain/commons'
 import type { SliceWorkState } from '../../domain/slice'
 import type { InvalidInputError } from '../../errors'
 import { getSliceState } from '../../utils/delivery-context'
-import { acceptDispatchRequest, deliverySliceOperationClaims, exclusiveDeliveryClaim } from '../../utils/dispatch'
+import { deliverySliceOperationClaims, exclusiveDeliveryClaim } from '../../utils/dispatch'
 import type { CoreRuntime } from '../../utils/runtime'
 import { nextId, runtimeRecord } from '../../utils/runtime-values'
-import { createRecord, withTransaction } from '../../utils/storage/helpers'
+import { createRecord } from '../../utils/storage/helpers'
 import type { Result as CoreResult } from '../../utils/types'
 import { buildWorkHandler } from '../../utils/work-handler'
 import { deliveryOperationFromState, queuedDeliveryWorkDispatchAction, sliceOperationFromState } from '../delivery-work/dispatch-actions'
@@ -31,7 +31,7 @@ export type Operation = (input: Input, context: WorkContext) => Promise<CoreResu
 
 export function createScheduleDeliveryWorkOperation(runtime: CoreRuntime): Operation {
 	return buildWorkHandler('scheduleDeliveryWork', scheduleDeliveryWorkInputPipe, async (input) => {
-		const read = await withTransaction(runtime.services, (storage) => readSchedulerWork(runtime, storage, input.deliveryId))
+		const read = await runtime.transactions.run(({ storage }) => readSchedulerWork(runtime, storage, input.deliveryId))
 		if (!read.ok) return read
 		if (read.value.type === 'result') return { ok: true, value: read.value.result }
 
@@ -46,10 +46,7 @@ export function createScheduleDeliveryWorkOperation(runtime: CoreRuntime): Opera
 		if (operations.value.length === 0) return { ok: true, value: completed() }
 
 		const queued = await queueOperations(runtime, read.value, operations.value)
-		if (!queued.ok) return queued
-
-		for (const marker of queued.value.markers) runtime.services.dispatcher.ready(marker)
-		return { ok: true, value: completed(queued.value.markers.length) }
+		return queued.ok ? { ok: true, value: completed(queued.value) } : queued
 	})
 }
 
@@ -111,9 +108,9 @@ async function queueOperations(
 	runtime: CoreRuntime,
 	claim: SchedulerWorkClaim,
 	operations: DeliveryWorkOperation[],
-): Promise<CoreResult<{ markers: string[] }, Exclude<Error, InvalidInputError>>> {
-	return withTransaction<{ markers: string[] }, Exclude<Error, InvalidInputError>>(runtime.services, async (storage) => {
-		const markers: string[] = []
+): Promise<CoreResult<number, Exclude<Error, InvalidInputError>>> {
+	return runtime.transactions.run<number, Exclude<Error, InvalidInputError>>(async ({ storage, dispatch }) => {
+		const requests: Array<ReturnType<typeof dispatch.request>> = []
 		for (const operation of operations) {
 			const actionId = nextId(runtime.values)
 			if (!actionId.ok) return actionId
@@ -130,19 +127,23 @@ async function queueOperations(
 			const put = await createRecord('action', storage, action)
 			if (!put.ok) return put
 
-			const marker = await acceptDispatchRequest(runtime.services.dispatcher, {
-				type: 'delivery-work-operation',
-				deliveryId: claim.deliveryContext.delivery.id,
-				queuedActionId: action.id,
-				operation,
-				coordinationClaims: coordinationClaimsForOperation(claim, operation),
-				reason: { type: 'delivery-work-operation-queued', queuedActionId: action.id },
-			})
-			if (!marker.ok) return marker
-			markers.push(marker.value)
+			requests.push(
+				dispatch.request({
+					type: 'delivery-work-operation',
+					deliveryId: claim.deliveryContext.delivery.id,
+					queuedActionId: action.id,
+					operation,
+					coordinationClaims: coordinationClaimsForOperation(claim, operation),
+					reason: { type: 'delivery-work-operation-queued', queuedActionId: action.id },
+				}),
+			)
 		}
 
-		return { ok: true, value: { markers } }
+		for (const request of requests) {
+			const accepted = await request
+			if (!accepted.ok) return accepted
+		}
+		return { ok: true, value: operations.length }
 	})
 }
 
@@ -166,7 +167,7 @@ function completed(processedCount = 0): Result {
 }
 
 if (import.meta.vitest) {
-	const { describe, expect, it } = import.meta.vitest
+	const { describe, expect, it, vi } = import.meta.vitest
 	const {
 		createTestCoreRuntime,
 		createTestCoreServices,
@@ -252,41 +253,80 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('queues up to available Slice slots', async () => {
+		it('queues up to available Slice slots and readies asynchronously accepted requests in invocation order', async () => {
 			const dispatches: unknown[] = []
+			const readyMarkers: string[] = []
+			const acceptRequests: Array<(marker: string) => void> = []
 			const options = providerPreflightFixture({
 				dispatcher: {
 					preflight: () => Promise.resolve({ ok: true }),
 					request: (request) => {
 						dispatches.push(request)
-						return Promise.resolve(`marker-${dispatches.length}`)
+						return new Promise<string>((resolve) => acceptRequests.push(resolve))
 					},
-					ready: () => {},
+					ready: (marker) => readyMarkers.push(marker),
 				},
 			})
-			options.tx.deliveryArtifacts.records.set('01k00000000000000000000010', {
-				id: '01k00000000000000000000010',
-				deliveryId: '01k00000000000000000000008',
-				config: { type: 'source-control', deliveryBranch: 'delivery' },
-				created: localStamp(),
+			seedSliceSchedulingFixture(options)
+			const operation = createScheduleDeliveryWorkOperation(
+				createTestCoreRuntime(options, { providers: neverCalledProviderBackedPreflightProviders() }),
+			)
+
+			const running = operation({ deliveryId: '01k00000000000000000000008' }, workContext)
+			await vi.waitFor(() => expect(dispatches).toHaveLength(2))
+			acceptRequests[1]?.('marker-2')
+			acceptRequests[0]?.('marker-1')
+			const result = await running
+
+			expect(result).toEqual({ ok: true, value: { processedCount: 2, failures: [] } })
+			expect(dispatches).toHaveLength(2)
+			expect(readyMarkers).toEqual(['marker-1', 'marker-2'])
+			expect([...options.tx.actions.records.values()].map((action) => action.result.type)).toEqual([
+				'queue-delivery-work-operation',
+				'queue-delivery-work-operation',
+			])
+		})
+
+		it('rolls back every queued Action and readiness effect when one Dispatch request is invalid', async () => {
+			const readyMarkers: string[] = []
+			let requestCount = 0
+			const options = providerPreflightFixture({
+				dispatcher: {
+					preflight: () => Promise.resolve({ ok: true }),
+					request: () => {
+						requestCount += 1
+						return Promise.resolve(requestCount === 1 ? 'marker-1' : ' ')
+					},
+					ready: (marker) => readyMarkers.push(marker),
+				},
 			})
-			seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000008')
-			seedSlice(options.tx, '01k00000000000000000000043', '01k00000000000000000000008')
-			options.tx.projects.records.get('01k00000000000000000000030')!.config.value.work.maxProcessableSliceSlots = 2
+			seedSliceSchedulingFixture(options)
 			const operation = createScheduleDeliveryWorkOperation(
 				createTestCoreRuntime(options, { providers: neverCalledProviderBackedPreflightProviders() }),
 			)
 
 			const result = await operation({ deliveryId: '01k00000000000000000000008' }, workContext)
 
-			expect(result).toEqual({ ok: true, value: { processedCount: 2, failures: [] } })
-			expect(dispatches).toHaveLength(2)
-			expect([...options.tx.actions.records.values()].map((action) => action.result.type)).toEqual([
-				'queue-delivery-work-operation',
-				'queue-delivery-work-operation',
-			])
+			expect(result).toMatchObject({
+				ok: false,
+				error: { type: 'invalid-core-service-output', service: 'dispatcher', operation: 'request' },
+			})
+			expect(options.tx.actions.records.size).toBe(0)
+			expect(readyMarkers).toEqual([])
 		})
 	})
+
+	function seedSliceSchedulingFixture(options: ReturnType<typeof createTestCoreServices>) {
+		options.tx.deliveryArtifacts.records.set('01k00000000000000000000010', {
+			id: '01k00000000000000000000010',
+			deliveryId: '01k00000000000000000000008',
+			config: { type: 'source-control', deliveryBranch: 'delivery' },
+			created: localStamp(),
+		})
+		seedSlice(options.tx, '01k00000000000000000000042', '01k00000000000000000000008')
+		seedSlice(options.tx, '01k00000000000000000000043', '01k00000000000000000000008')
+		options.tx.projects.records.get('01k00000000000000000000030')!.config.value.work.maxProcessableSliceSlots = 2
+	}
 
 	function providerPreflightFixture(overrides: Parameters<typeof createTestCoreServices>[0] = {}) {
 		const options = createTestCoreServices(overrides)

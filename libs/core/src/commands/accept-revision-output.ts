@@ -21,10 +21,9 @@ import type {
 	StorageOperationFailedError,
 } from '../errors'
 import type { CoreStorage } from '../services'
-import { appendAgentRunEvent, completeAgentRunByIdAndAcceptSandboxRelease, requireAgentRunIdle } from '../utils/agent-runs'
+import { appendAgentRunEvent, completeAgentRunByIdAndRequestSandboxRelease, requireAgentRunIdle } from '../utils/agent-runs'
 import { buildCommandHandler } from '../utils/command-handler'
 import { auditStamp, createRecordValue, getRequired, listRecords, nextId, updateRecordValue } from '../utils/command-storage'
-import { withNotificationTransaction } from '../utils/notifications'
 import { getPendingProposalForAgentRunPurpose, proposalAcceptedProjectedParts } from '../utils/proposals'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
@@ -54,8 +53,6 @@ export type Error =
 
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
-type DispatchedResult = { result: Result; dispatchMarker: string | null }
-
 export function createAcceptRevisionOutputCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('acceptRevisionOutput', acceptRevisionOutputInputPipe, async (input, context) => {
 		const stamp = auditStamp(runtime.values, context)
@@ -64,90 +61,81 @@ export function createAcceptRevisionOutputCommand(runtime: CoreRuntime): Operati
 		const revisionId = nextId(runtime.values)
 		if (!revisionId.ok) return revisionId
 
-		const written = await withNotificationTransaction<DispatchedResult, Exclude<Error, InvalidInputError>>(
-			runtime,
-			async (storage, notifications) => {
-				const proposal = await getPendingProposalForAgentRunPurpose(
-					storage,
-					input.proposalEventId,
-					'proposed-revision-output',
-					'revision-planning',
-				)
-				if (!proposal.ok) return proposal
+		return runtime.transactions.run<Result, Exclude<Error, InvalidInputError>>(async ({ storage, notifications, dispatch }) => {
+			const proposal = await getPendingProposalForAgentRunPurpose(
+				storage,
+				input.proposalEventId,
+				'proposed-revision-output',
+				'revision-planning',
+			)
+			if (!proposal.ok) return proposal
 
-				const gate = await getRequired('revision-gate', storage, proposal.value.agentRun.purpose.revisionGateId)
-				if (!gate.ok) return gate
-				if (gate.value.closed !== null) {
-					return { ok: false, error: { type: 'revision-gate-closed', revisionGateId: gate.value.id } }
+			const gate = await getRequired('revision-gate', storage, proposal.value.agentRun.purpose.revisionGateId)
+			if (!gate.ok) return gate
+			if (gate.value.closed !== null) {
+				return { ok: false, error: { type: 'revision-gate-closed', revisionGateId: gate.value.id } }
+			}
+
+			const idle = await requireAgentRunIdle(storage, gate.value.agentRunId)
+			if (!idle.ok) return idle
+
+			const revisions = await listRecords('revision', storage, {
+				where: (filter, fields) => filter.eq(fields.revisionGateId, gate.value.id),
+			})
+			if (!revisions.ok) return revisions
+			if (revisions.value.length > 0) {
+				return {
+					ok: false,
+					error: { type: 'invariant-violation', message: `Revision Gate ${gate.value.id} already has a Revision.` },
 				}
+			}
 
-				const idle = await requireAgentRunIdle(storage, gate.value.agentRunId)
-				if (!idle.ok) return idle
+			const scopeValidation = await validateRevisionGateScope(storage, gate.value)
+			if (!scopeValidation.ok) return scopeValidation
 
-				const revisions = await listRecords('revision', storage, {
-					where: (filter, fields) => filter.eq(fields.revisionGateId, gate.value.id),
-				})
-				if (!revisions.ok) return revisions
-				if (revisions.value.length > 0) {
-					return {
-						ok: false,
-						error: { type: 'invariant-violation', message: `Revision Gate ${gate.value.id} already has a Revision.` },
+			const revision = await createRecordValue('revision', storage, {
+				id: revisionId.value,
+				revisionGateId: gate.value.id,
+				scope: gate.value.scope,
+				instruction: proposal.value.proposal.body.output.instruction,
+				disposition: proposal.value.proposal.body.output.disposition,
+				accepted: stamp.value,
+			})
+			if (!revision.ok) return revision
+
+			const revisionGate = await updateRecordValue('revision-gate', storage, gate.value.id, {
+				closed: { type: 'consumed-by-revision', consumed: stamp.value, revisionId: revision.value.id },
+			})
+			if (!revisionGate.ok) return revisionGate
+
+			const agentRun = await completeAgentRunByIdAndRequestSandboxRelease(
+				storage,
+				dispatch,
+				notifications,
+				revisionGate.value.agentRunId,
+				{ at: stamp.value.at },
+			)
+			if (!agentRun.ok) return agentRun
+
+			const acceptedEvent = await appendAgentRunEvent(
+				{ values: runtime.values, notifications },
+				storage,
+				proposal.value.proposal.agentRunId,
+				{
+					type: 'proposal-accepted',
+					proposalEventId: proposal.value.proposal.id,
+					authorized: stamp.value,
+					materialized: { type: 'revision-output', revisionId: revision.value.id },
+					projectedParts: proposalAcceptedProjectedParts(proposal.value.proposal.id),
+				},
+			)
+			return acceptedEvent.ok
+				? {
+						ok: true,
+						value: { revision: revision.value, revisionGate: revisionGate.value, acceptedEvent: acceptedEvent.value },
 					}
-				}
-
-				const scopeValidation = await validateRevisionGateScope(storage, gate.value)
-				if (!scopeValidation.ok) return scopeValidation
-
-				const revision = await createRecordValue('revision', storage, {
-					id: revisionId.value,
-					revisionGateId: gate.value.id,
-					scope: gate.value.scope,
-					instruction: proposal.value.proposal.body.output.instruction,
-					disposition: proposal.value.proposal.body.output.disposition,
-					accepted: stamp.value,
-				})
-				if (!revision.ok) return revision
-
-				const revisionGate = await updateRecordValue('revision-gate', storage, gate.value.id, {
-					closed: { type: 'consumed-by-revision', consumed: stamp.value, revisionId: revision.value.id },
-				})
-				if (!revisionGate.ok) return revisionGate
-
-				const agentRun = await completeAgentRunByIdAndAcceptSandboxRelease(
-					storage,
-					runtime.services.dispatcher,
-					notifications,
-					revisionGate.value.agentRunId,
-					{ at: stamp.value.at },
-				)
-				if (!agentRun.ok) return agentRun
-
-				const acceptedEvent = await appendAgentRunEvent(
-					{ values: runtime.values, notifications },
-					storage,
-					proposal.value.proposal.agentRunId,
-					{
-						type: 'proposal-accepted',
-						proposalEventId: proposal.value.proposal.id,
-						authorized: stamp.value,
-						materialized: { type: 'revision-output', revisionId: revision.value.id },
-						projectedParts: proposalAcceptedProjectedParts(proposal.value.proposal.id),
-					},
-				)
-				return acceptedEvent.ok
-					? {
-							ok: true,
-							value: {
-								result: { revision: revision.value, revisionGate: revisionGate.value, acceptedEvent: acceptedEvent.value },
-								dispatchMarker: agentRun.value.dispatchMarker,
-							},
-						}
-					: acceptedEvent
-			},
-		)
-		if (!written.ok) return written
-		if (written.value.dispatchMarker !== null) runtime.services.dispatcher.ready(written.value.dispatchMarker)
-		return { ok: true, value: written.value.result }
+				: acceptedEvent
+		})
 	})
 }
 

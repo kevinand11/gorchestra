@@ -15,8 +15,6 @@ import type {
 import type { CoreStorage } from '../../services'
 import type { Result } from '../types'
 
-export { withTransaction, withTwoPhaseTransaction } from './transactions'
-
 export type StorageBoundaryError = StorageOperationFailedError | InvalidCoreServiceOutputError
 
 export async function getRecord<Resource extends CoreIdResource>(

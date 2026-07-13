@@ -6,9 +6,7 @@ import type { Id } from '../../../domain/commons'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
 import type { InvalidInputError } from '../../../errors'
 import { buildDeliveryContext, getDeliveryState, getSliceState, resolveDeliveryWork } from '../../../utils/delivery-context'
-import { withNotificationTransaction } from '../../../utils/notifications'
 import type { CoreRuntime } from '../../../utils/runtime'
-import { withTransaction } from '../../../utils/storage/helpers'
 import type { Result as CoreResult } from '../../../utils/types'
 import type {
 	DeliveryWorkResolution,
@@ -73,7 +71,7 @@ async function runSliceWorkerSlot(pool: SliceWorkerPool): Promise<DeliveryWorkHa
 	const failures: Result['failures'] = []
 
 	while (true) {
-		const selection = await withTransaction(pool.runtime.services, async (storage) => {
+		const selection = await pool.runtime.transactions.run(async ({ storage }) => {
 			const deliveryContext = await buildDeliveryContext(storage, pool.deliveryId)
 			if (!deliveryContext.ok) return deliveryContext
 
@@ -186,13 +184,18 @@ async function processSliceSelection(pool: SliceWorkerPool, selection: SliceWork
 		return handleSliceNeedsReviewSurface(pool.runtime, context, selection.slice, selection.state)
 	}
 
-	return withNotificationTransaction(pool.runtime, async (storage, notifications) =>
+	return pool.runtime.transactions.run(async (transaction) =>
 		handleSliceWorkState(
-			{ services: pool.runtime.services, storage, values: pool.runtime.values, deliveryContext: selection.deliveryContext },
+			{
+				services: pool.runtime.services,
+				storage: transaction.storage,
+				values: pool.runtime.values,
+				deliveryContext: selection.deliveryContext,
+			},
 			selection.slice,
 			selection.state,
 			pool.workResolution,
-			notifications,
+			transaction,
 		),
 	)
 }

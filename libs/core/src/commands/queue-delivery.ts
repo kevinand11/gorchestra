@@ -5,7 +5,7 @@ import { idPipe } from '../domain/commons'
 import type { Delivery } from '../domain/delivery'
 import type { DeliveryActionCommandError } from '../utils/command-errors'
 import { buildCommandHandler } from '../utils/command-handler'
-import { deliveryWorkStateMismatch, updateRecordValue, withAuditStampTransaction } from '../utils/command-storage'
+import { auditStamp, deliveryWorkStateMismatch, updateRecordValue } from '../utils/command-storage'
 import { buildDeliveryContext, getDeliveryState } from '../utils/delivery-context'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
@@ -21,20 +21,23 @@ export type Error = DeliveryActionCommandError
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createQueueDeliveryCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('queueDelivery', queueDeliveryInputPipe, (input, context) =>
-		withAuditStampTransaction<Result, Error>(runtime, context, async (storage, stamp) => {
+	return buildCommandHandler('queueDelivery', queueDeliveryInputPipe, async (input, context) => {
+		const queued = auditStamp(runtime.values, context)
+		if (!queued.ok) return queued
+
+		return runtime.transactions.run<Result, Error>(async ({ storage }) => {
 			const deliveryContext = await buildDeliveryContext(storage, input.deliveryId)
 			if (!deliveryContext.ok) return deliveryContext
 
 			const deliveryState = getDeliveryState(deliveryContext.value)
 			if (!deliveryState.ok) return deliveryState
-			if (deliveryState.value.type !== 'unqueued') {
-				return deliveryWorkStateMismatch(input.deliveryId, ['unqueued'], deliveryState.value)
+			if (deliveryState.value.type === 'unqueued') {
+				return updateRecordValue('delivery', storage, deliveryContext.value.delivery.id, { queued: queued.value })
 			}
 
-			return updateRecordValue('delivery', storage, deliveryContext.value.delivery.id, { queued: stamp })
-		}),
-	)
+			return deliveryWorkStateMismatch(input.deliveryId, ['unqueued'], deliveryState.value)
+		})
+	})
 }
 
 if (import.meta.vitest) {

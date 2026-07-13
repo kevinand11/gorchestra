@@ -18,7 +18,6 @@ import {
 	listRecordsByIds,
 	secretReferencesFromModelProviderConfig,
 	updateRecordValue,
-	withTransaction,
 } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import { validateActiveSecretReferencesFromRecords } from '../utils/secrets'
@@ -50,7 +49,7 @@ export function createUpdateModelProviderCommand(runtime: CoreRuntime): Operatio
 		const stamp = auditStamp(runtime.values, context)
 		if (!stamp.ok) return Promise.resolve(stamp)
 
-		return withTransaction(runtime.services, async (storage): Promise<CoreResult<ModelProvider, Exclude<Error, InvalidInputError>>> => {
+		return runtime.transactions.run(async ({ storage }): Promise<CoreResult<ModelProvider, Exclude<Error, InvalidInputError>>> => {
 			const existing = await getRequired('model-provider', storage, input.modelProviderId)
 			if (!existing.ok) return existing
 

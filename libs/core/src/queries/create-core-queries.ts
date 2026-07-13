@@ -23,31 +23,31 @@ import { createListSecretsQuery } from './list-secrets'
 import type { CoreRuntime } from '../utils/runtime'
 
 export function createCoreQueries(runtime: CoreRuntime) {
-	const services = runtime.services
+	const transactions = runtime.transactions
 
 	return {
-		listProjects: createListProjectsQuery(services),
-		getProject: createGetProjectQuery(services),
-		listAgentRunProfiles: createListAgentRunProfilesQuery(services),
-		getAgentRunProfile: createGetAgentRunProfileQuery(services),
-		listAgentRunProfileReferences: createListAgentRunProfileReferencesQuery(services),
-		listModelProviders: createListModelProvidersQuery(services),
-		getModel: createGetModelQuery(services),
-		getModelProvider: createGetModelProviderQuery(services),
-		listModelReferences: createListModelReferencesQuery(services),
-		getAgentRun: createGetAgentRunQuery(services),
-		listAgentRunEvents: createListAgentRunEventsQuery(services),
-		listPlans: createListPlansQuery(services),
-		getPlan: createGetPlanQuery(services),
-		listMemoryChildren: createListMemoryChildrenQuery(services),
-		getMemory: createGetMemoryQuery(services),
-		listDeliveries: createListDeliveriesQuery(services),
-		getDelivery: createGetDeliveryQuery(services),
-		listRepositories: createListRepositoriesQuery(services),
-		getRepository: createGetRepositoryQuery(services),
-		listSecrets: createListSecretsQuery(services),
-		getSecret: createGetSecretQuery(services),
-		listSecretReferences: createListSecretReferencesQuery(services),
+		listProjects: createListProjectsQuery(transactions),
+		getProject: createGetProjectQuery(transactions),
+		listAgentRunProfiles: createListAgentRunProfilesQuery(transactions),
+		getAgentRunProfile: createGetAgentRunProfileQuery(transactions),
+		listAgentRunProfileReferences: createListAgentRunProfileReferencesQuery(transactions),
+		listModelProviders: createListModelProvidersQuery(transactions),
+		getModel: createGetModelQuery(transactions),
+		getModelProvider: createGetModelProviderQuery(transactions),
+		listModelReferences: createListModelReferencesQuery(transactions),
+		getAgentRun: createGetAgentRunQuery(transactions),
+		listAgentRunEvents: createListAgentRunEventsQuery(transactions),
+		listPlans: createListPlansQuery(transactions),
+		getPlan: createGetPlanQuery(transactions),
+		listMemoryChildren: createListMemoryChildrenQuery(transactions),
+		getMemory: createGetMemoryQuery(transactions),
+		listDeliveries: createListDeliveriesQuery(transactions),
+		getDelivery: createGetDeliveryQuery(transactions),
+		listRepositories: createListRepositoriesQuery(transactions),
+		getRepository: createGetRepositoryQuery(transactions),
+		listSecrets: createListSecretsQuery(transactions),
+		getSecret: createGetSecretQuery(transactions),
+		listSecretReferences: createListSecretReferencesQuery(transactions),
 	}
 }
 

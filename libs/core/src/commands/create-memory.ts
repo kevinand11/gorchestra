@@ -11,7 +11,7 @@ import type {
 } from '../errors'
 import type { CommandContext } from './types'
 import { buildCommandHandler } from '../utils/command-handler'
-import { auditStamp, createRecordValue, getRequired, nextId, withTransaction } from '../utils/command-storage'
+import { auditStamp, createRecordValue, getRequired, nextId } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -30,8 +30,11 @@ export type Error =
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createCreateMemoryCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('createMemory', inputPipe, (input, context) =>
-		withTransaction<Result, Exclude<Error, InvalidInputError>>(runtime.services, async (storage) => {
+	return buildCommandHandler('createMemory', inputPipe, async (input, context) => {
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
+
+		return runtime.transactions.run<Result, Exclude<Error, InvalidInputError>>(async ({ storage }) => {
 			if (input.parentId !== null) {
 				const parent = await getRequired('memory', storage, input.parentId)
 				if (!parent.ok) return parent
@@ -42,9 +45,6 @@ export function createCreateMemoryCommand(runtime: CoreRuntime): Operation {
 
 			const revisionId = nextId(runtime.values)
 			if (!revisionId.ok) return revisionId
-
-			const stamp = auditStamp(runtime.values, context)
-			if (!stamp.ok) return stamp
 
 			const storedRevision = await createRecordValue('memory-revision', storage, {
 				id: revisionId.value,
@@ -66,8 +66,8 @@ export function createCreateMemoryCommand(runtime: CoreRuntime): Operation {
 					created: storedRevision.value.created,
 				},
 			})
-		}),
-	)
+		})
+	})
 }
 
 if (import.meta.vitest) {

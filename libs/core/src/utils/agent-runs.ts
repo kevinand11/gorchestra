@@ -1,7 +1,7 @@
 import { resolveAgentRunSourceSetup } from './agent-run-source-resolvers'
 import { agentRunProfileSnapshot } from './command-storage'
-import { acceptAgentRunPreparation, acceptAgentRunSandboxRelease } from './dispatch'
-import type { NotificationEmitter } from './notifications'
+import { requestAgentRunPreparation, requestAgentRunSandboxRelease } from './dispatch'
+import type { NotificationEmitter } from './notification-emitter'
 import { validateRuntimeRequirementSecretReferences, type RuntimeRequirementSecretReferenceError } from './runtime-requirement-secrets'
 import { nextId, runtimeRecord, type CoreRuntimeValues } from './runtime-values'
 import type { Result } from './types'
@@ -18,9 +18,10 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreServices, CoreStorage } from '../services'
+import type { CoreStorage } from '../services'
 import { instructionForProjectAndAgentRunPurpose } from './runtime/agent-runs/instructions'
 import { createRecord, getRequired, listRecords, updateRecord } from './storage/helpers'
+import type { CoreTransactionDispatch } from './transactions'
 
 export type AgentRunLookupError = InvalidCoreServiceOutputError | StorageOperationFailedError | InvariantViolationError
 export type AgentRunCompletionError = AgentRunLookupError | ResourceNotFoundError
@@ -81,7 +82,7 @@ export type AppendAgentRunEventError =
 export type CreateModelAgentRunError = AppendAgentRunEventError | RuntimeRequirementSecretReferenceError
 
 export async function createModelAgentRunAndRequestPreparation<TPurpose extends AgentRunPurpose>(
-	context: { values: CoreRuntimeValues; dispatcher: CoreServices['dispatcher']; notifications: NotificationEmitter },
+	context: { values: CoreRuntimeValues; dispatch: CoreTransactionDispatch; notifications: NotificationEmitter },
 	storage: CoreStorage,
 	input: {
 		agentRunId: Id
@@ -95,7 +96,6 @@ export async function createModelAgentRunAndRequestPreparation<TPurpose extends 
 		{
 			agentRun: ModelAgentRunWithPurpose<TPurpose>
 			instructionEvent: AgentRunEvent
-			preparationDispatchMarker: string
 		},
 		CreateModelAgentRunError
 	>
@@ -119,17 +119,10 @@ export async function createModelAgentRunAndRequestPreparation<TPurpose extends 
 	const instructionEvent = await appendAgentRunEvent(context, storage, agentRun.id, instruction)
 	if (!instructionEvent.ok) return instructionEvent
 
-	const preparationDispatchMarker = await acceptAgentRunPreparation(context.dispatcher, agentRun.id, { type: 'agent-run-created' })
-	if (!preparationDispatchMarker.ok) return preparationDispatchMarker
+	const preparationRequested = await requestAgentRunPreparation(context.dispatch, agentRun.id, { type: 'agent-run-created' })
+	if (!preparationRequested.ok) return preparationRequested
 
-	return {
-		ok: true,
-		value: {
-			agentRun,
-			instructionEvent: instructionEvent.value,
-			preparationDispatchMarker: preparationDispatchMarker.value,
-		},
-	}
+	return { ok: true, value: { agentRun, instructionEvent: instructionEvent.value } }
 }
 
 function modelAgentRun<TPurpose extends AgentRunPurpose>(input: {
@@ -224,31 +217,29 @@ function agentRunEventRecord(agentRunId: Id, facts: AgentRunEventFacts, body: Ag
 	}
 }
 
-export async function completeAgentRunByIdAndAcceptSandboxRelease(
+export async function completeAgentRunByIdAndRequestSandboxRelease(
 	storage: CoreStorage,
-	dispatcher: CoreServices['dispatcher'],
+	dispatch: CoreTransactionDispatch,
 	notifications: NotificationEmitter,
 	agentRunId: Id,
 	completed: RuntimeRecord,
-): Promise<Result<{ agentRun: AgentRun; dispatchMarker: string | null }, AgentRunByIdCompletionError | InvalidCoreServiceOutputError>> {
+): Promise<Result<AgentRun, AgentRunByIdCompletionError | InvalidCoreServiceOutputError>> {
 	const current = await getRequired('agent-run', storage, agentRunId)
 	if (!current.ok) return current
 
 	const agentRun = current.value
-	if (agentRun.completed !== null) return { ok: true, value: { agentRun, dispatchMarker: null } }
+	if (agentRun.completed !== null) return { ok: true, value: agentRun }
 
 	const completedAgentRun = await updateAgentRunRecord(storage, notifications, agentRun.id, { completed })
 	if (!completedAgentRun.ok) return completedAgentRun
 
-	const dispatchMarker = await acceptAgentRunSandboxRelease(dispatcher, completedAgentRun.value.id)
-	return dispatchMarker.ok
-		? { ok: true, value: { agentRun: completedAgentRun.value, dispatchMarker: dispatchMarker.value } }
-		: dispatchMarker
+	const releaseRequested = await requestAgentRunSandboxRelease(dispatch, completedAgentRun.value.id)
+	return releaseRequested.ok ? completedAgentRun : releaseRequested
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreServices, defaultAgentRunSandboxConfig, localStamp, seedProject, testModelAgentRun } =
+	const { createTestCoreRuntime, createTestCoreServices, defaultAgentRunSandboxConfig, localStamp, seedProject, testModelAgentRun } =
 		await import('./test-helpers')
 	const { ensureGitRequirement, globalRuntimeRequirements } = await import('./agent-run-runtime-requirements')
 
@@ -263,7 +254,7 @@ if (import.meta.vitest) {
 						dispatches.push(request)
 						return Promise.resolve('marker-1')
 					},
-					ready: () => {},
+					ready: (marker) => dispatches.push(`ready:${marker}`),
 				},
 			})
 			const project = seedProject(options.tx, '01k00000000000000000000030')
@@ -276,25 +267,28 @@ if (import.meta.vitest) {
 				closed: null,
 			})
 
-			const result = await createModelAgentRunAndRequestPreparation(
-				{ values: options.values, dispatcher: options.dispatcher, notifications: { emit: (data) => notifications.push(data) } },
-				options.storage,
-				{
-					agentRunId: '01k00000000000000000000002',
-					agentRunProfile: {
-						id: '01k00000000000000000000006',
-						name: 'Planning',
-						modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
-						runtimeRequirements: [],
-						sandboxConfig: defaultAgentRunSandboxConfig(),
-						created: localStamp(),
-						updated: null,
-						archivePeriods: [],
+			const runtime = createTestCoreRuntime(options, { notifications: { emit: (data) => notifications.push(data) } })
+			const result = await runtime.transactions.run((tx) =>
+				createModelAgentRunAndRequestPreparation(
+					{ values: options.values, dispatch: tx.dispatch, notifications: tx.notifications },
+					tx.storage,
+					{
+						agentRunId: '01k00000000000000000000002',
+						agentRunProfile: {
+							id: '01k00000000000000000000006',
+							name: 'Planning',
+							modelUse: { modelId: '01k00000000000000000000024', thinkingLevel: 'none' },
+							runtimeRequirements: [],
+							sandboxConfig: defaultAgentRunSandboxConfig(),
+							created: localStamp(),
+							updated: null,
+							archivePeriods: [],
+						},
+						project,
+						purpose: { type: 'planning', planId: '01k00000000000000000000028' },
+						started: { at: '2026-06-10T12:00:00.000Z' },
 					},
-					project,
-					purpose: { type: 'planning', planId: '01k00000000000000000000028' },
-					started: { at: '2026-06-10T12:00:00.000Z' },
-				},
+				),
 			)
 
 			const expectedAgentRun = {
@@ -328,7 +322,6 @@ if (import.meta.vitest) {
 						occurred: { at: '2026-06-10T12:00:00.000Z' },
 						body: instructionForProjectAndAgentRunPurpose({ type: 'planning', planId: '01k00000000000000000000028' }, project),
 					},
-					preparationDispatchMarker: 'marker-1',
 				},
 			})
 			expect(options.tx.agentRuns.records.get('01k00000000000000000000002')).toEqual(expectedAgentRun)
@@ -351,6 +344,7 @@ if (import.meta.vitest) {
 					],
 					reason: { type: 'agent-run-created' },
 				},
+				'ready:marker-1',
 			])
 		})
 	})
@@ -392,7 +386,7 @@ if (import.meta.vitest) {
 		})
 	})
 
-	describe('completeAgentRunByIdAndAcceptSandboxRelease', () => {
+	describe('completeAgentRunByIdAndRequestSandboxRelease', () => {
 		it('publishes only the newly completed Agent Run snapshot', async () => {
 			const options = createTestCoreServices()
 			const active = testModelAgentRun()
@@ -400,18 +394,22 @@ if (import.meta.vitest) {
 			options.tx.agentRuns.records.set(active.id, active)
 			options.tx.agentRuns.records.set(completed.id, completed)
 			const notifications: unknown[] = []
-			const emitter = { emit: (data: unknown) => notifications.push(data) }
+			const runtime = createTestCoreRuntime(options, { notifications: { emit: (data) => notifications.push(data) } })
 
-			const first = await completeAgentRunByIdAndAcceptSandboxRelease(options.storage, options.dispatcher, emitter, active.id, {
-				at: '2026-06-10T12:00:00.000Z',
-			})
-			const second = await completeAgentRunByIdAndAcceptSandboxRelease(options.storage, options.dispatcher, emitter, completed.id, {
-				at: '2026-06-10T12:00:00.000Z',
-			})
+			const first = await runtime.transactions.run((tx) =>
+				completeAgentRunByIdAndRequestSandboxRelease(tx.storage, tx.dispatch, tx.notifications, active.id, {
+					at: '2026-06-10T12:00:00.000Z',
+				}),
+			)
+			const second = await runtime.transactions.run((tx) =>
+				completeAgentRunByIdAndRequestSandboxRelease(tx.storage, tx.dispatch, tx.notifications, completed.id, {
+					at: '2026-06-10T12:00:00.000Z',
+				}),
+			)
 
-			expect(first).toMatchObject({ ok: true, value: { agentRun: { id: active.id, completed: { at: '2026-06-10T12:00:00.000Z' } } } })
-			expect(second).toEqual({ ok: true, value: { agentRun: completed, dispatchMarker: null } })
-			expect(notifications).toEqual([{ type: 'agent-run-updated', agentRun: first.ok ? first.value.agentRun : null }])
+			expect(first).toMatchObject({ ok: true, value: { id: active.id, completed: { at: '2026-06-10T12:00:00.000Z' } } })
+			expect(second).toEqual({ ok: true, value: completed })
+			expect(notifications).toEqual([{ type: 'agent-run-updated', agentRun: first.ok ? first.value : null }])
 		})
 	})
 

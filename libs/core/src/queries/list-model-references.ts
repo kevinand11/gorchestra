@@ -3,9 +3,9 @@ import { v, type PipeOutput } from 'valleyed'
 import { idPipe } from '../domain/commons'
 import { modelReferencePipe, type ModelReference } from '../domain/model'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, listRecords, withTransaction } from '../utils/storage/helpers'
+import { getRequired, listRecords } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult } from '../utils/types'
 
 export const inputPipe = v.object({ modelId: idPipe })
@@ -16,9 +16,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createListModelReferencesQuery(options: CoreServices): Operation {
+export function createListModelReferencesQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('listModelReferences', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			const model = await getRequired('model', storage, input.modelId)
 			if (!model.ok) return model
 
@@ -65,7 +65,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.models.fail.get = true
-			const query = createListModelReferencesQuery(options)
+			const query = createListModelReferencesQuery(options.transactions)
 
 			const result = await query({ modelId: '' })
 
@@ -77,7 +77,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the target Model does not exist', async () => {
-			const query = createListModelReferencesQuery(createTestCoreServices())
+			const query = createListModelReferencesQuery(createTestCoreServices().transactions)
 
 			const result = await query({ modelId: '01k00000000000000000000024' })
 
@@ -87,7 +87,7 @@ if (import.meta.vitest) {
 		it('returns an empty reference list for an unreferenced existing Model', async () => {
 			const options = createTestCoreServices()
 			seedSelectableModel(options.tx, '01k00000000000000000000024')
-			const query = createListModelReferencesQuery(options)
+			const query = createListModelReferencesQuery(options.transactions)
 
 			const result = await query({ modelId: '01k00000000000000000000024' })
 
@@ -101,7 +101,7 @@ if (import.meta.vitest) {
 			archived.name = 'A Archived'
 			const active = seedAgentRunProfile(options.tx, '01k00000000000000000100062', '01k00000000000000000000024')
 			active.name = 'B Active'
-			const query = createListModelReferencesQuery(options)
+			const query = createListModelReferencesQuery(options.transactions)
 
 			const result = await query({ modelId: '01k00000000000000000000024' })
 
@@ -161,7 +161,7 @@ if (import.meta.vitest) {
 					authorized: { origin: 'imported', at: '2026-06-01T00:00:00.000Z' },
 				},
 			})
-			const query = createListModelReferencesQuery(options)
+			const query = createListModelReferencesQuery(options.transactions)
 
 			const result = await query({ modelId: '01k00000000000000000000024' })
 
@@ -172,7 +172,7 @@ if (import.meta.vitest) {
 			const options = createTestCoreServices()
 			seedSelectableModel(options.tx, '01k00000000000000000000024')
 			options.tx.agentRunProfiles.fail.list = true
-			const query = createListModelReferencesQuery(options)
+			const query = createListModelReferencesQuery(options.transactions)
 
 			const result = await query({ modelId: '01k00000000000000000000024' })
 

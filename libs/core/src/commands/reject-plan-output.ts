@@ -16,7 +16,6 @@ import type { CommandContext } from './types'
 import { appendAgentRunEvent } from '../utils/agent-runs'
 import { buildCommandHandler } from '../utils/command-handler'
 import { auditStamp, getRequired } from '../utils/command-storage'
-import { withNotificationTransaction } from '../utils/notifications'
 import { getPendingProposalForAgentRunPurpose, proposalRejectedProjectedParts } from '../utils/proposals'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
@@ -43,7 +42,7 @@ export function createRejectPlanOutputCommand(runtime: CoreRuntime): Operation {
 		const stamp = auditStamp(runtime.values, context)
 		if (!stamp.ok) return stamp
 
-		return withNotificationTransaction<Result, Exclude<Error, InvalidInputError>>(runtime, async (storage, notifications) => {
+		return runtime.transactions.run<Result, Exclude<Error, InvalidInputError>>(async ({ storage, notifications }) => {
 			const proposal = await getPendingProposalForAgentRunPurpose(storage, input.proposalEventId, 'proposed-plan-output', 'planning')
 			if (!proposal.ok) return proposal
 

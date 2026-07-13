@@ -17,8 +17,8 @@ import type {
 import { appendAgentRunEvent, updateAgentRunRecord } from '../utils/agent-runs'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import { buildCommandHandler } from '../utils/command-handler'
-import { getRequired, runtimeRecord, withAuditStampTransaction } from '../utils/command-storage'
-import { acceptAgentRunPreparation } from '../utils/dispatch'
+import { auditStamp, getRequired, runtimeRecord } from '../utils/command-storage'
+import { requestAgentRunPreparation } from '../utils/dispatch'
 import type { CoreRuntime } from '../utils/runtime'
 import { validateRuntimeRequirementSecretReferences } from '../utils/runtime-requirement-secrets'
 import type { Result as CoreResult } from '../utils/types'
@@ -43,65 +43,56 @@ export type Error =
 	| DuplicateAgentRunRuntimeRequirementError
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
-type WrittenOverride = { event: Result; dispatchMarker: string }
-
 export function createAddAgentRunRuntimeRequirementOverrideCommand(runtime: CoreRuntime): Operation {
 	return buildCommandHandler('addAgentRunRuntimeRequirementOverride', inputPipe, async (input, context) => {
-		const written = await withAuditStampTransaction(
-			runtime,
-			context,
-			async (storage, stamp, notifications): Promise<CoreResult<WrittenOverride, Exclude<Error, InvalidInputError>>> => {
-				const duplicateRequirement = firstDuplicateRuntimeRequirement(input.requirements)
-				if (duplicateRequirement !== null) return duplicateRuntimeRequirement(duplicateRequirement)
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
 
-				const agentRun = await getRequired('agent-run', storage, input.agentRunId)
-				if (!agentRun.ok) return agentRun
-				if (agentRun.value.completed !== null)
-					return { ok: false, error: { type: 'agent-run-not-active', agentRunId: input.agentRunId } }
+		return runtime.transactions.run<Result, Exclude<Error, InvalidInputError>>(async ({ storage, notifications, dispatch }) => {
+			const duplicateRequirement = firstDuplicateRuntimeRequirement(input.requirements)
+			if (duplicateRequirement !== null) return duplicateRuntimeRequirement(duplicateRequirement)
 
-				const duplicateExisting = input.requirements.find((requirement) =>
-					new Set(agentRun.value.desiredRuntimeRequirements.map(runtimeRequirementKey)).has(runtimeRequirementKey(requirement)),
-				)
-				if (duplicateExisting !== undefined) return duplicateRuntimeRequirement(duplicateExisting)
+			const agentRun = await getRequired('agent-run', storage, input.agentRunId)
+			if (!agentRun.ok) return agentRun
+			if (agentRun.value.completed !== null)
+				return { ok: false, error: { type: 'agent-run-not-active', agentRunId: input.agentRunId } }
 
-				const secretValidation = await validateRuntimeRequirementSecretReferences(storage, input.requirements)
-				if (!secretValidation.ok) return secretValidation
+			const duplicateExisting = input.requirements.find((requirement) =>
+				new Set(agentRun.value.desiredRuntimeRequirements.map(runtimeRequirementKey)).has(runtimeRequirementKey(requirement)),
+			)
+			if (duplicateExisting !== undefined) return duplicateRuntimeRequirement(duplicateExisting)
 
-				const blocked = runtimeRecord(runtime.values)
-				if (!blocked.ok) return blocked
+			const secretValidation = await validateRuntimeRequirementSecretReferences(storage, input.requirements)
+			if (!secretValidation.ok) return secretValidation
 
-				const event = await appendAgentRunEvent({ values: runtime.values, notifications }, storage, input.agentRunId, {
-					type: 'agent-run-runtime-requirement-override-added',
-					requirements: input.requirements,
-					authorized: stamp,
-				})
-				if (!event.ok) return event
+			const blocked = runtimeRecord(runtime.values)
+			if (!blocked.ok) return blocked
 
-				const runtimeRequirementOverrides = [
-					...agentRun.value.runtimeRequirementOverrides,
-					{ requirements: input.requirements, added: stamp, eventId: event.value.id },
-				]
-				const desiredRuntimeRequirements = [...agentRun.value.desiredRuntimeRequirements, ...input.requirements]
-				const updated = await updateAgentRunRecord(storage, notifications, input.agentRunId, {
-					runtimeRequirementOverrides,
-					desiredRuntimeRequirements,
-					blocked: { type: 'preparation-pending', blocked: blocked.value },
-				})
-				if (!updated.ok) return updated
+			const event = await appendAgentRunEvent({ values: runtime.values, notifications }, storage, input.agentRunId, {
+				type: 'agent-run-runtime-requirement-override-added',
+				requirements: input.requirements,
+				authorized: stamp.value,
+			})
+			if (!event.ok) return event
 
-				const dispatchMarker = await acceptAgentRunPreparation(runtime.services.dispatcher, input.agentRunId, {
-					type: 'runtime-requirement-override-added',
-					eventId: event.value.id,
-				})
-				if (!dispatchMarker.ok) return dispatchMarker
+			const runtimeRequirementOverrides = [
+				...agentRun.value.runtimeRequirementOverrides,
+				{ requirements: input.requirements, added: stamp.value, eventId: event.value.id },
+			]
+			const desiredRuntimeRequirements = [...agentRun.value.desiredRuntimeRequirements, ...input.requirements]
+			const updated = await updateAgentRunRecord(storage, notifications, input.agentRunId, {
+				runtimeRequirementOverrides,
+				desiredRuntimeRequirements,
+				blocked: { type: 'preparation-pending', blocked: blocked.value },
+			})
+			if (!updated.ok) return updated
 
-				return { ok: true, value: { event: event.value, dispatchMarker: dispatchMarker.value } }
-			},
-		)
-		if (!written.ok) return written
-
-		runtime.services.dispatcher.ready(written.value.dispatchMarker)
-		return { ok: true, value: written.value.event }
+			const requested = await requestAgentRunPreparation(dispatch, input.agentRunId, {
+				type: 'runtime-requirement-override-added',
+				eventId: event.value.id,
+			})
+			return requested.ok ? event : requested
+		})
 	})
 }
 

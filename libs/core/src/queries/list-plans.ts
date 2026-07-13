@@ -3,9 +3,9 @@ import { v, type PipeInput, type PipeOutput } from 'valleyed'
 import { idPipe, paginatedQueryEnvelopePipe, paginatedQueryInputPipe } from '../domain/commons'
 import { planPipe, type Plan } from '../domain/plan'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
+import { getRequired, listRecordsPaginated } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 
 export const inputPipe = v.merge(v.object({ projectId: idPipe }), paginatedQueryInputPipe)
@@ -16,9 +16,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createListPlansQuery(options: CoreServices): Operation {
+export function createListPlansQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('listPlans', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			const project = await getRequired('project', storage, input.projectId)
 			if (!project.ok) return project
 
@@ -37,7 +37,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.projects.fail.get = true
-			const result = await createListPlansQuery(options)({ projectId: '' })
+			const result = await createListPlansQuery(options.transactions)({ projectId: '' })
 
 			expect(result).toMatchObject({
 				ok: false,
@@ -47,7 +47,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the target Project does not exist', async () => {
-			const result = await createListPlansQuery(createTestCoreServices())({ projectId: '01k00000000000000000000030' })
+			const result = await createListPlansQuery(createTestCoreServices().transactions)({ projectId: '01k00000000000000000000030' })
 
 			expect(result).toEqual({ ok: false, error: { type: 'not-found', resource: 'project', id: '01k00000000000000000000030' } })
 		})
@@ -56,7 +56,7 @@ if (import.meta.vitest) {
 			const records = seedPlanListRecords()
 			records.options.tx.agentRuns.fail.list = true
 
-			const result = await createListPlansQuery(records.options)({ projectId: '01k00000000000000000000030' })
+			const result = await createListPlansQuery(records.options.transactions)({ projectId: '01k00000000000000000000030' })
 
 			expect(result).toEqual({
 				ok: true,
@@ -69,7 +69,9 @@ if (import.meta.vitest) {
 		})
 
 		it('returns storage errors when Plan reads fail', async () => {
-			await expect(createListPlansQuery(planListReadFailure())({ projectId: '01k00000000000000000000030' })).resolves.toEqual({
+			await expect(
+				createListPlansQuery(planListReadFailure().transactions)({ projectId: '01k00000000000000000000030' }),
+			).resolves.toEqual({
 				ok: false,
 				error: { type: 'storage-operation-failed', operation: { type: 'list', resource: 'plan' } },
 			})

@@ -262,7 +262,13 @@ if (import.meta.vitest) {
 	}
 
 	function modelLoopRuntime(services: ReturnType<typeof createTestCoreServices>): ModelAgentRunRuntime {
-		return { services, providers: { ...createTestProviders() }, notifications: { emit: () => {} }, values: services.values }
+		return {
+			services,
+			providers: { ...createTestProviders() },
+			notifications: { emit: () => {} },
+			transactions: services.transactions,
+			values: services.values,
+		}
 	}
 
 	function createTestProviders(): CoreProviders {

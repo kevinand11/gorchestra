@@ -7,7 +7,7 @@ import { sourceControlSliceBranchName } from '../../../utils/providers/source-co
 import type { SourceControlArtifactCreation, SourceControlCreateArtifactBranchInput } from '../../../utils/providers/source-control/types'
 import type { CoreRuntime } from '../../../utils/runtime'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
-import { createRecord, withTransaction } from '../../../utils/storage/helpers'
+import { createRecord } from '../../../utils/storage/helpers'
 import type { Result as CoreResult } from '../../../utils/types'
 import type { ResolvedDeliveryHandlerContext, DeliveryWorkHandlerResult } from '../../delivery-work/types'
 
@@ -31,7 +31,7 @@ export async function handleSliceNeedsArtifactCreation(
 	const creation = await runtime.providers.sourceControl.createArtifactBranch(input.value)
 	if (!creation.ok) return creation
 
-	return withTransaction(runtime.services, async (storage) =>
+	return runtime.transactions.run(async ({ storage }) =>
 		recordSliceArtifactCreationResult(
 			{
 				services: runtime.services,

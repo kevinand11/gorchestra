@@ -28,10 +28,8 @@ import type {
 	ResourceArchivedError,
 	ResourceNotArchivedError,
 	ResourceNotFoundError,
-	StorageOperationFailedError,
 } from '../errors'
 import type { CoreStorage } from '../services'
-import { withNotificationTransaction, type NotificationEmitter } from './notifications'
 import { validateModelThinkingLevelForUse } from './providers/model-provider-protocol/thinking'
 import type { CoreRuntime } from './runtime'
 import { validateRuntimeRequirementSecretReferences } from './runtime-requirement-secrets'
@@ -45,26 +43,13 @@ import {
 	listRecordsByIds,
 	notFound,
 	updateRecord,
-	withTransaction,
 	type StorageBoundaryError,
 } from './storage/helpers'
 import type { CoreIdStorageRecord, CoreIdStorageRecordMap } from './storage/schema-registry'
 import type { Result } from './types'
 import type { CommandContext } from '../commands/types'
 
-export {
-	auditStamp,
-	createRecord,
-	getRecord,
-	getRequired,
-	listRecords,
-	listRecordsByIds,
-	nextId,
-	notFound,
-	runtimeRecord,
-	updateRecord,
-	withTransaction,
-}
+export { auditStamp, createRecord, getRecord, getRequired, listRecords, listRecordsByIds, nextId, notFound, runtimeRecord, updateRecord }
 
 export type { StorageBoundaryError }
 
@@ -92,17 +77,6 @@ export async function updateRecordValue<Resource extends CoreIdResource>(
 	return stored.ok ? { ok: true, value: stored.value } : stored
 }
 
-export function withAuditStampTransaction<TValue, TError>(
-	runtime: CoreRuntime,
-	context: CommandContext,
-	run: (storage: CoreStorage, stamp: AuditStamp, notifications: NotificationEmitter) => Promise<Result<TValue, TError>>,
-): Promise<Result<TValue, TError | InvalidCoreServiceOutputError | StorageOperationFailedError>> {
-	const stamp = auditStamp(runtime.values, context)
-	if (!stamp.ok) return Promise.resolve(stamp)
-
-	return withNotificationTransaction(runtime, (storage, notifications) => run(storage, stamp.value, notifications))
-}
-
 export function updateStoredRecordWithAudit<Resource extends CoreIdResource>(
 	runtime: CoreRuntime,
 	context: CommandContext,
@@ -115,11 +89,14 @@ export function updateStoredRecordWithAudit<Resource extends CoreIdResource>(
 		StorageBoundaryError | InvariantViolationError | ResourceNotFoundError | InvalidCoreServiceOutputError
 	>
 > {
-	return withAuditStampTransaction(runtime, context, async (storage, stamp) => {
+	const stamp = auditStamp(runtime.values, context)
+	if (!stamp.ok) return Promise.resolve(stamp)
+
+	return runtime.transactions.run(async ({ storage }) => {
 		const existing = await getRequired(resource, storage, id)
 		if (!existing.ok) return existing
 
-		const updated = update(existing.value, stamp)
+		const updated = update(existing.value, stamp.value)
 		return updateRecordValue(resource, storage, id, updated)
 	})
 }
@@ -324,12 +301,15 @@ export function archiveStoredRecordWithAudit(
 	resource: ArchivableCoreResource,
 	id: Id,
 ): Promise<Result<ArchivableCoreStorageRecord, ArchiveStoredRecordError>> {
-	return withAuditStampTransaction<ArchivableCoreStorageRecord, ArchiveStoredRecordError>(runtime, context, async (storage, stamp) => {
+	const stamp = auditStamp(runtime.values, context)
+	if (!stamp.ok) return Promise.resolve(stamp)
+
+	return runtime.transactions.run<ArchivableCoreStorageRecord, ArchiveStoredRecordError>(async ({ storage }) => {
 		const existing = await getRequired(resource, storage, id)
 		if (!existing.ok) return existing
 		if (isArchived(existing.value.archivePeriods)) return { ok: false, error: { type: 'resource-archived', resource, id } }
 
-		const archivePeriods = [...existing.value.archivePeriods, { archived: stamp, unarchived: null }]
+		const archivePeriods = [...existing.value.archivePeriods, { archived: stamp.value, unarchived: null }]
 		const stored = await updateRecordValue(resource, storage, existing.value.id, { archivePeriods })
 		return stored.ok ? { ok: true, value: { ...existing.value, archivePeriods } } : stored
 	})
@@ -347,7 +327,10 @@ export function unarchiveStoredRecordWithAudit(
 	resource: ArchivableCoreResource,
 	id: Id,
 ): Promise<Result<ArchivableCoreStorageRecord, UnarchiveStoredRecordError>> {
-	return withAuditStampTransaction<ArchivableCoreStorageRecord, UnarchiveStoredRecordError>(runtime, context, async (storage, stamp) => {
+	const stamp = auditStamp(runtime.values, context)
+	if (!stamp.ok) return Promise.resolve(stamp)
+
+	return runtime.transactions.run<ArchivableCoreStorageRecord, UnarchiveStoredRecordError>(async ({ storage }) => {
 		const existing = await getRequired(resource, storage, id)
 		if (!existing.ok) return existing
 
@@ -358,7 +341,7 @@ export function unarchiveStoredRecordWithAudit(
 		}
 
 		const archivePeriods = [...existing.value.archivePeriods]
-		archivePeriods[latestPeriodIndex] = { ...latestPeriod, unarchived: stamp }
+		archivePeriods[latestPeriodIndex] = { ...latestPeriod, unarchived: stamp.value }
 		const stored = await updateRecordValue(resource, storage, existing.value.id, { archivePeriods })
 		return stored.ok ? { ok: true, value: { ...existing.value, archivePeriods } } : stored
 	})

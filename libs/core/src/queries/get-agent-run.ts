@@ -3,9 +3,9 @@ import { v, type PipeOutput } from 'valleyed'
 import { agentRunPipe } from '../domain/agent-run'
 import { idPipe } from '../domain/commons'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, withTransaction } from '../utils/storage/helpers'
+import { getRequired } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult } from '../utils/types'
 
 export const inputPipe = v.object({ agentRunId: idPipe })
@@ -16,21 +16,21 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createGetAgentRunQuery(options: CoreServices): Operation {
+export function createGetAgentRunQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('getAgentRun', inputPipe, (input) =>
-		withTransaction(options, (storage) => getRequired('agent-run', storage, input.agentRunId)),
+		transactions.run(({ storage }) => getRequired('agent-run', storage, input.agentRunId)),
 	)
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreServices, defaultAgentRunSandboxConfig } = await import('../utils/test-helpers')
+	const { createTestCoreRuntime, createTestCoreServices, defaultAgentRunSandboxConfig } = await import('../utils/test-helpers')
 
 	describe('getAgentRun query', () => {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.agentRuns.fail.get = true
-			const query = createGetAgentRunQuery(options)
+			const query = createGetAgentRunQuery(createTestCoreRuntime(options).transactions)
 
 			const result = await query({ agentRunId: '' })
 
@@ -42,7 +42,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the target Agent Run does not exist', async () => {
-			const query = createGetAgentRunQuery(createTestCoreServices())
+			const query = createGetAgentRunQuery(createTestCoreRuntime().transactions)
 
 			const result = await query({ agentRunId: '01k00000000000000000000002' })
 
@@ -54,7 +54,7 @@ if (import.meta.vitest) {
 			const run = agentRun()
 			options.tx.agentRuns.records.set(run.id, run)
 			options.tx.plans.fail.get = true
-			const query = createGetAgentRunQuery(options)
+			const query = createGetAgentRunQuery(createTestCoreRuntime(options).transactions)
 
 			const result = await query({ agentRunId: run.id })
 

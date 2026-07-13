@@ -3,9 +3,9 @@ import { type PipeInput, type PipeOutput } from 'valleyed'
 import { listedAgentRunProfilePipe } from '../domain/agent-run-profile'
 import { mapPaginatedQueryEnvelope, paginatedQueryEnvelopePipe, paginatedQueryInputPipe } from '../domain/commons'
 import type { InvalidCoreServiceOutputError, InvalidInputError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { buildQueryHandler } from '../utils/query-handler'
-import { listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
+import { listRecordsPaginated } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 
 export const inputPipe = paginatedQueryInputPipe
@@ -16,9 +16,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createListAgentRunProfilesQuery(options: CoreServices): Operation {
+export function createListAgentRunProfilesQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('listAgentRunProfiles', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			const profiles = await listRecordsPaginated('agent-run-profile', storage, input)
 			return profiles.ok
 				? {

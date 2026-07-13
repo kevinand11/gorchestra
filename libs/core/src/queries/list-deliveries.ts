@@ -5,10 +5,10 @@ import { deliveryReadModelPipe, type Delivery } from '../domain/delivery'
 import type { Repository } from '../domain/repository'
 import type { Slice } from '../domain/slice'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { deliveryReadModels } from '../utils/delivery-read-model'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, listRecords, listRecordsPaginated, withTransaction } from '../utils/storage/helpers'
+import { getRequired, listRecords, listRecordsPaginated } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 
 export const inputPipe = v.merge(v.object({ projectId: idPipe }), paginatedQueryInputPipe)
@@ -19,9 +19,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createListDeliveriesQuery(options: CoreServices): Operation {
+export function createListDeliveriesQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('listDeliveries', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			const project = await getRequired('project', storage, input.projectId)
 			if (!project.ok) return project
 
@@ -72,7 +72,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.projects.fail.get = true
-			const query = createListDeliveriesQuery(options)
+			const query = createListDeliveriesQuery(options.transactions)
 
 			const result = await query({ projectId: '' })
 
@@ -84,7 +84,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the target Project does not exist', async () => {
-			const query = createListDeliveriesQuery(createTestCoreServices())
+			const query = createListDeliveriesQuery(createTestCoreServices().transactions)
 
 			const result = await query({ projectId: '01k00000000000000000000030' })
 
@@ -146,7 +146,7 @@ if (import.meta.vitest) {
 				'01k00000000000000000100038',
 				slice({ id: '01k00000000000000000100038', deliveryId: '01k00000000000000000100029', order: 0, title: 'First' }),
 			)
-			const query = createListDeliveriesQuery(options)
+			const query = createListDeliveriesQuery(options.transactions)
 
 			const result = await query({ projectId: '01k00000000000000000000030' })
 
@@ -200,7 +200,7 @@ if (import.meta.vitest) {
 			const options = createTestCoreServices()
 			seedProject(options.tx, '01k00000000000000000000030')
 			options.tx.deliveries.fail.list = true
-			const query = createListDeliveriesQuery(options)
+			const query = createListDeliveriesQuery(options.transactions)
 
 			const result = await query({ projectId: '01k00000000000000000000030' })
 

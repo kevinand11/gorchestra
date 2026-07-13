@@ -18,12 +18,7 @@ import type { CommandContext } from './types'
 import { requireInteractiveAgentRunOpen } from '../utils/agent-run-targets'
 import { appendAgentRunEvent, updateAgentRunRecord } from '../utils/agent-runs'
 import { buildCommandHandler } from '../utils/command-handler'
-import {
-	loadSelectableModelFacts,
-	modelIdsFromModelUses,
-	validateModelUseConfigs,
-	withAuditStampTransaction,
-} from '../utils/command-storage'
+import { auditStamp, loadSelectableModelFacts, modelIdsFromModelUses, validateModelUseConfigs } from '../utils/command-storage'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -45,8 +40,11 @@ export type Error =
 export type Operation = (input: Input, context: CommandContext) => Promise<CoreResult<Result, Error>>
 
 export function createSetAgentRunModelUseOverrideCommand(runtime: CoreRuntime): Operation {
-	return buildCommandHandler('setAgentRunModelUseOverride', setAgentRunModelUseOverrideInputPipe, (input, context) =>
-		withAuditStampTransaction<Result, Exclude<Error, InvalidInputError>>(runtime, context, async (storage, stamp, notifications) => {
+	return buildCommandHandler('setAgentRunModelUseOverride', setAgentRunModelUseOverrideInputPipe, async (input, context) => {
+		const stamp = auditStamp(runtime.values, context)
+		if (!stamp.ok) return stamp
+
+		return runtime.transactions.run<Result, Exclude<Error, InvalidInputError>>(async ({ storage, notifications }) => {
 			const agentRun = await requireInteractiveAgentRunOpen(storage, input.agentRunId)
 			if (!agentRun.ok) return agentRun
 
@@ -59,17 +57,17 @@ export function createSetAgentRunModelUseOverrideCommand(runtime: CoreRuntime): 
 			}
 
 			const updated = await updateAgentRunRecord(storage, notifications, input.agentRunId, {
-				modelUseOverride: input.modelUse === null ? null : { modelUse: input.modelUse, selected: stamp },
+				modelUseOverride: input.modelUse === null ? null : { modelUse: input.modelUse, selected: stamp.value },
 			})
 			if (!updated.ok) return updated
 
 			return appendAgentRunEvent({ values: runtime.values, notifications }, storage, input.agentRunId, {
 				type: 'agent-run-model-use-override-changed',
 				modelUse: input.modelUse,
-				authorized: stamp,
+				authorized: stamp.value,
 			})
-		}),
-	)
+		})
+	})
 }
 
 if (import.meta.vitest) {

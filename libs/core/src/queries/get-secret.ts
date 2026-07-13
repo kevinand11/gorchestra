@@ -3,11 +3,11 @@ import { v, type PipeOutput } from 'valleyed'
 import { idPipe } from '../domain/commons'
 import { listedSecretPipe } from '../domain/secret'
 import type { InvalidCoreServiceOutputError, InvalidInputError, ResourceNotFoundError, StorageOperationFailedError } from '../errors'
-import type { CoreServices } from '../services'
 import { listSecretReferencesBySecretId } from './list-secret-references'
 import { listSecret } from './list-secrets'
 import { buildQueryHandler } from '../utils/query-handler'
-import { getRequired, withTransaction } from '../utils/storage/helpers'
+import { getRequired } from '../utils/storage/helpers'
+import type { CoreTransactions } from '../utils/transactions'
 import type { Result as CoreResult } from '../utils/types'
 
 export const inputPipe = v.object({ secretId: idPipe })
@@ -18,9 +18,9 @@ export type Result = PipeOutput<typeof resultPipe>
 export type Error = InvalidInputError | InvalidCoreServiceOutputError | ResourceNotFoundError | StorageOperationFailedError
 export type Operation = (input: Input) => Promise<CoreResult<Result, Error>>
 
-export function createGetSecretQuery(options: CoreServices): Operation {
+export function createGetSecretQuery(transactions: CoreTransactions): Operation {
 	return buildQueryHandler('getSecret', inputPipe, (input) =>
-		withTransaction(options, async (storage) => {
+		transactions.run(async ({ storage }) => {
 			const secret = await getRequired('secret', storage, input.secretId)
 			if (!secret.ok) return secret
 
@@ -38,7 +38,7 @@ if (import.meta.vitest) {
 		it('validates input before reading storage', async () => {
 			const options = createTestCoreServices()
 			options.tx.secrets.fail.get = true
-			const query = createGetSecretQuery(options)
+			const query = createGetSecretQuery(options.transactions)
 
 			const result = await query({ secretId: '' })
 
@@ -52,7 +52,7 @@ if (import.meta.vitest) {
 		it('returns redacted Secret metadata by id', async () => {
 			const options = createTestCoreServices()
 			seedSecret(options.tx, '01k00000000000000000000040')
-			const query = createGetSecretQuery(options)
+			const query = createGetSecretQuery(options.transactions)
 
 			const result = await query({ secretId: '01k00000000000000000000040' })
 
@@ -76,7 +76,7 @@ if (import.meta.vitest) {
 			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024', {
 				runtimeRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
 			})
-			const query = createGetSecretQuery(options)
+			const query = createGetSecretQuery(options.transactions)
 
 			const result = await query({ secretId: '01k00000000000000000000040' })
 
@@ -103,7 +103,7 @@ if (import.meta.vitest) {
 		})
 
 		it('returns not-found when the target Secret does not exist', async () => {
-			const query = createGetSecretQuery(createTestCoreServices())
+			const query = createGetSecretQuery(createTestCoreServices().transactions)
 
 			const result = await query({ secretId: '01k00000000000000000000040' })
 
