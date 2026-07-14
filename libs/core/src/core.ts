@@ -1,4 +1,5 @@
 import * as Commands from './commands'
+import { createCoreDispatchApi, type CoreDispatchApi } from './dispatch'
 import type { CorePreflightError, OpenCoreError } from './errors'
 import type { Core as CoreQueries } from './queries'
 import { createCoreQueries } from './queries/create-core-queries'
@@ -16,14 +17,13 @@ import * as Snapshots from './utils/snapshots'
 import { preflightStorage } from './utils/storage/preflight'
 import type { Result } from './utils/types'
 import { validateCoreInput, validateCoreServiceOutput } from './validation'
-import * as Work from './work'
 
 export interface GorchestraCore {
 	preflight(): Promise<Result<CorePreflightReport, CorePreflightError>>
 	commands: Commands.Core
 	queries: CoreQueries
 	snapshots: Snapshots.Core
-	work: Work.Core
+	dispatch: CoreDispatchApi
 }
 
 export function openCore(services: CoreServices): Result<GorchestraCore, OpenCoreError> {
@@ -40,7 +40,7 @@ export function openCore(services: CoreServices): Result<GorchestraCore, OpenCor
 			commands: Commands.createCoreCommands(runtime),
 			queries: createCoreQueries(runtime),
 			snapshots: Snapshots.createCoreSnapshots(runtime),
-			work: Work.createCoreWork(runtime),
+			dispatch: createCoreDispatchApi(runtime),
 		},
 	}
 }
@@ -59,18 +59,10 @@ async function collectCorePreflightChecks(
 ): Promise<Result<CorePreflightChecks, CorePreflightError>> {
 	const storage = await preflightStorage(runtime.transactions)
 	const secrets = await preflightCoreService('secrets', () => runtime.services.secrets.preflight())
-	const dispatcher = await preflightCoreService('dispatcher', () => runtime.services.dispatcher.preflight())
-	const failure = firstCorePreflightFailure([secrets, dispatcher])
+	const failure = firstCorePreflightFailure([secrets])
 	if (failure !== null) return failure
 
-	return {
-		ok: true,
-		value: {
-			storage,
-			secrets: resultValue(secrets),
-			dispatcher: resultValue(dispatcher),
-		},
-	}
+	return { ok: true, value: { storage, secrets: resultValue(secrets) } }
 }
 
 function firstCorePreflightFailure(results: CorePreflightCheckResult[]): Result<never, CorePreflightError> | null {
@@ -80,7 +72,7 @@ function firstCorePreflightFailure(results: CorePreflightCheckResult[]): Result<
 }
 
 function corePreflightReport(checks: CorePreflightChecks): CorePreflightReport {
-	const allChecks = [checks.storage, checks.secrets, checks.dispatcher]
+	const allChecks = [checks.storage, checks.secrets]
 
 	return { passed: allChecks.every((check) => check.ok), checks }
 }
@@ -92,7 +84,7 @@ function resultValue<T>(result: Result<T, unknown>): T {
 }
 
 async function preflightCoreService(
-	service: 'secrets' | 'dispatcher',
+	service: 'secrets',
 	probe: () => Promise<CoreServicePreflightOutput>,
 ): Promise<Result<CorePreflightCheck, CorePreflightError>> {
 	try {
@@ -132,14 +124,8 @@ if (import.meta.vitest) {
 		create: () => Promise.resolve(noopRawSandboxInstance()),
 		find: () => Promise.resolve(noopRawSandboxInstance()),
 	}
-	const dispatcher: CoreServices['dispatcher'] = {
-		preflight: () => Promise.resolve({ ok: true }),
-		request: () => Promise.resolve('dispatch-marker'),
-		ready: () => {},
-	}
-
 	function coreServices(): CoreServices {
-		return { storage: createTestCoreStorage(), secrets, sandbox, dispatcher }
+		return { storage: createTestCoreStorage(), secrets, sandbox }
 	}
 
 	describe('openCore', () => {
@@ -153,9 +139,8 @@ if (import.meta.vitest) {
 			expect(typeof result.value.queries.listProjects).toBe('function')
 			expect(typeof result.value.snapshots.export).toBe('function')
 			expect(typeof result.value.snapshots.restore).toBe('function')
-			expect(typeof result.value.work.runModelAgentRun).toBe('function')
-			expect(typeof result.value.work.scheduleDeliveryWork).toBe('function')
-			expect(typeof result.value.work.processDeliveryWorkOperation).toBe('function')
+			expect(typeof result.value.dispatch.startProcessor).toBe('function')
+			expect('work' in result.value).toBe(false)
 		})
 
 		it('rejects invalid core input with a narrow invalid-input error', () => {
@@ -196,15 +181,12 @@ if (import.meta.vitest) {
 						throw new Error('sandbox find was called')
 					},
 				},
-				dispatcher: {
-					preflight: () => {
-						throw new Error('dispatcher preflight was probed')
+				dispatchWake: {
+					publish: () => {
+						throw new Error('dispatch wake was published')
 					},
-					request: () => {
-						throw new Error('dispatcher dispatch was called')
-					},
-					ready: () => {
-						throw new Error('dispatcher ready was called')
+					subscribe: () => {
+						throw new Error('dispatch wake was subscribed')
 					},
 				},
 			}
@@ -238,16 +220,16 @@ if (import.meta.vitest) {
 				},
 			})
 
-			const invalidDispatcher = { ...options.dispatcher } as { request?: unknown }
-			delete invalidDispatcher.request
+			const invalidDispatchWake = { ...options.dispatchWake } as { publish?: unknown }
+			delete invalidDispatchWake.publish
 
-			expect(openCore({ ...options, dispatcher: invalidDispatcher } as never)).toMatchObject({
+			expect(openCore({ ...options, dispatchWake: invalidDispatchWake } as never)).toMatchObject({
 				ok: false,
 				error: {
 					type: 'invalid-input',
 					boundary: 'core',
 					operation: 'openCore',
-					pipeError: { messages: [expect.objectContaining({ path: 'dispatcher.request' })] },
+					pipeError: { messages: [expect.objectContaining({ path: 'dispatchWake.publish' })] },
 				},
 			})
 
@@ -262,13 +244,14 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('treats logger and notifications as optional-only Core Services', () => {
+		it('treats logger, notifications, and Dispatch Wake as optional-only Core Services', () => {
 			expect(openCore(coreServices())).toMatchObject({ ok: true })
 			expect(
 				openCore({
 					...coreServices(),
 					logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
 					notifications: { publish: () => {} },
+					dispatchWake: { publish: () => {}, subscribe: () => () => {} },
 				}),
 			).toMatchObject({ ok: true })
 			expect(openCore({ ...coreServices(), logger: null as never })).toMatchObject({
@@ -314,13 +297,13 @@ if (import.meta.vitest) {
 					},
 				},
 				sandbox,
-				dispatcher: {
-					preflight: () => {
-						calls.push('dispatcher')
-						return Promise.resolve({ ok: true })
+				dispatchWake: {
+					publish: () => {
+						throw new Error('dispatch wake was checked')
 					},
-					request: () => Promise.resolve('dispatch-marker'),
-					ready: () => {},
+					subscribe: () => {
+						throw new Error('dispatch wake was checked')
+					},
 				},
 				logger: {
 					debug: () => {
@@ -354,11 +337,10 @@ if (import.meta.vitest) {
 					checks: {
 						storage: { ok: true },
 						secrets: { ok: true },
-						dispatcher: { ok: true },
 					},
 				},
 			})
-			expect(calls).toEqual(['secrets', 'dispatcher'])
+			expect(calls).toEqual(['secrets'])
 		})
 
 		it('returns failed checks for failed and thrown readiness probes', async () => {
@@ -376,7 +358,6 @@ if (import.meta.vitest) {
 					checks: {
 						storage: { ok: true },
 						secrets: { ok: false, reason: 'probe-failed', message: null },
-						dispatcher: { ok: true },
 					},
 				},
 			})

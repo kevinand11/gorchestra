@@ -37,7 +37,7 @@ export function createCoreRuntime(services: CoreServices, overrides: CoreRuntime
 function coreRuntimeShell(services: CoreServices, overrides: CoreRuntimeOverrides): CoreRuntime {
 	const values = coreRuntimeValuesFor(overrides)
 	const notifications = createNotificationEmitter(values, services.notifications)
-	const transactions = createCoreTransactions({ services, notifications })
+	const transactions = createCoreTransactions({ services, notifications, values })
 	return {
 		services,
 		providers: coreProvidersFor(services, transactions, overrides),

@@ -12,7 +12,7 @@ import type { CoreIdResource, CoreResource } from './utils/storage/schema-regist
 
 export type { CoreIdResource, CoreResource } from './utils/storage/schema-registry'
 
-export type CorePreflightCheckName = 'storage' | 'secrets' | 'dispatcher'
+export type CorePreflightCheckName = 'storage' | 'secrets'
 export type CoreServiceOutputName = CorePreflightCheckName | 'sandbox' | 'runtime'
 
 export type CoreInputBoundary = 'core' | 'command' | 'query' | 'snapshot' | 'work'
@@ -66,6 +66,7 @@ export type CoreStorageOperation =
 	| { type: 'list'; resource: CoreIdResource }
 	| { type: 'create'; resource: CoreResource; id: Id }
 	| { type: 'update'; resource: CoreResource; id: Id }
+	| { type: 'delete'; resource: CoreResource; id: Id | null }
 
 export interface StorageOperationFailedError {
 	type: 'storage-operation-failed'
@@ -80,6 +81,27 @@ export interface DuplicateAgentRunRuntimeRequirementError {
 export interface InvariantViolationError {
 	type: 'invariant-violation'
 	message: string
+}
+
+export interface DispatchAttemptAbortedError {
+	type: 'dispatch-attempt-aborted'
+	requestId: Id
+	attemptNumber: number
+}
+
+export interface DispatchFenceLostError {
+	type: 'dispatch-fence-lost'
+	requestId: Id
+	attemptNumber: number
+}
+
+export interface DispatchProcessorAlreadyStartedError {
+	type: 'dispatch-processor-already-started'
+}
+
+export interface DispatchStorageIncompatibleError {
+	type: 'dispatch-storage-incompatible'
+	summary: string
 }
 
 export interface ModelPreflightFailedError {
@@ -284,6 +306,10 @@ export type CoreError =
 	| DuplicateAgentRunRuntimeRequirementError
 	| DuplicateLinkError
 	| InvariantViolationError
+	| DispatchAttemptAbortedError
+	| DispatchFenceLostError
+	| DispatchProcessorAlreadyStartedError
+	| DispatchStorageIncompatibleError
 	| ModelPreflightFailedError
 	| ModelNotSelectableError
 	| SecretResolutionFailedError

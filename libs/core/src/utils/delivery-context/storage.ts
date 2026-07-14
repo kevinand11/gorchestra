@@ -6,6 +6,7 @@ import type { AgentRun } from '../../domain/agent-run'
 import type { Id } from '../../domain/commons'
 import type { Delivery } from '../../domain/delivery'
 import type { DeliveryArtifact } from '../../domain/delivery-artifact'
+import type { DispatchRequest } from '../../domain/dispatch-request'
 import type { Link } from '../../domain/link'
 import type { Project } from '../../domain/project'
 import type { Repository } from '../../domain/repository'
@@ -42,6 +43,7 @@ interface DeliveryContextRecords {
 	slices: Slice[]
 	links: Link[]
 	actions: Action[]
+	dispatchRequests: DispatchRequest[]
 	agentRuns: AgentRun[]
 	deliveries: Delivery[]
 	deliveryArtifacts: DeliveryArtifact[]
@@ -53,6 +55,7 @@ interface ScopedDeliveryContextRecords {
 	deliveryArtifact: DeliveryArtifact | null
 	slices: DeliveryContextSlice[]
 	actions: Action[]
+	dispatchRequests: DispatchRequest[]
 	agentRuns: AgentRun[]
 	reviewSurfaces: ReviewSurface[]
 	deliveryDependencies: DeliveryDependencySummary[]
@@ -119,15 +122,18 @@ async function readDeliveryContextRecords(
 	})
 	if (!links.ok) return links
 
-	const [actions, agentRuns, deliveries, deliveryArtifacts, sliceArtifacts, reviewSurfaces] = await Promise.all([
+	const [actions, dispatchRequests, agentRuns, deliveries, deliveryArtifacts, sliceArtifacts, reviewSurfaces] = await Promise.all([
 		listRecords('action', storage, { where: (filter, fields) => filter.eq(fields.deliveryId, delivery.id) }),
+		listRecords('dispatch-request', storage, {
+			where: (filter, fields) => filter.eq(fields.payload.nested('deliveryId', 'string'), delivery.id),
+		}),
 		listRecords('agent-run', storage),
 		listDependencyDeliveries(storage, delivery, links.value),
 		listRecords('delivery-artifact', storage, { where: (filter, fields) => filter.eq(fields.deliveryId, delivery.id) }),
 		listSliceArtifacts(storage, slices.value),
 		listRecords('review-surface', storage),
 	] as const)
-	const failure = firstFailure([actions, agentRuns, deliveries, deliveryArtifacts, sliceArtifacts, reviewSurfaces])
+	const failure = firstFailure([actions, dispatchRequests, agentRuns, deliveries, deliveryArtifacts, sliceArtifacts, reviewSurfaces])
 	if (failure !== null) return failure
 
 	return {
@@ -136,6 +142,7 @@ async function readDeliveryContextRecords(
 			slices: slices.value,
 			links: links.value,
 			actions: resultValue(actions).sort(compareActions),
+			dispatchRequests: resultValue(dispatchRequests),
 			agentRuns: resultValue(agentRuns),
 			deliveries: resultValue(deliveries),
 			deliveryArtifacts: resultValue(deliveryArtifacts),
@@ -182,6 +189,11 @@ function scopedDeliveryContextRecords(
 			deliveryArtifact: deliveryArtifact.value,
 			slices: slices.value,
 			actions: records.actions.filter((action) => action.deliveryId === delivery.id),
+			dispatchRequests: records.dispatchRequests.filter(
+				(request) =>
+					(request.payload.type === 'delivery-work-scheduler' || request.payload.type === 'delivery-work-operation') &&
+					request.payload.deliveryId === delivery.id,
+			),
 			agentRuns: records.agentRuns.filter((run) => agentRunReferencesDelivery(run, delivery.id)),
 			reviewSurfaces: records.reviewSurfaces.filter((reviewSurface) =>
 				reviewSurfaceReferencesDelivery(reviewSurface, delivery.id, sliceIds),

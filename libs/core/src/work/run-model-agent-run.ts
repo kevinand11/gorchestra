@@ -2,6 +2,7 @@ import { v, type PipeInput, type PipeOutput } from 'valleyed'
 
 import { idPipe } from '../domain/commons'
 import type {
+	DispatchAttemptAbortedError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
@@ -22,6 +23,7 @@ export type Input = PipeInput<typeof inputPipe>
 export type Result = void
 export type Error =
 	| InvalidInputError
+	| DispatchAttemptAbortedError
 	| InvalidCoreServiceOutputError
 	| StorageOperationFailedError
 	| ResourceNotFoundError
@@ -31,7 +33,9 @@ export type Error =
 export type Operation = (input: Input, context: WorkContext) => Promise<CoreResult<Result, Error>>
 
 export function createRunModelAgentRunOperation(runtime: CoreRuntime): Operation {
-	return buildWorkHandler('runModelAgentRun', inputPipe, (input: ParsedInput) => runModelAgentRun(runtime, input.agentRunId))
+	return buildWorkHandler('runModelAgentRun', inputPipe, (input: ParsedInput, context) =>
+		runModelAgentRun(runtime, input.agentRunId, context.signal === undefined ? {} : { signal: context.signal }),
+	)
 }
 
 if (import.meta.vitest) {

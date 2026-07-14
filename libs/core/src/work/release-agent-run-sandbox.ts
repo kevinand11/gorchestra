@@ -4,6 +4,7 @@ import type { WorkContext } from './types'
 import type { AgentRun } from '../domain/agent-run'
 import { idPipe, type Id } from '../domain/commons'
 import type {
+	DispatchAttemptAbortedError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
@@ -13,6 +14,7 @@ import type {
 import { appendAgentRunEvent, updateAgentRunRecord } from '../utils/agent-runs'
 import type { CoreRuntime } from '../utils/runtime'
 import { managedSandboxProviderForConfig } from '../utils/runtime/sandboxes'
+import type { ManagedSandboxProvider } from '../utils/runtime/sandboxes/managed'
 import { runtimeRecord } from '../utils/runtime-values'
 import { getRequired } from '../utils/storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
@@ -25,6 +27,7 @@ export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
 export type Result = void
 export type Error =
 	| InvalidInputError
+	| DispatchAttemptAbortedError
 	| InvalidCoreServiceOutputError
 	| StorageOperationFailedError
 	| ResourceNotFoundError
@@ -32,35 +35,70 @@ export type Error =
 export type Operation = (input: Input, context: WorkContext) => Promise<CoreResult<Result, Error>>
 
 export function createReleaseAgentRunSandboxOperation(runtime: CoreRuntime): Operation {
-	return buildWorkHandler('releaseAgentRunSandbox', inputPipe, async (input: ParsedInput) => {
+	return buildWorkHandler('releaseAgentRunSandbox', inputPipe, async (input: ParsedInput, context) => {
+		if (context.signal?.aborted === true) return dispatchAttemptAborted(context.correlationId ?? input.agentRunId)
 		const agentRun = await getRequired('agent-run', runtime.services.storage, input.agentRunId)
 		if (!agentRun.ok) return agentRun
 		if (agentRun.value.sandbox === null || agentRun.value.sandbox.released !== null) return { ok: true, value: undefined }
 
-		const releasableAgentRun: AgentRunWithSandbox = { ...agentRun.value, sandbox: agentRun.value.sandbox }
-		const provider = await managedSandboxProviderForConfig(runtime, runtime.services.storage, releasableAgentRun.profile.sandboxConfig)
-		if (!provider.ok) {
-			return provider.error.type === 'sandbox-provider-resolution-failed'
-				? recordReleaseFailure(runtime, input.agentRunId, provider.error.summary)
-				: { ok: false, error: provider.error }
-		}
-
-		const sandbox = await provider.value.find({ key: releasableAgentRun.sandbox.key })
-		if (!sandbox.ok) {
-			return sandbox.error.type === 'sandbox-operation-failed'
-				? recordReleaseFailure(runtime, input.agentRunId, sandbox.error.summary)
-				: { ok: false, error: sandbox.error }
-		}
-		if (sandbox.value === null) return recordReleased(runtime, releasableAgentRun, 'Agent Run sandbox was already absent.')
-
-		const release = await sandbox.value.release()
-		if (!release.ok) {
-			return release.error.type === 'sandbox-operation-failed'
-				? recordReleaseFailure(runtime, input.agentRunId, release.error.summary)
-				: { ok: false, error: release.error }
-		}
-		return recordReleased(runtime, releasableAgentRun, release.value.summary)
+		return reconcileSandboxRelease(runtime, { ...agentRun.value, sandbox: agentRun.value.sandbox }, context.signal)
 	})
+}
+
+async function reconcileSandboxRelease(
+	runtime: CoreRuntime,
+	agentRun: AgentRunWithSandbox,
+	signal?: AbortSignal,
+): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
+	const provider = await managedSandboxProviderForConfig(runtime, runtime.services.storage, agentRun.profile.sandboxConfig)
+	if (!provider.ok) {
+		return provider.error.type === 'sandbox-provider-resolution-failed'
+			? recordReleaseFailure(runtime, agentRun.id, provider.error.summary)
+			: { ok: false, error: provider.error }
+	}
+	if (signal?.aborted === true) return dispatchAttemptAborted(agentRun.id)
+	return releaseSandboxWithProvider(runtime, provider.value, agentRun, signal)
+}
+
+async function releaseSandboxWithProvider(
+	runtime: CoreRuntime,
+	provider: ManagedSandboxProvider,
+	agentRun: AgentRunWithSandbox,
+	signal?: AbortSignal,
+): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
+	const sandbox = await provider.find({ key: agentRun.sandbox.key })
+	if (!sandbox.ok) {
+		return sandbox.error.type === 'sandbox-operation-failed'
+			? recordReleaseFailure(runtime, agentRun.id, sandbox.error.summary)
+			: { ok: false, error: sandbox.error }
+	}
+	if (sandbox.value === null) return recordReleased(runtime, agentRun, 'Agent Run sandbox was already absent.')
+	if (isAborted(signal)) return dispatchAttemptAborted(agentRun.id)
+
+	const release = await sandbox.value.release()
+	if (!release.ok) {
+		return release.error.type === 'sandbox-operation-failed'
+			? recordReleaseFailure(runtime, agentRun.id, release.error.summary)
+			: { ok: false, error: release.error }
+	}
+	if (isAborted(signal)) return dispatchAttemptAborted(agentRun.id)
+	const confirmed = await provider.find({ key: agentRun.sandbox.key })
+	if (!confirmed.ok) {
+		return confirmed.error.type === 'sandbox-operation-failed'
+			? recordReleaseFailure(runtime, agentRun.id, confirmed.error.summary)
+			: { ok: false, error: confirmed.error }
+	}
+	return confirmed.value === null
+		? recordReleased(runtime, agentRun, release.value.summary)
+		: recordReleaseFailure(runtime, agentRun.id, 'Agent Run sandbox remained present after release.')
+}
+
+function isAborted(signal?: AbortSignal): boolean {
+	return signal?.aborted === true
+}
+
+function dispatchAttemptAborted(requestId: Id): CoreResult<never, DispatchAttemptAbortedError> {
+	return { ok: false, error: { type: 'dispatch-attempt-aborted', requestId, attemptNumber: 0 } }
 }
 
 async function recordReleased(
@@ -72,14 +110,16 @@ async function recordReleased(
 	if (!released.ok) return released
 
 	const sandbox = { ...agentRun.sandbox, released: released.value }
-	const updated = await updateAgentRunRecord(runtime.services.storage, runtime.notifications, agentRun.id, { sandbox })
-	if (!updated.ok) return updated
+	return runtime.transactions.run(async ({ storage, notifications }) => {
+		const updated = await updateAgentRunRecord(storage, notifications, agentRun.id, { sandbox })
+		if (!updated.ok) return updated
 
-	const event = await appendAgentRunEvent(runtime, runtime.services.storage, agentRun.id, {
-		type: 'agent-run-sandbox-release-completed',
-		summary,
+		const event = await appendAgentRunEvent({ values: runtime.values, notifications }, storage, agentRun.id, {
+			type: 'agent-run-sandbox-release-completed',
+			summary,
+		})
+		return event.ok ? { ok: true, value: undefined } : event
 	})
-	return event.ok ? { ok: true, value: undefined } : event
 }
 
 async function recordReleaseFailure(
@@ -87,11 +127,13 @@ async function recordReleaseFailure(
 	agentRunId: Id,
 	summary: string,
 ): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
-	const failed = await appendAgentRunEvent(runtime, runtime.services.storage, agentRunId, {
-		type: 'agent-run-sandbox-release-failed',
-		summary,
+	return runtime.transactions.run(async ({ storage, notifications }) => {
+		const failed = await appendAgentRunEvent({ values: runtime.values, notifications }, storage, agentRunId, {
+			type: 'agent-run-sandbox-release-failed',
+			summary,
+		})
+		return failed.ok ? { ok: true, value: undefined } : failed
 	})
-	return failed.ok ? { ok: true, value: undefined } : failed
 }
 
 if (import.meta.vitest) {
@@ -117,18 +159,22 @@ if (import.meta.vitest) {
 			const releasedKeys: string[] = []
 			const notificationTypes: string[] = []
 			const files = new Map<string, string>()
+			let released = false
 			const options = createTestCoreServices({
 				notifications: { publish: (notification) => notificationTypes.push(notification.data.type) },
 				sandbox: {
 					kind: 'consumer-managed',
 					create: () => Promise.resolve(rawSandbox(files, () => Promise.resolve({ summary: 'released' }))),
 					find: ({ key }) =>
-						Promise.resolve(
-							rawSandbox(files, () => {
-								releasedKeys.push(key)
-								return Promise.resolve({ summary: 'released' })
-							}),
-						),
+						released
+							? Promise.resolve(null)
+							: Promise.resolve(
+									rawSandbox(files, () => {
+										released = true
+										releasedKeys.push(key)
+										return Promise.resolve({ summary: 'released' })
+									}),
+								),
 				},
 			})
 			seedCreatedAgentRun(options)
@@ -152,17 +198,23 @@ if (import.meta.vitest) {
 		})
 
 		it('records release completion when runtime env wipe fails but raw release succeeds', async () => {
+			let released = false
 			const options = createTestCoreServices({
 				sandbox: {
 					kind: 'consumer-managed',
 					create: () => Promise.resolve(rawSandbox(new Map(), () => Promise.resolve({ summary: 'released' }))),
 					find: () =>
-						Promise.resolve(
-							testRawSandbox({
-								writeFile: () => Promise.reject(new Error('no write')),
-								release: () => Promise.resolve({ summary: 'released' }),
-							}),
-						),
+						released
+							? Promise.resolve(null)
+							: Promise.resolve(
+									testRawSandbox({
+										writeFile: () => Promise.reject(new Error('no write')),
+										release: () => {
+											released = true
+											return Promise.resolve({ summary: 'released' })
+										},
+									}),
+								),
 				},
 			})
 			seedCreatedAgentRun(options)

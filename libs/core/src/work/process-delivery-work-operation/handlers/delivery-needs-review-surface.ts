@@ -17,7 +17,7 @@ type DeliveryReviewSurfaceInput = SourceControlCreateReviewSurfaceInput & {
 	deliveryArtifactId: string
 }
 
-type DeliveryReviewSurfaceClaim = Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'repositoryAccessSecret'> & {
+type DeliveryReviewSurfaceClaim = Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'repositoryAccessSecret' | 'operationId'> & {
 	state: DeliveryReviewSurfaceState
 }
 
@@ -53,6 +53,7 @@ function deliveryReviewSurfaceInput(claim: DeliveryReviewSurfaceClaim): CoreResu
 	return {
 		ok: true,
 		value: {
+			operationId: claim.operationId ?? claim.deliveryContext.delivery.id,
 			deliveryId: claim.deliveryContext.delivery.id,
 			deliveryArtifactId: deliveryArtifact.id,
 			repository: claim.deliveryContext.repository,
@@ -89,7 +90,7 @@ async function writeIntegratedDeliveryArtifactObservation(
 	const action = actionRecord(context, {
 		type: 'observe-delivery-artifact-integration',
 		evidence: externalOperationEvidence(summary, 'observe-artifact-integration', true),
-		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+		dispatch: context.dispatch ?? null,
 	})
 	if (!action.ok) return action
 
@@ -131,7 +132,7 @@ async function writeDeliveryReviewSurface(
 		result: {
 			type: 'create-delivery-review-surface',
 			reviewSurfaceId: reviewSurface.id,
-			dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+			dispatch: context.dispatch ?? null,
 		},
 	}
 
@@ -148,7 +149,7 @@ async function writeFailedDeliveryReviewSurfaceCreation(
 	const action = actionRecord(context, {
 		type: 'record-delivery-external-operation-failure',
 		evidence: externalOperationEvidence(summary, 'create-review-surface'),
-		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+		dispatch: context.dispatch ?? null,
 	})
 	if (!action.ok) return action
 
@@ -208,7 +209,7 @@ if (import.meta.vitest) {
 				result: {
 					type: 'create-delivery-review-surface',
 					reviewSurfaceId: '01k00000000000000000010001',
-					dispatchStartedActionId: null,
+					dispatch: null,
 				},
 			})
 		})
@@ -236,7 +237,7 @@ if (import.meta.vitest) {
 					passed: true,
 					summary: 'Already integrated.',
 				},
-				dispatchStartedActionId: null,
+				dispatch: null,
 			})
 		})
 
@@ -270,7 +271,7 @@ if (import.meta.vitest) {
 					passed: false,
 					summary: 'Failed.',
 				},
-				dispatchStartedActionId: null,
+				dispatch: null,
 			})
 		})
 	})

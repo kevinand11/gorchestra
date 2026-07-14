@@ -4,7 +4,6 @@ import { deliveryWorkOperationPipe, type Action, type DeliveryWorkOperation } fr
 import { idPipe, type Id } from '../../domain/commons'
 import type { ValidationEvidence } from '../../domain/evidence'
 import type { InvalidInputError } from '../../errors'
-import type { CoreStorage } from '../../services'
 import type { CoreRuntime } from '../../utils/runtime'
 import type { WorkContext } from '../types'
 import { handleDeliveryNeedsArtifactCreation } from './handlers/delivery-needs-artifact-creation'
@@ -15,6 +14,7 @@ import { handleSliceNeedsArtifactCreation } from './handlers/slice-needs-artifac
 import { handleSliceNeedsArtifactValidation } from './handlers/slice-needs-artifact-validation'
 import { handleSliceNeedsDeliveryValidation } from './handlers/slice-needs-delivery-validation'
 import { handleSliceNeedsReviewSurface } from './handlers/slice-needs-review-surface'
+import { exclusiveDeliverySchedulerClaim } from '../../dispatch/claims'
 import { buildDeliveryContext, getDeliveryState, getSliceState, type DeliveryContext } from '../../utils/delivery-context'
 import {
 	deliveryPreflightChecksPassed,
@@ -23,24 +23,18 @@ import {
 	readProviderBackedDeliveryPreflightPlan,
 	runProviderBackedDeliveryPreflightChecks,
 } from '../../utils/delivery-preflight'
-import { exclusiveDeliverySchedulerClaim } from '../../utils/dispatch'
 import { nextId, runtimeRecord } from '../../utils/runtime-values'
-import { createRecord, getRequired, listRecords } from '../../utils/storage/helpers'
-import type { CoreTransactionDispatch } from '../../utils/transactions'
+import { createRecord } from '../../utils/storage/helpers'
 import type { Result as CoreResult } from '../../utils/types'
 import { buildWorkHandler } from '../../utils/work-handler'
-import {
-	deliveryOperationFromState,
-	processedDeliveryWorkDispatchAction,
-	staleNoopDeliveryWorkDispatchAction,
-	startedDeliveryWorkDispatchAction,
-	sliceOperationFromState,
-} from '../delivery-work/dispatch-actions'
+import { deliveryOperationFromState, sliceOperationFromState } from '../delivery-work/dispatch-actions'
 import type { DeliveryWorkHandlerResult, Error, ResolvedDeliveryHandlerContext, Result } from '../delivery-work/types'
 
 const processDeliveryWorkOperationInputPipe = v.object({
 	deliveryId: idPipe,
-	queuedActionId: idPipe,
+	requestId: idPipe,
+	attemptNumber: v.number().pipe(v.int(), v.gte(1)),
+	operationId: idPipe,
 	operation: deliveryWorkOperationPipe,
 })
 type RawInput = PipeOutput<typeof processDeliveryWorkOperationInputPipe>
@@ -48,100 +42,44 @@ export type Input = Omit<RawInput, 'operation'> & { operation: DeliveryWorkOpera
 export type Operation = (input: Input, context: WorkContext) => Promise<CoreResult<Result, Error>>
 
 export function createProcessDeliveryWorkOperation(runtime: CoreRuntime): Operation {
-	return buildWorkHandler('processDeliveryWorkOperation', processDeliveryWorkOperationInputPipe, async (parsedInput) => {
+	return buildWorkHandler('processDeliveryWorkOperation', processDeliveryWorkOperationInputPipe, async (parsedInput, context) => {
 		const input = parsedInput as Input
-		const started = await runtime.transactions.run(({ storage }) => recordStartedDispatchAction(runtime, storage, input))
-		if (!started.ok) return started
-		if (started.value.type === 'already-started') return { ok: true, value: completed() }
-
-		const startedActionId = started.value.action.id
+		if (context.signal?.aborted === true) {
+			return {
+				ok: false,
+				error: { type: 'dispatch-attempt-aborted', requestId: input.requestId, attemptNumber: input.attemptNumber },
+			}
+		}
 		const current = await runtime.transactions.run(async ({ storage }) => {
 			const deliveryContext = await buildDeliveryContext(storage, input.deliveryId)
 			if (!deliveryContext.ok) return deliveryContext
 
 			const filteredContext = {
 				...deliveryContext.value,
-				actions: deliveryContext.value.actions.filter(
-					(action) => !isOwnDispatchAction(action, input.queuedActionId, startedActionId),
-				),
+				dispatchRequests: deliveryContext.value.dispatchRequests.filter((request) => request.id !== input.requestId),
 			}
 			const operation = currentOperation(filteredContext, input.operation)
 			return operation.ok ? { ok: true, value: { deliveryContext: filteredContext, operation: operation.value } } : operation
 		})
 		if (!current.ok) return current
 		if (!operationsEqual(current.value.operation, input.operation)) {
-			return finishAndRequestScheduler(runtime, input, startedActionId, 'stale-no-op', completed(1))
+			const scheduled = await requestNextScheduler(runtime, input.deliveryId)
+			return scheduled.ok ? { ok: true, value: completed() } : scheduled
 		}
 
 		const preflight = await runProcessorPreflight(runtime, current.value.deliveryContext)
 		if (!preflight.ok) return preflight
 		if (!deliveryPreflightChecksPassed(preflight.value.checks)) {
-			return writeFailedPreflightFinishAndRequestScheduler(runtime, input, startedActionId, preflight.value.checks)
+			return writeFailedPreflightAndRequestScheduler(runtime, input, preflight.value.checks)
 		}
 
-		const handled = await processFreshOperation(runtime, input, startedActionId, preflight.value.context)
+		const handled = await processFreshOperation(runtime, input, preflight.value.context)
 		if (!handled.ok) return handled
+		if (input.operation.scope === 'slice' && input.operation.state === 'executable') return handled
 
-		return finishAndRequestScheduler(runtime, input, startedActionId, 'processed', handled.value)
+		const scheduled = await requestNextScheduler(runtime, input.deliveryId)
+		return scheduled.ok ? handled : scheduled
 	})
-}
-
-type StartedAttempt = { type: 'started'; action: Action } | { type: 'already-started' }
-
-async function recordStartedDispatchAction(
-	runtime: CoreRuntime,
-	storage: CoreStorage,
-	input: Input,
-): Promise<CoreResult<StartedAttempt, Exclude<Error, InvalidInputError>>> {
-	const queued = await getRequired('action', storage, input.queuedActionId)
-	if (!queued.ok) return queued
-	if (queued.value.deliveryId !== input.deliveryId) {
-		return invariant(`Queued Delivery Work Dispatch Action ${input.queuedActionId} is not for Delivery ${input.deliveryId}.`)
-	}
-	if (queued.value.result.type !== 'queue-delivery-work-operation') {
-		return invariant(`Action ${input.queuedActionId} is not a queued Delivery Work Dispatch Action.`)
-	}
-	if (!operationsEqual(queued.value.result.operation, input.operation)) {
-		return invariant(`Delivery Work Operation request does not match queued Action ${input.queuedActionId}.`)
-	}
-
-	const actions = await listRecords('action', storage, {
-		where: (filter, fields) => filter.eq(fields.deliveryId, input.deliveryId),
-	})
-	if (!actions.ok) return actions
-	const existingStarted = actions.value.find(
-		(action) => action.result.type === 'start-delivery-work-operation' && action.result.queuedActionId === input.queuedActionId,
-	)
-	if (existingStarted !== undefined) return { ok: true, value: { type: 'already-started' } }
-
-	const actionId = nextId(runtime.values)
-	if (!actionId.ok) return actionId
-
-	const performed = runtimeRecord(runtime.values)
-	if (!performed.ok) return performed
-
-	const action = startedDeliveryWorkDispatchAction({
-		actionId: actionId.value,
-		deliveryId: input.deliveryId,
-		performed: performed.value,
-		queuedActionId: input.queuedActionId,
-		operation: input.operation,
-	})
-	const put = await createRecord('action', storage, action)
-	return put.ok ? { ok: true, value: { type: 'started', action } } : put
-}
-
-function isOwnDispatchAction(action: Action, queuedActionId: Id, startedActionId: Id): boolean {
-	switch (action.result.type) {
-		case 'queue-delivery-work-operation':
-			return action.id === queuedActionId
-		case 'start-delivery-work-operation':
-			return action.id === startedActionId || action.result.queuedActionId === queuedActionId
-		case 'finish-delivery-work-operation':
-			return action.result.startedActionId === startedActionId
-		default:
-			return false
-	}
 }
 
 function currentOperation(
@@ -206,10 +144,13 @@ async function runProcessorPreflight(
 async function processFreshOperation(
 	runtime: CoreRuntime,
 	input: Input,
-	startedActionId: Id,
 	context: ResolvedDeliveryHandlerContext,
 ): Promise<DeliveryWorkHandlerResult> {
-	const operationContext = { ...context, dispatchStartedActionId: startedActionId }
+	const operationContext = {
+		...context,
+		dispatch: { requestId: input.requestId, attemptNumber: input.attemptNumber },
+		operationId: input.operationId,
+	}
 	switch (input.operation.scope) {
 		case 'delivery':
 			return processFreshDeliveryOperation(runtime, input.operation, operationContext)
@@ -300,10 +241,9 @@ async function processFreshSliceOperation(
 	}
 }
 
-async function writeFailedPreflightFinishAndRequestScheduler(
+async function writeFailedPreflightAndRequestScheduler(
 	runtime: CoreRuntime,
 	input: Input,
-	startedActionId: Id,
 	checks: ValidationEvidence[],
 ): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
 	return runtime.transactions.run(async ({ storage, dispatch }) => {
@@ -322,62 +262,25 @@ async function writeFailedPreflightFinishAndRequestScheduler(
 		const preflightPut = await createRecord('action', storage, preflightAction)
 		if (!preflightPut.ok) return preflightPut
 
-		const finished = await writeFinishAndRequestScheduler(runtime, storage, dispatch, input, startedActionId, 'processed')
-		return finished.ok ? { ok: true, value: completed(1) } : finished
+		const accepted = await dispatch.request({
+			payload: { type: 'delivery-work-scheduler', deliveryId: input.deliveryId },
+			coordinationClaims: [exclusiveDeliverySchedulerClaim(input.deliveryId)],
+			deduplicationKey: { type: 'delivery-work-scheduler', deliveryId: input.deliveryId },
+			reason: { type: 'delivery-work-requested' },
+		})
+		return accepted.ok ? { ok: true, value: completed(1) } : accepted
 	})
 }
 
-function finishAndRequestScheduler(
-	runtime: CoreRuntime,
-	input: Input,
-	startedActionId: Id,
-	outcome: 'processed' | 'stale-no-op',
-	result: Result,
-): Promise<CoreResult<Result, Exclude<Error, InvalidInputError>>> {
-	return runtime.transactions.run(async ({ storage, dispatch }) => {
-		const finished = await writeFinishAndRequestScheduler(runtime, storage, dispatch, input, startedActionId, outcome)
-		return finished.ok ? { ok: true, value: result } : finished
-	})
-}
-
-async function writeFinishAndRequestScheduler(
-	runtime: CoreRuntime,
-	storage: CoreStorage,
-	dispatch: CoreTransactionDispatch,
-	input: Input,
-	startedActionId: Id,
-	outcome: 'processed' | 'stale-no-op',
-): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
-	const actionId = nextId(runtime.values)
-	if (!actionId.ok) return actionId
-
-	const performed = runtimeRecord(runtime.values)
-	if (!performed.ok) return performed
-
-	const action =
-		outcome === 'processed'
-			? processedDeliveryWorkDispatchAction({
-					actionId: actionId.value,
-					deliveryId: input.deliveryId,
-					performed: performed.value,
-					startedActionId,
-					operation: input.operation,
-				})
-			: staleNoopDeliveryWorkDispatchAction({
-					actionId: actionId.value,
-					deliveryId: input.deliveryId,
-					performed: performed.value,
-					startedActionId,
-					operation: input.operation,
-				})
-	const put = await createRecord('action', storage, action)
-	if (!put.ok) return put
-
-	return dispatch.request({
-		type: 'delivery-work-scheduler',
-		deliveryId: input.deliveryId,
-		coordinationClaims: [exclusiveDeliverySchedulerClaim(input.deliveryId)],
-		reason: { type: 'delivery-work-requested' },
+function requestNextScheduler(runtime: CoreRuntime, deliveryId: Id): Promise<CoreResult<void, Exclude<Error, InvalidInputError>>> {
+	return runtime.transactions.run(async ({ dispatch }) => {
+		const accepted = await dispatch.request({
+			payload: { type: 'delivery-work-scheduler', deliveryId },
+			coordinationClaims: [exclusiveDeliverySchedulerClaim(deliveryId)],
+			deduplicationKey: { type: 'delivery-work-scheduler', deliveryId },
+			reason: { type: 'delivery-work-requested' },
+		})
+		return accepted.ok ? { ok: true, value: undefined } : accepted
 	})
 }
 

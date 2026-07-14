@@ -15,7 +15,7 @@ export type DeliveryArtifactCreationInput = SourceControlCreateArtifactBranchInp
 }
 
 function deliveryArtifactCreationInput(
-	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'repositoryAccessSecret'>,
+	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'repositoryAccessSecret' | 'operationId'>,
 ): CoreResult<DeliveryArtifactCreationInput, InvariantViolationError> {
 	const deliveryBranch = sourceControlDeliveryBranchName(context.deliveryContext.delivery.id)
 	if (!deliveryBranch.ok) return deliveryBranch
@@ -23,6 +23,7 @@ function deliveryArtifactCreationInput(
 	return {
 		ok: true,
 		value: {
+			operationId: context.operationId ?? context.deliveryContext.delivery.id,
 			deliveryId: context.deliveryContext.delivery.id,
 			repository: context.deliveryContext.repository,
 			accessSecret: context.repositoryAccessSecret,
@@ -58,7 +59,7 @@ async function recordDeliveryArtifactCreationResult(
 		const action = actionRecord(context, {
 			type: 'record-delivery-external-operation-failure',
 			evidence: externalOperationEvidence(creation.summary),
-			dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+			dispatch: context.dispatch ?? null,
 		})
 		if (!action.ok) return action
 
@@ -88,7 +89,7 @@ async function recordDeliveryArtifactCreationResult(
 	const action = actionRecord(context, {
 		type: 'create-delivery-artifact',
 		deliveryArtifactId: artifact.id,
-		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+		dispatch: context.dispatch ?? null,
 	})
 	if (!action.ok) return action
 
@@ -109,6 +110,7 @@ if (import.meta.vitest) {
 			expect(deliveryArtifactCreationInput(context)).toEqual({
 				ok: true,
 				value: {
+					operationId: '01k00000000000000000000008',
 					deliveryId: '01k00000000000000000000008',
 					repository: context.deliveryContext.repository,
 					accessSecret: context.repositoryAccessSecret,
@@ -139,7 +141,7 @@ if (import.meta.vitest) {
 			expect(context.tx.actions.records.get('01k00000000000000000010002')?.result).toEqual({
 				type: 'create-delivery-artifact',
 				deliveryArtifactId: '01k00000000000000000010001',
-				dispatchStartedActionId: null,
+				dispatch: null,
 			})
 		})
 
@@ -175,7 +177,7 @@ if (import.meta.vitest) {
 					passed: false,
 					summary: 'GitHub artifact source branch was not found.',
 				},
-				dispatchStartedActionId: null,
+				dispatch: null,
 			})
 		})
 	})

@@ -8,9 +8,11 @@ import {
 	jsonObjectPipe,
 	nonEmptyTrimmedStringPipe,
 	nonNegativeIntegerPipe,
+	positiveIntegerPipe,
 	runtimeRecordPipe,
 } from './commons'
 import { modelUseConfigPipe } from './config'
+import { dispatchRequestTypePipe, safeDispatchCategoryPipe, safeDispatchSummaryPipe } from './dispatch-request'
 import { modelThinkingLevelPipe } from './model'
 import { modelProviderProtocolPipe } from './model-provider'
 import { planOutputProposalPipe, revisionOutputProposalPipe } from './proposals'
@@ -375,6 +377,14 @@ export const agentRunProposalMaterializationPipe = v.discriminate((value) => val
 export type AgentRunProposalMaterialization = PipeOutput<typeof agentRunProposalMaterializationPipe>
 
 export const agentRunEventBodyPipe = v.discriminate((value) => value.type, {
+	'agent-run-dispatch-failed': v.object({
+		type: v.eq('agent-run-dispatch-failed'),
+		requestId: idPipe,
+		requestType: dispatchRequestTypePipe,
+		attemptNumber: positiveIntegerPipe,
+		category: safeDispatchCategoryPipe,
+		summary: safeDispatchSummaryPipe,
+	}),
 	'agent-run-model-use-override-changed': v.object({
 		type: v.eq('agent-run-model-use-override-changed'),
 		modelUse: v.nullable(modelUseConfigPipe),

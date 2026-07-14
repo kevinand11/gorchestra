@@ -9,7 +9,7 @@ export function handleDeliveryNeedsArtifactValidation(
 	return writeValidationAction(context, {
 		type: 'validate-delivery-artifact',
 		evidence: noConfiguredValidationEvidence('delivery-branch-validation', 'No Delivery Artifact validation is configured.'),
-		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+		dispatch: context.dispatch ?? null,
 	})
 }
 
@@ -33,7 +33,7 @@ if (import.meta.vitest) {
 				result: {
 					type: 'validate-delivery-artifact',
 					evidence: validationEvidence('delivery-branch-validation', true, 'No Delivery Artifact validation is configured.'),
-					dispatchStartedActionId: null,
+					dispatch: null,
 				},
 			})
 		})

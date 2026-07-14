@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
+import { requestAgentRunPreparation } from '../dispatch/accept'
 import type { AgentRunEvent } from '../domain/agent-run-event'
 import { agentRunRuntimeRequirementsPipe, firstDuplicateRuntimeRequirement, runtimeRequirementKey } from '../domain/agent-run-runtime'
 import { idPipe } from '../domain/commons'
@@ -18,7 +19,6 @@ import { appendAgentRunEvent, updateAgentRunRecord } from '../utils/agent-runs'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import { buildCommandHandler } from '../utils/command-handler'
 import { auditStamp, getRequired, runtimeRecord } from '../utils/command-storage'
-import { requestAgentRunPreparation } from '../utils/dispatch'
 import type { CoreRuntime } from '../utils/runtime'
 import { validateRuntimeRequirementSecretReferences } from '../utils/runtime-requirement-secrets'
 import type { Result as CoreResult } from '../utils/types'
@@ -103,26 +103,17 @@ function duplicateRuntimeRequirement(
 }
 
 if (import.meta.vitest) {
-	const { describe, expect, it } = import.meta.vitest
+	const { describe, expect, it, vi } = import.meta.vitest
 	const { context, createTestCoreRuntime, createTestCoreServices, seedSecret, testModelAgentRun } = await import('../utils/test-helpers')
 
 	describe('addAgentRunRuntimeRequirementOverride command', () => {
 		it('appends an override batch for active autonomous Agent Runs and dispatches Agent Run preparation', async () => {
-			const dispatches: unknown[] = []
-			const readyMarkers: string[] = []
 			const publicationOrder: string[] = []
 			const options = createTestCoreServices({
 				notifications: { publish: (notification) => publicationOrder.push(`notification:${notification.data.type}`) },
-				dispatcher: {
-					preflight: () => Promise.resolve({ ok: true }),
-					request: (request) => {
-						dispatches.push(request)
-						return Promise.resolve('marker-1')
-					},
-					ready: (marker) => {
-						publicationOrder.push('dispatcher-ready')
-						readyMarkers.push(marker)
-					},
+				dispatchWake: {
+					publish: () => publicationOrder.push('dispatch-wake'),
+					subscribe: () => () => {},
 				},
 			})
 			seedSecret(options.tx, '01k00000000000000000000040')
@@ -156,34 +147,20 @@ if (import.meta.vitest) {
 				desiredRuntimeRequirements: [{ type: 'environment-secret', envName: 'NPM_TOKEN', secretId: '01k00000000000000000000040' }],
 				runtimeRequirementOverrides: [{ eventId: '01k00000000000000000010001' }],
 			})
-			expect(dispatches).toEqual([
-				{
-					type: 'agent-run-preparation',
-					agentRunId: '01k00000000000000000000002',
-					coordinationClaims: [
-						{
-							scope: [{ type: 'agent-run', id: '01k00000000000000000000002' }],
-							mode: { type: 'exclusive' },
-						},
-					],
-					reason: { type: 'runtime-requirement-override-added', eventId: '01k00000000000000000010001' },
-				},
+			expect([...options.tx.dispatchRequests.records.values()].map((request) => request.payload)).toEqual([
+				{ type: 'agent-run-preparation', agentRunId: '01k00000000000000000000002' },
 			])
-			expect(readyMarkers).toEqual(['marker-1'])
-			expect(publicationOrder).toEqual(['notification:agent-run-event-created', 'notification:agent-run-updated', 'dispatcher-ready'])
+			expect(publicationOrder).toEqual(['notification:agent-run-event-created', 'notification:agent-run-updated', 'dispatch-wake'])
 		})
 
 		it('rolls back queued notifications and writes when dispatch acceptance fails', async () => {
 			const notifications: unknown[] = []
-			const readyMarkers: string[] = []
+			const wake = vi.fn()
 			const options = createTestCoreServices({
 				notifications: { publish: (notification) => notifications.push(notification) },
-				dispatcher: {
-					preflight: () => Promise.resolve({ ok: true }),
-					request: () => Promise.resolve(''),
-					ready: (marker) => readyMarkers.push(marker),
-				},
+				dispatchWake: { publish: wake, subscribe: () => () => {} },
 			})
+			options.tx.dispatchRequests.fail.put = true
 			seedSecret(options.tx, '01k00000000000000000000040')
 			const original = testModelAgentRun()
 			options.tx.agentRuns.records.set(original.id, original)
@@ -197,11 +174,14 @@ if (import.meta.vitest) {
 				context,
 			)
 
-			expect(result).toMatchObject({ ok: false, error: { type: 'invalid-core-service-output', service: 'dispatcher' } })
+			expect(result).toMatchObject({
+				ok: false,
+				error: { type: 'storage-operation-failed', operation: { type: 'create', resource: 'dispatch-request' } },
+			})
 			expect(options.tx.agentRuns.records.get(original.id)).toEqual(original)
 			expect(options.tx.agentRunEvents.records.size).toBe(0)
 			expect(notifications).toEqual([])
-			expect(readyMarkers).toEqual([])
+			expect(wake).not.toHaveBeenCalled()
 		})
 
 		it('does not fail successful work when notification publishing throws', async () => {

@@ -3,6 +3,7 @@ import type { Action } from '../../domain/action'
 import type { AgentRun } from '../../domain/agent-run'
 import type { Delivery } from '../../domain/delivery'
 import type { DeliveryArtifact } from '../../domain/delivery-artifact'
+import type { DispatchRequest } from '../../domain/dispatch-request'
 import type { Project } from '../../domain/project'
 import type { Repository } from '../../domain/repository'
 import type { ReviewSurface } from '../../domain/review-surface'
@@ -27,6 +28,7 @@ export interface DeliveryContext {
 	deliveryArtifact: DeliveryArtifact | null
 	slices: DeliveryContextSlice[]
 	actions: Action[]
+	dispatchRequests: DispatchRequest[]
 	agentRuns: AgentRun[]
 	reviewSurfaces: ReviewSurface[]
 	deliveryDependencies: DeliveryDependencySummary[]

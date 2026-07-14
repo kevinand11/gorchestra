@@ -169,21 +169,11 @@ if (import.meta.vitest) {
 			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010003')?.body).toEqual(revisionPlanningInstructionBody())
 		})
 
-		it('requests Agent Run preparation only and readies it after commit', async () => {
-			const dispatches: unknown[] = []
-			const readyMarkers: string[] = []
+		it('persists only Agent Run preparation and wakes after commit', async () => {
+			const wakes: string[] = []
 			const options = openDeliveryRevisionGateFixture(
 				createTestCoreServices({
-					dispatcher: {
-						preflight: () => Promise.resolve({ ok: true }),
-						request: (request) => {
-							dispatches.push(request)
-							return Promise.resolve('marker-1')
-						},
-						ready: (marker) => {
-							readyMarkers.push(marker)
-						},
-					},
+					dispatchWake: { publish: () => wakes.push('wake'), subscribe: () => () => {} },
 				}),
 			)
 			const command = createOpenRevisionGateCommand(createTestCoreRuntime(options))
@@ -194,20 +184,10 @@ if (import.meta.vitest) {
 			)
 
 			expect(result).toMatchObject({ ok: true })
-			expect(dispatches).toEqual([
-				{
-					type: 'agent-run-preparation',
-					agentRunId: '01k00000000000000000010002',
-					coordinationClaims: [
-						{
-							scope: [{ type: 'agent-run', id: '01k00000000000000000010002' }],
-							mode: { type: 'exclusive' },
-						},
-					],
-					reason: { type: 'agent-run-created' },
-				},
+			expect([...options.tx.dispatchRequests.records.values()].map((request) => request.payload)).toEqual([
+				{ type: 'agent-run-preparation', agentRunId: '01k00000000000000000010002' },
 			])
-			expect(readyMarkers).toEqual(['marker-1'])
+			expect(wakes).toEqual(['wake'])
 			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010003')?.body).toEqual(revisionPlanningInstructionBody())
 		})
 

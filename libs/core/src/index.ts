@@ -7,7 +7,7 @@
  */
 
 export type * as Commands from './commands'
-export type * as Work from './work'
+export type * from './dispatch'
 export type * from './core'
 export { openCore } from './core'
 export * as Domain from './domain'

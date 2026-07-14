@@ -3,6 +3,7 @@ import { PipeError } from 'valleyed'
 
 import { withExplicitCoreStorageId } from './schema'
 import { coreIdResourceSchemas, coreResourceSchemas, type CoreIdStorageRecord, type CoreStorageRecord } from './schema-registry'
+import { currentDispatchAttemptForWrite } from '../../dispatch/attempt-context'
 import type { Id, PaginatedQueryEnvelope, ParsedPaginatedQueryInput } from '../../domain/commons'
 import type {
 	CoreIdResource,
@@ -155,6 +156,12 @@ export async function createRecord<Resource extends CoreResource>(
 	storage: CoreStorage,
 	record: CoreStorageRecord<Resource>,
 ): Promise<Result<CoreStorageRecord<Resource>, StorageOperationFailedError | InvariantViolationError>> {
+	const attempt = currentDispatchAttemptForWrite()
+	if (attempt !== null) {
+		return attempt.runWrite((tx) => createRecord(resource, tx.storage, record)) as Promise<
+			Result<CoreStorageRecord<Resource>, StorageOperationFailedError | InvariantViolationError>
+		>
+	}
 	try {
 		const created = await withExplicitCoreStorageId(recordId(record), () =>
 			storage
@@ -174,6 +181,12 @@ export async function updateRecord<Resource extends CoreIdResource>(
 	id: string,
 	patch: Partial<CoreIdStorageRecord<Resource>>,
 ): Promise<Result<CoreIdStorageRecord<Resource>, StorageOperationFailedError | InvariantViolationError | ResourceNotFoundError>> {
+	const attempt = currentDispatchAttemptForWrite()
+	if (attempt !== null) {
+		return attempt.runWrite((tx) => updateRecord(resource, tx.storage, id, patch)) as Promise<
+			Result<CoreIdStorageRecord<Resource>, StorageOperationFailedError | InvariantViolationError | ResourceNotFoundError>
+		>
+	}
 	try {
 		const updated = await storage
 			.on(coreIdResourceSchemas[resource])
@@ -183,6 +196,31 @@ export async function updateRecord<Resource extends CoreIdResource>(
 		return updated === null ? notFound(resource, id) : { ok: true, value: updated as unknown as CoreIdStorageRecord<Resource> }
 	} catch (error) {
 		return writeStorageError(resource, { type: 'update', resource, id }, error)
+	}
+}
+
+export async function deleteRecords<Resource extends CoreIdResource>(
+	resource: Resource,
+	storage: CoreStorage,
+	ids: Id[],
+): Promise<Result<number, StorageOperationFailedError | InvariantViolationError>> {
+	if (ids.length === 0) return { ok: true, value: 0 }
+	const attempt = currentDispatchAttemptForWrite()
+	if (attempt !== null) {
+		return attempt.runWrite((tx) => deleteRecords(resource, tx.storage, ids)) as Promise<
+			Result<number, StorageOperationFailedError | InvariantViolationError>
+		>
+	}
+	try {
+		const schema = coreIdResourceSchemas[resource]
+		const deleted = await storage
+			.on(schema)
+			.all()
+			.where((filter) => filter.in(schema.fields.id, ids))
+			.delete()
+		return { ok: true, value: deleted.length }
+	} catch (error) {
+		return writeStorageError(resource, { type: 'delete', resource, id: null }, error)
 	}
 }
 

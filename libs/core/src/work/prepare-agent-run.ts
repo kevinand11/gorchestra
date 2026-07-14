@@ -5,6 +5,7 @@ import type { AgentRun } from '../domain/agent-run'
 import { runtimeRequirementKey, type AgentRunRuntimeRequirement } from '../domain/agent-run-runtime'
 import { idPipe, type Id } from '../domain/commons'
 import type {
+	DispatchAttemptAbortedError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
@@ -20,11 +21,12 @@ import {
 	managedSandboxFileApiReadinessDirectory,
 	verifyManagedSandboxFileApiReadiness,
 	type ManagedSandbox,
+	type ManagedSandboxProvider,
 	type ManagedSandboxError,
 } from '../utils/runtime/sandboxes/managed'
 import { runtimeRecord } from '../utils/runtime-values'
 import { resolveActiveSecretValues } from '../utils/secrets'
-import { getRequired } from '../utils/storage/helpers'
+import { getRequired, listRecords, updateRecord } from '../utils/storage/helpers'
 import type { Result as CoreResult, UndefinedToOptional } from '../utils/types'
 import { buildWorkHandler } from '../utils/work-handler'
 
@@ -34,6 +36,7 @@ export type Input = UndefinedToOptional<PipeInput<typeof inputPipe>>
 export type Result = void
 export type Error =
 	| InvalidInputError
+	| DispatchAttemptAbortedError
 	| InvalidCoreServiceOutputError
 	| StorageOperationFailedError
 	| ResourceNotFoundError
@@ -47,7 +50,8 @@ type AgentRunSandbox = NonNullable<AgentRun['sandbox']>
 type AgentRunWithSandbox = AgentRun & { sandbox: AgentRunSandbox }
 
 export function createPrepareAgentRunOperation(runtime: CoreRuntime): Operation {
-	return buildWorkHandler('prepareAgentRun', inputPipe, async (input: ParsedInput) => {
+	return buildWorkHandler('prepareAgentRun', inputPipe, async (input: ParsedInput, context) => {
+		if (context.signal?.aborted === true) return dispatchAttemptAborted(context.correlationId ?? input.agentRunId)
 		const loaded = await getRequired('agent-run', runtime.services.storage, input.agentRunId)
 		if (!loaded.ok) return loaded
 		if (loaded.value.completed !== null) return { ok: true, value: undefined }
@@ -59,7 +63,7 @@ export function createPrepareAgentRunOperation(runtime: CoreRuntime): Operation 
 		})
 		if (!started.ok) return started
 
-		const preparedSandbox = await ensureManagedSandbox(runtime, loaded.value)
+		const preparedSandbox = await ensureManagedSandbox(runtime, loaded.value, context.signal)
 		if (!preparedSandbox.ok) {
 			if (isCommandPreparationFailure(preparedSandbox.error)) {
 				const blocked = await blockPreparationFailure(runtime, loaded.value, { type: 'sandbox' }, preparedSandbox.error.summary)
@@ -77,6 +81,7 @@ export function createPrepareAgentRunOperation(runtime: CoreRuntime): Operation 
 async function ensureManagedSandbox(
 	runtime: CoreRuntime,
 	agentRun: AgentRun,
+	signal?: AbortSignal,
 ): Promise<
 	CoreResult<{ agentRun: AgentRunWithSandbox; sandbox: ManagedSandbox }, CommandPreparationFailure | Exclude<Error, InvalidInputError>>
 > {
@@ -91,21 +96,43 @@ async function ensureManagedSandbox(
 			: { ok: false, error: provider.error }
 	}
 
-	if (agentRun.sandbox === null) {
-		const key = agentRun.id
-		const createdSandbox = await provider.value.create({ key, config: agentRun.profile.sandboxConfig })
-		if (!createdSandbox.ok) return mapManagedSandboxError(createdSandbox.error)
+	if (signal?.aborted === true) return dispatchAttemptAborted(agentRun.id)
+	return agentRun.sandbox === null
+		? findOrCreateUnrecordedSandbox(runtime, provider.value, agentRun, signal)
+		: findRecordedSandbox(provider.value, agentRun)
+}
 
-		const createdAgentRun = await recordSandboxCreated(runtime, agentRun, key)
-		return createdAgentRun.ok
-			? { ok: true, value: { agentRun: createdAgentRun.value, sandbox: createdSandbox.value } }
-			: createdAgentRun
+async function findOrCreateUnrecordedSandbox(
+	runtime: CoreRuntime,
+	provider: ManagedSandboxProvider,
+	agentRun: AgentRun,
+	signal?: AbortSignal,
+): Promise<
+	CoreResult<{ agentRun: AgentRunWithSandbox; sandbox: ManagedSandbox }, CommandPreparationFailure | Exclude<Error, InvalidInputError>>
+> {
+	const key = agentRun.id
+	const found = await provider.find({ key })
+	if (!found.ok) return mapManagedSandboxError(found.error)
+	if (signal?.aborted === true) return dispatchAttemptAborted(agentRun.id)
+	let sandbox = found.value
+	if (sandbox === null) {
+		const created = await provider.create({ key, config: agentRun.profile.sandboxConfig })
+		if (!created.ok) return mapManagedSandboxError(created.error)
+		sandbox = created.value
 	}
+	const createdAgentRun = await recordSandboxCreated(runtime, agentRun, key)
+	return createdAgentRun.ok ? { ok: true, value: { agentRun: createdAgentRun.value, sandbox } } : createdAgentRun
+}
 
+async function findRecordedSandbox(
+	provider: ManagedSandboxProvider,
+	agentRun: AgentRun,
+): Promise<
+	CoreResult<{ agentRun: AgentRunWithSandbox; sandbox: ManagedSandbox }, CommandPreparationFailure | Exclude<Error, InvalidInputError>>
+> {
 	const existingAgentRun = requireAgentRunSandbox(agentRun)
 	if (!existingAgentRun.ok) return existingAgentRun
-
-	const found = await provider.value.find({ key: existingAgentRun.value.sandbox.key })
+	const found = await provider.find({ key: existingAgentRun.value.sandbox.key })
 	if (!found.ok) return mapManagedSandboxError(found.error)
 	return found.value === null
 		? { ok: false, error: { summary: 'Agent Run sandbox was not found.' } }
@@ -127,19 +154,19 @@ async function recordSandboxCreated(
 		appliedRequirements: [],
 		appliedThroughEventId: null,
 	}
-	const updated = await updateAgentRunRecord(runtime.services.storage, runtime.notifications, agentRun.id, {
-		sandbox: agentRunSandbox,
-	})
-	if (!updated.ok) return updated
+	return runtime.transactions.run(async ({ storage, notifications }) => {
+		const updated = await updateAgentRunRecord(storage, notifications, agentRun.id, { sandbox: agentRunSandbox })
+		if (!updated.ok) return updated
 
-	const updatedAgentRun = requireAgentRunSandbox(updated.value)
-	if (!updatedAgentRun.ok) return updatedAgentRun
+		const updatedAgentRun = requireAgentRunSandbox(updated.value)
+		if (!updatedAgentRun.ok) return updatedAgentRun
 
-	const event = await appendAgentRunEvent(runtime, runtime.services.storage, agentRun.id, {
-		type: 'agent-run-sandbox-created',
-		key,
+		const event = await appendAgentRunEvent({ values: runtime.values, notifications }, storage, agentRun.id, {
+			type: 'agent-run-sandbox-created',
+			key,
+		})
+		return event.ok ? { ok: true, value: updatedAgentRun.value } : event
 	})
-	return event.ok ? { ok: true, value: updatedAgentRun.value } : event
 }
 
 async function applyRuntimeRequirements(
@@ -267,6 +294,10 @@ function validateAppliedRequirementPrefix(agentRun: AgentRunWithSandbox): CoreRe
 		}
 	}
 	return { ok: true, value: undefined }
+}
+
+function dispatchAttemptAborted(requestId: Id): CoreResult<never, DispatchAttemptAbortedError> {
+	return { ok: false, error: { type: 'dispatch-attempt-aborted', requestId, attemptNumber: 0 } }
 }
 
 function invariant(message: string): CoreResult<never, InvariantViolationError> {
@@ -407,15 +438,35 @@ async function completePreparation(
 ): Promise<CoreResult<AgentRun, Exclude<Error, InvalidInputError>>> {
 	const appliedThroughEventId = latestRuntimeOverrideEventId(agentRun)
 	const sandbox = { ...agentRun.sandbox, appliedThroughEventId, released: null }
-	const updated = await updateAgentRunRecord(runtime.services.storage, runtime.notifications, agentRun.id, { blocked: null, sandbox })
-	if (!updated.ok) return updated
+	return runtime.transactions.run(async ({ storage, notifications }) => {
+		const updated = await updateAgentRunRecord(storage, notifications, agentRun.id, { blocked: null, sandbox })
+		if (!updated.ok) return updated
 
-	const event = await appendAgentRunEvent(runtime, runtime.services.storage, agentRun.id, {
-		type: 'agent-run-preparation-completed',
-		appliedThroughEventId,
-		summary: 'Agent Run preparation completed.',
+		const event = await appendAgentRunEvent({ values: runtime.values, notifications }, storage, agentRun.id, {
+			type: 'agent-run-preparation-completed',
+			appliedThroughEventId,
+			summary: 'Agent Run preparation completed.',
+		})
+		if (!event.ok) return event
+
+		const requests = await listRecords('dispatch-request', storage)
+		if (!requests.ok) return requests
+		for (const request of requests.value) {
+			if (
+				request.payload.type !== 'agent-run-model-turn' ||
+				request.payload.agentRunId !== agentRun.id ||
+				request.lifecycle.type !== 'waiting' ||
+				request.lifecycle.prerequisite.type !== 'agent-run-preparation'
+			) {
+				continue
+			}
+			const pending = await updateRecord('dispatch-request', storage, request.id, {
+				lifecycle: { type: 'pending', eligibleAt: event.value.occurred.at },
+			})
+			if (!pending.ok) return pending
+		}
+		return { ok: true, value: updated.value }
 	})
-	return event.ok ? { ok: true, value: updated.value } : event
 }
 
 async function blockPreparationFailure(
@@ -428,15 +479,17 @@ async function blockPreparationFailure(
 	if (!blockedRecord.ok) return blockedRecord
 
 	const blocked: AgentRun['blocked'] = { type: 'preparation-failed', blocked: blockedRecord.value, target, summary }
-	const updated = await updateAgentRunRecord(runtime.services.storage, runtime.notifications, agentRun.id, { blocked })
-	if (!updated.ok) return updated
+	return runtime.transactions.run(async ({ storage, notifications }) => {
+		const updated = await updateAgentRunRecord(storage, notifications, agentRun.id, { blocked })
+		if (!updated.ok) return updated
 
-	const event = await appendAgentRunEvent(runtime, runtime.services.storage, agentRun.id, {
-		type: 'agent-run-preparation-failed',
-		target,
-		summary,
+		const event = await appendAgentRunEvent({ values: runtime.values, notifications }, storage, agentRun.id, {
+			type: 'agent-run-preparation-failed',
+			target,
+			summary,
+		})
+		return event.ok ? { ok: true, value: { ...agentRun, blocked } } : event
 	})
-	return event.ok ? { ok: true, value: { ...agentRun, blocked } } : event
 }
 
 function latestRuntimeOverrideEventId(agentRun: AgentRun): Id | null {
@@ -445,8 +498,16 @@ function latestRuntimeOverrideEventId(agentRun: AgentRun): Id | null {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreRuntime, createTestCoreServices, defaultAgentRunSandboxConfig, seedSecret, testModelAgentRun, testRawSandbox } =
-		await import('../utils/test-helpers')
+	const {
+		createTestCoreRuntime,
+		createTestCoreServices,
+		defaultAgentRunSandboxConfig,
+		seedDispatchRequest,
+		seedSecret,
+		testId,
+		testModelAgentRun,
+		testRawSandbox,
+	} = await import('../utils/test-helpers')
 
 	describe('prepareAgentRun work operation', () => {
 		it('validates input with the work boundary before reading storage', async () => {
@@ -502,6 +563,17 @@ if (import.meta.vitest) {
 				...globalRuntimeRequirements,
 				envRequirement,
 			]
+			const waitingRequest = seedDispatchRequest(options.tx, testId(90), {
+				payload: { type: 'agent-run-model-turn', agentRunId: testId(2) },
+				reasons: [{ type: 'input-appended', inputEventId: testId(91) }],
+				deduplicationKey: null,
+				coordinationClaims: [{ scope: [{ type: 'agent-run', id: testId(2) }], mode: { type: 'exclusive' } }],
+				lifecycle: {
+					type: 'waiting',
+					since: { at: '2026-06-10T11:59:00.000Z' },
+					prerequisite: { type: 'agent-run-preparation', agentRunId: testId(2) },
+				},
+			})
 			const operation = createPrepareAgentRunOperation(createTestCoreRuntime(options))
 
 			const result = await operation({ agentRunId: '01k00000000000000000000002' }, { correlationId: null })
@@ -521,6 +593,10 @@ if (import.meta.vitest) {
 					appliedThroughEventId: null,
 					released: null,
 				},
+			})
+			expect(options.tx.dispatchRequests.records.get(waitingRequest.id)?.lifecycle).toEqual({
+				type: 'pending',
+				eligibleAt: '2026-06-10T12:00:00.000Z',
 			})
 		})
 

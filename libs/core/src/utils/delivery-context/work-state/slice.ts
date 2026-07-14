@@ -28,6 +28,7 @@ function deriveSliceState(context: DeliveryContext, storedSlice: DeliveryContext
 	const earlyState = firstSyncState([
 		() => completeSliceState(storedSlice.slice, sliceActions),
 		() => sliceDispatchState(context, storedSlice.slice),
+		() => sliceDispatchFailureState(context, storedSlice.slice),
 		() => promotedSliceState(context, storedSlice.slice, sliceActions),
 		() => sliceDependencyState(context, storedSlice),
 	])
@@ -45,14 +46,33 @@ function completeSliceState(slice: Slice, sliceActions: Action[]): WorkStateResu
 
 function sliceDispatchState(context: DeliveryContext, slice: Slice): WorkStateResult<SliceWorkState | null> {
 	const inTransit = latestInTransitDispatchForOperation(
-		context.actions,
+		context.dispatchRequests,
 		(operation) => operation.scope === 'slice' && operation.sliceId === slice.id,
 	)
 	if (inTransit === null) return ok(null)
 
-	return inTransit.type === 'running'
-		? ok({ type: 'operation-running', operation: inTransit.action.result.operation, startedActionId: inTransit.action.id })
-		: ok({ type: 'operation-queued', operation: inTransit.action.result.operation, queuedActionId: inTransit.action.id })
+	return inTransit.type === 'running' && inTransit.request.lifecycle.type === 'leased'
+		? ok({
+				type: 'operation-running',
+				operation: inTransit.request.payload.operation,
+				requestId: inTransit.request.id,
+				attemptNumber: inTransit.request.lifecycle.attempt.number,
+			})
+		: ok({ type: 'operation-queued', operation: inTransit.request.payload.operation, requestId: inTransit.request.id })
+}
+
+function sliceDispatchFailureState(context: DeliveryContext, slice: Slice): WorkStateResult<SliceWorkState | null> {
+	const failure = latestAction(
+		context.actions.filter(
+			(action) =>
+				action.result.type === 'record-delivery-work-dispatch-failure' &&
+				action.result.scope.type === 'slice' &&
+				action.result.scope.sliceId === slice.id,
+		),
+	)
+	return failure?.result.type === 'record-delivery-work-dispatch-failure'
+		? ok({ type: 'slice-dispatch-failed', actionId: failure.id, requestId: failure.result.requestId })
+		: ok(null)
 }
 
 function promotedSliceState(context: DeliveryContext, slice: Slice, sliceActions: Action[]): WorkStateResult<SliceWorkState | null> {
@@ -462,7 +482,7 @@ if (import.meta.vitest) {
 					type: 'record-slice-external-operation-failure',
 					sliceId: '01k00000000000000000000042',
 					evidence: externalFailure,
-					dispatchStartedActionId: null,
+					dispatch: null,
 				},
 			})
 
@@ -506,7 +526,7 @@ if (import.meta.vitest) {
 				deliveryId: '01k00000000000000000000008',
 				performed: { at: '2026-06-10T12:01:00.000Z' },
 				authorized: null,
-				result: { type: 'validate-delivery-artifact', evidence: passedValidation, dispatchStartedActionId: null },
+				result: { type: 'validate-delivery-artifact', evidence: passedValidation, dispatch: null },
 			})
 
 			expect(sliceState(tx, '01k00000000000000000000042')).toEqual({
@@ -579,7 +599,7 @@ if (import.meta.vitest) {
 				type: 'validate-slice-artifact',
 				sliceId,
 				evidence: passed ? passedValidation : failedValidation,
-				dispatchStartedActionId: null,
+				dispatch: null,
 			},
 		})
 	}
@@ -590,7 +610,7 @@ if (import.meta.vitest) {
 			deliveryId: '01k00000000000000000000008',
 			performed: { at: '2026-06-10T12:00:00.000Z' },
 			authorized: null,
-			result: { type: 'promote-slice-artifact', sliceId, evidence: externalPassed, dispatchStartedActionId: null },
+			result: { type: 'promote-slice-artifact', sliceId, evidence: externalPassed, dispatch: null },
 		})
 	}
 
@@ -604,7 +624,7 @@ if (import.meta.vitest) {
 				type: 'validate-slice-delivery-artifact',
 				sliceId,
 				evidence: passed ? passedValidation : failedValidation,
-				dispatchStartedActionId: null,
+				dispatch: null,
 			},
 		})
 	}
@@ -650,6 +670,11 @@ if (import.meta.vitest) {
 					[...tx.deliveryArtifacts.records.values()].find((artifact) => artifact.deliveryId === delivery.id) ?? null,
 				slices,
 				actions: [...tx.actions.records.values()].sort(compareActions).filter((action) => action.deliveryId === delivery.id),
+				dispatchRequests: [...tx.dispatchRequests.records.values()].filter(
+					(request) =>
+						(request.payload.type === 'delivery-work-scheduler' || request.payload.type === 'delivery-work-operation') &&
+						request.payload.deliveryId === delivery.id,
+				),
 				agentRuns: [...tx.agentRuns.records.values()].filter(
 					(run) => run.purpose.type === 'execution' && run.purpose.deliveryId === delivery.id,
 				),

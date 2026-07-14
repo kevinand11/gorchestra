@@ -21,7 +21,8 @@ export function getDeliveryState(context: DeliveryContext): Result<DeliveryWorkS
 	const deliveryActions = deliveryActionsFor(context)
 	const earlyState = firstSyncState([
 		() => immediateDeliveryLifecycleState(context),
-		() => deliveryDispatchState(deliveryActions),
+		() => deliveryDispatchState(context),
+		() => deliveryDispatchFailureState(deliveryActions),
 		() => deliveryDependencyState(context),
 		() => deliveryPreflightState(deliveryActions),
 	])
@@ -68,13 +69,29 @@ function immediateDeliveryLifecycleState(context: DeliveryContext): WorkStateRes
 	return context.delivery.queued === null ? ok({ type: 'unqueued' }) : ok(null)
 }
 
-function deliveryDispatchState(deliveryActions: Action[]): WorkStateResult<DeliveryWorkState | null> {
-	const inTransit = latestInTransitDispatchForOperation(deliveryActions, (operation) => operation.scope === 'delivery')
+function deliveryDispatchState(context: DeliveryContext): WorkStateResult<DeliveryWorkState | null> {
+	const inTransit = latestInTransitDispatchForOperation(context.dispatchRequests, (operation) => operation.scope === 'delivery')
 	if (inTransit === null) return ok(null)
 
-	return inTransit.type === 'running'
-		? ok({ type: 'operation-running', operation: inTransit.action.result.operation, startedActionId: inTransit.action.id })
-		: ok({ type: 'operation-queued', operation: inTransit.action.result.operation, queuedActionId: inTransit.action.id })
+	return inTransit.type === 'running' && inTransit.request.lifecycle.type === 'leased'
+		? ok({
+				type: 'operation-running',
+				operation: inTransit.request.payload.operation,
+				requestId: inTransit.request.id,
+				attemptNumber: inTransit.request.lifecycle.attempt.number,
+			})
+		: ok({ type: 'operation-queued', operation: inTransit.request.payload.operation, requestId: inTransit.request.id })
+}
+
+function deliveryDispatchFailureState(deliveryActions: Action[]): WorkStateResult<DeliveryWorkState | null> {
+	const failure = latestAction(
+		deliveryActions.filter(
+			(action) => action.result.type === 'record-delivery-work-dispatch-failure' && action.result.scope.type === 'delivery',
+		),
+	)
+	return failure?.result.type === 'record-delivery-work-dispatch-failure'
+		? ok({ type: 'delivery-dispatch-failed', actionId: failure.id, requestId: failure.result.requestId })
+		: ok(null)
 }
 
 function deliveryDependencyState(context: DeliveryContext): WorkStateResult<DeliveryWorkState | null> {
@@ -255,8 +272,16 @@ function deliveryReadyByObservationState(action: Action): DeliveryWorkState {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreServices, externalOperationEvidence, seedDelivery, seedSlice, stamp, validationEvidence } =
-		await import('../../test-helpers')
+	const {
+		createTestCoreServices,
+		externalOperationEvidence,
+		seedDelivery,
+		seedDispatchRequest,
+		seedSlice,
+		stamp,
+		testId,
+		validationEvidence,
+	} = await import('../../test-helpers')
 	const passedValidation = validationEvidence('delivery-branch-validation', true, 'Valid.')
 	const failedValidation = validationEvidence('delivery-branch-validation', false, 'Invalid.')
 	const externalFailure = externalOperationEvidence('push-branch', false, 'Failed.')
@@ -283,6 +308,67 @@ if (import.meta.vitest) {
 			const { tx } = deliveryFixture()
 
 			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({ ok: true, value: { type: 'unqueued' } })
+		})
+
+		it('derives queued and running operation state from durable Dispatch Requests', () => {
+			const { tx } = deliveryFixture({ queued: true })
+			const request = seedDispatchRequest(tx, testId(90), {
+				payload: {
+					type: 'delivery-work-operation',
+					deliveryId: testId(8),
+					operationId: testId(91),
+					operation: { scope: 'delivery', state: 'needs-artifact-creation' },
+				},
+				reasons: [{ type: 'delivery-work-operation-queued', operationId: testId(91) }],
+				deduplicationKey: null,
+				coordinationClaims: [{ scope: [{ type: 'delivery', id: testId(8) }], mode: { type: 'exclusive' } }],
+			})
+			expect(deliveryState(tx, testId(8))).toEqual({
+				ok: true,
+				value: {
+					type: 'operation-queued',
+					operation: { scope: 'delivery', state: 'needs-artifact-creation' },
+					requestId: request.id,
+				},
+			})
+			const attempt = {
+				number: 1,
+				token: 'token',
+				coordinationEpoch: 0,
+				claimed: request.accepted,
+				heartbeat: request.accepted,
+				expiresAt: '2026-06-10T12:01:00.000Z',
+			}
+			tx.dispatchRequests.records.set(request.id, { ...request, attemptCount: 1, lifecycle: { type: 'leased', attempt } })
+			expect(deliveryState(tx, testId(8))).toEqual({
+				ok: true,
+				value: {
+					type: 'operation-running',
+					operation: { scope: 'delivery', state: 'needs-artifact-creation' },
+					requestId: request.id,
+					attemptNumber: 1,
+				},
+			})
+		})
+
+		it('derives delivery-dispatch-failed from safe failure evidence', () => {
+			const { tx } = deliveryFixture({ queued: true })
+			seedAction(tx, {
+				id: testId(92),
+				result: {
+					type: 'record-delivery-work-dispatch-failure',
+					scope: { type: 'delivery' },
+					requestId: testId(90),
+					requestType: 'delivery-work-operation',
+					attemptNumber: 1,
+					category: 'handler-error',
+					summary: 'Dispatch handler returned an error.',
+				},
+			})
+			expect(deliveryState(tx, testId(8))).toEqual({
+				ok: true,
+				value: { type: 'delivery-dispatch-failed', actionId: testId(92), requestId: testId(90) },
+			})
 		})
 
 		it('derives dependency-blocked from an unclosed same-Project prerequisite Delivery', () => {
@@ -354,7 +440,7 @@ if (import.meta.vitest) {
 			seedAction(tx, {
 				id: 'delivery-operation-failed',
 				at: '2026-06-10T12:04:00.000Z',
-				result: { type: 'record-delivery-external-operation-failure', evidence: externalFailure, dispatchStartedActionId: null },
+				result: { type: 'record-delivery-external-operation-failure', evidence: externalFailure, dispatch: null },
 			})
 
 			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({
@@ -435,7 +521,7 @@ if (import.meta.vitest) {
 			seedAction(tx, {
 				id: 'observe-integration',
 				at: '2026-06-10T12:04:00.000Z',
-				result: { type: 'observe-delivery-artifact-integration', evidence: externalPassed, dispatchStartedActionId: null },
+				result: { type: 'observe-delivery-artifact-integration', evidence: externalPassed, dispatch: null },
 			})
 
 			expect(deliveryState(tx, '01k00000000000000000000008')).toEqual({
@@ -464,7 +550,7 @@ if (import.meta.vitest) {
 				type: 'promote-slice-artifact',
 				sliceId: '01k00000000000000000000042',
 				evidence: slicePromotion,
-				dispatchStartedActionId: null,
+				dispatch: null,
 			},
 		})
 		seedAction(core.tx, {
@@ -474,7 +560,7 @@ if (import.meta.vitest) {
 				type: 'validate-slice-delivery-artifact',
 				sliceId: '01k00000000000000000000042',
 				evidence: sliceValidation,
-				dispatchStartedActionId: null,
+				dispatch: null,
 			},
 		})
 
@@ -504,7 +590,7 @@ if (import.meta.vitest) {
 			result: {
 				type: 'validate-delivery-artifact',
 				evidence: passed ? passedValidation : failedValidation,
-				dispatchStartedActionId: null,
+				dispatch: null,
 			},
 		})
 	}
@@ -578,6 +664,11 @@ if (import.meta.vitest) {
 			deliveryArtifact: [...tx.deliveryArtifacts.records.values()].find((artifact) => artifact.deliveryId === delivery.id) ?? null,
 			slices,
 			actions: actions.filter((action) => action.deliveryId === delivery.id),
+			dispatchRequests: [...tx.dispatchRequests.records.values()].filter(
+				(request) =>
+					(request.payload.type === 'delivery-work-scheduler' || request.payload.type === 'delivery-work-operation') &&
+					request.payload.deliveryId === delivery.id,
+			),
 			agentRuns: [...tx.agentRuns.records.values()].filter(
 				(run) => run.purpose.type === 'execution' && run.purpose.deliveryId === delivery.id,
 			),

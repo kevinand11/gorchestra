@@ -20,7 +20,7 @@ export async function handleSliceNeedsArtifactCreation(
 	runtime: CoreRuntime,
 	context: Pick<
 		ResolvedDeliveryHandlerContext,
-		'deliveryContext' | 'workResolution' | 'repositoryAccessSecret' | 'dispatchStartedActionId'
+		'deliveryContext' | 'workResolution' | 'repositoryAccessSecret' | 'dispatch' | 'operationId'
 	>,
 	slice: Slice,
 	_state: Extract<SliceWorkState, { type: 'needs-artifact-creation' }>,
@@ -40,7 +40,7 @@ export async function handleSliceNeedsArtifactCreation(
 				deliveryContext: context.deliveryContext,
 				workResolution: context.workResolution,
 				repositoryAccessSecret: context.repositoryAccessSecret,
-				...(context.dispatchStartedActionId === undefined ? {} : { dispatchStartedActionId: context.dispatchStartedActionId }),
+				...(context.dispatch === undefined ? {} : { dispatch: context.dispatch }),
 			},
 			{ type: 'slices-incomplete' },
 			input.value,
@@ -60,7 +60,7 @@ async function recordSliceArtifactCreationResult(
 			type: 'record-slice-external-operation-failure',
 			sliceId: input.sliceId,
 			evidence: externalOperationEvidence(creation.summary),
-			dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+			dispatch: context.dispatch ?? null,
 		})
 		if (!action.ok) return action
 
@@ -93,7 +93,7 @@ async function recordSliceArtifactCreationResult(
 		type: 'create-slice-artifact',
 		sliceId: input.sliceId,
 		sliceArtifactId: artifact.id,
-		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+		dispatch: context.dispatch ?? null,
 	})
 	if (!action.ok) return action
 
@@ -104,7 +104,7 @@ async function recordSliceArtifactCreationResult(
 }
 
 function sliceArtifactCreationInputForSlice(
-	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'repositoryAccessSecret'>,
+	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'repositoryAccessSecret' | 'operationId'>,
 	slice: Slice,
 ): CoreResult<SliceArtifactCreationInput, InvariantViolationError> {
 	const deliveryArtifact = context.deliveryContext.deliveryArtifact
@@ -118,6 +118,7 @@ function sliceArtifactCreationInputForSlice(
 	return {
 		ok: true,
 		value: {
+			operationId: context.operationId ?? context.deliveryContext.delivery.id,
 			deliveryId: context.deliveryContext.delivery.id,
 			sliceId: slice.id,
 			repository: context.deliveryContext.repository,
@@ -139,6 +140,7 @@ if (import.meta.vitest) {
 			expect(sliceArtifactCreationInputForSlice(context, context.deliveryContext.slices[0]!.slice)).toEqual({
 				ok: true,
 				value: {
+					operationId: '01k00000000000000000000008',
 					deliveryId: '01k00000000000000000000008',
 					sliceId: '01k00000000000000000000042',
 					repository: context.deliveryContext.repository,
@@ -175,7 +177,7 @@ if (import.meta.vitest) {
 				type: 'create-slice-artifact',
 				sliceId: '01k00000000000000000000042',
 				sliceArtifactId: '01k00000000000000000010001',
-				dispatchStartedActionId: null,
+				dispatch: null,
 			})
 		})
 
@@ -212,7 +214,7 @@ if (import.meta.vitest) {
 					passed: false,
 					summary: 'GitHub artifact branch diverged from its source branch.',
 				},
-				dispatchStartedActionId: null,
+				dispatch: null,
 			})
 		})
 	})

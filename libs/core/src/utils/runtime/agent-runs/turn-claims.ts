@@ -1,15 +1,30 @@
 import type { AgentRunEvent } from '../../../domain/agent-run-event'
 import type { Id } from '../../../domain/commons'
 
+type TurnStartedEvent = AgentRunEvent & { body: Extract<AgentRunEvent['body'], { type: 'turn-started' }> }
+
 export interface TurnReasonClaim {
 	reason: Extract<AgentRunEvent['body'], { type: 'turn-started' }>['reason']
 	contextThroughEventId: Id
+	turnStartedEvent: TurnStartedEvent | null
 }
 
 export function nextTurnClaim(events: AgentRunEvent[]): TurnReasonClaim | null {
-	const reason = nextInputTurnReason(events)
 	const contextThroughEventId = events.at(-1)?.id
-	return reason === null || contextThroughEventId === undefined ? null : { reason, contextThroughEventId }
+	if (contextThroughEventId === undefined) return null
+	const openTurn = [...events]
+		.reverse()
+		.find(
+			(event): event is TurnStartedEvent =>
+				event.body.type === 'turn-started' &&
+				!events.some((candidate) => candidate.body.type === 'turn-ended' && candidate.body.turnStartedEventId === event.id),
+		)
+	if (openTurn !== undefined) {
+		return { reason: openTurn.body.reason, contextThroughEventId, turnStartedEvent: openTurn }
+	}
+
+	const reason = nextInputTurnReason(events)
+	return reason === null ? null : { reason, contextThroughEventId, turnStartedEvent: null }
 }
 
 function nextInputTurnReason(events: AgentRunEvent[]): TurnReasonClaim['reason'] | null {

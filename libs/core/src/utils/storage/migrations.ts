@@ -1,8 +1,27 @@
-import type { AnyMigration, AnySchemaField, CreateTableChange, FieldSpec, OrmAdapter } from 'equipped/orm'
-import type { JsonSchema } from 'valleyed'
+import type { AnyMigration, AnySchemaField, CreateTableChange, FieldSpec, Migration, OrmAdapter, Repo } from 'equipped/orm'
+import type { InMemoryAdapter as InMemoryAdapterType } from 'equipped/orm/adapters/in-memory'
+import { v, type JsonSchema } from 'valleyed'
+
+import { coreSchema, withExplicitCoreStorageId } from './schema'
+import { auditStampPipe, idPipe, runtimeRecordPipe } from '../../domain/commons'
+import { dispatchCoordinationId, dispatchCoordinationSchema } from '../../domain/dispatch-coordination'
+import type { CoreStorageAdapter } from '../../services'
 
 type CoreCreateTableChange = CreateTableChange<OrmAdapter>
 type CoreFieldSpec = FieldSpec<OrmAdapter>
+
+const migrationActionSchema = coreSchema('actions')
+	.field('deliveryId', idPipe)
+	.field('performed', runtimeRecordPipe)
+	.field('authorized', v.nullable(auditStampPipe))
+	.field('result', v.record(v.string(), v.any<unknown>()))
+	.build()
+
+const legacyDispatchActionTypes = new Set([
+	'queue-delivery-work-operation',
+	'start-delivery-work-operation',
+	'finish-delivery-work-operation',
+])
 
 export const coreStorageMigrations = [
 	{
@@ -122,7 +141,47 @@ export const coreStorageMigrations = [
 			]),
 		],
 	},
+	{
+		id: '2026-07-13-0002-durable-dispatch',
+		tx: true,
+		changes: [
+			createTable('dispatch_requests', [
+				objectField('payload'),
+				arrayField('reasons'),
+				nullableField(objectField('deduplicationKey')),
+				arrayField('coordinationClaims'),
+				objectField('accepted'),
+				numberField('attemptCount'),
+				numberField('expiredLeaseCount'),
+				arrayField('attempts'),
+				objectField('lifecycle'),
+			]),
+			createTable('dispatch_coordination', [numberField('epoch'), numberField('revision'), numberField('bootstrapVersion')]),
+			{ kind: 'execute', up: migrateDurableDispatch },
+		],
+	},
 ] as const satisfies readonly AnyMigration[]
+
+async function migrateDurableDispatch<Adapter extends CoreStorageAdapter>(repo: Repo<Adapter>): Promise<void> {
+	const existingCoordination = await repo.on(dispatchCoordinationSchema).one().id(dispatchCoordinationId).find()
+	if (existingCoordination === null) {
+		await withExplicitCoreStorageId(dispatchCoordinationId, () =>
+			repo.on(dispatchCoordinationSchema).one().create({ epoch: 0, revision: 0, bootstrapVersion: 0 }),
+		)
+	}
+
+	const actions = await repo.on(migrationActionSchema).all().find()
+	for (const action of actions) {
+		if (legacyDispatchActionTypes.has(String(action.result.type))) {
+			await repo.on(migrationActionSchema).one().id(action.id).delete()
+			continue
+		}
+		if (!('dispatchStartedActionId' in action.result)) continue
+		const result: Record<string, unknown> = { ...action.result, dispatch: null }
+		delete result.dispatchStartedActionId
+		await repo.on(migrationActionSchema).one().id(action.id).update({ result })
+	}
+}
 
 function createTable(name: string, fields: CoreFieldSpec[]): CoreCreateTableChange {
 	return { kind: 'createTable', name, pk: { name: 'id', type: 'string' }, fields }
@@ -150,15 +209,136 @@ function arrayField(name: string): CoreFieldSpec {
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
+	const { Migrator, Repo } = await import('equipped/orm')
+	const { InMemoryAdapter } = await import('equipped/orm/adapters/in-memory')
 	const { v } = await import('valleyed')
+	const { actionSchema } = await import('../../domain/action')
 	const { coreStorageSchemas } = await import('./schema-registry')
+	type InMemoryMigration = Migration<InMemoryAdapterType>
+	const inMemoryMigrations = coreStorageMigrations as unknown as readonly InMemoryMigration[]
 
 	describe('Core storage migrations', () => {
-		it('matches every registered schema field in the disposable baseline', () => {
-			const baselineChanges = coreStorageMigrations[0].changes
-			expect(baselineChanges.every((change) => change.kind === 'createTable')).toBe(true)
+		it('applies the complete migration chain to fresh storage exactly once', async () => {
+			const { adapter, repo } = migrationTestStorage()
+			const migrator = Migrator.from(repo, adapter).migrations(inMemoryMigrations).build()
 
-			const baselineTables = baselineChanges
+			expect((await migrator.up()).ran).toEqual(['2026-06-16-0001-create-core-storage', '2026-07-13-0002-durable-dispatch'])
+			expect((await migrator.up()).ran).toEqual([])
+			expect(await repo.on(dispatchCoordinationSchema).all().find()).toEqual([
+				{ id: dispatchCoordinationId, epoch: 0, revision: 0, bootstrapVersion: 0 },
+			])
+		})
+
+		it('applies only durable Dispatch migration when the baseline is recorded', async () => {
+			const { adapter, repo } = migrationTestStorage()
+			await Migrator.from(repo, adapter).migrations([inMemoryMigrations[0]!]).build().up()
+
+			const result = await Migrator.from(repo, adapter).migrations(inMemoryMigrations).build().up()
+
+			expect(result.ran).toEqual(['2026-07-13-0002-durable-dispatch'])
+		})
+
+		it('removes only legacy transient Dispatch Actions', async () => {
+			const { adapter, repo } = migrationTestStorage()
+			await Migrator.from(repo, adapter).migrations([inMemoryMigrations[0]!]).build().up()
+			await withExplicitCoreStorageId('01k00000000000000000000001', () =>
+				repo
+					.on(migrationActionSchema)
+					.one()
+					.create({
+						deliveryId: '01k00000000000000000000002',
+						performed: { at: '2026-07-13T12:00:00.000Z' },
+						authorized: null,
+						result: { type: 'queue-delivery-work-operation' },
+					}),
+			)
+			await withExplicitCoreStorageId('01k00000000000000000000003', () =>
+				repo
+					.on(actionSchema)
+					.one()
+					.create({
+						deliveryId: '01k00000000000000000000002',
+						performed: { at: '2026-07-13T12:00:00.000Z' },
+						authorized: null,
+						result: { type: 'validate-preflight', checks: [] },
+					}),
+			)
+			const legacyDurableResults = [
+				{ type: 'create-delivery-artifact', deliveryArtifactId: '01k00000000000000000000010' },
+				{
+					type: 'validate-slice-artifact',
+					sliceId: '01k00000000000000000000042',
+					evidence: {
+						type: 'validation',
+						operation: { type: 'slice-branch-validation' },
+						passed: true,
+						summary: 'Valid.',
+					},
+				},
+				{ type: 'create-delivery-review-surface', reviewSurfaceId: '01k00000000000000000000037' },
+				{
+					type: 'promote-slice-artifact',
+					sliceId: '01k00000000000000000000042',
+					evidence: {
+						type: 'external-operation',
+						operation: { type: 'merge-review-surface' },
+						passed: true,
+						summary: 'Merged.',
+					},
+				},
+				{
+					type: 'observe-delivery-artifact-integration',
+					evidence: {
+						type: 'external-operation',
+						operation: { type: 'observe-artifact-integration' },
+						passed: true,
+						summary: 'Integrated.',
+					},
+				},
+				{
+					type: 'record-delivery-external-operation-failure',
+					evidence: {
+						type: 'external-operation',
+						operation: { type: 'push-branch' },
+						passed: false,
+						summary: 'Failed.',
+					},
+				},
+			]
+			for (const [index, result] of legacyDurableResults.entries()) {
+				await withExplicitCoreStorageId(`01k000000000000000000000${String(10 + index).padStart(2, '0')}`, () =>
+					repo
+						.on(migrationActionSchema)
+						.one()
+						.create({
+							deliveryId: '01k00000000000000000000002',
+							performed: { at: '2026-07-13T12:00:00.000Z' },
+							authorized: null,
+							result: { ...result, dispatchStartedActionId: '01k00000000000000000000009' },
+						}),
+				)
+			}
+
+			await Migrator.from(repo, adapter).migrations(inMemoryMigrations).build().up()
+
+			expect(await repo.on(actionSchema).one().id('01k00000000000000000000001').find()).toBeNull()
+			expect(await repo.on(actionSchema).one().id('01k00000000000000000000003').find()).toMatchObject({
+				result: { type: 'validate-preflight', checks: [] },
+			})
+			for (const [index, result] of legacyDurableResults.entries()) {
+				expect(
+					await repo
+						.on(actionSchema)
+						.one()
+						.id(`01k000000000000000000000${String(10 + index).padStart(2, '0')}`)
+						.find(),
+				).toMatchObject({ result: { ...result, dispatch: null } })
+			}
+		})
+
+		it('matches every registered schema field across cumulative create-table changes', () => {
+			const migrationTables = coreStorageMigrations
+				.flatMap((migration) => migration.changes)
 				.filter((change): change is CoreCreateTableChange => change.kind === 'createTable')
 				.map(normalizeCreateTable)
 				.sort((left, right) => left.name.localeCompare(right.name))
@@ -166,9 +346,17 @@ if (import.meta.vitest) {
 			// so normalize the same metadata through Valleyed's public JSON Schema API.
 			const schemaTables = coreStorageSchemas.map(normalizeSchema).sort((left, right) => left.name.localeCompare(right.name))
 
-			expect(baselineTables).toEqual(schemaTables)
+			expect(migrationTables).toEqual(schemaTables)
 		})
 	})
+
+	function migrationTestStorage() {
+		const adapter = InMemoryAdapter.create({})
+		const repo = Repo.from(adapter)
+			.resolve((schema) => ({ table: schema.name }))
+			.build()
+		return { adapter, repo }
+	}
 
 	function normalizeCreateTable(change: CoreCreateTableChange) {
 		return {

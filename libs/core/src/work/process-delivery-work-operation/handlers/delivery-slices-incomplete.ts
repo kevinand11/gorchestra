@@ -139,6 +139,7 @@ function sliceActionPriority(state: SliceWorkState): SliceActionPriority | null 
 		case 'complete':
 		case 'operation-running':
 		case 'operation-queued':
+		case 'slice-dispatch-failed':
 		case 'dependency-blocked':
 		case 'correction-blocked':
 		case 'awaiting-review':
@@ -382,7 +383,7 @@ if (import.meta.vitest) {
 					passed: true,
 					summary: 'Merged.',
 				},
-				dispatchStartedActionId: null,
+				dispatch: null,
 			},
 		})
 	}

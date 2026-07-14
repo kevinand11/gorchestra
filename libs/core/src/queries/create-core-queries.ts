@@ -12,6 +12,7 @@ import { createListAgentRunEventsQuery } from './list-agent-run-events'
 import { createListAgentRunProfileReferencesQuery } from './list-agent-run-profile-references'
 import { createListAgentRunProfilesQuery } from './list-agent-run-profiles'
 import { createListDeliveriesQuery } from './list-deliveries'
+import { createListDispatchRequestsQuery } from './list-dispatch-requests'
 import { createListMemoryChildrenQuery } from './list-memory-children'
 import { createListModelProvidersQuery } from './list-model-providers'
 import { createListModelReferencesQuery } from './list-model-references'
@@ -42,6 +43,7 @@ export function createCoreQueries(runtime: CoreRuntime) {
 		listMemoryChildren: createListMemoryChildrenQuery(transactions),
 		getMemory: createGetMemoryQuery(transactions),
 		listDeliveries: createListDeliveriesQuery(transactions),
+		listDispatchRequests: createListDispatchRequestsQuery(transactions),
 		getDelivery: createGetDeliveryQuery(transactions),
 		listRepositories: createListRepositoriesQuery(transactions),
 		getRepository: createGetRepositoryQuery(transactions),
@@ -76,6 +78,7 @@ if (import.meta.vitest) {
 				'listAgentRunProfileReferences',
 				'listAgentRunProfiles',
 				'listDeliveries',
+				'listDispatchRequests',
 				'listMemoryChildren',
 				'listModelProviders',
 				'listModelReferences',

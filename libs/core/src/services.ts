@@ -1,7 +1,6 @@
 import { Repo, type AnySchema, type AnyUpdateOp, type FilterGroup, type OrmAdapterLike, type QueryOptions } from 'equipped/orm'
 import { v, type PipeOutput } from 'valleyed'
 
-import type { DeliveryWorkOperation } from './domain/action'
 import type { AgentRunSandboxConfig, AgentRunSandboxSourceConfig, ConsumerManagedSandboxSourceConfig } from './domain/agent-run-runtime'
 import { freeFormStringPipe, idPipe, nonEmptyTrimmedStringPipe, nonNegativeIntegerPipe, type Id } from './domain/commons'
 import type { Notification } from './domain/notifications'
@@ -21,7 +20,6 @@ export interface CorePreflightReport {
 export interface CorePreflightChecks {
 	storage: CorePreflightCheck
 	secrets: CorePreflightCheck
-	dispatcher: CorePreflightCheck
 }
 
 export type CorePreflightCheck = { ok: true } | { ok: false; reason: 'not-ready' | 'probe-failed'; message: string | null }
@@ -32,6 +30,7 @@ export type CoreStorageAdapter = OrmAdapterLike<{ table: string }> & {
 	updateByPk(schema: AnySchema, config: unknown, pk: unknown, ops: AnyUpdateOp[]): Promise<Record<string, unknown> | null>
 	findMany(schema: AnySchema, config: unknown, group: FilterGroup, options?: QueryOptions): Promise<Record<string, unknown>[]>
 	updateMany(schema: AnySchema, config: unknown, group: FilterGroup, data: Record<string, unknown>): Promise<Record<string, unknown>[]>
+	deleteMany(schema: AnySchema, config: unknown, group: FilterGroup): Promise<Record<string, unknown>[]>
 	session<T>(fn: () => Promise<T>): Promise<T>
 }
 
@@ -59,54 +58,6 @@ export interface ResolvedSecret {
 /** Plaintext values exist only transiently. */
 export const resolvedSecretValuesPipe = v.record(idPipe, v.string())
 export type ResolvedSecretValues = Record<Id, string>
-
-export type DispatchCoordinationScopeSegment =
-	| { type: 'agent-run'; id: Id }
-	| { type: 'delivery'; id: Id }
-	| { type: 'scheduler' }
-	| { type: 'slice-pool' }
-	| { type: 'slice'; id: Id }
-
-export type DispatchCoordinationScope = DispatchCoordinationScopeSegment[]
-
-export type DispatchCoordinationClaim = {
-	scope: DispatchCoordinationScope
-	mode: { type: 'exclusive' } | { type: 'shared-capacity'; capacity: number }
-}
-
-export type CoreDispatchRequest =
-	| {
-			type: 'agent-run-model-turn'
-			agentRunId: Id
-			coordinationClaims: DispatchCoordinationClaim[]
-			reason: { type: 'input-appended'; inputEventId: Id }
-	  }
-	| {
-			type: 'agent-run-preparation'
-			agentRunId: Id
-			coordinationClaims: DispatchCoordinationClaim[]
-			reason: { type: 'agent-run-created' } | { type: 'runtime-requirement-override-added'; eventId: Id }
-	  }
-	| {
-			type: 'agent-run-sandbox-release'
-			agentRunId: Id
-			coordinationClaims: DispatchCoordinationClaim[]
-			reason: { type: '01k00000000000000000100019' }
-	  }
-	| {
-			type: 'delivery-work-scheduler'
-			deliveryId: Id
-			coordinationClaims: DispatchCoordinationClaim[]
-			reason: { type: 'delivery-work-requested' }
-	  }
-	| {
-			type: 'delivery-work-operation'
-			deliveryId: Id
-			coordinationClaims: DispatchCoordinationClaim[]
-			queuedActionId: Id
-			operation: DeliveryWorkOperation
-			reason: { type: 'delivery-work-operation-queued'; queuedActionId: Id }
-	  }
 
 export const sandboxCommandOutputPipe = v.object({
 	exitCode: nonNegativeIntegerPipe,
@@ -201,12 +152,11 @@ export const coreSandboxServicePipe = v.object({
 })
 export type CoreSandboxService = ConsumerManagedSandboxProvider
 
-export const coreDispatcherServicePipe = v.object({
-	preflight: typedFunctionDependencyPipe<PreflightFn>(),
-	request: typedFunctionDependencyPipe<(input: CoreDispatchRequest) => Promise<string>>(),
-	ready: typedFunctionDependencyPipe<(marker: string) => void>(),
+export const coreDispatchWakeServicePipe = v.object({
+	publish: typedFunctionDependencyPipe<() => void>(),
+	subscribe: typedFunctionDependencyPipe<(listener: () => void) => () => void>(),
 })
-export type CoreDispatcherService = PipeOutput<typeof coreDispatcherServicePipe>
+export type CoreDispatchWakeService = PipeOutput<typeof coreDispatchWakeServicePipe>
 
 const coreNotificationsServicePipe = v.object({
 	publish: typedFunctionDependencyPipe<(notification: Notification) => void>(),
@@ -225,7 +175,7 @@ export const coreServicesPipe = v.object({
 	storage: storagePipe,
 	secrets: coreSecretsServicePipe,
 	sandbox: coreSandboxServicePipe,
-	dispatcher: coreDispatcherServicePipe,
+	dispatchWake: v.optional(coreDispatchWakeServicePipe),
 	logger: v.optional(coreLoggerPipe),
 	notifications: v.optional(coreNotificationsServicePipe),
 })

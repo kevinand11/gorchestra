@@ -1,12 +1,13 @@
-import { nonEmptyTrimmedStringPipe } from '../domain/commons'
-import type { InvalidCoreServiceOutputError, StorageOperationFailedError } from '../errors'
-import type { CoreDispatchRequest, CoreServices, CoreStorage } from '../services'
-import { validateCoreServiceOutput } from '../validation'
+import { acceptDispatchRequest, type DispatchAcceptance, type DispatchAcceptanceError } from '../dispatch/accept'
+import type { DispatchRequestInput } from '../domain/dispatch-request'
+import type { StorageOperationFailedError } from '../errors'
+import type { CoreServices, CoreStorage } from '../services'
 import type { NotificationEmitter } from './notification-emitter'
+import type { CoreRuntimeValues } from './runtime-values'
 import type { Result } from './types'
 
 export interface CoreTransactionDispatch {
-	request(input: CoreDispatchRequest): Promise<Result<void, InvalidCoreServiceOutputError>>
+	request(input: DispatchRequestInput): Promise<Result<DispatchAcceptance, DispatchAcceptanceError>>
 }
 
 export interface CoreTransaction {
@@ -22,18 +23,20 @@ export interface CoreTransactions {
 }
 
 type PostCommitEffect = {
-	effectType: 'dispatch-ready' | 'notification-publish'
+	effectType: 'dispatch-wake' | 'notification-publish'
 	run: (() => void) | null
 }
 
 export function createCoreTransactions(input: {
-	services: Pick<CoreServices, 'dispatcher' | 'logger' | 'storage'>
+	services: Pick<CoreServices, 'dispatchWake' | 'logger' | 'storage'>
 	notifications: NotificationEmitter
+	values: CoreRuntimeValues
 }): CoreTransactions {
 	const run: CoreTransactions['run'] = async <TValue, TError>(
 		operation: (transaction: CoreTransaction) => Promise<Result<TValue, TError>>,
 	) => {
 		const effects: PostCommitEffect[] = []
+		let dispatchWakeEffect: PostCommitEffect | null = null
 		let open = true
 		const ensureOpen = () => {
 			if (!open) throw new Error('Core transaction context is closed.')
@@ -53,15 +56,20 @@ export function createCoreTransactions(input: {
 						dispatch: {
 							request: (request) => {
 								ensureOpen()
-								const effect: PostCommitEffect = { effectType: 'dispatch-ready', run: null }
-								effects.push(effect)
+								if (dispatchWakeEffect === null) {
+									dispatchWakeEffect = { effectType: 'dispatch-wake', run: null }
+									effects.push(dispatchWakeEffect)
+								}
 								return (async () => {
-									const marker = await input.services.dispatcher.request(request)
+									const accepted = await acceptDispatchRequest(
+										{ storage: input.services.storage, values: input.values },
+										request,
+									)
 									ensureOpen()
-									const accepted = validateCoreServiceOutput(nonEmptyTrimmedStringPipe, marker, 'dispatcher', 'request')
-									if (!accepted.ok) return accepted
-									effect.run = () => input.services.dispatcher.ready(accepted.value)
-									return { ok: true, value: undefined }
+									if (accepted.ok && accepted.value.wakeNeeded && input.services.dispatchWake !== undefined) {
+										dispatchWakeEffect.run = () => input.services.dispatchWake?.publish()
+									}
+									return accepted
 								})()
 							},
 						},
@@ -105,6 +113,8 @@ if (import.meta.vitest) {
 	const { describe, expect, it, vi } = import.meta.vitest
 	const { Repo } = await import('equipped/orm')
 	const { InMemoryAdapter } = await import('equipped/orm/adapters/in-memory')
+	const { dispatchCoordinationId, dispatchCoordinationSchema } = await import('../domain/dispatch-coordination')
+	const { dispatchRequestSchema } = await import('../domain/dispatch-request')
 	const { projectSchema } = await import('../domain/project')
 	const { createNotificationEmitter } = await import('./notification-emitter')
 	const { withExplicitCoreStorageId } = await import('./storage/schema')
@@ -201,130 +211,118 @@ if (import.meta.vitest) {
 			expect(publish).toHaveBeenCalledOnce()
 		})
 
-		it('accepts Dispatch requests inside the transaction and readies their markers after commit', async () => {
-			const calls: string[] = []
-			const dispatcher: CoreServices['dispatcher'] = {
-				preflight: () => Promise.resolve({ ok: true }),
-				request: (request) => {
-					calls.push(`request:${request.type}`)
-					return Promise.resolve('marker-1')
-				},
-				ready: (marker) => calls.push(`ready:${marker}`),
-			}
-			const transactions = testCoreTransactions(testCoreStorage(), { emit: () => {} }, dispatcher)
+		it('commits a durable Dispatch Request with its owning transaction', async () => {
+			const storage = testCoreStorage()
+			await withExplicitCoreStorageId(dispatchCoordinationId, () =>
+				storage.on(dispatchCoordinationSchema).one().create({ epoch: 0, revision: 0, bootstrapVersion: 0 }),
+			)
+			const transactions = testCoreTransactions(storage)
 
 			const result = await transactions.run(async ({ dispatch }) => {
-				const requested = await dispatch.request(testDispatchRequest())
-				calls.push('transaction-finished')
-				return requested.ok ? { ok: true, value: undefined } : requested
+				const requested = await dispatch.request(durableDispatchInput())
+				if (!requested.ok) return requested
+				await createProjectRecord(storage)
+				return { ok: true, value: undefined }
 			})
 
 			expect(result).toEqual({ ok: true, value: undefined })
-			expect(calls).toEqual(['request:agent-run-model-turn', 'transaction-finished', 'ready:marker-1'])
+			expect(await storage.on(dispatchRequestSchema).all().find()).toHaveLength(1)
+			expect(await findProject(storage)).toEqual(projectRecord())
 		})
 
-		it('does not ready an accepted Dispatch marker when the transaction rolls back', async () => {
-			const ready = vi.fn()
-			const dispatcher: CoreServices['dispatcher'] = {
-				preflight: () => Promise.resolve({ ok: true }),
-				request: () => Promise.resolve('marker-1'),
-				ready,
-			}
-			const transactions = testCoreTransactions(testCoreStorage(), { emit: () => {} }, dispatcher)
+		it('publishes exactly one payload-free wake after accepting several requests', async () => {
+			const storage = testCoreStorage()
+			await seedCoordination(storage)
+			const publish = vi.fn()
+			const transactions = testCoreTransactions(storage, { emit: () => {} }, { publish, subscribe: () => () => {} })
 
-			const result = await transactions.run<void, InvalidCoreServiceOutputError | { type: 'expected-failure' }>(
-				async ({ dispatch }) => {
-					const requested = await dispatch.request(testDispatchRequest())
-					if (!requested.ok) return requested
-					return { ok: false, error: { type: 'expected-failure' } }
-				},
-			)
+			const result = await transactions.run(async ({ dispatch }) => {
+				const first = await dispatch.request(durableDispatchInput())
+				if (!first.ok) return first
+				const second = await dispatch.request({
+					...durableDispatchInput(),
+					reason: { type: 'input-appended', inputEventId: '01k00000000000000000000004' },
+				})
+				return second.ok ? { ok: true, value: undefined } : second
+			})
+
+			expect(result).toEqual({ ok: true, value: undefined })
+			expect(publish).toHaveBeenCalledOnce()
+			expect(publish).toHaveBeenCalledWith()
+			expect(await storage.on(dispatchRequestSchema).all().find()).toHaveLength(2)
+		})
+
+		it('rolls back accepted requests and publishes no wake on returned error', async () => {
+			const storage = testCoreStorage()
+			await seedCoordination(storage)
+			const publish = vi.fn()
+			const transactions = testCoreTransactions(storage, { emit: () => {} }, { publish, subscribe: () => () => {} })
+
+			const result = await transactions.run<void, DispatchAcceptanceError | { type: 'expected-failure' }>(async ({ dispatch }) => {
+				const requested = await dispatch.request(durableDispatchInput())
+				if (!requested.ok) return requested
+				return { ok: false, error: { type: 'expected-failure' } }
+			})
 
 			expect(result).toEqual({ ok: false, error: { type: 'expected-failure' } })
-			expect(ready).not.toHaveBeenCalled()
+			expect(publish).not.toHaveBeenCalled()
+			expect(await storage.on(dispatchRequestSchema).all().find()).toEqual([])
 		})
 
-		it('returns invalid Dispatcher markers as service-output errors without readiness', async () => {
-			const ready = vi.fn()
-			const dispatcher: CoreServices['dispatcher'] = {
-				preflight: () => Promise.resolve({ ok: true }),
-				request: () => Promise.resolve('   '),
-				ready,
-			}
-			const transactions = testCoreTransactions(testCoreStorage(), { emit: () => {} }, dispatcher)
-
-			const result = await transactions.run(({ dispatch }) => dispatch.request(testDispatchRequest()))
-
-			expect(result).toMatchObject({
-				ok: false,
-				error: { type: 'invalid-core-service-output', service: 'dispatcher', operation: 'request' },
-			})
-			expect(ready).not.toHaveBeenCalled()
-		})
-
-		it('orders post-commit effects by capability invocation before asynchronous Dispatch acceptance', async () => {
+		it('orders wake and Notification effects by capability invocation', async () => {
+			const storage = testCoreStorage()
+			await seedCoordination(storage)
 			const calls: string[] = []
-			let acceptDispatch: (marker: string) => void = () => {}
-			const dispatcher: CoreServices['dispatcher'] = {
-				preflight: () => Promise.resolve({ ok: true }),
-				request: () => new Promise<string>((resolve) => (acceptDispatch = resolve)),
-				ready: (marker) => calls.push(`ready:${marker}`),
-			}
 			const transactions = testCoreTransactions(
-				testCoreStorage(),
+				storage,
 				{ emit: (data) => calls.push(`notification:${data.type}`) },
-				dispatcher,
+				{ publish: () => calls.push('dispatch-wake'), subscribe: () => () => {} },
 			)
 
 			const result = await transactions.run(async ({ dispatch, notifications }) => {
-				const requested = dispatch.request(testDispatchRequest())
+				const requested = dispatch.request(durableDispatchInput())
 				notifications.emit(testNotificationData())
-				acceptDispatch('marker-1')
 				const accepted = await requested
 				return accepted.ok ? { ok: true, value: undefined } : accepted
 			})
 
 			expect(result).toEqual({ ok: true, value: undefined })
-			expect(calls).toEqual(['ready:marker-1', 'notification:assistant-message-draft-updated'])
+			expect(calls).toEqual(['dispatch-wake', 'notification:assistant-message-draft-updated'])
 		})
 
-		it('isolates post-commit failures, logs a safe label, and continues later effects', async () => {
+		it('isolates wake failures, logs only a safe label, and continues later effects', async () => {
+			const storage = testCoreStorage()
+			await seedCoordination(storage)
 			const calls: string[] = []
-			const publisherError = new Error('publisher unavailable with sensitive payload')
+			const wakeError = new Error('wake unavailable with sensitive payload')
 			const logger: NonNullable<CoreServices['logger']> = {
 				debug: vi.fn(),
 				info: vi.fn(),
 				warn: vi.fn(),
-				error: (message, context) => {
-					calls.push(`log:${message}:${String(context?.effectType)}`)
-					throw new Error('logger unavailable')
-				},
-			}
-			const dispatcher: CoreServices['dispatcher'] = {
-				preflight: () => Promise.resolve({ ok: true }),
-				request: () => Promise.resolve('marker-1'),
-				ready: (marker) => calls.push(`ready:${marker}`),
+				error: (message, context) => calls.push(`log:${message}:${String(context?.effectType)}`),
 			}
 			const transactions = testCoreTransactions(
-				testCoreStorage(),
+				storage,
+				{ emit: () => calls.push('notification') },
 				{
-					emit: () => {
-						throw publisherError
+					publish: () => {
+						throw wakeError
 					},
+					subscribe: () => () => {},
 				},
-				dispatcher,
 				logger,
 			)
 
 			const result = await transactions.run(async ({ dispatch, notifications }) => {
+				const requested = await dispatch.request(durableDispatchInput())
+				if (!requested.ok) return requested
 				notifications.emit(testNotificationData())
-				const requested = await dispatch.request(testDispatchRequest())
-				return requested.ok ? { ok: true, value: undefined } : requested
+				return { ok: true, value: undefined }
 			})
 
 			expect(result).toEqual({ ok: true, value: undefined })
-			expect(calls).toEqual(['log:Core post-commit effect failed.:notification-publish', 'ready:marker-1'])
-			expect(JSON.stringify(calls)).not.toContain(publisherError.message)
+			expect(calls).toEqual(['log:Core post-commit effect failed.:dispatch-wake', 'notification'])
+			expect(JSON.stringify(calls)).not.toContain(wakeError.message)
 		})
 
 		it('rejects transaction capability use after the callback settles', async () => {
@@ -338,7 +336,7 @@ if (import.meta.vitest) {
 			if (closedTransaction === undefined) throw new Error('Expected a captured transaction.')
 
 			expect(() => closedTransaction.notifications.emit(testNotificationData())).toThrow('Core transaction context is closed.')
-			expect(() => closedTransaction.dispatch.request(testDispatchRequest())).toThrow('Core transaction context is closed.')
+			expect(() => closedTransaction.dispatch.request(durableDispatchInput())).toThrow('Core transaction context is closed.')
 		})
 
 		it('isolates effect queues across concurrent top-level transactions', async () => {
@@ -374,14 +372,22 @@ if (import.meta.vitest) {
 	function testCoreTransactions(
 		storage: CoreStorage,
 		notifications: NotificationEmitter = { emit: () => {} },
-		dispatcher: CoreServices['dispatcher'] = {
-			preflight: () => Promise.resolve({ ok: true }),
-			request: () => Promise.resolve('dispatch-marker'),
-			ready: () => {},
-		},
+		dispatchWake?: CoreServices['dispatchWake'],
 		logger?: CoreServices['logger'],
 	) {
-		return createCoreTransactions({ services: { storage, dispatcher, logger }, notifications })
+		let sequence = 100
+		return createCoreTransactions({
+			services: {
+				storage,
+				...(dispatchWake === undefined ? {} : { dispatchWake }),
+				...(logger === undefined ? {} : { logger }),
+			},
+			notifications,
+			values: {
+				nextId: () => `01k000000000000000000${(++sequence).toString().padStart(5, '0')}`,
+				now: () => new Date('2026-07-13T12:00:00.000Z'),
+			},
+		})
 	}
 
 	function testNotificationData(toolCallId?: string): Parameters<NotificationEmitter['emit']>[0] {
@@ -402,13 +408,24 @@ if (import.meta.vitest) {
 				}
 	}
 
-	function testDispatchRequest(): CoreDispatchRequest {
+	function durableDispatchInput() {
 		return {
-			type: 'agent-run-model-turn',
-			agentRunId: '01k00000000000000000000002',
-			coordinationClaims: [],
-			reason: { type: 'input-appended', inputEventId: '01k00000000000000000000003' },
+			payload: { type: 'agent-run-model-turn' as const, agentRunId: '01k00000000000000000000002' },
+			coordinationClaims: [
+				{
+					scope: [{ type: 'agent-run' as const, id: '01k00000000000000000000002' }],
+					mode: { type: 'exclusive' as const },
+				},
+			],
+			deduplicationKey: null,
+			reason: { type: 'input-appended' as const, inputEventId: '01k00000000000000000000003' },
 		}
+	}
+
+	function seedCoordination(storage: CoreStorage) {
+		return withExplicitCoreStorageId(dispatchCoordinationId, () =>
+			storage.on(dispatchCoordinationSchema).one().create({ epoch: 0, revision: 0, bootstrapVersion: 0 }),
+		)
 	}
 
 	function testCoreStorage(): CoreStorage {

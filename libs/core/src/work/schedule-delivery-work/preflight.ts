@@ -79,6 +79,7 @@ function isSchedulerActionableState(state: DeliveryWorkState): boolean {
 		case 'unqueued':
 		case 'operation-running':
 		case 'operation-queued':
+		case 'delivery-dispatch-failed':
 		case 'dependency-blocked':
 		case 'preflight-failed':
 		case 'delivery-operation-failed':

@@ -1,7 +1,8 @@
+import { requestAgentRunModelTurn } from '../../../dispatch/accept'
 import type { Slice, SliceWorkState } from '../../../domain/slice'
 import { appendAgentRunEvent, createModelAgentRunAndRequestPreparation } from '../../../utils/agent-runs'
-import { requestAgentRunModelTurn } from '../../../utils/dispatch'
 import { nextId, runtimeRecord } from '../../../utils/runtime-values'
+import { getRecord } from '../../../utils/storage/helpers'
 import type { CoreTransaction } from '../../../utils/transactions'
 import type { DeliveryHandlerContext, DeliveryWorkHandlerResult, DeliveryWorkResolution } from '../../delivery-work/types'
 
@@ -12,8 +13,25 @@ export async function handleSliceExecutable(
 	resolution: DeliveryWorkResolution,
 	transaction: CoreTransaction,
 ): Promise<DeliveryWorkHandlerResult> {
-	const agentRunId = nextId(context.values)
-	if (!agentRunId.ok) return agentRunId
+	const generatedAgentRunId =
+		context.operationId === undefined ? nextId(context.values) : { ok: true as const, value: context.operationId }
+	if (!generatedAgentRunId.ok) return generatedAgentRunId
+	const agentRunId = generatedAgentRunId.value
+	const existing = await getRecord('agent-run', transaction.storage, agentRunId)
+	if (!existing.ok) return existing
+	if (existing.value !== null) {
+		return existing.value.purpose.type === 'execution' &&
+			existing.value.purpose.deliveryId === context.deliveryContext.delivery.id &&
+			existing.value.purpose.sliceId === slice.id
+			? { ok: true, value: { processedCount: 1, failures: [] } }
+			: {
+					ok: false,
+					error: {
+						type: 'invariant-violation',
+						message: `Dispatch operation ${agentRunId} conflicts with an existing Agent Run.`,
+					},
+				}
+	}
 
 	const started = runtimeRecord(context.values)
 	if (!started.ok) return started
@@ -22,7 +40,7 @@ export async function handleSliceExecutable(
 		{ values: context.values, dispatch: transaction.dispatch, notifications: transaction.notifications },
 		transaction.storage,
 		{
-			agentRunId: agentRunId.value,
+			agentRunId,
 			agentRunProfile: resolution.executionProfile,
 			project: context.deliveryContext.project,
 			purpose: {
@@ -58,7 +76,7 @@ export async function handleSliceExecutable(
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
 	const { buildDeliveryContext } = await import('../../../utils/delivery-context')
-	const { createTestCoreServices, defaultAgentRunSandboxConfig, seedDelivery, seedSlice, seedSelectableModel } =
+	const { createTestCoreServices, defaultAgentRunSandboxConfig, seedDelivery, seedSlice, seedSelectableModel, testId } =
 		await import('../../../utils/test-helpers')
 	const { ensureGitRequirement, globalRuntimeRequirements } = await import('../../../utils/agent-run-runtime-requirements')
 
@@ -114,11 +132,36 @@ if (import.meta.vitest) {
 					},
 				],
 			})
-			expect(context.tx.agentRunEvents.records.get('01k00000000000000000010003')?.body).toEqual({
+			expect(context.tx.agentRunEvents.records.get('01k00000000000000000010004')?.body).toEqual({
 				type: 'input-message',
 				source: { type: 'runtime' },
 				parts: [{ type: 'text', text: 'Do work.', metadata: null }],
 			})
+		})
+
+		it('adopts the stable operation Agent Run when the same executable work is replayed', async () => {
+			const context = await executableHandlerContext()
+			const operationContext = { ...context, storage: context.services.storage, operationId: testId(90) }
+			const run = () =>
+				context.services.transactions.run((transaction) =>
+					handleSliceExecutable(
+						{ ...operationContext, storage: transaction.storage },
+						context.tx.slices.records.get(testId(42))!,
+						{ type: 'executable', mode: 'initial' },
+						resolution,
+						transaction,
+					),
+				)
+
+			expect(await run()).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
+			const eventCount = context.tx.agentRunEvents.records.size
+			const requestCount = context.tx.dispatchRequests.records.size
+			expect(await run()).toEqual({ ok: true, value: { processedCount: 1, failures: [] } })
+
+			expect(context.tx.agentRuns.records.has(testId(90))).toBe(true)
+			expect(context.tx.agentRuns.records).toHaveLength(1)
+			expect(context.tx.agentRunEvents.records).toHaveLength(eventCount)
+			expect(context.tx.dispatchRequests.records).toHaveLength(requestCount)
 		})
 
 		it('claims correction executable Slice work in correction mode', async () => {

@@ -170,25 +170,25 @@ if (import.meta.vitest) {
 			type: 'promote-slice-artifact',
 			sliceId: '01k00000000000000000000042',
 			evidence: slicePromotion,
-			dispatchStartedActionId: null,
+			dispatch: null,
 		})
 		seedAction(tx, '01k00000000000000000100043', '2026-06-10T00:02:00.000Z', {
 			type: 'validate-slice-delivery-artifact',
 			sliceId: '01k00000000000000000000042',
 			evidence: sliceValidation,
-			dispatchStartedActionId: null,
+			dispatch: null,
 		})
 		seedAction(tx, '01k00000000000000000000013', '2026-06-10T00:03:00.000Z', {
 			type: 'validate-delivery-artifact',
 			evidence: deliveryValidation,
-			dispatchStartedActionId: null,
+			dispatch: null,
 		})
 		if (options.integration === 'review-surface-merged') seedMergedDeliveryReviewSurface(tx)
 		if (options.integration === 'observed-artifact-integration') {
 			seedAction(tx, '01k00000000000000000000012', '2026-06-10T00:04:00.000Z', {
 				type: 'observe-delivery-artifact-integration',
 				evidence: observedIntegration,
-				dispatchStartedActionId: null,
+				dispatch: null,
 			})
 		}
 	}

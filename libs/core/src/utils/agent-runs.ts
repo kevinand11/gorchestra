@@ -1,10 +1,11 @@
 import { resolveAgentRunSourceSetup } from './agent-run-source-resolvers'
 import { agentRunProfileSnapshot } from './command-storage'
-import { requestAgentRunPreparation, requestAgentRunSandboxRelease } from './dispatch'
 import type { NotificationEmitter } from './notification-emitter'
 import { validateRuntimeRequirementSecretReferences, type RuntimeRequirementSecretReferenceError } from './runtime-requirement-secrets'
 import { nextId, runtimeRecord, type CoreRuntimeValues } from './runtime-values'
 import type { Result } from './types'
+import { requestAgentRunPreparation, requestAgentRunSandboxRelease } from '../dispatch/accept'
+import { appendBoundedDispatchAttemptHistory } from '../dispatch/history'
 import type { AgentRun, AgentRunProfileSnapshot, AgentRunPurpose, AgentRunToolSet } from '../domain/agent-run'
 import type { AgentRunEvent, AgentRunEventBody } from '../domain/agent-run-event'
 import type { AgentRunProfile } from '../domain/agent-run-profile'
@@ -233,29 +234,56 @@ export async function completeAgentRunByIdAndRequestSandboxRelease(
 	const completedAgentRun = await updateAgentRunRecord(storage, notifications, agentRun.id, { completed })
 	if (!completedAgentRun.ok) return completedAgentRun
 
+	const requests = await listRecords('dispatch-request', storage)
+	if (!requests.ok) return requests
+	for (const request of requests.value) {
+		if (
+			request.payload.type !== 'agent-run-model-turn' ||
+			request.payload.agentRunId !== agentRun.id ||
+			(request.lifecycle.type !== 'waiting' && request.lifecycle.type !== 'pending' && request.lifecycle.type !== 'leased')
+		) {
+			continue
+		}
+		const attempts =
+			request.lifecycle.type === 'leased'
+				? appendBoundedDispatchAttemptHistory(request.attempts, {
+						number: request.lifecycle.attempt.number,
+						started: request.lifecycle.attempt.claimed,
+						ended: completed,
+						outcome: { type: 'completed', outcome: 'no-longer-applicable' },
+					})
+				: request.attempts
+		const noLongerApplicable = await updateRecord('dispatch-request', storage, request.id, {
+			attempts,
+			lifecycle: { type: 'completed', completed, outcome: 'no-longer-applicable' },
+		})
+		if (!noLongerApplicable.ok) return noLongerApplicable
+	}
+
 	const releaseRequested = await requestAgentRunSandboxRelease(dispatch, completedAgentRun.value.id)
 	return releaseRequested.ok ? completedAgentRun : releaseRequested
 }
 
 if (import.meta.vitest) {
 	const { describe, expect, it } = import.meta.vitest
-	const { createTestCoreRuntime, createTestCoreServices, defaultAgentRunSandboxConfig, localStamp, seedProject, testModelAgentRun } =
-		await import('./test-helpers')
+	const {
+		createTestCoreRuntime,
+		createTestCoreServices,
+		defaultAgentRunSandboxConfig,
+		localStamp,
+		seedDispatchRequest,
+		seedProject,
+		testId,
+		testModelAgentRun,
+	} = await import('./test-helpers')
 	const { ensureGitRequirement, globalRuntimeRequirements } = await import('./agent-run-runtime-requirements')
 
 	describe('createInstructedModelAgentRunAndRequestPreparation', () => {
 		it('creates a Model Agent Run, records its instruction, and requests Agent Run preparation', async () => {
-			const dispatches: unknown[] = []
+			const wakes: string[] = []
 			const notifications: unknown[] = []
 			const options = createTestCoreServices({
-				dispatcher: {
-					preflight: () => Promise.resolve({ ok: true }),
-					request: (request) => {
-						dispatches.push(request)
-						return Promise.resolve('marker-1')
-					},
-					ready: (marker) => dispatches.push(`ready:${marker}`),
-				},
+				dispatchWake: { publish: () => wakes.push('wake'), subscribe: () => () => {} },
 			})
 			const project = seedProject(options.tx, '01k00000000000000000000030')
 			options.tx.plans.records.set('01k00000000000000000000028', {
@@ -332,20 +360,10 @@ if (import.meta.vitest) {
 				{ type: 'agent-run-created', agentRun: expectedAgentRun },
 				{ type: 'agent-run-event-created', event: result.ok ? result.value.instructionEvent : null },
 			])
-			expect(dispatches).toEqual([
-				{
-					type: 'agent-run-preparation',
-					agentRunId: '01k00000000000000000000002',
-					coordinationClaims: [
-						{
-							scope: [{ type: 'agent-run', id: '01k00000000000000000000002' }],
-							mode: { type: 'exclusive' },
-						},
-					],
-					reason: { type: 'agent-run-created' },
-				},
-				'ready:marker-1',
+			expect([...options.tx.dispatchRequests.records.values()].map((request) => request.payload)).toEqual([
+				{ type: 'agent-run-preparation', agentRunId: '01k00000000000000000000002' },
 			])
+			expect(wakes).toEqual(['wake'])
 		})
 	})
 
@@ -393,6 +411,39 @@ if (import.meta.vitest) {
 			const completed = testModelAgentRun({ id: '01k00000000000000000000003', completed: { at: '2026-06-09T12:00:00.000Z' } })
 			options.tx.agentRuns.records.set(active.id, active)
 			options.tx.agentRuns.records.set(completed.id, completed)
+			const waiting = seedDispatchRequest(options.tx, testId(90), {
+				payload: { type: 'agent-run-model-turn', agentRunId: active.id },
+				reasons: [{ type: 'input-appended', inputEventId: testId(91) }],
+				deduplicationKey: null,
+				coordinationClaims: [{ scope: [{ type: 'agent-run', id: active.id }], mode: { type: 'exclusive' } }],
+				lifecycle: {
+					type: 'waiting',
+					since: { at: '2026-06-10T11:59:00.000Z' },
+					prerequisite: { type: 'agent-run-preparation', agentRunId: active.id },
+				},
+			})
+			const pending = seedDispatchRequest(options.tx, testId(92), {
+				payload: { type: 'agent-run-model-turn', agentRunId: active.id },
+				reasons: [{ type: 'input-appended', inputEventId: testId(93) }],
+				deduplicationKey: null,
+				coordinationClaims: [{ scope: [{ type: 'agent-run', id: active.id }], mode: { type: 'exclusive' } }],
+			})
+			const activeAttempt = {
+				number: 1,
+				token: 'active-token',
+				coordinationEpoch: 0,
+				claimed: { at: '2026-06-10T11:59:00.000Z' },
+				heartbeat: { at: '2026-06-10T11:59:00.000Z' },
+				expiresAt: '2026-06-10T12:01:00.000Z',
+			}
+			const leased = seedDispatchRequest(options.tx, testId(94), {
+				payload: { type: 'agent-run-model-turn', agentRunId: active.id },
+				reasons: [{ type: 'input-appended', inputEventId: testId(95) }],
+				deduplicationKey: null,
+				coordinationClaims: [{ scope: [{ type: 'agent-run', id: active.id }], mode: { type: 'exclusive' } }],
+				attemptCount: 1,
+				lifecycle: { type: 'leased', attempt: activeAttempt },
+			})
 			const notifications: unknown[] = []
 			const runtime = createTestCoreRuntime(options, { notifications: { emit: (data) => notifications.push(data) } })
 
@@ -410,6 +461,16 @@ if (import.meta.vitest) {
 			expect(first).toMatchObject({ ok: true, value: { id: active.id, completed: { at: '2026-06-10T12:00:00.000Z' } } })
 			expect(second).toEqual({ ok: true, value: completed })
 			expect(notifications).toEqual([{ type: 'agent-run-updated', agentRun: first.ok ? first.value : null }])
+			for (const request of [waiting, pending, leased]) {
+				expect(options.tx.dispatchRequests.records.get(request.id)?.lifecycle).toEqual({
+					type: 'completed',
+					completed: { at: '2026-06-10T12:00:00.000Z' },
+					outcome: 'no-longer-applicable',
+				})
+			}
+			expect(options.tx.dispatchRequests.records.get(leased.id)?.attempts).toMatchObject([
+				{ number: 1, outcome: { type: 'completed', outcome: 'no-longer-applicable' } },
+			])
 		})
 	})
 

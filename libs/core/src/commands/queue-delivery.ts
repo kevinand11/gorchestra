@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
+import { exclusiveDeliverySchedulerClaim } from '../dispatch/claims'
 import { idPipe } from '../domain/commons'
 import type { Delivery } from '../domain/delivery'
 import type { DeliveryActionCommandError } from '../utils/command-errors'
@@ -25,14 +26,22 @@ export function createQueueDeliveryCommand(runtime: CoreRuntime): Operation {
 		const queued = auditStamp(runtime.values, context)
 		if (!queued.ok) return queued
 
-		return runtime.transactions.run<Result, Error>(async ({ storage }) => {
+		return runtime.transactions.run<Result, Error>(async ({ storage, dispatch }) => {
 			const deliveryContext = await buildDeliveryContext(storage, input.deliveryId)
 			if (!deliveryContext.ok) return deliveryContext
 
 			const deliveryState = getDeliveryState(deliveryContext.value)
 			if (!deliveryState.ok) return deliveryState
 			if (deliveryState.value.type === 'unqueued') {
-				return updateRecordValue('delivery', storage, deliveryContext.value.delivery.id, { queued: queued.value })
+				const delivery = await updateRecordValue('delivery', storage, deliveryContext.value.delivery.id, { queued: queued.value })
+				if (!delivery.ok) return delivery
+				const accepted = await dispatch.request({
+					payload: { type: 'delivery-work-scheduler', deliveryId: input.deliveryId },
+					reason: { type: 'delivery-work-requested' },
+					coordinationClaims: [exclusiveDeliverySchedulerClaim(input.deliveryId)],
+					deduplicationKey: { type: 'delivery-work-scheduler', deliveryId: input.deliveryId },
+				})
+				return accepted.ok ? delivery : accepted
 			}
 
 			return deliveryWorkStateMismatch(input.deliveryId, ['unqueued'], deliveryState.value)
@@ -75,6 +84,9 @@ if (import.meta.vitest) {
 				},
 			})
 			expect(options.tx.deliveries.records.get('01k00000000000000000000008')).toEqual(result.ok ? result.value : null)
+			expect([...options.tx.dispatchRequests.records.values()].map((request) => request.payload)).toEqual([
+				{ type: 'delivery-work-scheduler', deliveryId: '01k00000000000000000000008' },
+			])
 		})
 
 		it('rejects queueing unless Delivery Work State is unqueued', async () => {

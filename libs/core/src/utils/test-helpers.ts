@@ -25,6 +25,8 @@ import type { AuditStamp, Id } from '../domain/commons'
 import type { DeliveryWorkConfig } from '../domain/config'
 import type { Delivery } from '../domain/delivery'
 import type { DeliveryArtifact } from '../domain/delivery-artifact'
+import type { DispatchCoordination } from '../domain/dispatch-coordination'
+import type { DispatchRequest } from '../domain/dispatch-request'
 import type { ExternalOperation, ExternalOperationEvidence, ValidationEvidence, ValidationOperation } from '../domain/evidence'
 import type { Link } from '../domain/link'
 import type { Memory } from '../domain/memory'
@@ -50,6 +52,8 @@ const {
 	'agent-run': agentRunSchema,
 	'delivery-artifact': deliveryArtifactSchema,
 	delivery: deliverySchema,
+	'dispatch-coordination': dispatchCoordinationSchema,
+	'dispatch-request': dispatchRequestSchema,
 	link: linkSchema,
 	'memory-revision': memoryRevisionSchema,
 	memory: memorySchema,
@@ -99,7 +103,7 @@ export function createTestCoreRuntime(
 ): CoreRuntime {
 	const values = overrides.values ?? services.values
 	const notifications = overrides.notifications ?? createNotificationEmitter(values, services.notifications)
-	const transactions = createCoreTransactions({ services, notifications })
+	const transactions = createCoreTransactions({ services, notifications, values })
 	return {
 		services,
 		providers: overrides.providers ?? createCoreProviders(services, transactions),
@@ -176,7 +180,7 @@ export function neverCalledProviderBackedPreflightProviders(): CoreRuntime['prov
 }
 
 export function createTestCoreServices(
-	overrides: Partial<Pick<CoreServices, 'dispatcher' | 'notifications' | 'sandbox' | 'secrets'>> = {},
+	overrides: Partial<Pick<CoreServices, 'dispatchWake' | 'notifications' | 'sandbox' | 'secrets'>> = {},
 ): CoreServices & {
 	tx: TestStorageTransaction
 	transactions: CoreTransactions
@@ -193,7 +197,7 @@ export function createTestCoreServices(
 			resolveSecretValues: () => Promise.resolve({}),
 		},
 		sandbox: overrides.sandbox ?? noopSandbox,
-		dispatcher: overrides.dispatcher ?? noopDispatcher,
+		dispatchWake: overrides.dispatchWake,
 		notifications: overrides.notifications,
 	}
 
@@ -204,6 +208,7 @@ export function createTestCoreServices(
 		transactions: createCoreTransactions({
 			services,
 			notifications: createNotificationEmitter(values, services.notifications),
+			values,
 		}),
 		transactionCalls: () => storage.transactionCalls,
 	}
@@ -213,12 +218,6 @@ const noopSandbox: CoreServices['sandbox'] = {
 	kind: 'consumer-managed',
 	create: () => Promise.resolve(noopRawSandboxInstance()),
 	find: () => Promise.resolve(noopRawSandboxInstance()),
-}
-
-const noopDispatcher: CoreServices['dispatcher'] = {
-	preflight: () => Promise.resolve({ ok: true }),
-	request: () => Promise.resolve('dispatch-marker'),
-	ready: () => {},
 }
 
 export function createTestCoreStorage(): CoreStorage {
@@ -280,6 +279,48 @@ export function seedAction(
 	authorized: AuditStamp | null = localStamp(),
 ) {
 	tx.actions.records.set(id, { id, deliveryId: '01k00000000000000000000008', performed: { at }, authorized, result })
+}
+
+export function seedDispatchCoordination(
+	tx: TestStorageTransaction,
+	overrides: Partial<Omit<DispatchCoordination, 'id'>> = {},
+): DispatchCoordination {
+	const coordination: DispatchCoordination = {
+		id: '00000000000000000000000000',
+		epoch: 0,
+		revision: 0,
+		bootstrapVersion: 0,
+		...overrides,
+	}
+	tx.dispatchCoordination.records.set(coordination.id, coordination)
+	return coordination
+}
+
+export function seedDispatchRequest(
+	tx: TestStorageTransaction,
+	id: Id,
+	overrides: Partial<Omit<DispatchRequest, 'id'>> = {},
+): DispatchRequest {
+	const request: DispatchRequest = {
+		id,
+		payload: { type: 'delivery-work-scheduler', deliveryId: testId(8) },
+		reasons: [{ type: 'delivery-work-requested' }],
+		deduplicationKey: { type: 'delivery-work-scheduler', deliveryId: testId(8) },
+		coordinationClaims: [
+			{
+				scope: [{ type: 'delivery', id: testId(8) }, { type: 'scheduler' }],
+				mode: { type: 'exclusive' },
+			},
+		],
+		accepted: { at: '2026-06-10T12:00:00.000Z' },
+		attemptCount: 0,
+		expiredLeaseCount: 0,
+		attempts: [],
+		lifecycle: { type: 'pending', eligibleAt: '2026-06-10T12:00:00.000Z' },
+		...overrides,
+	}
+	tx.dispatchRequests.records.set(id, request)
+	return request
 }
 
 export function defaultAgentRunSandboxConfig(): AgentRunSandboxConfig {
@@ -432,6 +473,7 @@ function createTestCoreStorageWithView() {
 	let transactionCalls = 0
 	const adapter = InMemoryAdapter.create({})
 	const tx = testStorageTransaction(adapter)
+	seedDispatchCoordination(tx)
 	patchAdapterFailures(adapter, tx, () => {
 		transactionCalls += 1
 	})
@@ -457,6 +499,8 @@ export interface TestStorageTransaction extends CoreStorage {
 	agentRunProfiles: TestTable<AgentRunProfile>
 	plans: TestTable<Plan>
 	deliveries: TestTable<Delivery>
+	dispatchCoordination: TestTable<DispatchCoordination>
+	dispatchRequests: TestTable<DispatchRequest>
 	slices: TestTable<Slice>
 	links: TestTable<Link>
 	memories: TestTable<Memory>
@@ -474,7 +518,7 @@ export interface TestStorageTransaction extends CoreStorage {
 
 export interface TestTable<TRecord extends { id: Id }> {
 	records: Map<Id, TRecord>
-	fail: { get: boolean; put: boolean; list: boolean }
+	fail: { get: boolean; put: boolean; list: boolean; delete: boolean }
 }
 
 function testStorageTransaction(adapter: InMemoryAdapter): TestStorageTransaction {
@@ -486,6 +530,8 @@ function testStorageTransaction(adapter: InMemoryAdapter): TestStorageTransactio
 		agentRunProfiles: tableView<AgentRunProfile>(adapter, agentRunProfileSchema.name),
 		plans: tableView<Plan>(adapter, planSchema.name),
 		deliveries: tableView<Delivery>(adapter, deliverySchema.name),
+		dispatchCoordination: tableView<DispatchCoordination>(adapter, dispatchCoordinationSchema.name),
+		dispatchRequests: tableView<DispatchRequest>(adapter, dispatchRequestSchema.name),
 		slices: tableView<Slice>(adapter, sliceSchema.name),
 		links: tableView<Link>(adapter, linkSchema.name),
 		memories: tableView<Memory>(adapter, memorySchema.name),
@@ -513,7 +559,7 @@ function tableView<TRecord extends { id: Id }>(adapter: InMemoryAdapter, table: 
 		get records() {
 			return store(adapter, table) as Map<Id, TRecord>
 		},
-		fail: { get: false, put: false, list: false },
+		fail: { get: false, put: false, list: false, delete: false },
 	}
 }
 
@@ -559,6 +605,12 @@ function patchAdapterFailures(adapter: InMemoryAdapter, tx: TestStorageTransacti
 		return updateMany(schema, config, group, data)
 	}
 
+	const deleteMany = adapter.deleteMany.bind(adapter)
+	adapter.deleteMany = (schema, config, group) => {
+		if (failuresForConfig(tables, config)?.delete === true) throw new Error('delete failed')
+		return deleteMany(schema, config, group)
+	}
+
 	const session = adapter.session.bind(adapter)
 	adapter.session = (fn) => {
 		onSession()
@@ -566,7 +618,7 @@ function patchAdapterFailures(adapter: InMemoryAdapter, tx: TestStorageTransacti
 	}
 }
 
-function failureTables(tx: TestStorageTransaction): Map<string, { get?: boolean; put?: boolean; list?: boolean }> {
+function failureTables(tx: TestStorageTransaction): Map<string, { get?: boolean; put?: boolean; list?: boolean; delete?: boolean }> {
 	return new Map([
 		[projectSchema.name, tx.projects.fail],
 		[repositorySchema.name, tx.repositories.fail],
@@ -575,6 +627,8 @@ function failureTables(tx: TestStorageTransaction): Map<string, { get?: boolean;
 		[agentRunProfileSchema.name, tx.agentRunProfiles.fail],
 		[planSchema.name, tx.plans.fail],
 		[deliverySchema.name, tx.deliveries.fail],
+		[dispatchCoordinationSchema.name, tx.dispatchCoordination.fail],
+		[dispatchRequestSchema.name, tx.dispatchRequests.fail],
 		[sliceSchema.name, tx.slices.fail],
 		[linkSchema.name, tx.links.fail],
 		[memorySchema.name, tx.memories.fail],
@@ -592,9 +646,9 @@ function failureTables(tx: TestStorageTransaction): Map<string, { get?: boolean;
 }
 
 function failuresForConfig(
-	tables: Map<string, { get?: boolean; put?: boolean; list?: boolean }>,
+	tables: Map<string, { get?: boolean; put?: boolean; list?: boolean; delete?: boolean }>,
 	config: unknown,
-): { get?: boolean; put?: boolean; list?: boolean } | undefined {
+): { get?: boolean; put?: boolean; list?: boolean; delete?: boolean } | undefined {
 	return typeof config === 'object' && config !== null && typeof (config as { table?: unknown }).table === 'string'
 		? tables.get((config as { table: string }).table)
 		: undefined

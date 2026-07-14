@@ -11,7 +11,7 @@ export function handleSliceNeedsArtifactValidation(
 		type: 'validate-slice-artifact',
 		sliceId: slice.id,
 		evidence: noConfiguredValidationEvidence('slice-branch-validation', 'No Slice Artifact validation is configured.'),
-		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+		dispatch: context.dispatch ?? null,
 	})
 }
 
@@ -42,7 +42,7 @@ if (import.meta.vitest) {
 					type: 'validate-slice-artifact',
 					sliceId: '01k00000000000000000000042',
 					evidence: validationEvidence('slice-branch-validation', true, 'No Slice Artifact validation is configured.'),
-					dispatchStartedActionId: null,
+					dispatch: null,
 				},
 			})
 		})

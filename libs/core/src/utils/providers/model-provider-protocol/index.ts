@@ -547,7 +547,11 @@ if (import.meta.vitest) {
 	})
 
 	function transactionsFor(services: CoreServices) {
-		return createCoreTransactions({ services, notifications: { emit: () => {} } })
+		return createCoreTransactions({
+			services,
+			notifications: { emit: () => {} },
+			values: { nextId: () => '01k00000000000000000090001', now: () => new Date('2026-07-13T12:00:00.000Z') },
+		})
 	}
 
 	function openAIResponsesPreflightInput(): ModelProviderProtocolPreflightModelInput {
@@ -612,7 +616,6 @@ if (import.meta.vitest) {
 			storage: unusedStorageService(),
 			secrets: secretService(resolveSecretValues),
 			sandbox: noopSandbox(),
-			dispatcher: noopDispatcher(),
 		}
 	}
 
@@ -624,7 +627,6 @@ if (import.meta.vitest) {
 			storage: secretStorageService(secrets),
 			secrets: secretService(resolveSecretValues),
 			sandbox: noopSandbox(),
-			dispatcher: noopDispatcher(),
 		}
 	}
 
@@ -670,14 +672,6 @@ if (import.meta.vitest) {
 			preflight: () => Promise.resolve({ ok: true }),
 			resolveSecrets: () => Promise.resolve([]),
 			resolveSecretValues,
-		}
-	}
-
-	function noopDispatcher(): CoreServices['dispatcher'] {
-		return {
-			preflight: () => Promise.resolve({ ok: true }),
-			request: () => Promise.resolve('dispatch-marker'),
-			ready: () => {},
 		}
 	}
 }

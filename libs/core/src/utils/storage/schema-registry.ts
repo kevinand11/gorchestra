@@ -6,6 +6,8 @@ import { agentRunEventSchema } from '../../domain/agent-run-event'
 import { agentRunProfileSchema } from '../../domain/agent-run-profile'
 import { deliverySchema } from '../../domain/delivery'
 import { deliveryArtifactSchema } from '../../domain/delivery-artifact'
+import { dispatchCoordinationSchema } from '../../domain/dispatch-coordination'
+import { dispatchRequestSchema } from '../../domain/dispatch-request'
 import { linkSchema } from '../../domain/link'
 import { memorySchema } from '../../domain/memory'
 import { memoryRevisionSchema } from '../../domain/memory-revision'
@@ -42,6 +44,8 @@ export const coreIdResourceSchemas = {
 	'revision-gate': revisionGateSchema,
 	revision: revisionSchema,
 	secret: secretSchema,
+	'dispatch-request': dispatchRequestSchema,
+	'dispatch-coordination': dispatchCoordinationSchema,
 } as const satisfies Record<string, AnySchema>
 
 export type CoreIdResource = keyof typeof coreIdResourceSchemas

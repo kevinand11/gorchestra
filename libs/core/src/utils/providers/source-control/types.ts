@@ -25,6 +25,7 @@ export type SourceControlRepositoryPreflight =
 export type SourceControlRepositoryPreflightError = InvalidCoreServiceOutputError
 
 export interface SourceControlCreateArtifactBranchInput {
+	operationId: Id
 	repository: Repository
 	accessSecret: ResolvableSecretValue
 	sourceBranch: string
@@ -52,6 +53,7 @@ export type SourceControlArtifactCreation =
 export type SourceControlArtifactCreationError = InvalidCoreServiceOutputError
 
 export interface SourceControlCreateReviewSurfaceInput {
+	operationId: Id
 	repository: Repository
 	accessSecret: ResolvableSecretValue
 	sourceBranch: string
@@ -89,6 +91,7 @@ export interface SourceControlProviderPreflightRepositoryInput<Config extends Re
 }
 
 export interface SourceControlProviderCreateArtifactBranchInput<Config extends RepositoryConfig> {
+	operationId: Id
 	repository: Repository & { config: Config }
 	accessToken: SourceControlAccessToken
 	sourceBranch: string
@@ -96,6 +99,7 @@ export interface SourceControlProviderCreateArtifactBranchInput<Config extends R
 }
 
 export interface SourceControlProviderCreateReviewSurfaceInput<Config extends RepositoryConfig> {
+	operationId: Id
 	repository: Repository & { config: Config }
 	accessToken: SourceControlAccessToken
 	sourceBranch: string

@@ -62,6 +62,7 @@ async function createGitHubArtifactBranch(
 	if (!isAccessToken(accessToken.value)) return { ok: true, value: artifactCreationAccessFailure(accessToken.value) }
 
 	const creation = await github.createArtifactBranch({
+		operationId: input.operationId,
 		repository: input.repository,
 		accessToken: accessToken.value,
 		sourceBranch: input.sourceBranch,
@@ -81,6 +82,7 @@ async function createGitHubReviewSurface(
 	if (!isAccessToken(accessToken.value)) return { ok: true, value: reviewSurfaceAccessFailure(accessToken.value) }
 
 	const creation = await github.createReviewSurface({
+		operationId: input.operationId,
 		repository: input.repository,
 		accessToken: accessToken.value,
 		sourceBranch: input.sourceBranch,
@@ -262,6 +264,7 @@ if (import.meta.vitest) {
 			)
 
 			const result = await sourceControl.createArtifactBranch({
+				operationId: '01k00000000000000000000090',
 				repository: gitHubRepository(),
 				accessSecret: gitHubAccessSecret(),
 				sourceBranch: 'main',
@@ -292,6 +295,7 @@ if (import.meta.vitest) {
 			)
 
 			const result = await sourceControl.createReviewSurface({
+				operationId: '01k00000000000000000000090',
 				repository: gitHubRepository(),
 				accessSecret: gitHubAccessSecret(),
 				sourceBranch: 'delivery-branch',
@@ -311,6 +315,7 @@ if (import.meta.vitest) {
 			const sourceControl = createSourceControlProviders(services, { github: neverCalledGitHubProvider() })
 
 			const result = await sourceControl.createArtifactBranch({
+				operationId: '01k00000000000000000000090',
 				repository: gitHubRepository(),
 				accessSecret: gitHubAccessSecret(),
 				sourceBranch: 'main',
@@ -365,11 +370,6 @@ if (import.meta.vitest) {
 				kind: 'consumer-managed',
 				create: () => Promise.resolve(noopSandboxInstance()),
 				find: () => Promise.resolve(noopSandboxInstance()),
-			},
-			dispatcher: {
-				preflight: () => Promise.resolve({ ok: true }),
-				request: () => Promise.resolve('dispatch-marker'),
-				ready: () => {},
 			},
 		}
 	}

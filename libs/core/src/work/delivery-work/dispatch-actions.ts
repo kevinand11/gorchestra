@@ -1,80 +1,7 @@
-import type { Action, DeliveryWorkOperation } from '../../domain/action'
-import type { Id, RuntimeRecord } from '../../domain/commons'
+import type { Id } from '../../domain/commons'
 import type { DeliveryWorkState } from '../../domain/delivery'
+import type { DeliveryWorkOperation } from '../../domain/delivery-work-operation'
 import type { SliceWorkState } from '../../domain/slice'
-
-export function queuedDeliveryWorkDispatchAction(input: {
-	actionId: Id
-	deliveryId: Id
-	performed: RuntimeRecord
-	operation: DeliveryWorkOperation
-}): Action {
-	return {
-		id: input.actionId,
-		deliveryId: input.deliveryId,
-		performed: input.performed,
-		authorized: null,
-		result: { type: 'queue-delivery-work-operation', operation: input.operation },
-	}
-}
-
-export function startedDeliveryWorkDispatchAction(input: {
-	actionId: Id
-	deliveryId: Id
-	performed: RuntimeRecord
-	queuedActionId: Id
-	operation: DeliveryWorkOperation
-}): Action {
-	return {
-		id: input.actionId,
-		deliveryId: input.deliveryId,
-		performed: input.performed,
-		authorized: null,
-		result: { type: 'start-delivery-work-operation', queuedActionId: input.queuedActionId, operation: input.operation },
-	}
-}
-
-export function processedDeliveryWorkDispatchAction(input: {
-	actionId: Id
-	deliveryId: Id
-	performed: RuntimeRecord
-	startedActionId: Id
-	operation: DeliveryWorkOperation
-}): Action {
-	return finishDeliveryWorkDispatchAction({ ...input, outcome: { type: 'processed' } })
-}
-
-export function staleNoopDeliveryWorkDispatchAction(input: {
-	actionId: Id
-	deliveryId: Id
-	performed: RuntimeRecord
-	startedActionId: Id
-	operation: DeliveryWorkOperation
-}): Action {
-	return finishDeliveryWorkDispatchAction({ ...input, outcome: { type: 'stale-no-op' } })
-}
-
-function finishDeliveryWorkDispatchAction(input: {
-	actionId: Id
-	deliveryId: Id
-	performed: RuntimeRecord
-	startedActionId: Id
-	operation: DeliveryWorkOperation
-	outcome: Extract<Action['result'], { type: 'finish-delivery-work-operation' }>['outcome']
-}): Action {
-	return {
-		id: input.actionId,
-		deliveryId: input.deliveryId,
-		performed: input.performed,
-		authorized: null,
-		result: {
-			type: 'finish-delivery-work-operation',
-			startedActionId: input.startedActionId,
-			operation: input.operation,
-			outcome: input.outcome,
-		},
-	}
-}
 
 export function deliveryOperationFromState(state: DeliveryWorkState): DeliveryWorkOperation | null {
 	switch (state.type) {
@@ -86,6 +13,7 @@ export function deliveryOperationFromState(state: DeliveryWorkState): DeliveryWo
 		case 'unqueued':
 		case 'operation-running':
 		case 'operation-queued':
+		case 'delivery-dispatch-failed':
 		case 'dependency-blocked':
 		case 'preflight-failed':
 		case 'slices-incomplete':
@@ -122,6 +50,7 @@ export function sliceOperationFromState(sliceId: Id, state: SliceWorkState): Del
 		case 'complete':
 		case 'operation-running':
 		case 'operation-queued':
+		case 'slice-dispatch-failed':
 		case 'dependency-blocked':
 		case 'correction-blocked':
 		case 'awaiting-review':

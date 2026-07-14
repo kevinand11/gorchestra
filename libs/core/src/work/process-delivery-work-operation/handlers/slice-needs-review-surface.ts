@@ -49,7 +49,7 @@ export async function handleSliceNeedsReviewSurface(
 }
 
 function sliceReviewSurfaceInput(
-	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'repositoryAccessSecret'>,
+	context: Pick<ResolvedDeliveryHandlerContext, 'deliveryContext' | 'repositoryAccessSecret' | 'operationId'>,
 	slice: Slice,
 	state: SliceNeedsReviewSurfaceState,
 ): CoreResult<SliceReviewSurfaceInput, InvariantViolationError> {
@@ -72,6 +72,7 @@ function sliceReviewSurfaceInput(
 	return {
 		ok: true,
 		value: {
+			operationId: context.operationId ?? context.deliveryContext.delivery.id,
 			deliveryId: context.deliveryContext.delivery.id,
 			sliceId: slice.id,
 			sliceArtifactId: state.sliceArtifactId,
@@ -112,7 +113,7 @@ async function writeIntegratedSliceArtifactPromotion(
 		type: 'promote-slice-artifact',
 		sliceId,
 		evidence: externalOperationEvidence(summary, 'merge-review-surface', true),
-		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+		dispatch: context.dispatch ?? null,
 	})
 	if (!action.ok) return action
 
@@ -155,7 +156,7 @@ async function writeSliceReviewSurface(
 			type: 'create-slice-review-surface',
 			sliceId: input.sliceId,
 			reviewSurfaceId: reviewSurface.id,
-			dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+			dispatch: context.dispatch ?? null,
 		},
 	}
 
@@ -174,7 +175,7 @@ async function writeFailedSliceReviewSurfaceCreation(
 		type: 'record-slice-external-operation-failure',
 		sliceId,
 		evidence: externalOperationEvidence(summary, 'create-review-surface'),
-		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+		dispatch: context.dispatch ?? null,
 	})
 	if (!action.ok) return action
 
@@ -227,7 +228,7 @@ if (import.meta.vitest) {
 				type: 'create-slice-review-surface',
 				sliceId: '01k00000000000000000000042',
 				reviewSurfaceId: '01k00000000000000000010001',
-				dispatchStartedActionId: null,
+				dispatch: null,
 			})
 		})
 
@@ -251,7 +252,7 @@ if (import.meta.vitest) {
 					passed: true,
 					summary: 'Already integrated.',
 				},
-				dispatchStartedActionId: null,
+				dispatch: null,
 			})
 		})
 
@@ -288,7 +289,7 @@ if (import.meta.vitest) {
 					passed: false,
 					summary: 'Failed.',
 				},
-				dispatchStartedActionId: null,
+				dispatch: null,
 			})
 		})
 	})

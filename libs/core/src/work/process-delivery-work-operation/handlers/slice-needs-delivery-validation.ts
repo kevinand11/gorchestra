@@ -11,7 +11,7 @@ export function handleSliceNeedsDeliveryValidation(
 		type: 'validate-slice-delivery-artifact',
 		sliceId: slice.id,
 		evidence: noConfiguredValidationEvidence('delivery-branch-validation', 'No Slice Delivery Artifact validation is configured.'),
-		dispatchStartedActionId: context.dispatchStartedActionId ?? null,
+		dispatch: context.dispatch ?? null,
 	})
 }
 
@@ -45,7 +45,7 @@ if (import.meta.vitest) {
 						true,
 						'No Slice Delivery Artifact validation is configured.',
 					),
-					dispatchStartedActionId: null,
+					dispatch: null,
 				},
 			})
 		})

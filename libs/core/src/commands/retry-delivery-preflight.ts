@@ -1,6 +1,7 @@
 import { v, type PipeOutput } from 'valleyed'
 
 import type { CommandContext } from './types'
+import { exclusiveDeliverySchedulerClaim } from '../dispatch/claims'
 import type { Action } from '../domain/action'
 import { idPipe, type Id } from '../domain/commons'
 import type { Delivery } from '../domain/delivery'
@@ -64,7 +65,7 @@ export function createRetryDeliveryPreflightCommand(runtime: CoreRuntime): Opera
 				return plan.ok ? { ok: true, value: { deliveryContext: deliveryContext.value, plan: plan.value } } : plan
 			},
 			run: (claim) => runProviderBackedDeliveryPreflightChecks(runtime, claim.plan),
-			write: async ({ storage }, claim, checks) => {
+			write: async ({ storage, dispatch }, claim, checks) => {
 				const deliveryContext = await requirePreflightFailedDelivery(storage, input.deliveryId)
 				if (!deliveryContext.ok) return deliveryContext
 
@@ -82,7 +83,17 @@ export function createRetryDeliveryPreflightCommand(runtime: CoreRuntime): Opera
 					result: { type: 'validate-preflight', checks },
 				}
 				const putResult = await createRecord('action', storage, action)
-				return putResult.ok ? { ok: true, value: { delivery: deliveryContext.value.delivery, action } } : putResult
+				if (!putResult.ok) return putResult
+				if (checks.every((check) => check.passed)) {
+					const accepted = await dispatch.request({
+						payload: { type: 'delivery-work-scheduler', deliveryId: input.deliveryId },
+						reason: { type: 'delivery-work-requested' },
+						coordinationClaims: [exclusiveDeliverySchedulerClaim(input.deliveryId)],
+						deduplicationKey: { type: 'delivery-work-scheduler', deliveryId: input.deliveryId },
+					})
+					if (!accepted.ok) return accepted
+				}
+				return { ok: true, value: { delivery: deliveryContext.value.delivery, action } }
 			},
 		})
 	})
@@ -173,6 +184,9 @@ if (import.meta.vitest) {
 				ok: true,
 				value: { type: 'preflight-failed' },
 			})
+			expect([...options.tx.dispatchRequests.records.values()].map((request) => request.payload)).toEqual([
+				{ type: 'delivery-work-scheduler', deliveryId: '01k00000000000000000000008' },
+			])
 		})
 
 		it('records all failed provider-backed preflight checks on retry', async () => {
@@ -200,6 +214,7 @@ if (import.meta.vitest) {
 					},
 				},
 			})
+			expect(options.tx.dispatchRequests.records).toHaveLength(0)
 		})
 
 		it('returns operation error when the selected execution Agent Run Profile is missing', async () => {

@@ -15,6 +15,7 @@ type NoWorkSliceState = Extract<
 			| 'complete'
 			| 'operation-running'
 			| 'operation-queued'
+			| 'slice-dispatch-failed'
 			| 'dependency-blocked'
 			| 'correction-blocked'
 			| 'needs-artifact-creation'
@@ -28,6 +29,7 @@ const noWorkSliceStateTypes = new Set<SliceWorkState['type']>([
 	'complete',
 	'operation-running',
 	'operation-queued',
+	'slice-dispatch-failed',
 	'dependency-blocked',
 	'correction-blocked',
 	'needs-artifact-creation',

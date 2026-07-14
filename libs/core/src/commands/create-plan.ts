@@ -4,13 +4,12 @@ import type { AgentRun } from '../domain/agent-run'
 import { idPipe, nonEmptyTrimmedStringPipe, type RuntimeRecord } from '../domain/commons'
 import type { Plan } from '../domain/plan'
 import type { InvalidInputError } from '../errors'
-import type { CoreDispatchRequest } from '../services'
 import type { CommandContext } from './types'
+import { requestAgentRunModelTurn } from '../dispatch/accept'
 import { appendAgentRunEvent, createModelAgentRunAndRequestPreparation } from '../utils/agent-runs'
 import type { ConfigCommandReferenceError, ConfigCommandStorageError } from '../utils/command-errors'
 import { buildCommandHandler } from '../utils/command-handler'
 import { auditStamp, createRecordValue, getRequired, isArchived, nextId, validateModelThinkingLevel } from '../utils/command-storage'
-import { requestAgentRunModelTurn } from '../utils/dispatch'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -100,7 +99,7 @@ export function createCreatePlanCommand(runtime: CoreRuntime): Operation {
 }
 
 if (import.meta.vitest) {
-	const { describe, expect, it } = import.meta.vitest
+	const { describe, expect, it, vi } = import.meta.vitest
 	const {
 		context,
 		createTestCoreRuntime,
@@ -160,25 +159,17 @@ if (import.meta.vitest) {
 				type: 'text',
 				metadata: null,
 			})
-			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010004')?.body).toEqual({
+			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010005')?.body).toEqual({
 				type: 'input-message',
 				source: { type: 'operator', authorized: localStamp() },
 				parts: [{ type: 'text', text: 'Please plan repository onboarding.', metadata: null }],
 			})
 		})
 
-		it('publishes Notifications and readies Dispatch markers after commit in invocation order', async () => {
-			const dispatches: CoreDispatchRequest[] = []
+		it('persists Dispatch Requests and publishes one wake after commit in invocation order', async () => {
 			const effects: string[] = []
 			const options = createTestCoreServices({
-				dispatcher: {
-					preflight: () => Promise.resolve({ ok: true }),
-					request: (request) => {
-						dispatches.push(request)
-						return Promise.resolve(`marker-${dispatches.length}`)
-					},
-					ready: (marker) => effects.push(`ready:${marker}`),
-				},
+				dispatchWake: { publish: () => effects.push('dispatch-wake'), subscribe: () => () => {} },
 				notifications: {
 					publish: ({ data }) =>
 						effects.push(
@@ -195,55 +186,27 @@ if (import.meta.vitest) {
 			const result = await command(validPlanCreationInput(), context)
 
 			expect(result).toMatchObject({ ok: true })
-			expect(dispatches).toEqual([
-				{
-					type: 'agent-run-preparation',
-					agentRunId: '01k00000000000000000010002',
-					coordinationClaims: [
-						{
-							scope: [{ type: 'agent-run', id: '01k00000000000000000010002' }],
-							mode: { type: 'exclusive' },
-						},
-					],
-					reason: { type: 'agent-run-created' },
-				},
-				{
-					type: 'agent-run-model-turn',
-					agentRunId: '01k00000000000000000010002',
-					coordinationClaims: [
-						{
-							scope: [{ type: 'agent-run', id: '01k00000000000000000010002' }],
-							mode: { type: 'exclusive' },
-						},
-					],
-					reason: { type: 'input-appended', inputEventId: '01k00000000000000000010004' },
-				},
+			expect([...options.tx.dispatchRequests.records.values()].map((request) => request.payload)).toEqual([
+				{ type: 'agent-run-preparation', agentRunId: '01k00000000000000000010002' },
+				{ type: 'agent-run-model-turn', agentRunId: '01k00000000000000000010002' },
 			])
 			expect(effects).toEqual([
 				'notification:agent-run-created',
 				'notification:agent-run-event-created:instruction-snapshot',
-				'ready:marker-1',
+				'dispatch-wake',
 				'notification:agent-run-event-created:input-message',
-				'ready:marker-2',
 			])
-			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010004')?.body.type).toBe('input-message')
+			expect(options.tx.agentRunEvents.records.get('01k00000000000000000010005')?.body.type).toBe('input-message')
 		})
 
-		it('rolls back all writes and post-commit effects when the initial model turn request is invalid', async () => {
+		it('rolls back all writes and post-commit effects when Dispatch persistence fails', async () => {
 			const published: unknown[] = []
-			const readyMarkers: string[] = []
-			let requestCount = 0
+			const wake = vi.fn()
 			const options = createTestCoreServices({
-				dispatcher: {
-					preflight: () => Promise.resolve({ ok: true }),
-					request: () => {
-						requestCount += 1
-						return Promise.resolve(requestCount === 1 ? 'marker-1' : ' ')
-					},
-					ready: (marker) => readyMarkers.push(marker),
-				},
+				dispatchWake: { publish: wake, subscribe: () => () => {} },
 				notifications: { publish: (notification) => published.push(notification) },
 			})
+			options.tx.dispatchRequests.fail.put = true
 			seedProject(options.tx, '01k00000000000000000000030')
 			seedAgentRunProfile(options.tx, '01k00000000000000000000006', '01k00000000000000000000024')
 			const command = createCreatePlanCommand(createTestCoreRuntime(options))
@@ -252,13 +215,13 @@ if (import.meta.vitest) {
 
 			expect(result).toMatchObject({
 				ok: false,
-				error: { type: 'invalid-core-service-output', service: 'dispatcher', operation: 'request' },
+				error: { type: 'storage-operation-failed', operation: { type: 'create', resource: 'dispatch-request' } },
 			})
 			expect(options.tx.plans.records.size).toBe(0)
 			expect(options.tx.agentRuns.records.size).toBe(0)
 			expect(options.tx.agentRunEvents.records.size).toBe(0)
 			expect(published).toEqual([])
-			expect(readyMarkers).toEqual([])
+			expect(wake).not.toHaveBeenCalled()
 		})
 
 		it('rejects archived selected profiles', async () => {

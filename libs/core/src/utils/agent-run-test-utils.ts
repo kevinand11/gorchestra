@@ -4,7 +4,7 @@ import type { AgentRunEvent } from '../domain/agent-run-event'
 import type { RevisionGate } from '../domain/revision-gate'
 import type { CoreServices } from '../services'
 
-export function planningAgentRunFixture(overrides: Partial<Pick<CoreServices, 'dispatcher'>> = {}) {
+export function planningAgentRunFixture(overrides: Partial<Pick<CoreServices, 'dispatchWake'>> = {}) {
 	const options = createTestCoreServices(overrides)
 	options.tx.plans.records.set('01k00000000000000000000028', {
 		id: '01k00000000000000000000028',
@@ -18,14 +18,14 @@ export function planningAgentRunFixture(overrides: Partial<Pick<CoreServices, 'd
 	return options
 }
 
-export function revisionPlanningAgentRunFixture(closed: boolean, overrides: Partial<Pick<CoreServices, 'dispatcher'>> = {}) {
+export function revisionPlanningAgentRunFixture(closed: boolean, overrides: Partial<Pick<CoreServices, 'dispatchWake'>> = {}) {
 	const options = createTestCoreServices(overrides)
 	options.tx.agentRuns.records.set('01k00000000000000000000002', revisionPlanningAgentRun())
 	options.tx.revisionGates.records.set('01k00000000000000000000039', revisionGate(closed))
 	return options
 }
 
-export function autonomousAgentRunFixture(completed: boolean, overrides: Partial<Pick<CoreServices, 'dispatcher'>> = {}) {
+export function autonomousAgentRunFixture(completed: boolean, overrides: Partial<Pick<CoreServices, 'dispatchWake'>> = {}) {
 	const options = createTestCoreServices(overrides)
 	options.tx.agentRuns.records.set('01k00000000000000000000002', {
 		...planningAgentRun(),

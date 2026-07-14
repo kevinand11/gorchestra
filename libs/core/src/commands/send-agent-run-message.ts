@@ -1,5 +1,6 @@
 import { v, type PipeOutput } from 'valleyed'
 
+import { requestAgentRunModelTurn } from '../dispatch/accept'
 import { agentRunInputTranscriptPartsPipe, type AgentRunEvent } from '../domain/agent-run-event'
 import { idPipe } from '../domain/commons'
 import type {
@@ -11,13 +12,11 @@ import type {
 	ResourceNotFoundError,
 	StorageOperationFailedError,
 } from '../errors'
-import type { CoreDispatchRequest } from '../services'
 import type { CommandContext } from './types'
 import { requireInteractiveAgentRunOpen } from '../utils/agent-run-targets'
 import { appendAgentRunEvent } from '../utils/agent-runs'
 import { buildCommandHandler } from '../utils/command-handler'
 import { auditStamp } from '../utils/command-storage'
-import { requestAgentRunModelTurn } from '../utils/dispatch'
 import type { CoreRuntime } from '../utils/runtime'
 import type { Result as CoreResult } from '../utils/types'
 
@@ -96,20 +95,10 @@ if (import.meta.vitest) {
 			)
 		})
 
-		it('requests Agent Run Dispatch after appending an operator input message and readies it after commit', async () => {
-			const dispatches: CoreDispatchRequest[] = []
-			const readyMarkers: string[] = []
+		it('persists Agent Run Dispatch after appending an operator input message and wakes after commit', async () => {
+			const wakes: string[] = []
 			const options = planningAgentRunFixture({
-				dispatcher: {
-					preflight: () => Promise.resolve({ ok: true }),
-					request: (request) => {
-						dispatches.push(request)
-						return Promise.resolve('marker-1')
-					},
-					ready: (marker) => {
-						readyMarkers.push(marker)
-					},
-				},
+				dispatchWake: { publish: () => wakes.push('wake'), subscribe: () => () => {} },
 			})
 			const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
 
@@ -119,54 +108,21 @@ if (import.meta.vitest) {
 			)
 
 			expect(result).toMatchObject({ ok: true })
-			expect(dispatches).toEqual([
-				{
-					type: 'agent-run-model-turn',
-					agentRunId: '01k00000000000000000000002',
-					coordinationClaims: [
-						{
-							scope: [{ type: 'agent-run', id: '01k00000000000000000000002' }],
-							mode: { type: 'exclusive' },
-						},
-					],
-					reason: { type: 'input-appended', inputEventId: '01k00000000000000000010001' },
-				},
+			expect([...options.tx.dispatchRequests.records.values()].map((request) => request.payload)).toEqual([
+				{ type: 'agent-run-model-turn', agentRunId: '01k00000000000000000000002' },
 			])
-			expect(readyMarkers).toEqual(['marker-1'])
+			expect(wakes).toEqual(['wake'])
 		})
 
-		it('rolls back the input message when dispatch request throws', async () => {
-			const thrown = new Error('queue full')
-			const options = planningAgentRunFixture({
-				dispatcher: {
-					preflight: () => Promise.resolve({ ok: true }),
-					request: () => Promise.reject(thrown),
-					ready: () => {},
-				},
-			})
-
-			const result = await sendNextTurn(options)
-
-			expect(transactionFailureCause(result)).toBe(thrown)
-			expectNoInputMessages(options)
-		})
-
-		it('rolls back the input message when dispatch returns an invalid marker', async () => {
-			const options = planningAgentRunFixture({
-				dispatcher: {
-					preflight: () => Promise.resolve({ ok: true }),
-					request: () => Promise.resolve(''),
-					ready: () => {
-						throw new Error('ready should not be called')
-					},
-				},
-			})
+		it('rolls back the input message when Dispatch persistence fails', async () => {
+			const options = planningAgentRunFixture()
+			options.tx.dispatchRequests.fail.put = true
 
 			const result = await sendNextTurn(options)
 
 			expect(result).toMatchObject({
 				ok: false,
-				error: { type: 'invalid-core-service-output', service: 'dispatcher', operation: 'request' },
+				error: { type: 'storage-operation-failed', operation: { type: 'create', resource: 'dispatch-request' } },
 			})
 			expectNoInputMessages(options)
 		})
@@ -217,14 +173,6 @@ if (import.meta.vitest) {
 	async function sendNextTurn(options: ReturnType<typeof planningAgentRunFixture>): Promise<SendAgentRunMessageResult> {
 		const command = createSendAgentRunMessageCommand(createTestCoreRuntime(options))
 		return command({ agentRunId: '01k00000000000000000000002', parts: [{ type: 'text', text: 'Next turn.', metadata: null }] }, context)
-	}
-
-	function transactionFailureCause(result: SendAgentRunMessageResult): unknown {
-		expect(result).toMatchObject({ ok: false, error: { type: 'storage-operation-failed', operation: { type: 'transaction' } } })
-		if (!result.ok && result.error.type === 'storage-operation-failed' && result.error.operation.type === 'transaction') {
-			return result.error.operation.cause
-		}
-		throw new Error('Expected transaction storage failure')
 	}
 
 	function expectNoInputMessages(options: ReturnType<typeof planningAgentRunFixture>): void {

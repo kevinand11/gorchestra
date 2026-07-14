@@ -57,6 +57,7 @@ function modelVisibleMessages(event: AgentRunEvent): ModelMessage[] {
 	switch (event.body.type) {
 		case 'agent-run-model-use-override-changed':
 		case 'agent-run-runtime-requirement-override-added':
+		case 'agent-run-dispatch-failed':
 		case 'agent-run-sandbox-created':
 		case 'agent-run-preparation-started':
 		case 'agent-run-preparation-completed':

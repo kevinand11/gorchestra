@@ -739,6 +739,7 @@ if (import.meta.vitest) {
 
 	function gitHubArtifactInput(): SourceControlProviderCreateArtifactBranchInput<GitHubRepositoryConfig> {
 		return {
+			operationId: '01k00000000000000000000090',
 			repository: gitHubRepository(),
 			accessToken: { type: 'access-token', plaintext: 'token' },
 			sourceBranch: 'main',
@@ -748,6 +749,7 @@ if (import.meta.vitest) {
 
 	function gitHubReviewSurfaceInput(): SourceControlProviderCreateReviewSurfaceInput<GitHubRepositoryConfig> {
 		return {
+			operationId: '01k00000000000000000000090',
 			repository: gitHubRepository(),
 			accessToken: { type: 'access-token', plaintext: 'token' },
 			sourceBranch: 'main',

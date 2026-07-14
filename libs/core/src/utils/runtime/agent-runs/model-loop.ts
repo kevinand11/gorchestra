@@ -5,13 +5,20 @@ import { resolveToolSet } from './tools'
 import { nextTurnClaim, type TurnReasonClaim } from './turn-claims'
 import { loadTurnModelUse } from './turn-model-use'
 import type { AgentRunLoopState, AgentRunRuntimeError, ModelAgentRunRuntime, RunModelAgentRunOptions, TurnResult } from './types'
+import { registerDispatchTerminalFinalizer } from '../../../dispatch/attempt-context'
 import type { AgentRun } from '../../../domain/agent-run'
-import type { AgentRunEvent, TurnErrorReason } from '../../../domain/agent-run-event'
+import type {
+	AgentRunAssistantTranscriptPart,
+	AgentRunEvent,
+	AgentRunToolTranscriptPart,
+	TurnErrorReason,
+} from '../../../domain/agent-run-event'
 import type { Id } from '../../../domain/commons'
 import type { ModelNotSelectableError, ModelThinkingLevelUnavailableError } from '../../../errors'
 import type { CoreStorage } from '../../../services'
 import { agentRunSandboxPrepared, appendAgentRunEvent } from '../../agent-runs'
 import type { CoreProviders } from '../../providers'
+import { runtimeRecord } from '../../runtime-values'
 import { getRequired, listRecords } from '../../storage/helpers'
 import type { Result } from '../../types'
 import { managedSandboxProviderForConfig } from '../sandboxes'
@@ -90,8 +97,77 @@ async function runTurn(
 	claim: TurnReasonClaim,
 	options: RunModelAgentRunOptions,
 ): Promise<Result<TurnResult, AgentRunRuntimeError>> {
+	if (claim.turnStartedEvent !== null) {
+		const recovered = await recoverOpenTurnToolCalls(runtime, state, claim.turnStartedEvent)
+		return recovered.ok
+			? runStartedTurn(
+					runtime,
+					recovered.value,
+					{ ...claim, contextThroughEventId: recovered.value.events.at(-1)?.id ?? claim.contextThroughEventId },
+					claim.turnStartedEvent,
+					options,
+				)
+			: recovered
+	}
 	const turnStarted = await appendAgentRunEvent(runtime, runtime.services.storage, state.agentRun.id, turnStartedBody(claim))
 	return turnStarted.ok ? runStartedTurn(runtime, state, claim, turnStarted.value, options) : turnStarted
+}
+
+async function recoverOpenTurnToolCalls(
+	runtime: ModelAgentRunRuntime,
+	state: AgentRunLoopState,
+	turnStarted: AgentRunEvent,
+): Promise<Result<AgentRunLoopState, AgentRunRuntimeError>> {
+	const events = [...state.events]
+	const assistantEvents = events.filter(
+		(event) => event.body.type === 'assistant-message' && event.body.turnStartedEventId === turnStarted.id,
+	)
+	for (const assistant of assistantEvents) {
+		if (assistant.body.type !== 'assistant-message') continue
+		const recordedToolCallIds = new Set(
+			events
+				.filter((event) => event.body.type === 'tool-message' && event.body.respondsToAssistantMessageEventId === assistant.id)
+				.flatMap((event) =>
+					event.body.type === 'tool-message'
+						? event.body.parts
+								.filter(
+									(part): part is Extract<AgentRunToolTranscriptPart, { type: 'tool-result' | 'tool-error' }> =>
+										part.type === 'tool-result' || part.type === 'tool-error',
+								)
+								.map((part) => part.toolCallId)
+						: [],
+				),
+		)
+		const missingCalls = assistant.body.parts.filter(
+			(part): part is Extract<AgentRunAssistantTranscriptPart, { type: 'tool-call' }> =>
+				part.type === 'tool-call' && !part.providerExecuted && !recordedToolCallIds.has(part.toolCallId),
+		)
+		if (missingCalls.length === 0) continue
+		const occurred = runtimeRecord(runtime.values)
+		if (!occurred.ok) return occurred
+		const parts: AgentRunToolTranscriptPart[] = missingCalls.map((call) => ({
+			type: 'tool-error',
+			toolCallId: call.toolCallId,
+			toolName: call.toolName,
+			providerExecuted: false,
+			started: occurred.value,
+			completed: occurred.value,
+			reason: { type: 'result-not-recorded-before-recovery' },
+			error: { type: 'error-text', value: 'Tool result was not recorded before recovery.' },
+			truncation: null,
+			metadata: call.metadata,
+		}))
+		const recovered = await appendAgentRunEvent(runtime, runtime.services.storage, state.agentRun.id, {
+			type: 'tool-message',
+			turnStartedEventId: turnStarted.id,
+			respondsToAssistantMessageEventId: assistant.id,
+			source: { type: 'runtime-recovery' },
+			parts,
+		})
+		if (!recovered.ok) return recovered
+		events.push(recovered.value)
+	}
+	return { ok: true, value: { ...state, events } }
 }
 
 function turnStartedBody(claim: TurnReasonClaim): AgentRunEvent['body'] {
@@ -123,7 +199,7 @@ async function runStartedTurn(
 	const aiTurn = await runAISDKTurn(runtime, state, turnStarted, turnModelUse.value, modelContext.messages, resolution.value, options)
 	if (!aiTurn.ok) return aiTurn
 
-	const ended = await appendAgentRunEvent(runtime, runtime.services.storage, state.agentRun.id, {
+	const ended = await recordTurnEnded(runtime, state.agentRun.id, {
 		type: 'turn-ended',
 		turnStartedEventId: turnStarted.id,
 		outcome: aiTurn.value.turnOutcome,
@@ -151,12 +227,34 @@ async function recordTurnFailure(
 	turnStarted: AgentRunEvent,
 	reason: TurnErrorReason,
 ): Promise<Result<TurnResult, AgentRunRuntimeError>> {
-	const turnEnded = await appendAgentRunEvent(runtime, runtime.services.storage, agentRunId, {
+	const turnEnded = await recordTurnEnded(runtime, agentRunId, {
 		type: 'turn-ended',
 		turnStartedEventId: turnStarted.id,
 		outcome: { type: 'error', reason },
 	})
 	return turnEnded.ok ? { ok: true, value: { type: 'failed' } } : turnEnded
+}
+
+async function recordTurnEnded(
+	runtime: ModelAgentRunRuntime,
+	agentRunId: Id,
+	body: Extract<AgentRunEvent['body'], { type: 'turn-ended' }>,
+): Promise<Result<void, AgentRunRuntimeError>> {
+	if (
+		registerDispatchTerminalFinalizer(async (tx) => {
+			const appended = await appendAgentRunEvent(
+				{ values: runtime.values, notifications: tx.notifications },
+				tx.storage,
+				agentRunId,
+				body,
+			)
+			return appended.ok ? { ok: true, value: undefined } : appended
+		})
+	) {
+		return { ok: true, value: undefined }
+	}
+	const appended = await appendAgentRunEvent(runtime, runtime.services.storage, agentRunId, body)
+	return appended.ok ? { ok: true, value: undefined } : appended
 }
 
 if (import.meta.vitest) {
@@ -188,6 +286,67 @@ if (import.meta.vitest) {
 
 			expect(result).toEqual({ ok: true, value: undefined })
 			expect(services.tx.agentRunEvents.records.size).toBe(initialEventCount)
+		})
+
+		it('recovers an open Turn without duplicating it and records outcome-unknown tool results', async () => {
+			const services = planningFixture()
+			services.tx.agentRunEvents.records.set('01k00000000000000000000013', {
+				id: '01k00000000000000000000013',
+				agentRunId: '01k00000000000000000000002',
+				occurred: { at: '2026-06-10T12:00:00.000Z' },
+				body: {
+					type: 'turn-started',
+					contextThroughEventId: '01k00000000000000000000012',
+					reason: { type: 'input', inputEventIds: ['01k00000000000000000000012'] },
+				},
+			})
+			services.tx.agentRunEvents.records.set('01k00000000000000000000014', {
+				id: '01k00000000000000000000014',
+				agentRunId: '01k00000000000000000000002',
+				occurred: { at: '2026-06-10T12:00:00.000Z' },
+				body: {
+					type: 'assistant-message',
+					turnStartedEventId: '01k00000000000000000000013',
+					model: {
+						modelId: '01k00000000000000000000024',
+						thinkingLevel: 'none',
+						modelProviderId: '01k00000000000000000050024',
+						providerProtocol: 'anthropic-messages',
+						providerModelId: 'model',
+					},
+					finishReason: 'tool-calls',
+					usage: {
+						inputTokens: 1,
+						inputTokenDetails: { noCacheTokens: 1, cacheReadTokens: null, cacheWriteTokens: null },
+						outputTokens: 1,
+						outputTokenDetails: { textTokens: 1, reasoningTokens: null },
+					},
+					cost: null,
+					responseId: null,
+					parts: [
+						{
+							type: 'tool-call',
+							toolCallId: 'call-1',
+							toolName: 'write',
+							input: { path: 'file' },
+							providerExecuted: false,
+							metadata: null,
+						},
+					],
+				},
+			})
+
+			const result = await runModelAgentRun(modelLoopRuntime(services), '01k00000000000000000000002')
+
+			expect(result).toMatchObject({ ok: true })
+			expect([...services.tx.agentRunEvents.records.values()].filter((event) => event.body.type === 'turn-started')).toHaveLength(1)
+			expect([...services.tx.agentRunEvents.records.values()].map((event) => event.body)).toContainEqual(
+				expect.objectContaining({
+					type: 'tool-message',
+					source: { type: 'runtime-recovery' },
+					parts: [expect.objectContaining({ reason: { type: 'result-not-recorded-before-recovery' } })],
+				}),
+			)
 		})
 
 		it('blocks after operator interrupts until new input', async () => {

@@ -1,5 +1,7 @@
+import type { DeliveryWorkDispatchRef } from '../../domain/action'
 import type { Id } from '../../domain/commons'
 import type {
+	DispatchAttemptAbortedError,
 	InvalidCoreServiceOutputError,
 	InvalidInputError,
 	InvariantViolationError,
@@ -38,6 +40,7 @@ export type DeliveryWorkNoObservedChangeTarget =
 
 export type Error =
 	| InvalidInputError
+	| DispatchAttemptAbortedError
 	| InvalidCoreServiceOutputError
 	| ResourceNotFoundError
 	| StorageOperationFailedError
@@ -54,7 +57,8 @@ export interface DeliveryWorkContext {
 
 export interface DeliveryHandlerContext extends DeliveryWorkContext {
 	deliveryContext: DeliveryContext
-	dispatchStartedActionId?: Id
+	dispatch?: DeliveryWorkDispatchRef
+	operationId?: Id
 }
 
 export interface ResolvedDeliveryHandlerContext extends DeliveryHandlerContext {
