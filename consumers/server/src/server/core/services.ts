@@ -5,9 +5,10 @@ import { revealSecretPlaintext, type SecretEncryptionKey } from '../modules/secr
 
 export type CreateCoreServicesOptions = {
 	secretEncryptionKey: SecretEncryptionKey
-	dispatcher: CoreServices['dispatcher']
 	sandboxRootDir: string
 	coreStorageNamespace: string
+	dispatchWake?: CoreServices['dispatchWake']
+	notifications?: CoreServices['notifications']
 }
 
 export function createCoreServices(storage: CoreStorage, options: CreateCoreServicesOptions): CoreServices {
@@ -22,7 +23,8 @@ export function createCoreServices(storage: CoreStorage, options: CreateCoreServ
 			coreStorageNamespace: options.coreStorageNamespace,
 			sandboxRootDir: options.sandboxRootDir,
 		}),
-		dispatcher: options.dispatcher,
+		...(options.dispatchWake === undefined ? {} : { dispatchWake: options.dispatchWake }),
+		...(options.notifications === undefined ? {} : { notifications: options.notifications }),
 	}
 }
 
@@ -39,9 +41,28 @@ function resolveSecretValues(
 }
 
 if (import.meta.vitest) {
-	const { describe, expect, it } = import.meta.vitest
+	const { describe, expect, it, vi } = import.meta.vitest
 
 	describe('Server Core services', () => {
+		it('wires optional Dispatch Wake and Notification services without a Dispatcher', () => {
+			const dispatchWake: NonNullable<CoreServices['dispatchWake']> = {
+				publish: vi.fn(),
+				subscribe: vi.fn(() => () => {}),
+			}
+			const notifications: NonNullable<CoreServices['notifications']> = { publish: vi.fn() }
+			const services = createCoreServices({} as CoreStorage, {
+				secretEncryptionKey: Buffer.alloc(32, 1),
+				sandboxRootDir: '/tmp/gorchestra-core-services',
+				coreStorageNamespace: 'portfolio-1',
+				dispatchWake,
+				notifications,
+			})
+
+			expect(services.dispatchWake).toBe(dispatchWake)
+			expect(services.notifications).toBe(notifications)
+			expect('dispatcher' in services).toBe(false)
+		})
+
 		it('resolves inline protected Secret value refs and wires consumer-managed sandbox provider', async () => {
 			const { mkdtemp, rm } = await import('node:fs/promises')
 			const { tmpdir } = await import('node:os')
@@ -50,14 +71,8 @@ if (import.meta.vitest) {
 			const sandboxRootDir = await mkdtemp(join(tmpdir(), 'gorchestra-core-services-'))
 			const secretEncryptionKey = parseSecretEncryptionKey(Buffer.alloc(32, 1).toString('base64url'))
 			const valueRef = protectSecretPlaintext('token-value', secretEncryptionKey)
-			const dispatcher: CoreServices['dispatcher'] = {
-				preflight: () => Promise.resolve({ ok: true }),
-				request: () => Promise.resolve('dispatch-marker'),
-				ready: () => {},
-			}
 			const services = createCoreServices({} as CoreStorage, {
 				secretEncryptionKey,
-				dispatcher,
 				sandboxRootDir,
 				coreStorageNamespace: 'portfolio-1',
 			})

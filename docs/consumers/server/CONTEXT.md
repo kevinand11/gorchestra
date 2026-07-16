@@ -16,9 +16,17 @@ _Avoid_: Core Id, UUID, opaque id
 The default Server Consumer-owned list response boundary for Server-owned records and aggregates. It uses `{ items, pages, docs }`, accepts optional `limit`, `page`, and `beforeId`, and orders stored-record-backed list items by Server Id descending unless a local endpoint documents a different primary Server-owned record or a bounded selector list intentionally returns an unpaginated response.
 _Avoid_: Core query envelope
 
-**Server Dispatcher**:
-The Server Consumer capability that receives Core Dispatch Requests and arranges runtime execution for the selected Portfolio. The dispatcher is responsible for execution arrangement, not for deciding Core Agent Run or Delivery work behavior. The v1 dispatcher returns opaque markers for accepted requests and starts processing only when the marker is readied after the Core transaction succeeds. It scopes Core Dispatch Coordination Claims by Portfolio storage namespace and runs readied requests only when all claims can be acquired.
-_Avoid_: Scheduler, worker agent, Core runtime, Agent Run Dispatcher
+**Portfolio Core Runtime**:
+The Server-owned process-local long-lived runtime for one Portfolio Registry Entry, keyed by that entry's Server Id rather than its deployment-specific Core storage namespace. A Portfolio Core Runtime owns that Portfolio's open Core storage, opened Core facade, notification publisher, and Core Dispatch Processor handle; authorized requests use a scoped borrow callback whose in-flight count lets supervision drain safely, and they never open or close Core themselves.
+_Avoid_: Request-scoped Core, Core storage namespace runtime, selected-Portfolio request context, Server Dispatcher
+
+**Portfolio Core Supervision**:
+The Server Consumer capability that discovers Portfolio Registry Entries and opens, closes, and provides authorized lookup for one Portfolio Core Runtime per entry in each Server process. New registry entries signal supervision immediately, while periodic authoritative registry reconciliation recovers missed signals; after Server storage migration, supervision completes one full scan and runtime-start attempt before HTTP listening, records each Portfolio as healthy or degraded, and retries degraded Portfolios in the background with bounded backoff without suspending healthy Portfolios. It starts, drains, stops, and restarts each runtime's Core Dispatch Processor but does not select, coordinate, retry, or route Core Dispatch Requests.
+_Avoid_: Core Dispatch Supervision, Core storage namespace registry, Server Dispatcher, request-scoped Core
+
+**Degraded Portfolio Core Runtime**:
+The supervised state for a Portfolio Registry Entry whose Portfolio Core Runtime has not completed storage opening, Core preflight, and initial Core Dispatch Processor readiness. After Session, Selection, membership, and registry access are authorized, borrowing a degraded runtime fails with generic HTTP 503 Service Unavailable rather than Selection Required or request-scoped Core fallback; bounded background retry continues while healthy Portfolio runtimes and the Server operate. A later processor-only failure does not make an already-ready runtime degraded because durable Dispatch Requests remain safe while supervision restarts its processor.
+_Avoid_: Failed Server startup, Selection Required, unavailable Workspace, failed Core Dispatch Request
 
 **Agent Run Channel**:
 A selected-Portfolio live delivery scope for one Agent Run that carries its Agent Run Notifications to authorized clients. Agent Run identity alone does not grant channel access.
@@ -69,8 +77,8 @@ A server-signed browser-readable cookie that carries the selected Workspace and 
 _Avoid_: Authorization token, Session
 
 **Selection Required**:
-A Server Consumer request state where the signed-in User has no valid Selected Workspace and Selected Portfolio for a Portfolio-scoped request. Page requests redirect to selection, while Portfolio-scoped API requests fail with HTTP 428 Precondition Required so browser clients can redirect to selection. The Selection introspection API still returns structured selection state.
-_Avoid_: Unauthorized, unauthenticated
+A Server Consumer request state where the signed-in User has no valid Selected Workspace and Selected Portfolio for a Portfolio-scoped request. Page requests redirect to selection, while Portfolio-scoped API requests fail with HTTP 428 Precondition Required so browser clients can redirect to selection. The Selection introspection API still returns structured selection state; an authorized selected Portfolio with a degraded Portfolio Core Runtime is Service Unavailable rather than Selection Required.
+_Avoid_: Unauthorized, unauthenticated, degraded Portfolio Core Runtime
 
 **Workspace**:
 The top-level tenancy boundary in the Server Consumer. A Workspace has a non-unique user-facing display name, groups members, and registers Portfolios.
@@ -85,12 +93,12 @@ The Portfolio carried by the Selection Cookie inside the Selected Workspace. A S
 _Avoid_: Current project space, portfolio claim
 
 **Portfolio Registry Entry**:
-A Server Consumer registration of a Core Portfolio inside a Workspace. The Portfolio Registry Entry owns the Portfolio's non-unique user-facing display name and storage location.
-_Avoid_: Core Portfolio record, Portfolio metadata in Core
+A Server Consumer registration of a Core Portfolio inside a Workspace. The Portfolio Registry Entry owns the Portfolio's non-unique user-facing display name and deployment-specific storage location; its Server Id is the Portfolio Core Supervision key, while `coreStorageNamespace` remains only a storage detail.
+_Avoid_: Core Portfolio record, Core storage namespace identity, Portfolio metadata in Core
 
 **Portfolio Creation**:
-The Server Consumer action where an Active Workspace Owner registers a Portfolio inside a Workspace. A created Portfolio belongs to its Workspace and is selected separately from Workspace Creation.
-_Avoid_: Workspace Creation, Workspace Provisioning, Portfolio-only creation
+The Server Consumer action where an Active Workspace Owner durably registers a Portfolio inside a Workspace. Durable registration defines successful Portfolio Creation and signals Portfolio Core Supervision immediately; failure to start the first Portfolio Core Runtime makes the new Portfolio degraded and retryable without rolling back its registry entry. A created Portfolio is selected separately from Workspace Creation.
+_Avoid_: Workspace Creation, Workspace Provisioning, runtime-start transaction, Portfolio-only creation
 
 **Default Portfolio**:
 The oldest Portfolio registered for a Workspace when that Workspace has at least one Portfolio. The Default Portfolio is administered by the Workspace's Active Workspace Owners.

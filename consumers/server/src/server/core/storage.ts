@@ -87,7 +87,6 @@ export async function initializeCorePortfolioStorage(
 				secretEncryptionKey: input.secretEncryptionKey,
 				sandboxRootDir: input.config.dataDir,
 				coreStorageNamespace: input.coreStorageNamespace,
-				dispatcher: noopCoreDispatcher(),
 			}),
 		)
 		if (!opened.ok) throw new Error(`Core failed to open: ${opened.error.type}`)
@@ -152,14 +151,6 @@ function createCorePortfolioStorageRepo<A extends CorePortfolioStorageAdapter>(b
 	return Repo.from(backend.adapter).resolve(backend.resolve).build()
 }
 
-function noopCoreDispatcher(): Parameters<typeof createCoreServices>[1]['dispatcher'] {
-	return {
-		preflight: () => Promise.resolve({ ok: true }),
-		request: () => Promise.resolve('dispatch-marker'),
-		ready: () => {},
-	}
-}
-
 function parseCoreStorageNamespace(coreStorageNamespace: string): string {
 	const result = v.validate(coreStorageNamespacePipe, coreStorageNamespace)
 	if (!result.valid) throw new Error(`Core storage namespace is not valid\n${result.error.toString()}`)
@@ -213,7 +204,10 @@ if (import.meta.vitest) {
 			const initialized = await initializeCorePortfolioStorage({ config, coreStorageNamespace, secretEncryptionKey })
 
 			expect(initialized.coreStorageNamespace).toBe(coreStorageNamespace)
-			expect(initialized.preflightReport.passed).toBe(true)
+			expect(initialized.preflightReport).toEqual({
+				passed: true,
+				checks: { storage: { ok: true }, secrets: { ok: true } },
+			})
 			expect(existsSync(getDefaultCorePortfolioStorageFilePath(getCorePortfolioStorageDirectory(config, coreStorageNamespace)))).toBe(
 				true,
 			)
@@ -222,6 +216,7 @@ if (import.meta.vitest) {
 			try {
 				expect(await reopened.adapter.loadMigrations()).toEqual([
 					expect.objectContaining({ id: '2026-06-16-0001-create-core-storage' }),
+					expect.objectContaining({ id: '2026-07-13-0002-durable-dispatch' }),
 				])
 			} finally {
 				await reopened.close()

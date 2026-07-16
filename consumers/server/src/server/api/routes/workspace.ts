@@ -87,6 +87,7 @@ export function createWorkspaceApiRouter(context: ServerApiContext) {
 			corePortfolioStorage: context.corePortfolioStorage,
 			now: context.now(),
 			secretEncryptionKey: context.security.secretEncryptionKey,
+			portfolioRegistered: context.portfolioCores.portfolioRegistered,
 		})
 	})
 }

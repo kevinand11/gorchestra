@@ -17,6 +17,13 @@ export function throwSessionAuthenticationError(reason: Extract<ApiSessionAuthen
 	throw new NotAuthenticatedError()
 }
 
+class PortfolioCoreUnavailableError extends RequestError {
+	constructor() {
+		const message = 'Selected Portfolio is temporarily unavailable'
+		super(message, 503, [{ message }])
+	}
+}
+
 class ConflictError extends RequestError {
 	constructor(message: string) {
 		super(message, 409, [{ message }])
@@ -38,6 +45,10 @@ export function throwSelectionAccessError(reason: WorkspacePortfolioAccessFailur
 
 export function throwSelectionRequired(): never {
 	throw new PreconditionRequiredError('Select a Workspace and Portfolio before using this API.')
+}
+
+export function throwPortfolioCoreUnavailable(): never {
+	throw new PortfolioCoreUnavailableError()
 }
 
 export function throwCoreOperationError(error: CoreError): never {
@@ -99,6 +110,10 @@ function coreErrorHttpStatus(error: CoreError): CoreErrorHttpStatus {
 		case 'sandbox-operation-failed':
 		case 'sandbox-provider-resolution-failed':
 		case 'external-operation-failed':
+		case 'dispatch-attempt-aborted':
+		case 'dispatch-fence-lost':
+		case 'dispatch-processor-already-started':
+		case 'dispatch-storage-incompatible':
 			return 'internal'
 		default:
 			return exhaustive(error)
@@ -177,6 +192,14 @@ function coreErrorMessage(error: CoreError): string {
 			return 'Agent Run purpose does not match the requested operation'
 		case 'external-operation-failed':
 			return error.evidence.summary
+		case 'dispatch-attempt-aborted':
+			return 'Core Dispatch attempt was aborted'
+		case 'dispatch-fence-lost':
+			return 'Core Dispatch attempt lost its fence'
+		case 'dispatch-processor-already-started':
+			return 'Core Dispatch Processor is already started'
+		case 'dispatch-storage-incompatible':
+			return 'Core Dispatch storage is incompatible'
 		default:
 			return exhaustive(error)
 	}
@@ -224,6 +247,10 @@ function coreResourceLabel(resource: CoreIdResource): string {
 			return 'Revision'
 		case 'secret':
 			return 'Secret'
+		case 'dispatch-request':
+			return 'Dispatch Request'
+		case 'dispatch-coordination':
+			return 'Dispatch Coordination'
 		default:
 			return exhaustive(resource)
 	}

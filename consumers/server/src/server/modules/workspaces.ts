@@ -107,6 +107,21 @@ export async function createPortfolioRegistryEntry(input: CreatePortfolioRegistr
 		})
 }
 
+export async function findPortfolioRegistryEntry(input: {
+	serverStorage: ServerStorage
+	portfolioId: string
+}): Promise<PortfolioRegistryEntry | null> {
+	return input.serverStorage.repo
+		.on(portfolioRegistryEntrySchema)
+		.one()
+		.id(requireIdentifier(input.portfolioId, 'Portfolio id is required'))
+		.find()
+}
+
+export async function listPortfolioRegistryEntries(input: { serverStorage: ServerStorage }): Promise<PortfolioRegistryEntry[]> {
+	return input.serverStorage.repo.on(portfolioRegistryEntrySchema).all().orderBy('id', 'asc').find()
+}
+
 export async function listAccessibleWorkspaces(input: ListAccessibleWorkspacesInput): Promise<AccessibleWorkspace[]> {
 	await assertUserExists(input.serverStorage, input.userId)
 	const activeWorkspaceMembers = await findActiveWorkspaceMembersForUser(input.serverStorage, input.userId)
@@ -408,6 +423,31 @@ if (import.meta.vitest) {
 		})
 	}
 
+	async function testListsEveryPortfolioRegistryEntry(): Promise<void> {
+		await withTempServerStorage(async (serverStorage) => {
+			const user = await createTestUser(serverStorage)
+			const firstWorkspace = await createWorkspace({ serverStorage, displayName: 'First Workspace', now: later(1) })
+			const secondWorkspace = await createWorkspace({ serverStorage, displayName: 'Second Workspace', now: later(2) })
+			await createWorkspaceMember({ serverStorage, workspaceId: firstWorkspace.id, userId: user.id, now: later(3) })
+			const first = await createPortfolioRegistryEntry({
+				serverStorage,
+				workspaceId: firstWorkspace.id,
+				displayName: 'First Portfolio',
+				coreStorageNamespace: 'first-portfolio',
+				now: later(4),
+			})
+			const second = await createPortfolioRegistryEntry({
+				serverStorage,
+				workspaceId: secondWorkspace.id,
+				displayName: 'Second Portfolio',
+				coreStorageNamespace: 'second-portfolio',
+				now: later(5),
+			})
+
+			expect(await listPortfolioRegistryEntries({ serverStorage })).toEqual([first, second])
+		})
+	}
+
 	async function testIncludesEmptyWorkspaceWithoutAccessiblePortfolios(): Promise<void> {
 		await withTempServerStorage(async (serverStorage) => {
 			const user = await createTestUser(serverStorage)
@@ -492,6 +532,7 @@ if (import.meta.vitest) {
 			testCreatesWorkspaceRegistryRecords,
 		)
 		it('lists accessible Workspaces for an Active Member in Workspace id-desc order', testListsAccessibleWorkspaces)
+		it('lists every Portfolio Registry Entry in deterministic id order', testListsEveryPortfolioRegistryEntry)
 		it('includes Active Member Workspaces without accessible Portfolios', testIncludesEmptyWorkspaceWithoutAccessiblePortfolios)
 		it('excludes inactive Workspace Members from accessible Workspaces', testExcludesInactiveWorkspaceMembers)
 		it('does not duplicate an active Workspace Owner role assignment', testOwnerRoleAssignmentIsIdempotentWhileActive)

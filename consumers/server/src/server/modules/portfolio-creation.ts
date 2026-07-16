@@ -19,6 +19,7 @@ export type CreatePortfolioForWorkspaceInput = {
 	corePortfolioStorage: ServerConsumerCorePortfolioStorageConfig
 	now: Date
 	secretEncryptionKey: SecretEncryptionKey
+	portfolioRegistered: (portfolioId: string) => void
 	coreStorageNamespaceFactory?: () => string
 	coreStorageAdapterFactory?: CorePortfolioStorageAdapterFactory
 }
@@ -34,9 +35,10 @@ export async function createPortfolioForWorkspace(input: CreatePortfolioForWorks
 		...(input.coreStorageAdapterFactory ? { adapterFactory: input.coreStorageAdapterFactory } : {}),
 	}
 
+	let portfolio: PortfolioRegistryEntry
 	try {
 		await initializeCorePortfolioStorage({ ...coreStorageInput, secretEncryptionKey: input.secretEncryptionKey })
-		return await createPortfolioRegistryEntry({
+		portfolio = await createPortfolioRegistryEntry({
 			serverStorage: input.serverStorage,
 			workspaceId: input.workspaceId,
 			displayName,
@@ -47,6 +49,13 @@ export async function createPortfolioForWorkspace(input: CreatePortfolioForWorks
 		await removeCorePortfolioStorage({ config: input.corePortfolioStorage, coreStorageNamespace }).catch(() => {})
 		throw error
 	}
+
+	try {
+		input.portfolioRegistered(portfolio.id)
+	} catch {
+		// Durable Portfolio registration remains successful; reconciliation recovers a missed signal.
+	}
+	return portfolio
 }
 
 function requireDisplayName(displayName: string, message: string): string {
@@ -56,7 +65,7 @@ function requireDisplayName(displayName: string, message: string): string {
 }
 
 if (import.meta.vitest) {
-	const { afterEach, describe, expect, it } = import.meta.vitest
+	const { afterEach, describe, expect, it, vi } = import.meta.vitest
 	const { existsSync } = await import('node:fs')
 	const { createTempServerStorageTestHarness } = await import('../testing/server-storage')
 	const { openServerStorage } = await import('../storage/repo')
@@ -95,6 +104,7 @@ if (import.meta.vitest) {
 			})
 			const corePortfolioStorage = { type: 'json' as const, dataDir }
 			const coreStorageNamespace = 'portfolios/created-portfolio'
+			const portfolioRegistered = vi.fn()
 
 			const portfolio = await createPortfolioForWorkspace({
 				serverStorage,
@@ -103,6 +113,7 @@ if (import.meta.vitest) {
 				corePortfolioStorage,
 				now: testNow,
 				secretEncryptionKey,
+				portfolioRegistered,
 				coreStorageNamespaceFactory: () => coreStorageNamespace,
 			})
 
@@ -112,14 +123,47 @@ if (import.meta.vitest) {
 				coreStorageNamespace,
 				registeredAt: testNow.toISOString(),
 			})
+			expect(portfolioRegistered).toHaveBeenCalledWith(portfolio.id)
 			const coreStorage = await openCorePortfolioStorage({ config: corePortfolioStorage, coreStorageNamespace })
 			try {
 				expect(await coreStorage.adapter.loadMigrations()).toEqual([
 					expect.objectContaining({ id: '2026-06-16-0001-create-core-storage' }),
+					expect.objectContaining({ id: '2026-07-13-0002-durable-dispatch' }),
 				])
 			} finally {
 				await coreStorage.close()
 			}
+		})
+	}
+
+	async function testContainsRegistrationSignalFailure(): Promise<void> {
+		await withPortfolioCreationStorage(async ({ serverStorage, dataDir }) => {
+			const user = await createUser({ serverStorage, now: testNow })
+			const { workspace } = await createWorkspaceForUser({
+				serverStorage,
+				userId: user.id,
+				displayName: 'Delivery Ops',
+				now: testNow,
+			})
+			const corePortfolioStorage = { type: 'json' as const, dataDir }
+			const coreStorageNamespace = 'portfolios/signal-failure'
+
+			const portfolio = await createPortfolioForWorkspace({
+				serverStorage,
+				workspaceId: workspace.id,
+				displayName: 'Launch Portfolio',
+				corePortfolioStorage,
+				now: testNow,
+				secretEncryptionKey,
+				portfolioRegistered: () => {
+					throw new Error('signal failed')
+				},
+				coreStorageNamespaceFactory: () => coreStorageNamespace,
+			})
+
+			expect(portfolio.coreStorageNamespace).toBe(coreStorageNamespace)
+			expect(await serverStorage.repo.on(portfolioRegistryEntrySchema).one().id(portfolio.id).find()).toEqual(portfolio)
+			expect(existsSync(getCorePortfolioStorageDirectory(corePortfolioStorage, coreStorageNamespace))).toBe(true)
 		})
 	}
 
@@ -143,6 +187,7 @@ if (import.meta.vitest) {
 					corePortfolioStorage,
 					now: testNow,
 					secretEncryptionKey,
+					portfolioRegistered: () => {},
 					coreStorageNamespaceFactory: () => coreStorageNamespace,
 				}),
 			).rejects.toThrow('Portfolio display name is required')
@@ -163,6 +208,7 @@ if (import.meta.vitest) {
 					corePortfolioStorage,
 					now: testNow,
 					secretEncryptionKey,
+					portfolioRegistered: () => {},
 					coreStorageNamespaceFactory: () => coreStorageNamespace,
 				}),
 			).rejects.toThrow()
@@ -174,6 +220,7 @@ if (import.meta.vitest) {
 
 	describe('Portfolio Creation module', () => {
 		it('creates a Portfolio Registry Entry backed by initialized Core storage', testCreatesPortfolioForWorkspace)
+		it('keeps durable Portfolio Creation successful when the runtime signal fails', testContainsRegistrationSignalFailure)
 		it('rejects an empty display name before creating Core storage', testRejectsEmptyDisplayNameBeforeCreatingCoreStorage)
 		it('cleans up Core storage when Portfolio registry creation fails', testCleansCoreStorageWhenRegistryCreationFails)
 	})

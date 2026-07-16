@@ -1,3 +1,4 @@
+export { defaultDispatchProcessorOptions } from './options'
 export { createCoreDispatchApi } from './processor'
 export type {
 	CoreDispatchApi,

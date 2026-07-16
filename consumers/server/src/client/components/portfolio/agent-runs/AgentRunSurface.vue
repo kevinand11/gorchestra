@@ -166,6 +166,8 @@ function eventTitle(event: AgentRunEvent): string {
 			return 'Sandbox release completed'
 		case 'agent-run-sandbox-release-failed':
 			return 'Sandbox release failed'
+		case 'agent-run-dispatch-failed':
+			return 'Dispatch failed'
 		case 'instruction-snapshot':
 			return 'Instruction snapshot'
 		case 'input-message':
@@ -223,6 +225,7 @@ function eventSummary(event: AgentRunEvent): string {
 		case 'agent-run-preparation-failed':
 		case 'agent-run-sandbox-release-completed':
 		case 'agent-run-sandbox-release-failed':
+		case 'agent-run-dispatch-failed':
 		case 'interrupt-requested':
 		case 'proposed-plan-output':
 		case 'proposed-revision-output':

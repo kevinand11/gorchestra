@@ -1,6 +1,6 @@
 import type { ServerCache } from '../cache'
 import type { ServerConsumerCorePortfolioStorageConfig } from '../config'
-import { createServerDispatcher, type ServerDispatcher } from '../modules/dispatcher'
+import type { PortfolioCoreSupervision } from '../core/portfolio-supervision'
 import type { SecretEncryptionKey } from '../modules/secret-protection'
 import type { ServerStorage } from '../storage/repo'
 
@@ -17,7 +17,7 @@ export type ServerApiContext = {
 	serverCache: ServerCache
 	corePortfolioStorage: ServerConsumerCorePortfolioStorageConfig
 	security: ServerApiSecurity
-	dispatcher: ServerDispatcher
+	portfolioCores: PortfolioCoreSupervision
 	now: ServerApiClock
 }
 
@@ -26,37 +26,31 @@ export type CreateServerApiContextInput = {
 	serverCache: ServerCache
 	corePortfolioStorage: ServerConsumerCorePortfolioStorageConfig
 	security: ServerApiSecurity
-	dispatcher?: ServerDispatcher
+	portfolioCores: PortfolioCoreSupervision
 	now?: ServerApiClock
 }
 
 export function createServerApiContext(input: CreateServerApiContextInput): ServerApiContext {
-	const dispatcher =
-		input.dispatcher ??
-		createServerDispatcher({
-			corePortfolioStorage: input.corePortfolioStorage,
-			secretEncryptionKey: input.security.secretEncryptionKey,
-		})
-
 	return {
 		serverStorage: input.serverStorage,
 		serverCache: input.serverCache,
 		corePortfolioStorage: input.corePortfolioStorage,
 		security: input.security,
-		dispatcher,
+		portfolioCores: input.portfolioCores,
 		now: input.now ?? (() => new Date()),
 	}
 }
 
 if (import.meta.vitest) {
-	const { describe, expect, it } = import.meta.vitest
+	const { describe, expect, it, vi } = import.meta.vitest
 
 	describe('Server API context', () => {
-		it('uses an explicit Agent Run dispatcher override', () => {
-			const dispatcher: ServerDispatcher = {
-				preflight: () => Promise.resolve({ ok: true }),
-				request: () => Promise.resolve('dispatch-marker'),
-				ready: () => {},
+		it('uses the explicitly assembled Portfolio Core Supervision dependency', () => {
+			const portfolioCores: PortfolioCoreSupervision = {
+				start: vi.fn(() => Promise.resolve()),
+				portfolioRegistered: vi.fn(),
+				borrow: vi.fn(),
+				close: vi.fn(() => Promise.resolve()),
 			}
 
 			const context = createServerApiContext({
@@ -68,11 +62,11 @@ if (import.meta.vitest) {
 					selectionSigningKey: 'selection-key',
 					secretEncryptionKey: Buffer.alloc(32, 1),
 				},
-				dispatcher,
+				portfolioCores,
 				now: () => new Date('2026-06-21T00:00:00.000Z'),
 			})
 
-			expect(context.dispatcher).toBe(dispatcher)
+			expect(context.portfolioCores).toBe(portfolioCores)
 			expect(context.security.secretEncryptionKey).toEqual(Buffer.alloc(32, 1))
 		})
 	})

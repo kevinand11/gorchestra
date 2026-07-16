@@ -1,11 +1,9 @@
-import { openCore, type GorchestraCore } from '@gorchestra/core'
+import type { GorchestraCore } from '@gorchestra/core'
 import { PreconditionRequiredError } from 'equipped/errors'
 
 import type { ServerApiContext } from './context'
-import { throwCoreOperationError, throwNotAuthorized, throwSelectionRequired, throwSessionAuthenticationError } from './errors'
+import { throwNotAuthorized, throwPortfolioCoreUnavailable, throwSelectionRequired, throwSessionAuthenticationError } from './errors'
 import { authenticateApiSession, getSessionToken, type ApiSessionAuthentication } from './session'
-import { createCoreServices } from '../core/services'
-import { openCorePortfolioStorage } from '../core/storage'
 import { resolveSelectionAccess, type SelectionAccessResult } from '../modules/selection-access'
 import { selectionCookieName, type SelectedPortfolio } from '../modules/selection-cookie'
 import type { ServerSession } from '../modules/sessions'
@@ -39,16 +37,11 @@ export async function withSelectedPortfolioCore<T>(
 	run: (selectedContext: SelectedPortfolioCoreContext) => Promise<T>,
 ): Promise<T> {
 	const resolved = await resolveSelectedPortfolioRequest(context, cookies)
-	const coreStorage = await openCorePortfolioStorage({
-		config: context.corePortfolioStorage,
-		coreStorageNamespace: resolved.selectionAccess.portfolio.coreStorageNamespace,
-	})
-	try {
-		const core = openSelectedPortfolioCore(coreStorage.storage, context, resolved.selectionAccess.portfolio.coreStorageNamespace)
-		return await run(selectedPortfolioCoreContext(resolved, core))
-	} finally {
-		await coreStorage.close()
-	}
+	const borrowed = await context.portfolioCores.borrow(resolved.selectionAccess.portfolio.id, async (core) =>
+		run(selectedPortfolioCoreContext(resolved, core)),
+	)
+	if (!borrowed.ok) throwPortfolioCoreUnavailable()
+	return borrowed.value
 }
 
 export async function withSelectedPortfolioOwnerCore<T>(
@@ -92,27 +85,6 @@ async function requireSelectionAccess(
 	return selectionAccess
 }
 
-function openSelectedPortfolioCore(
-	storage: Parameters<typeof createCoreServices>[0],
-	context: ServerApiContext,
-	coreStorageNamespace: string,
-): GorchestraCore {
-	const openedCore = openCore(
-		createCoreServices(storage, {
-			secretEncryptionKey: context.security.secretEncryptionKey,
-			sandboxRootDir: context.corePortfolioStorage.dataDir,
-			coreStorageNamespace,
-			dispatcher: {
-				preflight: () => context.dispatcher.preflight(),
-				request: (request) => context.dispatcher.request({ coreStorageNamespace, request }),
-				ready: (marker) => context.dispatcher.ready(marker),
-			},
-		}),
-	)
-	if (!openedCore.ok) throwCoreOperationError(openedCore.error)
-	return openedCore.value
-}
-
 function selectedPortfolioCoreContext(resolved: ResolvedSelectedPortfolioRequest, core: GorchestraCore): SelectedPortfolioCoreContext {
 	return {
 		session: resolved.authentication.session,
@@ -131,7 +103,10 @@ function requireSelectedPortfolioOwner(selectedContext: SelectedPortfolioCoreCon
 }
 
 if (import.meta.vitest) {
-	const { afterEach, describe, expect, it } = import.meta.vitest
+	const { afterEach, describe, expect, it, vi } = import.meta.vitest
+	const { defaultDispatchProcessorOptions } = await import('@gorchestra/core')
+	const { defaultPortfolioCoreSupervisionConfig } = await import('../config')
+	const { createPortfolioCoreSupervision } = await import('../core/portfolio-supervision')
 	const { createTestServerCache } = await import('../testing/server-cache')
 	const { createTempServerStorageTestHarness } = await import('../testing/server-storage')
 	const { openServerStorage } = await import('../storage/repo')
@@ -180,13 +155,26 @@ if (import.meta.vitest) {
 			})
 		})
 
-		it('maps missing selected Portfolio context to Precondition Required after Session authentication succeeds', async () => {
-			await withPortfolioContextFixture(async ({ apiContext, cookies }) => {
+		it('maps an authorized unavailable Portfolio Core Runtime to Service Unavailable', async () => {
+			await withPortfolioContextFixture(async ({ apiContext, cookies, portfolioCores }) => {
+				await portfolioCores.close()
+
+				await expect(withSelectedPortfolioCore(apiContext, cookies, () => Promise.resolve(null))).rejects.toMatchObject({
+					statusCode: 503,
+					message: 'Selected Portfolio is temporarily unavailable',
+				})
+			})
+		})
+
+		it('maps missing selected Portfolio context to Precondition Required before borrowing Core', async () => {
+			await withPortfolioContextFixture(async ({ apiContext, cookies, portfolioCores }) => {
 				const { [selectionCookieName]: _selectionToken, ...cookiesWithoutSelection } = cookies
+				const borrow = vi.spyOn(portfolioCores, 'borrow')
 
 				await expect(
 					withSelectedPortfolioCore(apiContext, cookiesWithoutSelection, () => Promise.resolve(null)),
 				).rejects.toBeInstanceOf(PreconditionRequiredError)
+				expect(borrow).not.toHaveBeenCalled()
 			})
 		})
 
@@ -254,6 +242,7 @@ if (import.meta.vitest) {
 		try {
 			return await run(fixture)
 		} finally {
+			await fixture.portfolioCores.close()
 			await fixture.serverStorage.close()
 		}
 	}
@@ -262,17 +251,7 @@ if (import.meta.vitest) {
 		const dataDir = await createTempServerDataDir()
 		const serverStorage = await openServerStorage({ dataDir })
 		const serverCache = createTestServerCache()
-		const apiContext = createServerApiContext({
-			serverStorage,
-			serverCache,
-			corePortfolioStorage: { type: 'json', dataDir },
-			security: {
-				sessionSigningKey,
-				selectionSigningKey,
-				secretEncryptionKey,
-			},
-			now: () => now,
-		})
+		const corePortfolioStorage = { type: 'json' as const, dataDir }
 		const user = await createUser({ serverStorage, now })
 		const session = await createSession({
 			serverCache,
@@ -287,12 +266,34 @@ if (import.meta.vitest) {
 			serverStorage,
 			workspaceId: createdWorkspace.workspace.id,
 			displayName: 'Portfolio',
-			corePortfolioStorage: apiContext.corePortfolioStorage,
+			corePortfolioStorage,
 			now,
-			secretEncryptionKey: apiContext.security.secretEncryptionKey,
+			secretEncryptionKey,
+			portfolioRegistered: () => {},
 			coreStorageNamespaceFactory: () => `portfolios/${crypto.randomUUID()}`,
 		})
 		const provisioned = { ...createdWorkspace, portfolio }
+		const portfolioCores = createPortfolioCoreSupervision({
+			serverStorage,
+			corePortfolioStorage,
+			secretEncryptionKey,
+			config: defaultPortfolioCoreSupervisionConfig,
+			processor: { ...defaultDispatchProcessorOptions },
+			publishNotification: () => {},
+		})
+		await portfolioCores.start()
+		const apiContext = createServerApiContext({
+			serverStorage,
+			serverCache,
+			corePortfolioStorage,
+			security: {
+				sessionSigningKey,
+				selectionSigningKey,
+				secretEncryptionKey,
+			},
+			portfolioCores,
+			now: () => now,
+		})
 		const selection = buildSelectionCookie({
 			workspaceId: provisioned.workspace.id,
 			portfolioId: provisioned.portfolio.id,
@@ -302,6 +303,7 @@ if (import.meta.vitest) {
 		return {
 			serverStorage,
 			apiContext,
+			portfolioCores,
 			user,
 			session,
 			provisioned,
