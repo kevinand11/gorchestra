@@ -4,6 +4,7 @@ export type Session = Awaited<ReturnType<ServerApi['getSession']>>
 export type Selection = Awaited<ReturnType<ServerApi['getSelection']>>
 export type AuthenticatedSession = Extract<Session, { authenticated: true }>
 export type SessionRefreshScope = { inFlight: Promise<Session> | null }
+type SessionRefreshedHandler = (session: AuthenticatedSession) => Promise<void>
 
 type RefreshSessionResponse = Awaited<ReturnType<ServerApi['refreshSession']>>
 type SessionServerApi = Pick<ServerApi, 'getSession' | 'refreshSession'>
@@ -35,10 +36,19 @@ export async function loadSessionWithRefresh(
 	serverApi: SessionServerApi,
 	queryCache: SessionQueryCache,
 	refreshScope: SessionRefreshScope | null = getBrowserSessionRefreshScope(),
+	onRefreshed?: SessionRefreshedHandler,
 ): Promise<Session> {
 	const session = await queryCache.read<Session | null>(queryCache.queryKeys.session(), null, () => fetchSession(serverApi))
 	if (session === null) throw new Error('Session loader did not resolve a Session')
-	return await refreshSessionIfRecommended(session, serverApi, queryCache, refreshScope)
+	const current = await refreshSessionIfRecommended(session, serverApi, queryCache, refreshScope)
+	if (
+		onRefreshed !== undefined &&
+		session.authenticated &&
+		current.authenticated &&
+		session.session.sessionId !== current.session.sessionId
+	)
+		await onRefreshed(current)
+	return current
 }
 
 export async function loadSelection(serverApi: SelectionServerApi, queryCache: SelectionQueryCache): Promise<Selection> {
@@ -125,7 +135,7 @@ function authenticatedSessionFromRefresh(session: RefreshSessionResponse): Authe
 }
 
 if (import.meta.vitest) {
-	const { describe, expect, it } = import.meta.vitest
+	const { describe, expect, it, vi } = import.meta.vitest
 
 	describe('session loading', () => {
 		it('loads uncached Sessions through the Query Cache', async () => {
@@ -150,6 +160,18 @@ if (import.meta.vitest) {
 			expect(serverApi.getSessionCalls).toBe(0)
 			expect(serverApi.refreshSessionCalls).toBe(1)
 			expect(queryCache.session).toEqual(authenticatedSession({ session: refreshed, refreshRecommended: false }))
+		})
+
+		it('notifies the auth lifecycle after Session refresh', async () => {
+			const cached = authenticatedSession({ sessionId: 'session-old', refreshRecommended: true })
+			const refreshed = sessionRecord({ sessionId: 'session-new' })
+			const serverApi = testServerApi({ session: cached, refreshedSession: refreshed })
+			const queryCache = testQueryCache({ session: cached })
+			const onRefreshed = vi.fn(() => Promise.resolve())
+
+			await loadSessionWithRefresh(serverApi, queryCache, createSessionRefreshScope(), onRefreshed)
+
+			expect(onRefreshed).toHaveBeenCalledWith(authenticatedSession({ session: refreshed, refreshRecommended: false }))
 		})
 
 		it('does not refresh without a browser refresh scope', async () => {

@@ -1,5 +1,3 @@
-import type { Server as HttpServer } from 'node:http'
-
 import { Instance } from 'equipped'
 
 import { createServerApiServer } from './api/app'
@@ -56,17 +54,11 @@ export function createServerConsumer(input: ServerConsumerConfig) {
 	let closed = false
 	let closePromise: Promise<void> | null = null
 	let portfolioCores: PortfolioCoreSupervision | null = null
-	let rawHttpServer: HttpServer | null = null
+	let closeIngress: (() => Promise<void>) | null = null
 	let runtimeShutdownPromise: Promise<void> | null = null
 
 	function stopIngress(): Promise<void> {
-		if (rawHttpServer === null || !rawHttpServer.listening) return Promise.resolve()
-		return new Promise((resolve, reject) => {
-			rawHttpServer?.close((error) => {
-				if (error) reject(error)
-				else resolve()
-			})
-		})
+		return closeIngress?.() ?? Promise.resolve()
 	}
 
 	function shutdownRuntime(): Promise<void> {
@@ -107,9 +99,7 @@ export function createServerConsumer(input: ServerConsumerConfig) {
 				portfolioCores,
 			})
 			const server = createServerApiServer(context, config.http.port)
-			server.onBeforeListen(({ httpServer }) => {
-				rawHttpServer = httpServer
-			})
+			closeIngress = async () => await server.socket.socketInstance.close()
 
 			Instance.on('close', shutdownRuntime, {
 				class: ServerConsumerShutdown,

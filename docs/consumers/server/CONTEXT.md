@@ -28,8 +28,12 @@ _Avoid_: Core Dispatch Supervision, Core storage namespace registry, Server Disp
 The supervised state for a Portfolio Registry Entry whose Portfolio Core Runtime has not completed storage opening, Core preflight, and initial Core Dispatch Processor readiness. After Session, Selection, membership, and registry access are authorized, borrowing a degraded runtime fails with generic HTTP 503 Service Unavailable rather than Selection Required or request-scoped Core fallback; bounded background retry continues while healthy Portfolio runtimes and the Server operate. A later processor-only failure does not make an already-ready runtime degraded because durable Dispatch Requests remain safe while supervision restarts its processor.
 _Avoid_: Failed Server startup, Selection Required, unavailable Workspace, failed Core Dispatch Request
 
+**Selected Portfolio Socket Connection**:
+The browser-owned WebSocket-only Socket.IO transport on the Server Consumer's Equipped listener. Browser selected-route entry requires transport readiness after REST Session and Selection checks, and the connection reuses those cookies to capture a minimal selected identity snapshot; the physical connection and snapshot do not grant continuing authority, so every future registered socket path must revalidate its concrete access.
+_Avoid_: Agent Run Channel, WebSocket Session, authorization grant, durable connection
+
 **Agent Run Channel**:
-A selected-Portfolio live delivery scope for one Agent Run that carries its Agent Run Notifications to authorized clients. Agent Run identity alone does not grant channel access.
+A future selected-Portfolio live delivery scope for one Agent Run that carries its Agent Run Notifications to authorized clients over the Selected Portfolio Socket Connection. Agent Run identity and the socket's connection-time selected identity alone do not grant channel access.
 _Avoid_: Agent Run Event channel, global Agent Run channel, unauthenticated channel
 
 **User**:

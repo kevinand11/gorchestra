@@ -3,8 +3,8 @@ import { PreconditionRequiredError } from 'equipped/errors'
 
 import type { ServerApiContext } from './context'
 import { throwNotAuthorized, throwPortfolioCoreUnavailable, throwSelectionRequired, throwSessionAuthenticationError } from './errors'
-import { authenticateApiSession, getSessionToken, type ApiSessionAuthentication } from './session'
-import { resolveSelectionAccess, type SelectionAccessResult } from '../modules/selection-access'
+import { getSessionToken } from './session'
+import { resolveSelectedPortfolioAccess, type ResolveSelectedPortfolioAccessResult } from '../modules/selected-portfolio-access'
 import { selectionCookieName, type SelectedPortfolio } from '../modules/selection-cookie'
 import type { ServerSession } from '../modules/sessions'
 import type { PortfolioRegistryEntry, Workspace, WorkspaceMember, WorkspaceOwnerRole } from '../storage/schemas'
@@ -23,13 +23,7 @@ export type SelectedPortfolioOwnerCoreContext = Omit<SelectedPortfolioCoreContex
 	activeWorkspaceOwnerRole: WorkspaceOwnerRole
 }
 
-type AuthenticatedApiSession = Extract<ApiSessionAuthentication, { authenticated: true }>
-type SelectedSelectionAccess = Extract<SelectionAccessResult, { selected: true }>
-
-type ResolvedSelectedPortfolioRequest = {
-	authentication: AuthenticatedApiSession
-	selectionAccess: SelectedSelectionAccess
-}
+type ResolvedSelectedPortfolioRequest = Extract<ResolveSelectedPortfolioAccessResult, { resolved: true }>
 
 export async function withSelectedPortfolioCore<T>(
 	context: ServerApiContext,
@@ -37,7 +31,7 @@ export async function withSelectedPortfolioCore<T>(
 	run: (selectedContext: SelectedPortfolioCoreContext) => Promise<T>,
 ): Promise<T> {
 	const resolved = await resolveSelectedPortfolioRequest(context, cookies)
-	const borrowed = await context.portfolioCores.borrow(resolved.selectionAccess.portfolio.id, async (core) =>
+	const borrowed = await context.portfolioCores.borrow(resolved.access.portfolio.id, async (core) =>
 		run(selectedPortfolioCoreContext(resolved, core)),
 	)
 	if (!borrowed.ok) throwPortfolioCoreUnavailable()
@@ -56,43 +50,34 @@ async function resolveSelectedPortfolioRequest(
 	context: ServerApiContext,
 	cookies: Record<string, string | undefined>,
 ): Promise<ResolvedSelectedPortfolioRequest> {
-	const authentication = await requireAuthenticatedSession(context, cookies)
-	return { authentication, selectionAccess: await requireSelectionAccess(context, cookies, authentication) }
-}
-
-async function requireAuthenticatedSession(
-	context: ServerApiContext,
-	cookies: Record<string, string | undefined>,
-): Promise<AuthenticatedApiSession> {
-	const authentication = await authenticateApiSession(context, getSessionToken(cookies))
-	if (!authentication.authenticated) throwSessionAuthenticationError(authentication.reason)
-	return authentication
-}
-
-async function requireSelectionAccess(
-	context: ServerApiContext,
-	cookies: Record<string, string | undefined>,
-	authentication: AuthenticatedApiSession,
-): Promise<SelectedSelectionAccess> {
-	const selectionAccess = await resolveSelectionAccess({
+	const resolved = await resolveSelectedPortfolioAccess({
 		serverStorage: context.serverStorage,
-		userId: authentication.session.userId,
+		serverCache: context.serverCache,
+		sessionToken: getSessionToken(cookies),
 		selectionToken: cookies[selectionCookieName] ?? null,
 		now: context.now(),
-		signingKey: context.security.selectionSigningKey,
+		sessionSigningKey: context.security.sessionSigningKey,
+		selectionSigningKey: context.security.selectionSigningKey,
 	})
-	if (!selectionAccess.selected) throwSelectionRequired()
-	return selectionAccess
+	if (resolved.resolved) return resolved
+	switch (resolved.source) {
+		case 'session':
+			return throwSessionAuthenticationError(resolved.reason)
+		case 'selection':
+			return throwSelectionRequired()
+		default:
+			throw new Error(`Unexpected selected Portfolio access source: ${JSON.stringify(resolved)}`)
+	}
 }
 
 function selectedPortfolioCoreContext(resolved: ResolvedSelectedPortfolioRequest, core: GorchestraCore): SelectedPortfolioCoreContext {
 	return {
-		session: resolved.authentication.session,
-		selection: resolved.selectionAccess.selection,
-		workspace: resolved.selectionAccess.workspace,
-		workspaceMember: resolved.selectionAccess.workspaceMember,
-		portfolio: resolved.selectionAccess.portfolio,
-		activeWorkspaceOwnerRole: resolved.selectionAccess.activeWorkspaceOwnerRole,
+		session: resolved.session,
+		selection: resolved.access.selection,
+		workspace: resolved.access.workspace,
+		workspaceMember: resolved.access.workspaceMember,
+		portfolio: resolved.access.portfolio,
+		activeWorkspaceOwnerRole: resolved.access.activeWorkspaceOwnerRole,
 		core,
 	}
 }

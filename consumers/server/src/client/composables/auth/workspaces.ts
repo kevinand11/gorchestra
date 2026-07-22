@@ -1,11 +1,13 @@
 import { computed, ref, type Ref } from 'vue'
 
-import { useSetAuth } from './session'
+import { useAuth, useSetAuth } from './session'
 import { PortfolioCreationFormDraft, WorkspaceCreationFormDraft } from '../../forms/workspace'
+import { selectedServerSocketIdentity } from '../../utils/selected-server-socket'
 import { useApiAction, useFetchAction } from '../core/action-state'
 import { useOverlay } from '../core/overlay'
 import { useQueryCache } from '../core/query-cache'
 import { useServerApi, type ServerApi } from '../core/server-api'
+import { useServerSocketConnection } from '../core/server-socket'
 
 type Workspace = Awaited<ReturnType<ServerApi['listWorkspaces']>>[number]
 type Portfolio = Workspace['portfolios'][number]
@@ -136,6 +138,7 @@ export function useWorkspacePortfolioCreation(options: WorkspacePortfolioCreatio
 
 export function usePortfolioSelection(options: PortfolioSelectionOptions = {}) {
 	const serverApi = useServerApi()
+	const { session } = useAuth()
 	const { setSelection } = useSetAuth()
 	const { toast } = useOverlay()
 	const selectingPortfolioKey = ref('')
@@ -147,6 +150,10 @@ export function usePortfolioSelection(options: PortfolioSelectionOptions = {}) {
 	} = useApiAction(async (workspaceId: string, portfolioId: string) => {
 		const selection = await serverApi.setSelection(workspaceId, portfolioId)
 		setSelection(selection)
+		const currentSession = session.value
+		if (!currentSession?.authenticated || !selection.selected)
+			throw new Error('Selected Portfolio socket requires an authenticated Session and Selection')
+		await useServerSocketConnection().reconnect(selectedServerSocketIdentity(currentSession, selection))
 		toast.success({ title: 'Portfolio selected.' })
 		await options.onSuccess?.(selection)
 		return selection
